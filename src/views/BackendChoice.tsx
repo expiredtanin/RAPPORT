@@ -1,12 +1,19 @@
-import { useState } from "react";
-import { canUseDataFolder, pickAndActivateDataFolder } from "../storage/data-folder";
+import { useEffect, useState } from "react";
+import {
+  canUseDataFolder, pickAndActivateDataFolder, defaultRapportFolder, rapportFolderIn,
+  chooseDataFolder, ensureFolder, activateDataFolder,
+} from "../storage/data-folder";
 
-// Erst-Screen einer frischen Rapport-Installation: «Lokal oder Cloud?».
+// Erst-Screen einer frischen Rapport-Installation: «Wo liegen die Daten?».
 // Wird angezeigt, solange `localStorage["rapport_backend_chosen"]` nicht
 // gesetzt ist UND noch keine lokalen Daten existieren. Sobald der User
 // gewählt hat, reloaded die App und der jeweilige Wizard übernimmt:
-//   Lokal → bestehender Setup.tsx
+//   Rapport-Ordner / Datenordner → bestehender Setup.tsx (bzw. Login, wenn der Ordner schon Daten hat)
+//   Testmodus (nur Browser)       → bestehender Setup.tsx
 //   Cloud → Login mit Init-Modus oder Login-Modus (je nach Studio-Vorhandensein)
+// Desktop-App: Standard für Einzelplatz ist der Rapport-Ordner (`~/Documents/Rapport` oder ein
+// gewählter Ort) — Daten und Dateiablage als normale Dateien, mit Tagesbackup. Den Testmodus
+// (localStorage, ~5 MB) gibt es nur noch im Browser.
 
 // Tauri-User geben die Server-URL immer aktiv ein. Build-time-URL ist nur
 // für Web-Deploy gedacht (z.B. app.rapport.kgva.ch → 127.0.0.1:54321 lokal).
@@ -16,7 +23,7 @@ const isTauri = typeof window !== "undefined" && !!window.__TAURI_INTERNALS__;
 // geändert, weil es das Verhalten von Web-Deployments ändern würde.
 const envCloudUrl: string = isTauri ? "" : (import.meta.env.VITE_SUPABASE_URL || "");
 
-/** Vollbild-Auswahl «Testmodus (lokal)» oder «Mit Cloud-Server verbinden». Keine Props; die Wahl wird in localStorage gespeichert und die App neu geladen. */
+/** Vollbild-Auswahl Rapport-Ordner / bestehender Ordner / Server (Desktop) bzw. Testmodus / Server (Browser). Keine Props; die Wahl wird in localStorage gespeichert und die App neu geladen. */
 export default function BackendChoice() {
   // Tauri hat keine eingebrannte Server-URL (envCloudUrl leer) — ohne Adresse
   // würde pick("cloud") ohne URL reloaden, der Adapter fällt dann mangels URL
@@ -25,6 +32,32 @@ export default function BackendChoice() {
   // der Adresse fragen, bevor reloaded wird.
   const [askUrl, setAskUrl] = useState(false);
   const [urlInput, setUrlInput] = useState("");
+  // Rapport-Ordner: vorgeschlagener Pfad (Dokumente/Rapport) und Fehler beim Anlegen
+  const [defaultFolder, setDefaultFolder] = useState("");
+  const [folderError, setFolderError] = useState("");
+  const [folderBusy, setFolderBusy] = useState(false);
+  useEffect(() => {
+    if (canUseDataFolder) defaultRapportFolder().then(setDefaultFolder).catch(() => {});
+  }, []);
+
+  /** Legt den Rapport-Ordner an (Standardort oder `<gewählter Ort>/Rapport`) und schaltet darauf um. */
+  const createFolder = async (chooseLocation: boolean) => {
+    setFolderBusy(true); setFolderError("");
+    try {
+      let dir = defaultFolder || await defaultRapportFolder();
+      if (chooseLocation) {
+        const parent = await chooseDataFolder("Ort für den Rapport-Ordner wählen");
+        if (!parent) return;
+        dir = await rapportFolderIn(parent);
+      }
+      await ensureFolder(dir);
+      activateDataFolder(dir);
+    } catch (e) {
+      setFolderError(`Der Ordner konnte nicht angelegt werden: ${(e as Error).message || e}`);
+    } finally {
+      setFolderBusy(false);
+    }
+  };
 
   const pick = (backend: "local" | "cloud", cloudUrl = "") => {
     localStorage.setItem("rapport_backend_chosen", "1");
@@ -99,27 +132,45 @@ export default function BackendChoice() {
           Wie möchten Sie Rapport nutzen?
         </p>
 
-        {canUseDataFolder && (
-          <button className="bc-option" onClick={pickAndActivateDataFolder}>
-            <div className="bc-title">Datenordner (auf diesem Mac / iCloud)</div>
+        {canUseDataFolder ? (<>
+          <button className="bc-option" disabled={folderBusy} onClick={() => createFolder(false)}>
+            <div className="bc-title" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              Rapport-Ordner anlegen
+              <span style={{ fontSize: 10, fontWeight: 600, letterSpacing: "0.08em", color: "#9a7858", background: "rgba(154,120,88,0.10)", borderRadius: 20, padding: "2px 6px" }}>EMPFOHLEN</span>
+            </div>
             <div className="bc-desc">
-              Daten liegen als Dateien in einem Ordner Ihrer Wahl — ohne Speichergrenze, mit automatischem Tagesbackup.
-              Liegt der Ordner in iCloud Drive oder auf einem NAS, können zwei Personen gleichzeitig damit arbeiten
-              (z.B. eine pflegt alles, die andere trägt Stunden ein). Enthält der Ordner schon Daten, werden diese geöffnet.
+              Für die Arbeit allein auf diesem Mac. Daten, Belege, Logo und Bilder liegen als normale Dateien
+              in einem Ordner — ohne Speichergrenze, mit automatischem Tagesbackup, sicherbar wie jeder andere Ordner.
+              {defaultFolder && <><br /><code style={{ fontSize: 11, color: "#9a7858", wordBreak: "break-all" }}>{defaultFolder}</code></>}
+            </div>
+          </button>
+          <div style={{ textAlign: "right", margin: "-4px 4px 14px" }}>
+            <button disabled={folderBusy} onClick={() => createFolder(true)}
+              style={{ background: "none", border: "none", padding: 0, cursor: "pointer", fontFamily: "inherit", fontSize: 12, color: "#9a7858", textDecoration: "underline" }}>
+              Anderen Ort wählen…
+            </button>
+          </div>
+          {folderError && <div style={{ fontSize: 12, color: "#8a1a1a", marginBottom: 12, lineHeight: 1.5 }}>{folderError}</div>}
+
+          <button className="bc-option" disabled={folderBusy} onClick={pickAndActivateDataFolder}>
+            <div className="bc-title">Bestehenden Ordner öffnen</div>
+            <div className="bc-desc">
+              Einen vorhandenen Rapport-Ordner verwenden, z.B. nach einer Neuinstallation oder als zweite Person
+              über iCloud Drive oder ein NAS (eine pflegt alles, die andere trägt Stunden ein).
+            </div>
+          </button>
+        </>) : (
+          <button className="bc-option" onClick={() => pick("local")}>
+            <div className="bc-title" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              Testmodus (lokal)
+              <span style={{ fontSize: 10, fontWeight: 600, letterSpacing: "0.08em", color: "#9a7858", background: "rgba(154,120,88,0.10)", borderRadius: 20, padding: "2px 6px" }}>TEST</span>
+            </div>
+            <div className="bc-desc">
+              Daten liegen nur in diesem Browser. Kein Backup, kein Mehrbenutzer, begrenzt auf ~5 MB.
+              Nur zum Ausprobieren — für den produktiven Einsatz die Desktop-App mit Rapport-Ordner oder einen Server verwenden.
             </div>
           </button>
         )}
-
-        <button className="bc-option" onClick={() => pick("local")}>
-          <div className="bc-title" style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            Testmodus (lokal)
-            <span style={{ fontSize: 10, fontWeight: 600, letterSpacing: "0.08em", color: "#9a7858", background: "rgba(154,120,88,0.10)", borderRadius: 20, padding: "2px 6px" }}>TEST</span>
-          </div>
-          <div className="bc-desc">
-            Daten liegen nur in diesem Browser. Kein Backup, kein Mehrbenutzer, begrenzt auf ~5 MB.
-            Nur zum Ausprobieren — für den produktiven Einsatz einen Server verbinden.
-          </div>
-        </button>
 
         {envCloudUrl ? (
           <button className="bc-option" onClick={() => pick("cloud", envCloudUrl)}>

@@ -123,7 +123,7 @@ export function SystemTab({ s, setField, data, setView, isAdmin }: DraftProps & 
             <Section title="DATENSPEICHER">
               {isFileBackend ? (<>
                 <div style={{ fontSize: 12, color: "var(--text4)", lineHeight: 1.7, marginBottom: 12 }}>
-                  Die Daten liegen als Dateien in diesem Ordner (<code style={{ background: "var(--surface3)", padding: "1px 4px", borderRadius: 2 }}>studio.json</code>, Zeiteinträge unter <code style={{ background: "var(--surface3)", padding: "1px 4px", borderRadius: 2 }}>time/</code>, Tagesbackups unter <code style={{ background: "var(--surface3)", padding: "1px 4px", borderRadius: 2 }}>backups/</code>).
+                  Die Daten liegen als Dateien in diesem Ordner (<code style={{ background: "var(--surface3)", padding: "1px 4px", borderRadius: 2 }}>studio.json</code>, Zeiteinträge unter <code style={{ background: "var(--surface3)", padding: "1px 4px", borderRadius: 2 }}>time/</code>, Tagesbackups unter <code style={{ background: "var(--surface3)", padding: "1px 4px", borderRadius: 2 }}>backups/</code>, Belege, Logo und Bilder unter <code style={{ background: "var(--surface3)", padding: "1px 4px", borderRadius: 2 }}>Dateien/</code>).
                   Änderungen der anderen Person erscheinen automatisch; Gleichzeitiges wird zusammengeführt.
                 </div>
                 <div style={{ fontFamily: "monospace", fontSize: 11, color: "var(--text)", padding: "8px 10px", background: "var(--surface2)", borderRadius: 6, wordBreak: "break-all", marginBottom: 12 }}>{dataDir}</div>

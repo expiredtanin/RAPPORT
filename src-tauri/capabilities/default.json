@@ -13,6 +13,8 @@
     "dialog:allow-open",
     "fs:allow-read-text-file",
     "fs:allow-write-text-file",
+    "fs:allow-read-file",
+    "fs:allow-write-file",
     "fs:allow-read-dir",
     "fs:allow-mkdir",
     "fs:allow-rename",
@@ -20,6 +22,13 @@
     "fs:allow-exists",
     "fs:allow-stat",
     "fs:allow-watch",
-    "fs:allow-unwatch"
+    "fs:allow-unwatch",
+    {
+      "identifier": "fs:scope",
+      "allow": [
+        { "path": "$DOCUMENT/Rapport" },
+        { "path": "$DOCUMENT/Rapport/**" }
+      ]
+    }
   ]
 }

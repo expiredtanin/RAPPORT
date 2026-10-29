@@ -7,6 +7,7 @@
 //   <Ordner>/studio.json                       alles ausser Zeiteinträgen (settings, Rechnungen, …)
 //   <Ordner>/time/<mitarbeiter>_<YYYY-MM>.json Zeiteinträge, eine Datei pro Person und Monat
 //   <Ordner>/backups/backup-<Tag>-<Gerät>.json ein Gesamtstand pro Tag und Gerät (letzte 14)
+//   <Ordner>/Dateien/<Bereich>/…               Belege, Logo, Bilder, Schriften (siehe file-assets.ts)
 //
 // Ablauf: load() liest alles und merkt sich pro Datei Inhalt + Änderungszeit («known»).
 // save() ist entprellt (250 ms) und schreibt nur Dateien, deren Inhalt sich geändert hat.
@@ -20,19 +21,22 @@
 // führen zu einer verständlichen Fehlermeldung statt zu leeren Daten.
 //
 // Die Dateischicht (`FsApi`) ist austauschbar: im Betrieb Tauri (`tauriFs`), für
-// Prüfungen Node-`fs`. Nicht enthalten: Verschlüsselung, Assets als eigene Dateien, Rechte
-// (wer den Ordner lesen darf, sieht alles).
+// Prüfungen Node-`fs`. Anhänge (`data:`-URLs) stehen nicht im JSON, sondern als eigene Dateien in
+// `Dateien/` (FileAssetStore). Nicht enthalten: Verschlüsselung, Rechte (wer den Ordner lesen darf, sieht alles).
 
 import type { AppData, TimeEntry } from "../types";
 import type { RawData } from "./migrations";
 import type { StorageAdapter } from "./adapter";
 import { jsonEqual, mergeValue } from "./merge";
 import { localISODate } from "../utils";
+import { FileAssetStore } from "./file-assets";
 
 /** Dateizugriff, den der Adapter braucht. Pfade sind absolut, getrennt mit «/». */
 export interface FsApi {
   readText(path: string): Promise<string>;
   writeText(path: string, text: string): Promise<void>;
+  readBytes(path: string): Promise<Uint8Array>;
+  writeBytes(path: string, bytes: Uint8Array): Promise<void>;
   rename(from: string, to: string): Promise<void>;
   remove(path: string): Promise<void>;
   /** Legt den Ordner samt Eltern an; kein Fehler, wenn er existiert. */
@@ -103,11 +107,15 @@ export class FileStorageAdapter implements StorageAdapter {
   private unwatch: (() => void) | null = null;
   private watchTimer: ReturnType<typeof setTimeout> | null = null;
   private backupDay = "";
+  private assets: FileAssetStore;
+  /** Anhänge, deren Datei beim letzten Laden fehlte (z.B. von iCloud noch nicht geladen); Pfade relativ zum Ordner. */
+  missingFiles: string[] = [];
 
   constructor(dir: string, fs: FsApi, deviceId = "geraet") {
     this.dir = dir.replace(/\/+$/, "");
     this.fs = fs;
     this.deviceId = safe(deviceId).slice(0, 12);
+    this.assets = new FileAssetStore(this.dir, fs);
   }
 
   private path(name: string) { return `${this.dir}/${name}`; }
@@ -126,7 +134,7 @@ export class FileStorageAdapter implements StorageAdapter {
     };
   }
 
-  /** Gesamtstand aus dem, was zuletzt gelesen/geschrieben wurde. */
+  /** Gesamtstand aus dem, was zuletzt gelesen/geschrieben wurde — in Speicherform (Anhänge als Verweise). */
   private snapshot(): RawData | null {
     return joinData(new Map([...this.known].map(([n, k]) => [n, k.content])));
   }
@@ -145,7 +153,12 @@ export class FileStorageAdapter implements StorageAdapter {
       catch (e) { throw new DataFolderError(`Die Datei «${name}» ist beschädigt oder noch nicht fertig synchronisiert (${(e as Error).message}). Rapport wurde nicht geladen, damit nichts überschrieben wird.`); }
     }));
     this.known = new Map(read.filter(<T,>(x: T | null): x is T => x !== null));
-    return this.snapshot();
+    const stored = this.snapshot();
+    if (!stored) return null;
+    const { value, missing } = await this.assets.internalize(stored);
+    this.missingFiles = missing;
+    if (missing.length) console.warn("Datenordner: Dateien fehlen (noch nicht synchronisiert?):", missing);
+    return value;
   }
 
   /** Merkt den Stand vor und schreibt ihn entprellt. Das Promise erfüllt sich, sobald er auf der Platte ist. */
@@ -181,7 +194,8 @@ export class FileStorageAdapter implements StorageAdapter {
   /** Schreibt alle geänderten Dateien. true = dabei sind Änderungen der anderen Person eingeflossen. */
   private async writeAll(data: AppData): Promise<boolean> {
     await this.fs.mkdir(this.path("time"));
-    const next = splitData(data);
+    // Anhänge zuerst als Dateien ablegen, erst dann das JSON schreiben, das auf sie verweist
+    const next = splitData(await this.assets.externalize(data));
     // Zeitdateien, die es nicht mehr gibt (alle Einträge gelöscht/verschoben), leeren
     for (const name of this.known.keys()) if (name !== STUDIO && !next.has(name)) next.set(name, { format: FORMAT, entries: [] });
     let pulled = false;
@@ -290,6 +304,8 @@ export function tauriFs(): FsApi {
   return {
     readText: async p => (await fs()).readTextFile(p),
     writeText: async (p, t) => (await fs()).writeTextFile(p, t),
+    readBytes: async p => (await fs()).readFile(p),
+    writeBytes: async (p, b) => (await fs()).writeFile(p, b),
     rename: async (a, b) => (await fs()).rename(a, b),
     remove: async p => (await fs()).remove(p),
     mkdir: async p => (await fs()).mkdir(p, { recursive: true }),
