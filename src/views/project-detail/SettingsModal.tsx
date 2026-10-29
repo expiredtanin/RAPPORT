@@ -69,7 +69,7 @@ export function SettingsModal({ data, settingsForm, setSettingsForm, showAddBete
         {projectContacts.map(pc => {
           const firm = allContacts.find(c => c.id === pc.contactId);
           if (!firm) return null;
-          const selectedPersons = (firm.contacts || []).filter(p => pc.personIds!.includes(p.id));
+          const selectedPersons = (firm.contacts || []).filter(p => (pc.personIds || []).includes(p.id));
           const isEditing = editingContactId === pc.contactId;
           return (
             <div key={pc.contactId} style={{ padding: "10px 0", borderBottom: "1px solid var(--border2)" }}>
