@@ -34,6 +34,7 @@ import MigrationScreen from "./views/MigrationScreen";
 import UpdateNotifier from "./components/UpdateNotifier";
 import DataFolderHint from "./components/DataFolderHint";
 import Sidebar from "./components/Sidebar";
+import ErrorBoundary from "./components/ErrorBoundary";
 import { useNavigation } from "./hooks/useNavigation";
 import { useStudioData } from "./hooks/useStudioData";
 import { useAppearance } from "./hooks/useAppearance";
@@ -358,9 +359,11 @@ export default function App() {
 
   if (printContent) {
     return (
-      <Suspense fallback={<ViewFallback />}>
-        <PrintView content={printContent} onClose={() => setPrintContent(null)} settings={data.settings} assets={data.docAssets} />
-      </Suspense>
+      <ErrorBoundary>
+        <Suspense fallback={<ViewFallback />}>
+          <PrintView content={printContent} onClose={() => setPrintContent(null)} settings={data.settings} assets={data.docAssets} />
+        </Suspense>
+      </ErrorBoundary>
     );
   }
 
@@ -398,6 +401,8 @@ export default function App() {
             {saveError}
           </div>
         )}
+        {/* Absturz einer Ansicht zeigt eine Meldung statt weissem Bildschirm; Ansichtswechsel setzt zurück */}
+        <ErrorBoundary resetKey={`${view}:${selectedProjectId ?? ""}`}>
         <Suspense fallback={<ViewFallback />}>
           {!hasViewAccess && (
             <div style={{ padding: 40, textAlign: "center", color: "var(--text4)" }}>
@@ -428,6 +433,7 @@ export default function App() {
           {(userPermissions === null || userPermissions.includes("settings")) && view === "dataImport" && <DataImport data={data} saveAll={save} setView={navigate} />}
           {hasViewAccess && view === "studio-budget" && <StudioBudget data={data} update={update} setView={navigate} setPrintContent={setPrintContent} />}
         </Suspense>
+        </ErrorBoundary>
       </div>
 
       <UpdateNotifier />
