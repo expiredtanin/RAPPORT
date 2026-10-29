@@ -136,8 +136,13 @@ pub fn run() {
             let handle = app.handle().clone();
             app.listen("rapport:quit-ready", move |_| finish_quit(&handle));
 
-            let _tray = TrayIconBuilder::with_id("main")
-                .icon(app.default_window_icon().unwrap().clone())
+            // Fehlt das Fenster-Icon (kaputtes Bundle), startet die App trotzdem — nur das Tray-Symbol bleibt leer.
+            let mut tray = TrayIconBuilder::with_id("main");
+            match app.default_window_icon() {
+                Some(icon) => tray = tray.icon(icon.clone()),
+                None => log::warn!("Kein Fenster-Icon gefunden, Tray ohne Symbol"),
+            }
+            let _tray = tray
                 .icon_as_template(true)
                 .menu(&menu)
                 .show_menu_on_left_click(false)
