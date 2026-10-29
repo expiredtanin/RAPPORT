@@ -48,7 +48,7 @@ export interface DataNotice { kind: "repaired" | "missing"; text: string }
 function missingFilesNotice(paths: string[]): string {
   const names = paths.slice(0, 3).map(p => p.slice(p.lastIndexOf("/") + 1)).join(", ");
   return `${paths.length === 1 ? "Ein Anhang fehlt" : `${paths.length} Anhänge fehlen`} im Datenordner unter «Dateien/» (${names}${paths.length > 3 ? " …" : ""}). `
-    + "Vermutlich sind sie noch nicht synchronisiert; sie bleiben verknüpft und erscheinen nach einem Neustart von Rapport.";
+    + "Vermutlich sind sie noch nicht synchronisiert; sie bleiben verknüpft und erscheinen, sobald sie da sind (Logo und Bilder nach einem Neustart von Rapport).";
 }
 
 /** Hält den gesamten App-Zustand samt Laden, Speichern und Abgleich (siehe Dateikopf). */

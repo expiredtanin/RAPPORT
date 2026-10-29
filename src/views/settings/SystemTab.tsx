@@ -61,7 +61,8 @@ export function SystemTab({ s, setField, data, setView, isAdmin }: DraftProps & 
         const from = isFileBackend ? "dem bisherigen Ordner" : "diesem lokalen Speicher";
         if (!await askConfirm(`Der Ordner enthält bereits Rapport-Daten. Diese Daten verwenden? Die Daten in ${from} bleiben unverändert erhalten, werden aber nicht übernommen.`, "Ordner verwenden")) return;
       } else {
-        await writeDataToFolder(dir, data);
+        // Belege sind im Datenordner Verweise auf Dateien des bisherigen Ordners → für den neuen einbetten
+        await writeDataToFolder(dir, isFileBackend ? await fileStorage.embedAttachments(data) : data);
       }
       activateDataFolder(dir);
     } catch (e) {
@@ -71,12 +72,14 @@ export function SystemTab({ s, setField, data, setView, isAdmin }: DraftProps & 
     }
   };
 
-  const exportData = () => {
+  const exportData = async () => {
+    // Datenordner: Belege sind Verweise auf Dateien → einbetten, damit das Backup eigenständig ist
+    const full = isFileBackend ? await fileStorage.embedAttachments(data) : data;
     // Strip legacy plaintext passwords; PBKDF2 hashes (passwordHash + passwordSalt) are
     // not reversible and remain in the backup so restored accounts keep working.
     const sanitized = {
-      ...data,
-      users: (data.users || []).map(u => {
+      ...full,
+      users: (full.users || []).map(u => {
         const { password, ...rest } = u;
         return rest;
       }),

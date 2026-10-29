@@ -43,7 +43,7 @@ function sampleData(): AppData {
 }
 
 describe("Datenordner mit Dateiablage", () => {
-  it("legt Anhänge als Dateien ab und lädt sie wieder als data:-URL", async () => {
+  it("legt Anhänge als Dateien ab; Belege bleiben beim Laden Verweis und werden erst beim Anzeigen gelesen", async () => {
     const a = new FileStorageAdapter(dir, nodeFs, "test");
     await a.save(sampleData());
 
@@ -56,8 +56,11 @@ describe("Datenordner mit Dateiablage", () => {
     // studio.json enthält kein Base64 mehr
     expect(await readFile(join(dir, "studio.json"), "utf8")).not.toContain("base64");
 
-    const loaded = await new FileStorageAdapter(dir, nodeFs, "test2").load();
-    expect(loaded?.expenses?.[0].receiptData).toBe(pdfUrl);
+    const b = new FileStorageAdapter(dir, nodeFs, "test2");
+    const loaded = await b.load();
+    expect(loaded?.expenses?.[0].receiptData).toBe(ref);
+    expect(await b.readAttachment(ref)).toBe(pdfUrl);
+    expect(await b.embedAttachments(loaded)).toMatchObject({ expenses: [{ receiptData: pdfUrl }] });
     expect(loaded?.timeEntries).toHaveLength(1);
     expect(loaded?.settings?.name).toBe("Atelier Test");
   });
@@ -118,7 +121,8 @@ describe("Datenordner mit Dateiablage", () => {
     expect(refs[1]).toMatch(/\.dwg\?typ=application%2Foctet-stream$/);
     expect(refs[2]).toMatch(/\.bin\?typ=image%2Fx-sonderformat$/);
 
-    const loaded = (await new FileStorageAdapter(dir, nodeFs, "test2").load())!;
+    const b = new FileStorageAdapter(dir, nodeFs, "test2");
+    const loaded = (await b.embedAttachments(await b.load()))!;
     expect(loaded.expenses!.map(e => e.receiptData)).toEqual(expenses.map(e => e.receiptData));
   });
 
@@ -157,5 +161,29 @@ describe("Datenordner mit Dateiablage", () => {
     await writeFile(join(dir, "backups", "kaputt.json"), "{");
     await expect(a.cleanupFiles()).rejects.toThrow(/nicht lesbar/);
     expect(await readdir(belege)).toContain("alt-111111111111.pdf");
+  });
+
+  it("Logo und Bilder werden beim Laden gelesen, nur Belege bleiben Verweis", async () => {
+    const logo = `data:image/png;base64,${bytesToBase64(pdfBytes.map(b => (b + 9) % 256))}`;
+    await new FileStorageAdapter(dir, nodeFs, "test").save({ ...sampleData(), settings: { ...sampleData().settings, logo } });
+    const loaded = (await new FileStorageAdapter(dir, nodeFs, "test2").load())!;
+    expect(loaded.settings!.logo).toBe(logo);
+    expect(loaded.expenses![0].receiptData!.startsWith(FILE_REF_PREFIX)).toBe(true);
+  });
+
+  it("geladene Belege werden unverändert zurückgeschrieben", async () => {
+    await new FileStorageAdapter(dir, nodeFs, "test").save(sampleData());
+    const before = await readFile(join(dir, "studio.json"), "utf8");
+    const b = new FileStorageAdapter(dir, nodeFs, "test");
+    const loaded = (await b.load())! as AppData;
+    await b.save({ ...loaded, expenses: [...loaded.expenses] });
+    expect(await readFile(join(dir, "studio.json"), "utf8")).toBe(before);
+    expect(await readdir(join(dir, "Dateien", "Belege"))).toHaveLength(1);
+  });
+
+  it("Verweise ausserhalb der Ablage liefert readAttachment nicht", async () => {
+    await writeFile(join(dir, "geheim.txt"), "x".repeat(10));
+    const a = new FileStorageAdapter(dir, nodeFs, "test");
+    expect(await a.readAttachment(`${FILE_REF_PREFIX}Dateien/Belege/../../geheim.txt`)).toBeNull();
   });
 });

@@ -1,10 +1,12 @@
 // Dateiablage im Datenordner: Belege, Logo, Bilder und Schriften als echte Dateien statt im JSON.
 //
-// In der App bleiben Anhänge `data:`-URLs (Views, Druck und Belegerkennung ändern sich nicht). Erst
-// beim Schreiben in den Ordner ersetzt `externalize` jede grössere Base64-`data:`-URL durch einen
+// Beim Schreiben in den Ordner ersetzt `externalize` jede grössere Base64-`data:`-URL durch einen
 // Verweis «rapport-datei:Dateien/<Bereich>/<Name>» und legt die Datei daneben ab; `internalize` macht
-// beim Laden daraus wieder `data:`-URLs. So bleiben studio.json, Zeitdateien und Tagesbackups klein,
-// und die Belege liegen lesbar im Finder:
+// beim Laden daraus wieder `data:`-URLs (Logo, Bilder, Schriften, Druck ändern sich dadurch nicht).
+// Belege (`Dateien/Belege/`, LAZY_DIR) bleiben dagegen auch in der App Verweise und werden erst beim
+// Anzeigen gelesen (`read`, hooks/useAttachment.ts) — sonst läge jeder Beleg aller Jahre im Speicher.
+// Neu hochgeladene Belege sind bis zum nächsten Laden `data:`-URLs. So bleiben studio.json,
+// Zeitdateien und Tagesbackups klein, und die Belege liegen lesbar im Finder:
 //
 //   <Ordner>/Dateien/Belege/<Belegname>-<Prüfsumme>.pdf
 //   <Ordner>/Dateien/Studio/…, Dokument-Design/…, Pinnwand/…, Benutzer/…, Weitere/…
@@ -26,6 +28,8 @@ import type { FsApi } from "./file-adapter";
 export const FILE_REF_PREFIX = "rapport-datei:";
 /** Ordner der Dateiablage innerhalb des Datenordners. */
 export const FILES_DIR = "Dateien";
+/** Dateien hier werden beim Laden nicht gelesen, sondern bleiben Verweis (siehe Dateikopf). */
+export const LAZY_DIR = `${FILES_DIR}/Belege/`;
 /** Kleinere `data:`-URLs (Symbole o.ä.) bleiben im JSON. */
 const MIN_EXTERNAL_LENGTH = 2048;
 
@@ -95,6 +99,12 @@ export const isFileRef = (v: unknown): v is string => typeof v === "string" && v
 /** Pfad relativ zum Datenordner aus einem Verweis (ohne Präfix und ohne «?typ=…»). */
 export const refPath = (ref: string) => ref.slice(FILE_REF_PREFIX.length).split("?")[0];
 
+/** Pfad eines Verweises, wenn er innerhalb der Ablage liegt (kein «..», keine absoluten Pfade aus manipulierten Daten); sonst null. */
+function safeRel(ref: string): string | null {
+  const rel = refPath(ref);
+  return rel.startsWith(`${FILES_DIR}/`) && !rel.split("/").includes("..") ? rel : null;
+}
+
 /** Sammelt die Pfade aller Verweise in `value` (beliebig tief) in `into`. */
 export function collectFileRefs(value: unknown, into: Set<string>): Set<string> {
   if (isFileRef(value)) into.add(refPath(value));
@@ -163,10 +173,18 @@ export class FileAssetStore {
     return (await this.walk(value, "", null, async (url, area, parent) => this.refFor(url, area, parent), isExternalizable)) as T;
   }
 
-  /** App-Form: Verweise → `data:`-URLs. Nicht lesbare Dateien bleiben Verweis (siehe Dateikopf); `missing` zählt sie. */
-  async internalize<T>(value: T): Promise<{ value: T; missing: string[] }> {
+  /**
+   * App-Form: Verweise → `data:`-URLs. Nicht lesbare Dateien bleiben Verweis (siehe Dateikopf); `missing` zählt sie.
+   * Mit `lazy` bleiben Belege (LAZY_DIR) Verweise; für sie wird nur geprüft, ob die Datei da ist.
+   */
+  async internalize<T>(value: T, { lazy = false } = {}): Promise<{ value: T; missing: string[] }> {
     const missing: string[] = [];
     const out = await this.walk(value, "", null, async ref => {
+      const rel = safeRel(ref);
+      if (lazy && rel?.startsWith(LAZY_DIR)) {
+        if (!(await this.fs.stat(this.path(rel)))) missing.push(rel);
+        return ref;
+      }
       const url = await this.urlFor(ref);
       if (url === null) { missing.push(refPath(ref)); return ref; }
       return url;
@@ -227,19 +245,23 @@ export class FileAssetStore {
     return ref;
   }
 
-  private async urlFor(ref: string): Promise<string | null> {
+  /** Liest die Datei eines Verweises als `data:`-URL, ohne sie zwischenzuspeichern (Belege beim Anzeigen); null = fehlt/unlesbar. */
+  read(ref: string): Promise<string | null> {
+    return this.urlFor(ref, false);
+  }
+
+  private async urlFor(ref: string, remember = true): Promise<string | null> {
     const cached = this.urlByRef.get(ref);
     if (cached) return cached;
-    const rel = refPath(ref);
+    const rel = safeRel(ref);
+    if (!rel) return null;
     const typParam = new URLSearchParams(ref.slice(FILE_REF_PREFIX.length + rel.length + 1)).get("typ");
     const typ = typParam && MIME_RE.test(typParam) ? typParam : null;
-    // Nur Dateien innerhalb der Ablage (kein «..», keine absoluten Pfade aus manipulierten Daten)
-    if (!rel.startsWith(`${FILES_DIR}/`) || rel.split("/").includes("..")) return null;
     try {
       const bytes = await this.fs.readBytes(this.path(rel));
       const ext = rel.slice(rel.lastIndexOf(".") + 1).toLowerCase();
       const url = `data:${typ || MIME_BY_EXT[ext] || "application/octet-stream"};base64,${bytesToBase64(bytes)}`;
-      this.remember(url, ref);
+      if (remember) this.remember(url, ref);
       return url;
     } catch {
       return null;

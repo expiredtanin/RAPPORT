@@ -22,7 +22,8 @@
 //
 // Die Dateischicht (`FsApi`) ist austauschbar: im Betrieb Tauri (`tauriFs`), für
 // Prüfungen Node-`fs`. Anhänge (`data:`-URLs) stehen nicht im JSON, sondern als eigene Dateien in
-// `Dateien/` (FileAssetStore); nicht mehr verwendete entfernt `cleanupFiles()` auf Knopfdruck. Nicht enthalten: Verschlüsselung, Rechte (wer den Ordner lesen darf, sieht alles).
+// `Dateien/` (FileAssetStore). Belege bleiben auch in der App Verweise (`readAttachment` liest sie beim
+// Anzeigen, `embedAttachments` für Export/Umzug); nicht mehr verwendete entfernt `cleanupFiles()` auf Knopfdruck. Nicht enthalten: Verschlüsselung, Rechte (wer den Ordner lesen darf, sieht alles).
 
 import type { AppData, TimeEntry } from "../types";
 import type { RawData } from "./migrations";
@@ -157,10 +158,20 @@ export class FileStorageAdapter implements StorageAdapter {
     this.known = new Map(read.filter(<T,>(x: T | null): x is T => x !== null));
     const stored = this.snapshot();
     if (!stored) return null;
-    const { value, missing } = await this.assets.internalize(stored);
+    const { value, missing } = await this.assets.internalize(stored, { lazy: true });
     this.missingFiles = missing;
     if (missing.length) console.warn("Datenordner: Dateien fehlen (noch nicht synchronisiert?):", missing);
     return value;
+  }
+
+  /** Beleg zu einem Verweis (`rapport-datei:…`) als `data:`-URL; null = Datei fehlt (noch) oder ist unlesbar. */
+  readAttachment(ref: string): Promise<string | null> {
+    return this.assets.read(ref);
+  }
+
+  /** Ersetzt alle Verweise in `value` durch die Dateiinhalte — für Export und Umzug in einen anderen Ordner. Fehlende bleiben Verweis. */
+  async embedAttachments<T>(value: T): Promise<T> {
+    return (await this.assets.internalize(value)).value;
   }
 
   /** Merkt den Stand vor und schreibt ihn entprellt. Das Promise erfüllt sich, sobald er auf der Platte ist. */
