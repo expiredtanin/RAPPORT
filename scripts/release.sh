@@ -3,12 +3,18 @@
 #
 # Voraussetzungen:
 #   - Private Key liegt unter ~/.tauri/rapport_updater.key
-#   - Version wurde in src-tauri/tauri.conf.json + package.json hochgezählt
+#   - Version wurde in src-tauri/tauri.conf.json, package.json UND src-tauri/Cargo.toml hochgezählt
+#     (wird geprüft)
+#   - Für den Standard-Build (Universal, Apple Silicon + Intel) beide Rust-Targets:
+#       rustup target add aarch64-apple-darwin x86_64-apple-darwin
 #
 # Ablauf:
-#   1) npm run tauri build (mit Signing-Env)
+#   1) npx tauri build --target universal-apple-darwin (mit Signing-Env)
+#      RELEASE_TARGET=native baut wie früher nur für die eigene Architektur.
 #   2) liest die erzeugte .sig-Datei
-#   3) schreibt latest.json im Repo-Root mit URLs auf Gitea-Release-Assets
+#   3) schreibt latest.json im Repo-Root mit URLs auf Gitea-Release-Assets — beim Universal-Build
+#      für darwin-aarch64 und darwin-x86_64 (dasselbe Bundle), damit auch Intel-Macs Updates bekommen.
+#      Windows/Linux brauchen einen eigenen Build auf der jeweiligen Plattform (nicht Teil dieses Skripts).
 #
 # Danach manuell:
 #   - auf Gitea einen Release mit Tag <VERSION> erstellen (OHNE v-Prefix — latest.json verlinkt /releases/download/<VERSION>/)
@@ -29,24 +35,40 @@ fi
 
 VERSION=$(node -p "require('./src-tauri/tauri.conf.json').version")
 PKG_VERSION=$(node -p "require('./package.json').version")
-if [ "$VERSION" != "$PKG_VERSION" ]; then
-  echo "Version mismatch: tauri.conf.json=$VERSION  package.json=$PKG_VERSION" >&2
+# Erste `version = "…"`-Zeile in Cargo.toml (die des [package]-Abschnitts)
+CARGO_VERSION=$(sed -n 's/^version[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' src-tauri/Cargo.toml | head -n1)
+if [ "$VERSION" != "$PKG_VERSION" ] || [ "$VERSION" != "$CARGO_VERSION" ]; then
+  echo "Version mismatch: tauri.conf.json=$VERSION  package.json=$PKG_VERSION  Cargo.toml=$CARGO_VERSION" >&2
   exit 1
 fi
 
-ARCH=$(uname -m)
-case "$ARCH" in
-  arm64|aarch64) PLATFORM_KEY="darwin-aarch64" ;;
-  x86_64)        PLATFORM_KEY="darwin-x86_64" ;;
-  *) echo "Unsupported arch: $ARCH" >&2; exit 1 ;;
-esac
+RELEASE_TARGET="${RELEASE_TARGET:-universal}"
+if [ "$RELEASE_TARGET" = "universal" ]; then
+  for t in aarch64-apple-darwin x86_64-apple-darwin; do
+    if ! rustup target list --installed 2>/dev/null | grep -qx "$t"; then
+      echo "Rust-Target $t fehlt: rustup target add $t  (oder RELEASE_TARGET=native für den alten Build)" >&2
+      exit 1
+    fi
+  done
+  PLATFORM_KEYS="darwin-aarch64 darwin-x86_64"
+  BUILD_ARGS=(--target universal-apple-darwin)
+  BUNDLE_DIR="src-tauri/target/universal-apple-darwin/release/bundle/macos"
+else
+  ARCH=$(uname -m)
+  case "$ARCH" in
+    arm64|aarch64) PLATFORM_KEYS="darwin-aarch64" ;;
+    x86_64)        PLATFORM_KEYS="darwin-x86_64" ;;
+    *) echo "Unsupported arch: $ARCH" >&2; exit 1 ;;
+  esac
+  BUILD_ARGS=()
+  BUNDLE_DIR="src-tauri/target/release/bundle/macos"
+fi
 
-echo "→ Build Rapport $VERSION ($PLATFORM_KEY)"
+echo "→ Build Rapport $VERSION ($PLATFORM_KEYS)"
 TAURI_SIGNING_PRIVATE_KEY="$(cat "$KEY_PATH")" \
 TAURI_SIGNING_PRIVATE_KEY_PASSWORD="" \
-  npx tauri build
+  npx tauri build ${BUILD_ARGS[@]+"${BUILD_ARGS[@]}"}
 
-BUNDLE_DIR="src-tauri/target/release/bundle/macos"
 TAR_GZ=$(ls "$BUNDLE_DIR"/*.app.tar.gz 2>/dev/null | head -n1 || true)
 SIG_FILE="${TAR_GZ}.sig"
 
@@ -63,26 +85,19 @@ DOWNLOAD_URL="$GITEA_REPO/releases/download/$VERSION/$ASSET_URL_NAME"
 
 NOTES=${RELEASE_NOTES:-"Rapport $VERSION"}
 
-cat > latest.json <<EOF
-{
-  "version": "$VERSION",
-  "notes": $(node -e "process.stdout.write(JSON.stringify(process.argv[1]))" "$NOTES"),
-  "pub_date": "$PUB_DATE",
-  "platforms": {
-    "$PLATFORM_KEY": {
-      "signature": $(node -e "process.stdout.write(JSON.stringify(process.argv[1]))" "$SIGNATURE"),
-      "url": "$DOWNLOAD_URL"
-    }
-  }
-}
-EOF
+# latest.json mit einem Eintrag je Plattform (Universal: beide Mac-Architekturen → dasselbe Bundle)
+node -e '
+  const [version, notes, pubDate, signature, url, ...keys] = process.argv.slice(1);
+  const platforms = Object.fromEntries(keys.map(k => [k, { signature, url }]));
+  process.stdout.write(JSON.stringify({ version, notes, pub_date: pubDate, platforms }, null, 2) + "\n");
+' "$VERSION" "$NOTES" "$PUB_DATE" "$SIGNATURE" "$DOWNLOAD_URL" $PLATFORM_KEYS > latest.json
 
 echo
 echo "✓ Build fertig"
 echo "  Bundle:    $TAR_GZ"
 echo "  Signatur:  $SIG_FILE"
 echo "  DMG:       $(ls "$BUNDLE_DIR"/*.dmg 2>/dev/null | head -n1 || echo '(keine DMG gefunden)')"
-echo "  Platform:  $PLATFORM_KEY"
+echo "  Platform:  $PLATFORM_KEYS"
 echo "  latest.json wurde im Repo-Root geschrieben."
 echo
 echo "Nächste Schritte:"
