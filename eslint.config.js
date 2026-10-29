@@ -6,8 +6,9 @@ import tseslint from 'typescript-eslint'
 import { defineConfig, globalIgnores } from 'eslint/config'
 
 export default defineConfig([
-  // public/tesseract: vendored Builds; pb/: läuft in PocketBase (goja, eigene Globals), nicht im Browser
-  globalIgnores(['dist', 'public', 'pb', 'src-tauri', 'server']),
+  // public/tesseract: vendored Builds; pb/: läuft in PocketBase (goja, eigene Globals), nicht im Browser;
+  // .claude/: Arbeitskopien (Git-Worktrees) von Claude Code, eigene tsconfig
+  globalIgnores(['dist', 'public', 'pb', 'src-tauri', 'server', '.claude']),
   {
     files: ['**/*.{js,jsx}'],
     extends: [
