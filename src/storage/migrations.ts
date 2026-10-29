@@ -46,12 +46,16 @@ type Merged = Omit<AppData, "projects" | "protocols"> & Pick<RawData, "projects"
  *
  * @param raw Rohdaten aus localStorage, Datenordner bzw. Cloud (beliebig alt, evtl. beschädigt).
  * @param defaultData Startzustand aus constants.ts; liefert fehlende Felder und Vorlagen.
+ * @param onProblems wird aufgerufen, wenn die Formprüfung (validate.ts) etwas reparieren musste — für den Hinweis in der App.
  * @returns vollständiges `AppData`-Objekt. Die Eingabe wird nicht verändert.
  */
-export function applyMigrations(raw: RawData, defaultData: AppData): AppData {
+export function applyMigrations(raw: RawData, defaultData: AppData, onProblems?: (problems: string[]) => void): AppData {
   // Zuerst die grobe Form prüfen (kaputte Daten sollen nicht beim Rendern abstürzen, siehe validate.ts)
   const { data: parsed, problems } = validateRawData(raw, defaultData);
-  if (problems.length) console.warn("Geladene Daten repariert:", problems);
+  if (problems.length) {
+    console.warn("Geladene Daten repariert:", problems);
+    onProblems?.(problems);
+  }
   let merged = {
     ...defaultData,
     ...parsed,

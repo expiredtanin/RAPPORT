@@ -7,6 +7,8 @@
 //  - Datenordner (Desktop): Änderungen der anderen Person (iCloud/NAS) kommen über
 //    `fileStorage.onExternalChange` als neuer Gesamtstand; Ladefehler (Ordner nicht
 //    synchronisiert, Datei beschädigt) landen in `loadError`, statt mit leeren Daten zu starten.
+//  - Musste die Formprüfung beim Laden etwas reparieren oder fehlen Anhänge im Datenordner, sammelt
+//    `dataNotices` das für einen Hinweis in App.tsx (ausgeblendete Hinweise kommen nicht wieder).
 //  - Cloud: Realtime-Abgleich mit anderen Browsern (gezielte Teil-Reloads, Debounce 500 ms),
 //    Passwort-Reset-Link aus dem URL-Hash erkennen.
 //  - Einmal pro Tag werden versendete Rechnungen nach Fälligkeit auf «überfällig» gesetzt.
@@ -17,7 +19,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { defaultData } from "../constants";
 import { storage, cloudStorage, isCloudBackend, isFileBackend, fileStorage } from "../storage/adapter";
-import { applyMigrations } from "../storage/migrations";
+import { applyMigrations, type RawData } from "../storage/migrations";
 import type { AppData, CurrentUser, Invoice } from "../types";
 import { localISODate } from "../utils";
 
@@ -37,6 +39,16 @@ function describeSaveError(e: unknown): string {
   if (err?.name === "QuotaExceededError" || /quota/i.test(err?.message || ""))
     return "Speicher voll – Änderungen werden nicht mehr gespeichert. Grosse Belege oder Bilder entfernen oder in einen Datenordner wechseln.";
   return "Speichern fehlgeschlagen: " + (err?.message || String(e));
+}
+
+/** Hinweis zum geladenen Stand: von der Formprüfung repariert bzw. Anhang im Datenordner fehlt. */
+export interface DataNotice { kind: "repaired" | "missing"; text: string }
+
+/** Hinweis auf Anhänge, deren Datei im Datenordner (noch) fehlt. */
+function missingFilesNotice(paths: string[]): string {
+  const names = paths.slice(0, 3).map(p => p.slice(p.lastIndexOf("/") + 1)).join(", ");
+  return `${paths.length === 1 ? "Ein Anhang fehlt" : `${paths.length} Anhänge fehlen`} im Datenordner unter «Dateien/» (${names}${paths.length > 3 ? " …" : ""}). `
+    + "Vermutlich sind sie noch nicht synchronisiert; sie bleiben verknüpft und erscheinen nach einem Neustart von Rapport.";
 }
 
 /** Hält den gesamten App-Zustand samt Laden, Speichern und Abgleich (siehe Dateikopf). */
@@ -73,6 +85,21 @@ export function useStudioData(currentUser: CurrentUser | null) {
   // Der Token wird beim ersten Render direkt aus dem URL-Hash gelesen (kein Server-Roundtrip nötig).
   const [resetToken, setResetToken] = useState<string | null>(readResetToken);
   const [passwordRecovery, setPasswordRecovery] = useState(() => resetToken !== null);
+  /** Hinweise zum zuletzt geladenen Stand (reparierte Daten, fehlende Anhänge); leer = nichts zu melden. */
+  const [dataNotices, setDataNotices] = useState<DataNotice[]>([]);
+  const dismissedNotices = useRef(new Set<string>());
+  const dismissDataNotices = useCallback(() => {
+    setDataNotices(prev => { prev.forEach(n => dismissedNotices.current.add(n.text)); return []; });
+  }, []);
+  /** Geladene Rohdaten → aktueller Stand; sammelt dabei die Hinweise für `dataNotices`. */
+  const migrate = useCallback((raw: RawData) => {
+    const notices: DataNotice[] = [];
+    const next = applyMigrations(raw, defaultData, problems => notices.push(...problems.map(text => ({ kind: "repaired" as const, text }))));
+    if (isFileBackend && fileStorage.missingFiles.length) notices.push({ kind: "missing", text: missingFilesNotice(fileStorage.missingFiles) });
+    const fresh = notices.filter(n => !dismissedNotices.current.has(n.text));
+    if (fresh.length) setDataNotices(fresh);
+    return next;
+  }, []);
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -90,7 +117,7 @@ export function useStudioData(currentUser: CurrentUser | null) {
           try {
             const parsed = await storage.load();
             if (!cancelled && parsed) {
-              setData(applyMigrations(parsed, defaultData));
+              setData(migrate(parsed));
             }
           } catch (e) {
             console.error("Cloud-Resume load failed:", e);
@@ -121,11 +148,11 @@ export function useStudioData(currentUser: CurrentUser | null) {
       }
       if (cancelled) return;
       setIsNewInstall(!hasData);
-      setData(parsed ? applyMigrations(parsed, defaultData) : defaultData);
+      setData(parsed ? migrate(parsed) : defaultData);
       setLoading(false);
     })();
     return () => { cancelled = true; };
-  }, [setData]);
+  }, [setData, migrate]);
   const save = useCallback((next: AppData | ((prev: AppData) => AppData)) => {
     const newData = typeof next === "function" ? next(dataRef.current) : next;
     setData(newData);
@@ -145,8 +172,8 @@ export function useStudioData(currentUser: CurrentUser | null) {
   // Datenordner: Änderungen der anderen Person übernehmen (neuer Gesamtstand, bereits mit unseren Änderungen verrechnet).
   useEffect(() => {
     if (!isFileBackend || loading || loadError) return;
-    return fileStorage.onExternalChange(raw => setData(applyMigrations(raw, defaultData)));
-  }, [loading, loadError, setData]);
+    return fileStorage.onExternalChange(raw => setData(migrate(raw)));
+  }, [loading, loadError, setData, migrate]);
 
   // Cloud: Realtime-Subscription + Refresh bei Tab-Focus / Visibility-Change.
   // Damit sieht User A live, wenn User B im anderen Browser was ändert — und
@@ -173,7 +200,7 @@ export function useStudioData(currentUser: CurrentUser | null) {
       try {
         const parsed = await storage.load();
         if (!cancelled && parsed) {
-          setData(applyMigrations(parsed, defaultData));
+          setData(migrate(parsed));
         }
       } catch (e) {
         console.error("Cloud refresh failed:", e);
@@ -184,7 +211,7 @@ export function useStudioData(currentUser: CurrentUser | null) {
       try {
         const partial = await cloudStorage.loadPartial(Array.from(keys));
         if (!cancelled && partial) {
-          setData(applyMigrations({ ...dataRef.current, ...partial }, defaultData));
+          setData(migrate({ ...dataRef.current, ...partial }));
         }
       } catch (e) {
         console.error("Cloud partial refresh failed:", e);
@@ -225,7 +252,7 @@ export function useStudioData(currentUser: CurrentUser | null) {
       document.removeEventListener("visibilitychange", onVisibility);
       window.removeEventListener("focus", onFocus);
     };
-  }, [currentUser, setData]);
+  }, [currentUser, setData, migrate]);
 
   // Auto-überfällig: nach dem Laden und danach stündlich prüfen, höchstens einmal pro Tag schreiben.
   const lastOverdueCheck = useRef<string | null>(null);
@@ -248,5 +275,6 @@ export function useStudioData(currentUser: CurrentUser | null) {
   return {
     data, setData, loading, loadError, saveError, isNewInstall, cloudStudios, cloudUnreachable,
     passwordRecovery, setPasswordRecovery, resetToken, setResetToken, save, update,
+    dataNotices, dismissDataNotices,
   };
 }

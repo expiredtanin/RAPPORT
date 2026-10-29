@@ -92,6 +92,7 @@ export default function App() {
   const {
     data, setData, loading, loadError, saveError, isNewInstall, cloudStudios, cloudUnreachable,
     passwordRecovery, setPasswordRecovery, resetToken, setResetToken, save, update,
+    dataNotices, dismissDataNotices,
   } = useStudioData(currentUser);
   const handleLogin = (user: User | CurrentUser) => {
     const safe = stripCredentials(user);
@@ -399,6 +400,23 @@ export default function App() {
           <div role="alert" style={{ marginBottom: 16, padding: "10px 14px", borderRadius: 6, fontSize: 13,
             color: "var(--negative)", background: "var(--negative-bg)", border: "1px solid currentColor" }}>
             {saveError}
+          </div>
+        )}
+        {/* Beim Laden reparierte Daten bzw. fehlende Anhänge: sichtbar machen statt nur in der Konsole */}
+        {dataNotices.length > 0 && (
+          <div role="status" style={{ marginBottom: 16, padding: "10px 14px", borderRadius: 6, fontSize: 13, lineHeight: 1.6,
+            color: "var(--warning)", background: "var(--warning-bg)", border: "1px solid currentColor", display: "flex", gap: 12, alignItems: "flex-start" }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontWeight: 600 }}>Beim Laden ist etwas aufgefallen</div>
+              <ul style={{ margin: "4px 0 0", paddingLeft: 18 }}>
+                {dataNotices.slice(0, 8).map(n => <li key={n.text} style={{ wordBreak: "break-word" }}>{n.text}</li>)}
+                {dataNotices.length > 8 && <li>… und {dataNotices.length - 8} weitere</li>}
+              </ul>
+              {dataNotices.some(n => n.kind === "repaired") && (
+                <div style={{ marginTop: 4 }}>Unlesbare Teile wurden durch leere Werte ersetzt, damit Rapport weiterläuft. Bitte prüfen, ob etwas fehlt; ältere Stände liegen in den Backups.</div>
+              )}
+            </div>
+            <button className="btn btn-ghost" style={{ flexShrink: 0 }} onClick={dismissDataNotices}>Ausblenden</button>
           </div>
         )}
         {/* Absturz einer Ansicht zeigt eine Meldung statt weissem Bildschirm; Ansichtswechsel setzt zurück */}

@@ -37,4 +37,31 @@ describe("validateRawData", () => {
     expect(Array.isArray(data.invoices)).toBe(true);
     expect(data.settings.name).toBe(defaultData.settings.name);
   });
+
+  it("prüft Unterlisten wie Rechnungspositionen und lässt gültige Einträge unverändert", () => {
+    const ok = { id: "i1", items: [{ desc: "A" }] };
+    const raw = {
+      invoices: [ok, { id: "i2", items: "kaputt" }, { id: "i3", items: [{ desc: "B" }, 7] }],
+      projects: [{ id: "p1", internalMembers: "e1" }, { id: "p2", internalMembers: ["e1"] }],
+    };
+    const { data, problems } = validateRawData(raw, defaultData);
+    expect(data.invoices![0]).toBe(ok);
+    expect(data.invoices![1].items).toEqual([]);
+    expect(data.invoices![2].items).toEqual([{ desc: "B" }]);
+    expect(data.projects![0].internalMembers).toEqual([]);
+    expect(data.projects![1].internalMembers).toEqual(["e1"]);
+    expect([...problems].sort()).toEqual([
+      "«invoices» (i2): «items» ist keine Liste — leere Liste verwendet",
+      "«invoices» (i3): «items»: 1 ungültige Einträge entfernt",
+      "«projects» (p1): «internalMembers» ist keine Liste — leere Liste verwendet",
+    ]);
+  });
+
+  it("meldet Reparaturen über onProblems", () => {
+    const seen: string[][] = [];
+    applyMigrations({ invoices: "kaputt" } as never, defaultData, p => seen.push(p));
+    applyMigrations({}, defaultData, p => seen.push(p));
+    expect(seen).toHaveLength(1);
+    expect(seen[0][0]).toContain("invoices");
+  });
 });
