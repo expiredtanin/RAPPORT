@@ -23,12 +23,13 @@ npm run dev          # Vite-Server auf http://localhost:5173
 npx tauri dev        # Native App-Window mit HMR (für UI-Verifikation)
 npm run lint         # ESLint (js/jsx und ts/tsx)
 npm run typecheck    # tsc --noEmit
+npm test             # Vitest (*.test.ts neben dem Code)
 npm run build        # Frontend-Build (dist/)
 npx tauri build      # Vollständiges App-Bundle
 ./scripts/release.sh # Release-Build mit Signatur — NUR auf explizite Anweisung
 ```
 
-Es gibt **keine Tests**, keine CI, keinen Pre-Commit-Hook. Korrektheit ist Augenmaß; `typecheck`, `lint` und `build` sind das Minimum.
+Tests gibt es mit Vitest (`npm test`, Dateien `*.test.ts` neben dem Code) für Rechenlogik und Speicher; keine CI, kein Pre-Commit-Hook. `typecheck`, `lint`, `test` und `build` sind das Minimum, für UI zusätzlich Augenschein.
 
 ---
 
@@ -64,13 +65,13 @@ Es gibt **keine Tests**, keine CI, keinen Pre-Commit-Hook. Korrektheit ist Augen
 ## Lass — Stolperfallen
 
 - **TypeScript:** Alles unter `src/` ist `.ts`/`.tsx`. Kein `any` (Ausnahmen mit Begründung im Code, z.B. `ImportRecord` in DataImport, `PrintContent`). Jede Datei hat einen Dateikopf, exportierte Funktionen Doc-Kommentare (Standard in [TYPESCRIPT-MIGRATION.md](TYPESCRIPT-MIGRATION.md)). Datenmodell-Typen liegen in [types.ts](src/types.ts); vor Commits `npm run typecheck`.
-- **Keine Test-Suite "nebenbei" aufsetzen** — sinnvoll, aber separate Entscheidung.
+- **Tests:** Wer Rechenlogik (`utils.ts`, Rechnungssummen, Lohn) oder den Speicher ändert, ergänzt den passenden `*.test.ts`. Kein weiteres Test-Framework (Cypress, Jest) ohne Karim.
 - **Keine Context-/Redux-/Zustand-Provider hinzufügen** — das Single-Root-State-Pattern ist bewusst.
 - **Keine Tauri-Commands (`#[tauri::command]`) erfinden**, ohne mit Karim zu klären. Die Architektur ist absichtlich Frontend-zentriert.
 - **Cloud-Schema liegt in [pb/](pb/)** (PocketBase-Migrationen und Hooks). Ändert sich ein Feld, das synchronisiert wird, gehören Mapper (`pocketbase-mappers.ts`), `types.ts` und eine **neue** Migration unter `pb/pb_migrations/` in denselben Commit. Bestehende Migrationen nie bearbeiten. Niemals `pb/pb_data/` oder das `pocketbase`-Binary einchecken.
 - **Keine neuen `localStorage`-Keys** erfinden, ohne `rapport_`-Prefix und Eintragung in [ARCHITECTURE.md §4](ARCHITECTURE.md).
 - **Niemals Tests/Lint mit `--no-verify` umgehen** — wenn ein Pre-Commit-Hook fehlt, fehlt er aus Absicht; wenn einer da ist, ist das Karims Entscheidung.
-- **Genau ein Speicher pro Installation** (`rapport_backend`: local, file, cloud), immer nur über [storage/adapter.ts](src/storage/adapter.ts) — keine parallele Persistierung daneben (IndexedDB, Tauri AppData). Der Datenordner (`file-adapter.ts`) ist der dritte Adapter, kein Nebenweg; Details in [ARCHITECTURE.md §3](ARCHITECTURE.md).
+- **Genau ein Speicher pro Installation** (`rapport_backend`: local, file, cloud), immer nur über [storage/adapter.ts](src/storage/adapter.ts) — keine parallele Persistierung daneben (IndexedDB, Tauri AppData). Der Datenordner (`file-adapter.ts`, «Rapport-Ordner») ist der dritte Adapter und der Standard für Einzelplatz in der Desktop-App, kein Nebenweg; Anhänge liegen dort als Dateien unter `Dateien/` (`file-assets.ts`). Details in [ARCHITECTURE.md §3](ARCHITECTURE.md).
 
 ---
 

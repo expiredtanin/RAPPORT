@@ -31,9 +31,13 @@ APP/
 │   ├── storage/adapter.ts        Storage-Adapter (Promise-API): LocalStorageAdapter + PocketBaseAdapter, Modus-Auswahl
 │   ├── storage/pocketbase-adapter.ts  Cloud-Implementation: load/save/realtime/signIn/signUp/reset (PB-Phase 1: Studios/Settings/Personen/Projekte — Rest folgt)
 │   ├── storage/pocketbase-mappers.ts  fromDB / toDB für die PB-Phase-1-Entities (camelCase-Felder, kaum Mapping nötig)
-│   ├── storage/migrations.ts     `applyMigrations(parsed, defaultData)` — Schema-Migrations als reine Funktion
-│   ├── views/                    23 Top-Level-Screens, lazy-geladen; views/settings/ — Reiter der Einstellungen
-│   ├── components/               UI.tsx (StatusBadge, Modal, FormField, SortTh, …; nur Komponenten, Hooks liegen in hooks/), Sidebar.tsx, InfoModals.tsx (Changelog/Über), MahnModal.tsx (Rechnungen/Buchhaltung), ReceiptViewer.tsx (Belege), UpdateNotifier, UpdatesSupport
+│   ├── storage/migrations.ts     `applyMigrations(raw, defaultData)` — Formprüfung (validate.ts) + Schema-Migrations als reine Funktion
+│   ├── storage/validate.ts       `validateRawData` — repariert vertauschte Typen/kaputte Listeneinträge vor dem Rendern
+│   ├── storage/file-adapter.ts   Datenordner (Rapport-Ordner): studio.json, time/, backups/; Anhänge über file-assets.ts nach Dateien/
+│   ├── storage/data-folder.ts    Rapport-Ordner anlegen/wählen/umziehen (Dialog, Standard ~/Documents/Rapport)
+│   ├── *.test.ts                 Vitest-Tests neben dem Code (`npm test`): utils, storage/file-adapter, storage/validate
+│   ├── views/                    23 Top-Level-Screens, lazy-geladen; Unterordner je grosser View: settings/, time/, invoices/, employees/, project-detail/
+│   ├── components/               ErrorBoundary.tsx (fängt Render-Fehler je Ansicht und ganz aussen), UI.tsx (StatusBadge, Modal, FormField, SortTh, …; nur Komponenten, Hooks liegen in hooks/), Sidebar.tsx, InfoModals.tsx (Changelog/Über), MahnModal.tsx (Rechnungen/Buchhaltung), ReceiptViewer.tsx (Belege), UpdateNotifier, UpdatesSupport
 │   ├── print/                    PrintComponents.tsx (Einstieg PrintView + DocPreview), docs/ — Vorlagen je Fachbereich (InvoicePrint mit QR, QuotePrint, ProtocolPrint, …), docDesign/docAssets/paginate
 │   ├── utils/updater.ts          Wrapper um @tauri-apps/plugin-updater + plugin-process
 │   ├── index.css                 CSS-Reset
@@ -61,17 +65,17 @@ APP/
 │   ├── src/lib.rs                ~185 Zeilen — Tray, App-Menü, Beenden mit Speichern, Window-Events, Plugins
 │   ├── Cargo.toml                tauri, plugin-updater, plugin-process, plugin-log, serde
 │   ├── tauri.conf.json           Updater-URL, Public-Key, CSP, Bundle-Targets
-│   ├── capabilities/default.json core:default, core:webview:allow-print, updater:default, process:allow-restart
+│   ├── capabilities/default.json core:default, core:webview:allow-print, updater:default, process:allow-restart, dialog/fs (Datenordner; fest erlaubt nur $DOCUMENT/Rapport)
 │   ├── icons/                    .icns, .ico, mehrere PNGs (icon.png = Quelle)
 │   ├── gen/                      AUTO-GENERIERT — nie editieren
 │   ├── target/                   Cargo-Build-Output (~2 GB) — nie editieren
 │   └── build.rs                  Ruft tauri_build::build()
 │
-├── scripts/release.sh            Build + Sign + latest.json
+├── scripts/release.sh            Build (Universal: Apple Silicon + Intel) + Sign + latest.json; prüft alle drei Versionsnummern
 ├── latest.json                   Updater-Manifest (im Repo, weil über main.HTTP abgerufen)
-├── package.json                  version, scripts (dev, build, lint), Deps
+├── package.json                  version, scripts (dev, build, lint, typecheck, test), Deps
 ├── eslint.config.js              Flat-Config, sehr minimal
-├── vite.config.js                Nur @vitejs/plugin-react
+├── vite.config.js                @vitejs/plugin-react + Vitest-Einstellungen (`test`)
 ├── index.html                    Vite-Entry
 ├── public/                       favicon.svg, icons.svg
 ├── README.md                     Setup-Doku (Release-Sektion veraltet, siehe §6)
@@ -137,16 +141,18 @@ Alle vier sind rein additiv (Fallback bei fehlendem Vorzustand/fehlender Server-
 **Bekannte Lücken** (bewusst, folgen in weiteren Schritten):
 - Keine bekannten größeren Lücken mehr.
 
-**Datenordner** ([file-adapter.ts](src/storage/file-adapter.ts), dritter Adapter, nur Desktop): Daten als Dateien in einem frei gewählten Ordner (Ordnerwahl: `data-folder.ts`, Einstellungen → System → Datenspeicher, oder beim Erststart). Gedacht für zwei Personen über iCloud/NAS (eine pflegt alles, eine trägt Stunden ein). Aufteilung nach Schreiber: `studio.json` (alles ausser Zeiteinträgen), `time/<mitarbeiter>_<YYYY-MM>.json` (Zeiteinträge), `backups/backup-<Tag>-<Gerät>.json` (ein Stand pro Tag, letzte 14). Speichern entprellt (250 ms), atomar (temp + rename); hat jemand eine Datei inzwischen geändert, wird per Drei-Wege-Merge ([merge.ts](src/storage/merge.ts): pro Schlüssel bzw. pro Eintrag mit `id`, Konflikt → eigene Änderung gewinnt, Löschen verliert gegen Änderung) verrechnet statt überschrieben. Dateiüberwachung (`fs:watch`) meldet fremde Änderungen über `onExternalChange` → `useStudioData` setzt den neuen Stand. Konfliktkopien der Sync-Dienste («studio 2.json», «conflicted copy») werden ignoriert und in den Einstellungen gemeldet; nicht geladene iCloud-Dateien (`.x.json.icloud`) und beschädigte Dateien führen zu einem Fehlerbildschirm statt zu leeren Daten (sonst würde das nächste Speichern echte Dateien überschreiben). Dateischicht `FsApi` ist austauschbar (Tauri im Betrieb, Node-`fs` im Test). Rust: `tauri-plugin-fs` (+`watch`), `tauri-plugin-dialog`, `tauri-plugin-persisted-scope` — der Dialog erweitert den fs-Scope zur Laufzeit auf den gewählten Ordner, persisted-scope behält ihn über Neustarts; Capabilities `dialog:allow-open` und `fs:allow-*` ohne statischen Pfad. **Nicht enthalten:** Verschlüsselung, Rechte (wer den Ordner lesen darf, sieht alles; Rollen gelten nur in der App), Assets (`docAssets`, Belege) bleiben in `studio.json`. Wechsel zurück zum lokalen Speicher gibt es nicht (der alte localStorage-Bestand bleibt unverändert stehen).
+**Datenordner / Rapport-Ordner** ([file-adapter.ts](src/storage/file-adapter.ts), dritter Adapter, nur Desktop): **Standard für eine Einzelplatz-Installation in der Desktop-App.** Beim Erststart bietet [BackendChoice](src/views/BackendChoice.tsx) «Rapport-Ordner anlegen» (`~/Documents/Rapport`, oder «Anderen Ort wählen…» → `<Ort>/Rapport`), «Bestehenden Ordner öffnen» und den Server an; den Testmodus (localStorage) gibt es nur noch im Browser. Bestehende lokale Installationen bekommen nach der Anmeldung den Umzugshinweis ([DataFolderHint](src/components/DataFolderHint.tsx)). Ordnerwahl/Anlegen: `data-folder.ts`, Einstellungen → System → Datenspeicher. Liegt der Ordner in iCloud/NAS, können zwei Personen damit arbeiten (eine pflegt alles, eine trägt Stunden ein). Aufteilung nach Schreiber: `studio.json` (alles ausser Zeiteinträgen), `time/<mitarbeiter>_<YYYY-MM>.json` (Zeiteinträge), `backups/backup-<Tag>-<Gerät>.json` (ein Stand pro Tag, letzte 14). Speichern entprellt (250 ms), atomar (temp + rename); hat jemand eine Datei inzwischen geändert, wird per Drei-Wege-Merge ([merge.ts](src/storage/merge.ts): pro Schlüssel bzw. pro Eintrag mit `id`, Konflikt → eigene Änderung gewinnt, Löschen verliert gegen Änderung) verrechnet statt überschrieben. Dateiüberwachung (`fs:watch`) meldet fremde Änderungen über `onExternalChange` → `useStudioData` setzt den neuen Stand. Konfliktkopien der Sync-Dienste («studio 2.json», «conflicted copy») werden ignoriert und in den Einstellungen gemeldet; nicht geladene iCloud-Dateien (`.x.json.icloud`) und beschädigte Dateien führen zu einem Fehlerbildschirm statt zu leeren Daten (sonst würde das nächste Speichern echte Dateien überschreiben). Dateischicht `FsApi` ist austauschbar (Tauri im Betrieb, Node-`fs` im Test). **Dateiablage** ([file-assets.ts](src/storage/file-assets.ts)): In der App bleiben Anhänge `data:`-URLs (Views, Druck, Belegerkennung unverändert). Beim Schreiben ersetzt `FileAssetStore.externalize` jede Base64-`data:`-URL ab 2 KB durch einen Verweis `rapport-datei:Dateien/<Bereich>/<Name>-<SHA-256 12>.<ext>` und legt die Datei vorher ab (Bereiche: `Belege` für Spesen/Ausgaben/Zeit/Absenzen, `Studio` für settings/Logo, `Dokument-Design`, `Pinnwand`, `Benutzer`, sonst `Weitere`; Name aus `receiptName`/`name`/…). Beim Laden macht `internalize` daraus wieder `data:`-URLs. Gleicher Inhalt = gleiche Datei, Dateien werden nie überschrieben, deshalb verweisen auch alte Tagesbackups auf gültige Dateien; nicht mehr benutzte Dateien werden (noch) nicht gelöscht. Fehlt eine Datei (iCloud noch nicht geladen), bleibt der Verweis stehen (`missingFiles`) und wird unverändert zurückgeschrieben. Verweise ausserhalb von `Dateien/` (`..`) werden nie gelesen. Der JSON-Export in den Einstellungen enthält die Anhänge weiter eingebettet (eigenständiges Backup).
+
+Rust: `tauri-plugin-fs` (+`watch`), `tauri-plugin-dialog`, `tauri-plugin-persisted-scope` — der Dialog erweitert den fs-Scope zur Laufzeit auf den gewählten Ordner, persisted-scope behält ihn über Neustarts; Capabilities `dialog:allow-open`, `fs:allow-*` (auch `read-file`/`write-file` für die Dateiablage) und als einziger statischer Pfad `fs:scope` auf `$DOCUMENT/Rapport` (Standard-Rapport-Ordner, ohne Dialog angelegt). **Nicht enthalten:** Verschlüsselung, Rechte (wer den Ordner lesen darf, sieht alles; Rollen gelten nur in der App). Wechsel zurück zum lokalen Speicher gibt es nicht (der alte localStorage-Bestand bleibt unverändert stehen).
 
 **Per-Device-UI-State** (Dark Mode, Zoom, Sidebar-Collapse, Changelog-Seen, `rapport_backend`/`rapport_cloud_url`) bleibt außerhalb des Adapters in direktem `localStorage` — kommt nicht in die Cloud.
 
-**Schema-Migrations** ([src/storage/migrations.ts](src/storage/migrations.ts)) sind als reine Funktion `applyMigrations(parsed, defaultData)` extrahiert, damit derselbe Code auf Local- und Cloud-geladenen Daten läuft. Beim Initial-Load in App.tsx wird das Ergebnis vom Adapter durch diese Funktion gepiped, bevor es in `useState` landet.
+**Schema-Migrations** ([src/storage/migrations.ts](src/storage/migrations.ts)) sind als reine Funktion `applyMigrations(raw, defaultData)` extrahiert, damit derselbe Code auf Local-, Ordner- und Cloud-geladenen Daten läuft. Beim Initial-Load (und bei jedem Nachladen) wird das Ergebnis vom Adapter durch diese Funktion gepiped, bevor es in `useState` landet. Als Erstes prüft sie die grobe Form ([validate.ts](src/storage/validate.ts)): Liste/Objekt/einfacher Wert vertauscht (oberste Ebene und `settings`) → Default; Listeneinträge, die keine Objekte sind → verworfen; Zahl vs. Text gilt nicht als Fehler. Gefundenes landet als `console.warn`.
 
 **Wichtig:**
 - `save()` schreibt **synchron** bei jedem Update — kein Debouncing. Bei großen `data`-Objekten kann das spürbar werden.
 - Es gibt **kein Backup, kein Conflict-Resolution**. Wenn der User zwei App-Fenster hat (passiert kaum, weil Single-Window), überschreibt das letzte gewinnt.
-- Kein Schema-Validator beim Laden — wenn `localStorage` korrupt ist, crasht es im Render.
+- Grobe Formprüfung beim Laden (validate.ts), aber keine Prüfung tiefer Felder (z.B. `invoice.items` als Text) — solche Fehler fängt nur der Error-Boundary der Ansicht ab.
 
 **`data` Top-Level-Struktur** (definiert in [constants.ts](src/constants.ts)):
 ```
@@ -215,11 +221,11 @@ Alle Views liegen in [src/views/](src/views/), werden in [App.tsx](src/App.tsx) 
 | View | Zeilen | Zweck | Komplexität |
 |---|---:|---|---|
 | [Projects.tsx](src/views/Projects.tsx) | 355 | Projektliste (Gruppierung, Filter, Sortierung) | Mittel |
-| [ProjectDetail.tsx](src/views/ProjectDetail.tsx) | 1246 | Detail: Budget/Zeit, SIA-Phasen, Quoten-Zuordnung, Nachträge | **Sehr hoch** |
+| [ProjectDetail.tsx](src/views/ProjectDetail.tsx) | ~240 | Detail: Budget/Zeit, SIA-Phasen, Quoten-Zuordnung, Nachträge. State und Handler hier, Karten/Dialoge in [project-detail/](src/views/project-detail/) (`helpers.ts` mit `computePhaseStats`, `BudgetCard`, `PhaseCard`, `SettingsModal`, `BudgetModal`, …) | **Sehr hoch** |
 | [ProjectEditForm.tsx](src/views/ProjectEditForm.tsx) | 224 | Gemeinsames Bearbeitungsformular (Liste + Detail) | Mittel |
-| [Time.tsx](src/views/Time.tsx) | 1538 | Wochen-Grid mit Drag&Drop, Tag/Woche/Monat, Absenzen | **Sehr hoch** |
-| [Invoices.tsx](src/views/Invoices.tsx) | 1467 | Rechnungen, Akonto, QR-Bill, Mahnungen, Planer | **Sehr hoch** |
-| [Employees.tsx](src/views/Employees.tsx) | 1298 | Multi-Tab: Stammdaten, Absenzen, Ferien, Lohnabschluss | **Sehr hoch** |
+| [Time.tsx](src/views/Time.tsx) | ~350 | Wochen-Grid mit Drag&Drop, Tag/Woche/Monat, Absenzen. Teile in [time/](src/views/time/): `timeUtils.ts` (Soll/Saldo/Feiertage, mit `data` als erstem Argument), `WeekGrid`, `WeekForms`, `DayView`, `MonthCalendar`, `SaldoCards`, `FerienModals`, Hooks `useWeekResize`/`useFerienAntrag`/`useExpenses` | **Sehr hoch** |
+| [Invoices.tsx](src/views/Invoices.tsx) | ~300 | Rechnungen, Akonto, QR-Bill, Mahnungen, Planer. Teile in [invoices/](src/views/invoices/): `invoiceHelpers.ts` (`calcTotal`, Nummern, Akonto-Plan), `newInvoiceForm.ts` (`buildNewInvoiceForm`: Vorbefüllung Teil-/Akonto-/Schlussrechnung), `invoiceList.ts`, Dialoge und Tabelle | **Sehr hoch** |
+| [Employees.tsx](src/views/Employees.tsx) | ~240 | Multi-Tab: Stammdaten, Absenzen, Ferien, Lohnabschluss. Teile in [employees/](src/views/employees/): `calc.ts` (`createEmployeeCalc(data)`: Monats-/Ferien-/Überstundensaldo), Tabs und Dialoge | **Sehr hoch** |
 | [Quotes.tsx](src/views/Quotes.tsx) | 980 | Offerten: SIA / manuell / frei, Übernahme als Projekt | Hoch |
 | [Protocols.tsx](src/views/Protocols.tsx) | ~880 | Sitzungsprotokolle (Beschluss/Info/Aufgabe); der Mahn-Dialog liegt in components/MahnModal.tsx | Hoch |
 | [Expenses.tsx](src/views/Expenses.tsx) | ~500 | Mitarbeiter-Spesen, Beleg-Upload + Belegerkennung | Hoch |
@@ -333,7 +339,6 @@ Alle Views liegen in [src/views/](src/views/), werden in [App.tsx](src/App.tsx) 
 - `serde` 1.0, `serde_json` 1.0
 
 **Bekannte Fragilitäten:**
-- `app.default_window_icon().unwrap()` — panicked, wenn Icon fehlt ([lib.rs:140](src-tauri/src/lib.rs#L140))
 - Hardcoded `"main"`-Label für Window, Hardcoded `"nav:"`-Prefix — wenn Frontend Konventionen ändert, bricht Tray
 - Keine Tests in Rust
 
@@ -343,12 +348,13 @@ Alle Views liegen in [src/views/](src/views/), werden in [App.tsx](src/App.tsx) 
 
 ```
 release.sh (lokal, manuell aufgerufen)
-  ├─ liest VERSION aus tauri.conf.json + package.json (Mismatch → Exit)
-  ├─ ⚠️ Cargo.toml wird NICHT geprüft
+  ├─ liest VERSION aus tauri.conf.json, package.json und Cargo.toml (Mismatch → Exit)
   ├─ Lädt Private Key aus ~/.tauri/rapport_updater.key (kein Passwort)
-  ├─ npx tauri build   (mit TAURI_SIGNING_PRIVATE_KEY env)
-  ├─ findet .app.tar.gz + .sig in src-tauri/target/release/bundle/macos/
-  └─ schreibt latest.json (Repo-Root) mit version, signature, url, pub_date
+  ├─ npx tauri build --target universal-apple-darwin   (mit TAURI_SIGNING_PRIVATE_KEY env;
+  │    braucht `rustup target add aarch64-apple-darwin x86_64-apple-darwin`; RELEASE_TARGET=native = alter Build)
+  ├─ findet .app.tar.gz + .sig in src-tauri/target/universal-apple-darwin/release/bundle/macos/
+  └─ schreibt latest.json (Repo-Root) mit version, signature, url, pub_date —
+       Universal: darwin-aarch64 UND darwin-x86_64 zeigen auf dasselbe Bundle
      └─ url zeigt auf Gitea Release Asset (manuell hochzuladen)
 
 User (manuell):
@@ -374,7 +380,7 @@ Installation:
 - [src/components/UpdatesSupport.tsx](src/components/UpdatesSupport.tsx) (197 Z.) — Settings-Tab "Updates & Support", manueller Check, ignoriert Skip
 - Custom DOM-Event: `window.dispatchEvent(new CustomEvent("rapport:check-update"))` — UpdatesSupport triggert manuell
 
-**Aktueller `latest.json`:** nur `darwin-aarch64` (Apple Silicon). **Kein Intel-Build, kein Windows-Build, kein Linux-Build.** Wer auf x86_64-Mac oder anderem OS installiert, bekommt keine Updates.
+**Aktueller `latest.json`:** noch nur `darwin-aarch64` (Apple Silicon, letzter Release vor der Umstellung). Ab dem nächsten Release mit `release.sh` auch `darwin-x86_64` (Universal-Bundle). **Kein Windows-/Linux-Build:** die brauchen einen Build auf der jeweiligen Plattform (z.B. CI) und eigene Einträge in `platforms`.
 
 **Signatur-Setup (Minisign):**
 - Private Key: `~/.tauri/rapport_updater.key` (User-Home, **niemals** im Repo, gitignored via `*.key`)
@@ -394,13 +400,15 @@ Installation:
 4. [src/changelog.ts](src/changelog.ts) → Changelog-Entry oben in `CHANGELOGS`
 5. [src/changelog.ts](src/changelog.ts) → `LATEST_VERSION` anheben (steuert Sidebar-Anzeige, Login-Fusszeile und den `rapport_changelog_seen`-Vergleich)
 
-> ⚠️ `release.sh` prüft nur 1+2. **Cargo.toml-Mismatch bleibt unbemerkt.**
+> `release.sh` prüft 1–3 und bricht bei Abweichung ab; 4+5 prüft es nicht.
 
 **Dev-Workflow:**
 ```bash
 npm run dev          # Vite-Server auf http://localhost:5173 (= devUrl in tauri.conf.json)
 npx tauri dev        # Native Window + HMR
 npm run lint         # ESLint (manuell — kein Pre-Commit-Hook)
+npm run typecheck    # tsc --noEmit
+npm test             # Vitest (*.test.ts neben dem Code, Node-Umgebung)
 ```
 
 **Release-Workflow:**
@@ -414,7 +422,7 @@ npm run lint         # ESLint (manuell — kein Pre-Commit-Hook)
 # 6. git tag -a <VERSION> -m "..." && git push origin <VERSION>
 ```
 
-> Die [README.md](README.md)-Release-Sektion erwähnt `scripts/release.sh` nicht und ist veraltet.
+> Die [README.md](README.md)-Release-Sektion verweist auf diesen Ablauf.
 
 ---
 
@@ -440,7 +448,7 @@ npm run lint         # ESLint (manuell — kein Pre-Commit-Hook)
 - **Datei-Uploads:** `receiptToDataUrl`/`imageFileToJpeg`/`readAsDataUrl` aus utils.ts; im lokalen Modus vorher `checkLocalBudget` (`isLocalBackend`).
 - **Kein** Tailwind, **kein** CSS-Module, **kein** styled-components
 
-**ESLint** ([eslint.config.js](eslint.config.js)): Flat-Config mit `js.configs.recommended`, `reactHooks.configs.flat.recommended`, `reactRefresh.configs.vite`; ignoriert `pb/` (PocketBase-JSVM), `public/` (Tesseract-Builds), `src-tauri/`. `npm run lint` ist sauber (0 Meldungen) und soll es bleiben; bewusste Ausnahmen stehen als `eslint-disable-next-line … -- Begründung` im Code (einmalige Übergaben zwischen Views über `modal`/`window.__…`). Kein Prettier, kein Husky, kein lint-staged.
+**ESLint** ([eslint.config.js](eslint.config.js)): Flat-Config mit `js.configs.recommended`, `reactHooks.configs.flat.recommended`, `reactRefresh.configs.vite`; ignoriert `pb/` (PocketBase-JSVM), `public/` (Tesseract-Builds), `src-tauri/`, `.claude/` (Git-Worktrees von Claude Code). `npm run lint` ist sauber (0 Meldungen) und soll es bleiben; bewusste Ausnahmen stehen als `eslint-disable-next-line … -- Begründung` im Code (einmalige Übergaben zwischen Views über `modal`/`window.__…`). Kein Prettier, kein Husky, kein lint-staged.
 
 **Imports:** Stdlib oben (React), dann Constants/Utils, dann lokale Components. Keine Pfad-Aliase (`~/`, `@/` werden **nicht** verwendet — relative Pfade `../foo`).
 
@@ -448,19 +456,16 @@ npm run lint         # ESLint (manuell — kein Pre-Commit-Hook)
 
 ## 12. Wo es weh tut — Realistische Schwachstellen
 
-1. **Grosse Views** über 1200 Zeilen ([ProjectDetail](src/views/ProjectDetail.tsx), [Time](src/views/Time.tsx), [Invoices](src/views/Invoices.tsx), [Employees](src/views/Employees.tsx)) — Refactoring riskant ohne Tests. Innere Komponenten sind extrahiert (Lint-Regel); Projects, Expenses, PrintComponents und Settings sind aufgeteilt, die übrigen noch nicht.
+1. **Grosse Views** — ProjectDetail, Time, Invoices und Employees sind in Unterordner aufgeteilt (Einstiegsdatei je ~250–350 Zeilen, nur Struktur, Vorher/Nachher-Screenshots gleich). Noch gross: [StudioBudget](src/views/StudioBudget.tsx), [Dashboard](src/views/Dashboard.tsx), [Protocols](src/views/Protocols.tsx), [DataImport](src/views/DataImport.tsx), [Quotes](src/views/Quotes.tsx) (~800–1000 Zeilen).
 2. **App.tsx ist ~420 Zeilen** und hält noch Login/Cloud-Setup (nutzt `save`/`setData`), View-Routing, Print-Routing und die Layout-Hülle. Der Daten-State liegt in `hooks/useStudioData.ts`; ausgelagert sind ausserdem Sidebar, Changelog/Über, globales CSS, Navigation, Erscheinungsbild und Rechte-Ableitung. Jede Änderung an App.tsx ist hochriskant — sie betrifft alles.
 3. **Inline-Styles ohne Konvention** — Spacing ist über das Projekt verstreut; Farben laufen über Theme- und Bedeutungsvariablen (siehe §11), Reste von Hex-Werten stehen noch in Template-Strings.
 4. **Modal-State chaotisch** — manche Views haben `{type,id}`, andere mehrere `useState`. Kein zentraler Manager.
-5. **Keine Tests.** Nichts. Kein Vitest, kein Cypress, kein Rust-Test. Kalkulationen in `utils.ts` wären leicht testbar.
+5. **Wenige Tests.** Vitest (`npm test`) deckt QR-Referenz, Lohn, SIA-Honorar, Nummernformate, Passwörter, Datenordner/Dateiablage und die Datenprüfung ab. Keine UI-Tests, kein Rust-Test; MWST/Rechnungssummen (`calcTotal` in invoices/invoiceHelpers.ts) noch ohne Test.
 6. **TypeScript seit der Migration (siehe TYPESCRIPT-MIGRATION.md).** Die Typen des Datenmodells stehen in [src/types.ts](src/types.ts); ältere Datensätze sind aber oft unvollständig, deshalb sind viele Felder optional. Ein Schema-Refactor braucht trotzdem eine Migration in `storage/migrations.ts`.
-7. **Kein Error-Boundary** — wenn eine lazy-geladene View crasht, weißer Screen.
-8. **`localStorage` ohne Schema-Validierung** — korrupte Daten crashen im Render.
+7. **Error-Boundary** ([ErrorBoundary.tsx](src/components/ErrorBoundary.tsx)) um die Ansichten (Ansichtswechsel setzt zurück), um die Druckansicht und ganz aussen in main.tsx. Ein Fehler zeigt eine Meldung statt weissem Bildschirm — behoben ist er damit nicht.
+8. **Datenprüfung nur grob** ([validate.ts](src/storage/validate.ts)): oberste Ebene und `settings`; tiefe Felder werden nicht geprüft.
 9. **Keine CI**, keine Pre-Commit-Hooks. `npm run lint` und `npm run typecheck` muss man sich selbst merken (beide sind sauber).
-10. **Updater nur für Apple Silicon** — wenn User x86_64-Mac/Windows/Linux hat, kein Update.
-11. **README-Release-Sektion veraltet** — erwähnt `scripts/release.sh` nicht.
-12. **`release.sh` prüft Cargo.toml-Version nicht** — Inkonsistenz bleibt unbemerkt.
-13. **`.unwrap()` im Tray-Icon-Load** in [lib.rs:140](src-tauri/src/lib.rs#L140) — Startup-Panic möglich, wenn Icon fehlt.
+10. **Updater nur für macOS** — `release.sh` baut Universal (Apple Silicon + Intel); Windows/Linux haben keinen Build und kein Update.
 
 ---
 
@@ -470,7 +475,7 @@ npm run lint         # ESLint (manuell — kein Pre-Commit-Hook)
 |---|---|---|
 | `App.tsx` State/Auth/Migration | **Sehr hoch** | Touch nur mit klarem Auftrag, betrifft alles |
 | `constants.ts` `defaultData` Shape | **Hoch** | Schema-Änderung erfordert Migration (siehe Beispiele in App.tsx:56-122) |
-| `utils.ts` Kalkulationen | **Hoch** | Ohne Tests — Änderung an `calcSIAHours`, `calcLohn`, `generateQRReference`, `mod10` → manuell durchrechnen |
+| `utils.ts` Kalkulationen | **Hoch** | `calcSIAHours`, `calcLohn`, `generateQRReference`, `mod10` haben Tests (utils.test.ts) — bei Änderungen erweitern, `npm test` |
 | `print/PrintComponents.tsx`, `print/docs/` | **Hoch** | SwissQR-Bill ist Pixel-genau — Layout-Bugs sichtbar erst im Druck |
 | Views (Invoices/Projects/Time) | **Hoch** | Lange Files mit Edge-Cases (Mahnung, Akonto, Drag&Drop) |
 | `views/settings/TeamTab.tsx` Permissions | **Hoch** | Tangiert Rollen/Berechtigungen, Dashboard-Templates |
@@ -481,7 +486,8 @@ npm run lint         # ESLint (manuell — kein Pre-Commit-Hook)
 | `storage/pocketbase-mappers.ts` | **Hoch** | fromDB ↔ toDB pro Entity — deutlich schlanker als bei Supabase, da PocketBase-Felder direkt camelCase heissen |
 | `pb/pb_migrations/` | **Hoch** | Cloud-Schema (Collections + Rules + Hooks). Neue Migration-Datei pro Schema-Änderung, kein Bearbeiten bestehender |
 | `views/CloudSetup.tsx` | **Mittel** | Erst-Einrichtung der Cloud (3 Schritte). Ruft `cloudInit` in App.tsx |
-| `views/BackendChoice.tsx` | **Niedrig** | Modus-Wahl Lokal/Cloud bei frischer Installation |
+| `views/BackendChoice.tsx` | **Mittel** | Erststart: Rapport-Ordner anlegen / bestehenden öffnen / Server (Desktop), Testmodus / Server (Browser) |
+| `storage/file-assets.ts` | **Hoch** | Dateiablage im Datenordner. Verweisformat `rapport-datei:` und Dateinamen nicht ändern ohne Migration — alte Backups verweisen darauf |
 | `views/ResetPassword.tsx` | **Niedrig** | Passwort-Reset nach Mail-Link-Klick. Läuft über App.tsx-Hash-Erkennung + `PocketBaseAdapter.confirmPasswordReset()` |
 | `deploy/` + `DEPLOY.md` | **Niedrig** | Nginx-Container + Anleitung. Reine Doku/Hosting-Files |
 | `lib.rs` Tray/Window | **Mittel** | Wenn Nav-IDs geändert werden, müssen Frontend + Rust synchron bleiben |
@@ -493,6 +499,6 @@ npm run lint         # ESLint (manuell — kein Pre-Commit-Hook)
 
 ## 14. Offene Fragen / Nicht-Validiertes
 
-- Bild-Uploads (Belege, Logo, Pinnwand, Avatar, Dokument-Design) liegen als Data-URL in `data`; Fotos werden verkleinert (Belege 1600 px, Pinnwand 1200 px, Avatar 256 px). Im lokalen Modus (~4,8 Mio. Zeichen Budget, `LOCAL_STORAGE_BUDGET`) prüfen Belege, Logo und Dokument-Design vorher `checkLocalBudget`; ein trotzdem volles localStorage zeigt das `saveError`-Banner. Binärdateien ausserhalb des Daten-Blobs (eigene Dateien im Datenordner, PocketBase-File-Felder) wären der nächste Schritt — offene Architekturentscheidung.
+- Bild-Uploads (Belege, Logo, Pinnwand, Avatar, Dokument-Design) liegen in der App als Data-URL in `data`; Fotos werden verkleinert (Belege 1600 px, Pinnwand 1200 px, Avatar 256 px). Im Datenordner liegen sie als eigene Dateien unter `Dateien/` (file-assets.ts). Im lokalen Modus (~4,8 Mio. Zeichen Budget, `LOCAL_STORAGE_BUDGET`) prüfen Belege, Logo und Dokument-Design vorher `checkLocalBudget`. Offen: PocketBase-File-Felder statt Data-URLs in der Cloud; Aufräumen nicht mehr benutzter Dateien in `Dateien/`; Anzeige direkt aus der Datei (heute wird beim Laden alles in den Speicher gelesen).
 - PDF-Export: aktuell nur `window.print()` → User-PDF-Dialog. Kein direkter File-Save.
 - Multi-User-Workflow: `users[]` in `data`, aber nur ein Browser-localStorage → keine echte Mehrfachnutzung.

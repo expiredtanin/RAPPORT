@@ -56,10 +56,12 @@ npm run dev          # http://localhost:5173
 npx tauri dev
 ```
 
-Lint:
+Prüfen:
 
 ```bash
 npm run lint
+npm run typecheck
+npm test             # Vitest
 ```
 
 ## Produktion-Build
@@ -129,12 +131,18 @@ Zusätzlich im UI-Changelog: [`src/changelog.ts`](src/changelog.ts) — `CHANGEL
 
 ## Daten & Persistenz
 
-Rapport hat drei Storage-Backends (localStorage, Datenordner, PocketBase) mit einheitlicher Schnittstelle in [`src/storage/adapter.ts`](src/storage/adapter.ts):
+Rapport hat drei Storage-Backends (Rapport-Ordner, PocketBase, localStorage) mit einheitlicher Schnittstelle in [`src/storage/adapter.ts`](src/storage/adapter.ts):
 
-### Lokal-Modus (Standard, kein Server)
+### Rapport-Ordner (Standard in der Desktop-App, kein Server)
 
-- Alles liegt unter dem Key `studio_data_v1` in `localStorage`.
-- Beim ersten Start: **BackendChoice** (`Lokal / Cloud`) → bei Lokal-Wahl klassischer **Setup-Assistent** ([`src/views/Setup.tsx`](src/views/Setup.tsx)).
+- Beim ersten Start: **BackendChoice** → «Rapport-Ordner anlegen» (`~/Documents/Rapport` oder ein gewählter Ort), danach der **Setup-Assistent** ([`src/views/Setup.tsx`](src/views/Setup.tsx)).
+- Im Ordner: `studio.json`, Zeiteinträge unter `time/`, Belege/Logo/Bilder als normale Dateien unter `Dateien/`, ein Tagesbackup unter `backups/`.
+- Liegt der Ordner in iCloud Drive oder auf einem NAS, können zwei Personen damit arbeiten.
+- Bestehende Installationen mit lokalem Speicher bekommen einen Umzugshinweis.
+
+### Testmodus (nur Browser)
+
+- Alles liegt unter dem Key `studio_data_v1` in `localStorage` (ca. 5 MB, kein Backup).
 - Backup/Restore: **Einstellungen → Daten exportieren / importieren** als JSON.
 
 ### Cloud-Modus (eigener Server)
@@ -157,23 +165,23 @@ Erst-Einrichtung einer leeren Cloud-Instanz: 3-Schritt-Wizard ([`src/views/Cloud
 - **HTML-Sanitizer**: Brieftexte werden vor Print/Render durch eine Allowlist gefiltert (`sanitizeHtml` in [`src/utils.ts`](src/utils.ts)) — kein `javascript:`, kein `on*`-Handler.
 - **Datenexport**: Legacy-Klartext-Passwörter werden beim Export gestrippt; nur Hashes verlassen die App.
 - **CSP**: definiert in [`src-tauri/tauri.conf.json`](src-tauri/tauri.conf.json) — `default-src 'self'` plus Google-Fonts-Allowlist.
-- **Tauri-Capabilities**: minimal (`core:default`, `core:webview:allow-print`, Updater/Relaunch, fs/dialog nur für den gewählten Datenordner) — siehe [`src-tauri/capabilities/default.json`](src-tauri/capabilities/default.json).
+- **Tauri-Capabilities**: minimal (`core:default`, `core:webview:allow-print`, Updater/Relaunch, fs/dialog nur für den gewählten Datenordner bzw. `~/Documents/Rapport`) — siehe [`src-tauri/capabilities/default.json`](src-tauri/capabilities/default.json).
 
 ## Release-Workflow
 
 ```bash
-# 1. Versionen anheben (package.json, tauri.conf.json, Cargo.toml)
-# 2. Changelog in src/changelog.ts ergänzen (LATEST_VERSION anheben)
-# 3. Commit + Tag
-git tag -a 0.7.0 -m "Rapport 0.7"   # ohne v-Prefix — latest.json verlinkt /releases/download/<VERSION>/
-git push origin main 0.7.0
-
-# 4. Bundle bauen
-npx tauri build
-
-# 5. Bundle als Release-Asset auf Gitea anhängen
-#    (nicht ins Repo committen)
+# 1. Versionen anheben (package.json, tauri.conf.json, Cargo.toml — release.sh prüft alle drei)
+# 2. Changelog in src/changelog.ts ergänzen (LATEST_VERSION anheben), committen
+# 3. Bauen, signieren, latest.json schreiben (Universal: Apple Silicon + Intel;
+#    einmalig: rustup target add aarch64-apple-darwin x86_64-apple-darwin)
+./scripts/release.sh
+# 4. Auf Gitea Release <VERSION> (ohne v-Prefix) anlegen, .app.tar.gz (+ DMG) hochladen
+# 5. latest.json committen, Tag setzen, pushen
+git add latest.json && git commit -m "Release 0.9.0"
+git tag -a 0.9.0 -m "Rapport 0.9" && git push origin main 0.9.0
 ```
+
+Details: [ARCHITECTURE.md §9–10](ARCHITECTURE.md).
 
 ## Lizenz
 
