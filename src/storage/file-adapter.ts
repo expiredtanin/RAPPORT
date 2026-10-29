@@ -22,14 +22,14 @@
 //
 // Die Dateischicht (`FsApi`) ist austauschbar: im Betrieb Tauri (`tauriFs`), für
 // Prüfungen Node-`fs`. Anhänge (`data:`-URLs) stehen nicht im JSON, sondern als eigene Dateien in
-// `Dateien/` (FileAssetStore). Nicht enthalten: Verschlüsselung, Rechte (wer den Ordner lesen darf, sieht alles).
+// `Dateien/` (FileAssetStore); nicht mehr verwendete entfernt `cleanupFiles()` auf Knopfdruck. Nicht enthalten: Verschlüsselung, Rechte (wer den Ordner lesen darf, sieht alles).
 
 import type { AppData, TimeEntry } from "../types";
 import type { RawData } from "./migrations";
 import type { StorageAdapter } from "./adapter";
 import { jsonEqual, mergeValue } from "./merge";
 import { localISODate } from "../utils";
-import { FileAssetStore } from "./file-assets";
+import { FileAssetStore, FILES_DIR, collectFileRefs } from "./file-assets";
 
 /** Dateizugriff, den der Adapter braucht. Pfade sind absolut, getrennt mit «/». */
 export interface FsApi {
@@ -53,6 +53,8 @@ const FORMAT = 1;
 const SAVE_DELAY_MS = 250;
 const WATCH_DELAY_MS = 700;
 const KEEP_BACKUPS = 14;
+/** Aufräumen lässt jüngere Dateien stehen: die andere Person hat sie evtl. schon abgelegt, ihr studio.json ist aber noch nicht da. */
+const CLEANUP_MIN_AGE_MS = 30 * 24 * 60 * 60 * 1000;
 
 type Json = unknown;
 interface Known { content: Json; mtime: number; size: number }
@@ -263,6 +265,46 @@ export class FileStorageAdapter implements StorageAdapter {
     const top = (await this.fs.list(this.dir)).filter(n => n.endsWith(".json") && isConflictName(n));
     const time = (await this.fs.list(this.path("time"))).filter(n => n.endsWith(".json") && isConflictName(n)).map(n => `time/${n}`);
     return [...top, ...time];
+  }
+
+  /**
+   * Entfernt Dateien unter `Dateien/`, auf die keine JSON-Datei im Ordner mehr verweist — weder der aktuelle
+   * Stand noch Zeitdateien, Tagesbackups oder Konfliktkopien — und die älter als `minAgeMs` sind.
+   * Bricht ohne zu löschen ab, wenn eine dieser JSON-Dateien nicht lesbar ist (z.B. von iCloud noch nicht geladen).
+   *
+   * @returns entfernte Dateien (relativ zum Ordner) und ihre Gesamtgrösse in Bytes.
+   */
+  async cleanupFiles(minAgeMs = CLEANUP_MIN_AGE_MS, now = Date.now()): Promise<{ removed: string[]; bytes: number }> {
+    await this.flush();
+    const used = new Set<string>();
+    for (const sub of ["", "time", "backups"]) {
+      const base = sub ? this.path(sub) : this.dir;
+      for (const name of await this.fs.list(base)) {
+        if (name.startsWith(".") && name.endsWith(".json.icloud")) {
+          throw new DataFolderError(`«${sub ? `${sub}/` : ""}${name.slice(1, -7)}» ist noch nicht von iCloud geladen. Erst danach kann aufgeräumt werden — es wurde nichts gelöscht.`);
+        }
+        if (!name.endsWith(".json") || name.includes(".tmp-")) continue;
+        try { collectFileRefs(JSON.parse(await this.fs.readText(`${base}/${name}`)), used); }
+        catch (e) { throw new DataFolderError(`«${sub ? `${sub}/` : ""}${name}» ist nicht lesbar (${(e as Error).message}) — es wurde nichts gelöscht.`); }
+      }
+    }
+    const removed: string[] = [];
+    let bytes = 0;
+    for (const area of await this.fs.list(this.path(FILES_DIR))) {
+      if (area.startsWith(".")) continue;
+      for (const name of await this.fs.list(this.path(`${FILES_DIR}/${area}`))) {
+        // «.»-Namen: iCloud-Platzhalter oder Systemdateien — nie anfassen
+        const rel = `${FILES_DIR}/${area}/${name}`;
+        if (name.startsWith(".") || used.has(rel)) continue;
+        const st = await this.fs.stat(this.path(rel));
+        if (!st || now - st.mtime < minAgeMs) continue;
+        try { await this.fs.remove(this.path(rel)); } catch { continue; }
+        removed.push(rel);
+        bytes += st.size;
+      }
+    }
+    this.assets.forgetExcept(used);
+    return { removed, bytes };
   }
 
   /** Registriert `cb`, das mit dem neuen Gesamtstand aufgerufen wird, wenn die andere Person Dateien geändert hat. */

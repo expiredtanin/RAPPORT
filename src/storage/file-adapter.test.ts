@@ -3,7 +3,7 @@
 // Temp-Ordner mit Node-`fs` statt Tauri.
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { mkdtemp, mkdir, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, readdir, rename, rm, stat, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { FileStorageAdapter, type FsApi } from "./file-adapter";
@@ -102,5 +102,60 @@ describe("Datenordner mit Dateiablage", () => {
     await new FileStorageAdapter(dir, nodeFs, "test").save({ ...sampleData(), settings: { ...sampleData().settings, logo: small } });
     const studio = JSON.parse(await readFile(join(dir, "studio.json"), "utf8"));
     expect(studio.data.settings.logo).toBe(small);
+  });
+
+  it("Dateityp bleibt erhalten, auch wenn die Endung ihn nicht kennt", async () => {
+    const b64 = (seed: number) => bytesToBase64(pdfBytes.map(b => (b + seed) % 256));
+    const d = sampleData();
+    const expenses = [
+      { ...d.expenses[0], id: "a", receiptData: `data:image/tiff;base64,${b64(1)}`, receiptName: "Scan.tif" },
+      { ...d.expenses[0], id: "b", receiptData: `data:application/octet-stream;base64,${b64(2)}`, receiptName: "Plan.dwg" },
+      { ...d.expenses[0], id: "c", receiptData: `data:image/x-sonderformat;base64,${b64(3)}`, receiptName: "Bild" },
+    ];
+    await new FileStorageAdapter(dir, nodeFs, "test").save({ ...d, expenses });
+    const refs = JSON.parse(await readFile(join(dir, "studio.json"), "utf8")).data.expenses.map((e: { receiptData: string }) => e.receiptData);
+    expect(refs[0]).toMatch(/\.tif$/);
+    expect(refs[1]).toMatch(/\.dwg\?typ=application%2Foctet-stream$/);
+    expect(refs[2]).toMatch(/\.bin\?typ=image%2Fx-sonderformat$/);
+
+    const loaded = (await new FileStorageAdapter(dir, nodeFs, "test2").load())!;
+    expect(loaded.expenses!.map(e => e.receiptData)).toEqual(expenses.map(e => e.receiptData));
+  });
+
+  it("Aufräumen entfernt nur alte Dateien, auf die nichts mehr verweist", async () => {
+    const a = new FileStorageAdapter(dir, nodeFs, "test");
+    await a.save(sampleData());
+    const belege = join(dir, "Dateien", "Belege");
+    const [used] = await readdir(belege);
+    const old = new Date(Date.now() - 60 * 24 * 3600 * 1000);
+    // verwaist und alt → weg; verwaist und neu → bleibt (andere Person hat sie evtl. gerade abgelegt)
+    await writeFile(join(belege, "alt-111111111111.pdf"), "x".repeat(100));
+    await utimes(join(belege, "alt-111111111111.pdf"), old, old);
+    await writeFile(join(belege, "neu-222222222222.pdf"), "x");
+    // nur noch von einem Backup verwendet → bleibt
+    await writeFile(join(belege, "backup-333333333333.pdf"), "x");
+    await utimes(join(belege, "backup-333333333333.pdf"), old, old);
+    await writeFile(join(dir, "backups", "backup-2020-01-01-x.json"), JSON.stringify({ logo: `${FILE_REF_PREFIX}Dateien/Belege/backup-333333333333.pdf?typ=application%2Fpdf` }));
+    await utimes(join(belege, used), old, old);
+
+    const { removed, bytes } = await a.cleanupFiles();
+    expect(removed).toEqual(["Dateien/Belege/alt-111111111111.pdf"]);
+    expect(bytes).toBe(100);
+    expect((await readdir(belege)).sort()).toEqual([used, "backup-333333333333.pdf", "neu-222222222222.pdf"].sort());
+  });
+
+  it("Aufräumen bricht ab, wenn eine Datendatei nicht lesbar ist", async () => {
+    const a = new FileStorageAdapter(dir, nodeFs, "test");
+    await a.save(sampleData());
+    const belege = join(dir, "Dateien", "Belege");
+    const old = new Date(Date.now() - 60 * 24 * 3600 * 1000);
+    await writeFile(join(belege, "alt-111111111111.pdf"), "x");
+    await utimes(join(belege, "alt-111111111111.pdf"), old, old);
+    await writeFile(join(dir, "time", ".e1_2026-09.json.icloud"), "");
+    await expect(a.cleanupFiles()).rejects.toThrow(/iCloud/);
+    await rm(join(dir, "time", ".e1_2026-09.json.icloud"));
+    await writeFile(join(dir, "backups", "kaputt.json"), "{");
+    await expect(a.cleanupFiles()).rejects.toThrow(/nicht lesbar/);
+    expect(await readdir(belege)).toContain("alt-111111111111.pdf");
   });
 });

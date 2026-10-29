@@ -36,6 +36,22 @@ export function SystemTab({ s, setField, data, setView, isAdmin }: DraftProps & 
     fileStorage.findConflictFiles().then(setConflictFiles).catch(() => {});
   }, []);
   const dataDir = getDataDir();
+  // Dateiablage aufräumen: nicht mehr verwendete Belege/Bilder unter Dateien/ entfernen (siehe FileStorageAdapter.cleanupFiles)
+  const [cleanupResult, setCleanupResult] = useState("");
+  const cleanupFiles = async () => {
+    if (!await askConfirm("Belege, Bilder und Schriften unter «Dateien/» entfernen, die weder im aktuellen Stand noch in einem Backup verwendet werden und älter als 30 Tage sind? Gelöschte Dateien lassen sich danach nur aus einer eigenen Sicherung (z.B. Time Machine) zurückholen.", "Aufräumen")) return;
+    setFolderBusy(true); setCleanupResult("");
+    try {
+      const { removed, bytes } = await fileStorage.cleanupFiles();
+      setCleanupResult(removed.length
+        ? `${removed.length} ${removed.length === 1 ? "Datei" : "Dateien"} entfernt (${(bytes / 1024 / 1024).toFixed(1)} MB).`
+        : "Nichts zu entfernen — alle Dateien werden noch verwendet.");
+    } catch (e) {
+      setCleanupResult(`Aufräumen nicht möglich: ${(e as Error).message || e}`);
+    } finally {
+      setFolderBusy(false);
+    }
+  };
   const switchFolder = async () => {
     setFolderBusy(true);
     try {
@@ -134,6 +150,10 @@ export function SystemTab({ s, setField, data, setView, isAdmin }: DraftProps & 
                   </div>
                 )}
                 <button className="btn btn-ghost" style={{ width: "100%" }} disabled={folderBusy} onClick={switchFolder}>Anderen Ordner wählen…</button>
+                {isAdmin && (<>
+                  <button className="btn btn-ghost" style={{ width: "100%", marginTop: 8 }} disabled={folderBusy} onClick={cleanupFiles}>Nicht mehr verwendete Dateien aufräumen…</button>
+                  {cleanupResult && <div style={{ fontSize: 12, color: "var(--text3)", lineHeight: 1.6, marginTop: 8 }}>{cleanupResult}</div>}
+                </>)}
               </>) : (<>
                 <div style={{ fontSize: 12, color: "var(--text4)", lineHeight: 1.7, marginBottom: 12 }}>
                   Die Daten liegen im lokalen Speicher der App (begrenzt auf ca. 5 MB, ohne automatisches Backup).

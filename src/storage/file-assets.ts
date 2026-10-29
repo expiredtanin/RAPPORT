@@ -11,8 +11,14 @@
 //
 // Der Name enthält eine Prüfsumme des Inhalts (SHA-256): gleicher Inhalt = gleiche Datei, eine Datei
 // wird nie überschrieben. Dadurch verweisen auch alte Tagesbackups weiter auf gültige Dateien.
-// Nicht mehr verwendete Dateien werden (noch) nicht gelöscht. Fehlt eine Datei (iCloud hat sie noch
-// nicht geladen), bleibt der Verweis stehen und wird beim nächsten Speichern unverändert zurückgeschrieben.
+// Nicht mehr verwendete Dateien entfernt nur das Aufräumen von Hand (FileStorageAdapter.cleanupFiles).
+// Fehlt eine Datei (iCloud hat sie noch nicht geladen), bleibt der Verweis stehen und wird beim nächsten
+// Speichern unverändert zurückgeschrieben.
+//
+// Dateityp: Die Endung ergibt sich aus dem MIME-Typ, sonst aus dem Originalnamen. Kann die Endung den
+// Typ nicht eindeutig zurückgeben (unbekannter Typ, Alias wie «image/jpg»), steht er im Verweis:
+// «rapport-datei:Dateien/Belege/Plan-<Prüfsumme>.dwg?typ=image%2Fvnd.dwg». So kommt beim Laden genau
+// derselbe Typ zurück, wie er gespeichert wurde.
 
 import type { FsApi } from "./file-adapter";
 
@@ -53,15 +59,31 @@ const EXT_BY_MIME: Record<string, string> = {
   "application/x-font-ttf": "ttf",
   "application/x-font-otf": "otf",
   "application/vnd.ms-opentype": "otf",
+  "image/tiff": "tif",
+  "image/bmp": "bmp",
+  "image/heif": "heif",
+  "text/plain": "txt",
+  "text/csv": "csv",
+  "application/zip": "zip",
+  "application/msword": "doc",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx",
+  "application/vnd.ms-excel": "xls",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "xlsx",
   "application/octet-stream": "bin",
 };
 const MIME_BY_EXT: Record<string, string> = {
   pdf: "application/pdf", jpg: "image/jpeg", png: "image/png", gif: "image/gif", webp: "image/webp",
   heic: "image/heic", svg: "image/svg+xml", ttf: "font/ttf", otf: "font/otf", woff: "font/woff",
-  woff2: "font/woff2", bin: "application/octet-stream",
+  woff2: "font/woff2", tif: "image/tiff", tiff: "image/tiff", bmp: "image/bmp", heif: "image/heif",
+  txt: "text/plain", csv: "text/csv", zip: "application/zip", doc: "application/msword",
+  docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  xls: "application/vnd.ms-excel", xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  bin: "application/octet-stream",
 };
 
 const DATA_URL_RE = /^data:([^;,]*)(?:;[^,]*)?;base64,/;
+/** Nur schlichte MIME-Typen aus Verweisen übernehmen. */
+const MIME_RE = /^[\w.+-]+\/[\w.+-]+$/;
 
 /** true für eine Base64-`data:`-URL, die gross genug für eine eigene Datei ist. */
 export const isExternalizable = (v: unknown): v is string =>
@@ -69,6 +91,17 @@ export const isExternalizable = (v: unknown): v is string =>
 
 /** true für einen Verweis auf eine Datei der Ablage. */
 export const isFileRef = (v: unknown): v is string => typeof v === "string" && v.startsWith(FILE_REF_PREFIX);
+
+/** Pfad relativ zum Datenordner aus einem Verweis (ohne Präfix und ohne «?typ=…»). */
+export const refPath = (ref: string) => ref.slice(FILE_REF_PREFIX.length).split("?")[0];
+
+/** Sammelt die Pfade aller Verweise in `value` (beliebig tief) in `into`. */
+export function collectFileRefs(value: unknown, into: Set<string>): Set<string> {
+  if (isFileRef(value)) into.add(refPath(value));
+  else if (Array.isArray(value)) for (const v of value) collectFileRefs(v, into);
+  else if (typeof value === "object" && value !== null) for (const v of Object.values(value)) collectFileRefs(v, into);
+  return into;
+}
 
 /** Base64 → Bytes. */
 export function base64ToBytes(b64: string): Uint8Array {
@@ -95,15 +128,18 @@ async function sha256Hex(bytes: Uint8Array): Promise<string> {
   return Array.from(new Uint8Array(digest), b => b.toString(16).padStart(2, "0")).join("");
 }
 
-/** Lesbarer Name aus einem Nachbarfeld des Anhangs (Belegname, Dateiname, Bezeichnung). */
-function nameHint(parent: Record<string, unknown> | null): string {
+/** Originalname aus einem Nachbarfeld des Anhangs (Belegname, Dateiname, Bezeichnung); "" = keiner. */
+function originalName(parent: Record<string, unknown> | null): string {
   if (!parent) return "";
   for (const key of ["receiptName", "fileName", "filename", "name", "title"]) {
     const v = parent[key];
-    if (typeof v === "string" && v.trim()) return safeName(v);
+    if (typeof v === "string" && v.trim()) return v.trim();
   }
   return "";
 }
+
+/** Endung des Originalnamens in Kleinbuchstaben (nur einfache Endungen), sonst "". */
+const nameExt = (name: string) => /\.([A-Za-z0-9]{1,5})$/.exec(name)?.[1].toLowerCase() || "";
 
 /**
  * Hält die Zuordnung `data:`-URL ↔ Verweis für einen Datenordner und liest/schreibt die Dateien.
@@ -132,7 +168,7 @@ export class FileAssetStore {
     const missing: string[] = [];
     const out = await this.walk(value, "", null, async ref => {
       const url = await this.urlFor(ref);
-      if (url === null) { missing.push(ref.slice(FILE_REF_PREFIX.length)); return ref; }
+      if (url === null) { missing.push(refPath(ref)); return ref; }
       return url;
     }, isFileRef);
     return { value: out as T, missing };
@@ -174,8 +210,10 @@ export class FileAssetStore {
     const mime = (m[1] || "application/octet-stream").toLowerCase();
     const bytes = base64ToBytes(url.slice(m[0].length));
     const hash = (await sha256Hex(bytes)).slice(0, 12);
-    const hint = nameHint(parent);
-    const rel = `${FILES_DIR}/${AREA_DIRS[area] || "Weitere"}/${hint ? `${hint}-` : ""}${hash}.${EXT_BY_MIME[mime] || "bin"}`;
+    const name = originalName(parent);
+    const hint = name ? safeName(name) : "";
+    const ext = (mime !== "application/octet-stream" && EXT_BY_MIME[mime]) || nameExt(name) || "bin";
+    const rel = `${FILES_DIR}/${AREA_DIRS[area] || "Weitere"}/${hint ? `${hint}-` : ""}${hash}.${ext}`;
     const path = this.path(rel);
     if (!(await this.fs.stat(path))) {
       await this.fs.mkdir(path.slice(0, path.lastIndexOf("/")));
@@ -183,7 +221,8 @@ export class FileAssetStore {
       await this.fs.writeBytes(tmp, bytes);
       await this.fs.rename(tmp, path);
     }
-    const ref = FILE_REF_PREFIX + rel;
+    // Typ nur angeben, wenn die Endung ihn nicht genau zurückgibt (siehe Dateikopf)
+    const ref = FILE_REF_PREFIX + rel + (MIME_BY_EXT[ext] === mime ? "" : `?typ=${encodeURIComponent(mime)}`);
     this.remember(url, ref);
     return ref;
   }
@@ -191,17 +230,28 @@ export class FileAssetStore {
   private async urlFor(ref: string): Promise<string | null> {
     const cached = this.urlByRef.get(ref);
     if (cached) return cached;
-    const rel = ref.slice(FILE_REF_PREFIX.length);
+    const rel = refPath(ref);
+    const typParam = new URLSearchParams(ref.slice(FILE_REF_PREFIX.length + rel.length + 1)).get("typ");
+    const typ = typParam && MIME_RE.test(typParam) ? typParam : null;
     // Nur Dateien innerhalb der Ablage (kein «..», keine absoluten Pfade aus manipulierten Daten)
     if (!rel.startsWith(`${FILES_DIR}/`) || rel.split("/").includes("..")) return null;
     try {
       const bytes = await this.fs.readBytes(this.path(rel));
       const ext = rel.slice(rel.lastIndexOf(".") + 1).toLowerCase();
-      const url = `data:${MIME_BY_EXT[ext] || "application/octet-stream"};base64,${bytesToBase64(bytes)}`;
+      const url = `data:${typ || MIME_BY_EXT[ext] || "application/octet-stream"};base64,${bytesToBase64(bytes)}`;
       this.remember(url, ref);
       return url;
     } catch {
       return null;
+    }
+  }
+
+  /** Vergisst zwischengespeicherte Anhänge, deren Datei nicht in `used` (Pfade wie bei refPath) steht. */
+  forgetExcept(used: Set<string>) {
+    for (const [ref, url] of this.urlByRef) {
+      if (used.has(refPath(ref))) continue;
+      this.urlByRef.delete(ref);
+      this.refByUrl.delete(url);
     }
   }
 
