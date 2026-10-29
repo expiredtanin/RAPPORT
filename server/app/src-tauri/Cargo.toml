@@ -1,0 +1,73 @@
+[package]
+name = "rapport-server-app"
+version = "0.1.2"
+edition = "2021"
+authors = ["Karim Gabriele Varano"]
+license = "AGPL-3.0-or-later"
+description = "RAPPORT Server-App — Tauri-Wrapper für gebundlete Backend-Services"
+default-run = "rapport-server-app"
+
+[lib]
+name = "app_lib"
+crate-type = ["lib", "cdylib", "staticlib"]
+
+[[bin]]
+name = "rapport-server-app"
+path = "src/main.rs"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["tray-icon", "image-png", "unstable"] }
+tauri-plugin-process = "2"
+tauri-plugin-log = "2"
+tauri-plugin-updater = "2"
+tauri-plugin-autostart = "2"
+tauri-plugin-notification = "2"
+tauri-plugin-opener = "2"
+
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Process supervisor utilities
+nix = { version = "0.29", features = ["signal", "process"], default-features = false }
+
+# Filesystem & paths
+directories = "5"
+dirs = "5"
+
+# HTTP client (for health checks)
+reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
+url = "2"
+
+# Logging
+log = "0.4"
+env_logger = "0.11"
+
+# Time
+chrono = { version = "0.4", features = ["serde"] }
+
+# Crypto utilities (fuer Random-Password-Generierung + zeitkonstanten Vergleich)
+rand = "0.8"
+base64 = "0.22"
+subtle = "2"
+
+# HTTP server fuer den optionalen Admin-WebUI-Zugang (Mac Mini ohne Display)
+axum = { version = "0.7", features = ["macros"] }
+axum-server = { version = "0.7", features = ["tls-rustls"] }
+rustls = { version = "0.23", default-features = false, features = ["aws-lc-rs"] }
+tower = "0.5"
+tower-http = { version = "0.6", features = ["fs", "auth", "cors", "trace"] }
+# Self-signed certs fuer den Admin-WebUI-TLS
+rcgen = "0.13"
+# Hostname-Lookup fuer Cert-SANs
+hostname = "0.4"
+
+[features]
+default = ["custom-protocol"]
+custom-protocol = ["tauri/custom-protocol"]

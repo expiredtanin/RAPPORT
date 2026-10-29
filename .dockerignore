@@ -1,0 +1,13 @@
+# Build-Kontext für server/container (Kontext = Repo-Wurzel): nur Quellen, keine Artefakte
+.git
+**/node_modules
+**/dist
+**/target
+src-tauri
+server/app
+pb/pb_data
+pb/pocketbase
+.env
+.env.local
+*.log
+.DS_Store

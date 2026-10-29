@@ -1,0 +1,22 @@
+# Node
+node_modules/
+dist/
+.vite/
+
+# Rust / Tauri
+src-tauri/target/
+src-tauri/gen/
+
+# Local app data (only relevant when running outside the bundle)
+data/
+
+# Editor / OS
+.DS_Store
+.vscode/
+.idea/
+*.log
+
+# Signing keys (per-developer, never commit)
+.rapport-signing/
+*.key
+*.key.pub

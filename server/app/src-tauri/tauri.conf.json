@@ -1,0 +1,60 @@
+{
+  "$schema": "https://schema.tauri.app/config/2.0.0",
+  "productName": "RAPPORT Server",
+  "version": "0.1.2",
+  "identifier": "com.rapport.server-app",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "beforeBuildCommand": "npm run build",
+    "devUrl": "http://localhost:3001",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "RAPPORT Server",
+        "width": 1100,
+        "height": 760,
+        "minWidth": 760,
+        "minHeight": 500,
+        "decorations": true,
+        "resizable": true,
+        "fullscreen": false
+      }
+    ],
+    "trayIcon": {
+      "iconPath": "icons/icon.png",
+      "iconAsTemplate": true,
+      "menuOnLeftClick": false,
+      "tooltip": "RAPPORT Server"
+    },
+    "security": {
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: asset: https://asset.localhost; connect-src 'self' ipc: http://ipc.localhost; object-src 'none'; base-uri 'self'; frame-ancestors 'none'"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "createUpdaterArtifacts": true,
+    "targets": "all",
+    "category": "DeveloperTool",
+    "shortDescription": "Doppelklick-Self-Hosting f\u00fcr Rapport",
+    "longDescription": "Admin-UI f\u00fcr den Rapport-Server-Stack. Verwaltet Postgres, GoTrue, PostgREST, Realtime, Storage, Kong und nginx als Docker-Container. Setzt einen lokalen Docker-Daemon voraus (Colima / OrbStack / Docker Desktop).",
+    "copyright": "\u00a9 2026 Karim Gabriele Varano \u2014 AGPL-3.0-or-later",
+    "resources": [],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ]
+  },
+  "plugins": {
+    "updater": {
+      "endpoints": [
+        "https://git.kgva.ch/karim/RAPPORT-SERVER-APP/raw/branch/main/latest.json"
+      ],
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDQzM0U0NjNEQTE4MzFGOUEKUldTYUg0T2hQVVkrUS95Z3JXdmJQVWxkejhQNHFHWkswVndmMVpPV01TZ3NvWVo5UkZlQ1kwOUoK"
+    }
+  }
+}

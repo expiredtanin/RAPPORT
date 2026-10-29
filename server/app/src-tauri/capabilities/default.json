@@ -1,0 +1,17 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Default capabilities — IPC, Process restart, Log access",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "core:webview:allow-print",
+    "process:allow-restart",
+    "process:allow-exit",
+    "opener:allow-open-url",
+    "opener:allow-default-urls",
+    "updater:default",
+    "autostart:default",
+    "notification:default"
+  ]
+}

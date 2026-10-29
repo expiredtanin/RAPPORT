@@ -1,0 +1,4 @@
+pocketbase
+pb_data/
+*.log
+.DS_Store

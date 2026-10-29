@@ -1,0 +1,7 @@
+*, *::before, *::after { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; height: 100%; }
+#root { height: 100%; }
+
+/* Desktop-App-Verhalten: kein Textmarkieren, kein Drag */
+* { user-select: none; -webkit-user-drag: none; }
+input, textarea, [contenteditable] { user-select: text; }

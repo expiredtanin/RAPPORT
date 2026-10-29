@@ -1,0 +1,18 @@
+<!doctype html>
+<!--
+  Lädt die Demo-Daten in den localStorage des normalen Browsers und leitet zur
+  App weiter. Alternative zu demo-open.mjs, wenn kein Playwright-Chromium da ist.
+
+    npm run dev
+    open http://localhost:5173/scripts/marketing-shots/demo-seed.html
+
+  Überschreibt studio_data_v1 NUR für diesen Browser + Port — nicht in der
+  Tauri-App. Nicht im selben Browser verwenden, in dem echte Daten liegen.
+-->
+<meta charset="utf-8">
+<title>Rapport Demo</title>
+<script type="module">
+  import { demoData, initScript } from "./demo-data.mjs";
+  initScript(demoData);
+  location.replace("/");
+</script>

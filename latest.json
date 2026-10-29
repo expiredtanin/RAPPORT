@@ -1,0 +1,11 @@
+{
+  "version": "0.8.3",
+  "notes": "PWA-Support, Desktop-Verhalten, Testmodus-Kennzeichnung",
+  "pub_date": "2026-06-06T11:09:25Z",
+  "platforms": {
+    "darwin-aarch64": {
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSUjV0czVoWDR4NHR0d3Q1TDQ4RElXcWU4Y2x2WnVtWW94QVczSXM3RzhudGI2K0J4V0M3SW9nczFhM1VtOEl4R1lQaTgzOXRoV1RWVE1hbGdrNEk4cTRKTDY3a1FCL2dZPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzgwNzQ0MTY1CWZpbGU6UkFQUE9SVCBQUkUtUkVMRUFTRS5hcHAudGFyLmd6CnpmSDh5Zys3OXQ0eDFKRE9EbzdiRFlqM3pZUDlad0FicjFDVFMyNlNWTmkrNWNtVmlUS1FHb3ZFUER4TGt6TXBBVktRYyt4MkV6bVJQcEpzcXJhQURBPT0K",
+      "url": "https://git.openbureau.ch/karim/RAPPORT/releases/download/0.8.3/RAPPORT%20PRE-RELEASE.app.tar.gz"
+    }
+  }
+}

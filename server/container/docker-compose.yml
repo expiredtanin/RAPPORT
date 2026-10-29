@@ -1,0 +1,70 @@
+# Rapport-Server — Komplettstack für Self-Hosting, auf PocketBase-Basis.
+#
+# Bevor `docker compose up`:
+#   1. cp .env.example .env  und Secrets/Werte ersetzen
+#
+# Dann:
+#   docker compose up -d
+#
+# Erststart dauert wenige Sekunden (PocketBase bootet + Migrations, dann der
+# Frontend-Build). Zwei Services statt der bisherigen sieben (Postgres/GoTrue/
+# PostgREST/Realtime/Storage/Kong) — PocketBase deckt Auth+DB+Realtime+Storage
+# in einem Binary ab.
+
+services:
+  # ════════════════════════════════════════════════════════════════════════
+  # PocketBase — Auth + Datenbank + Realtime + File-Storage in einem Binary.
+  # Schema/Rules/Hooks kommen aus pb/ in diesem Repo (Build-Kontext: Repo-Wurzel).
+  # ════════════════════════════════════════════════════════════════════════
+  pb:
+    image: ${RAPPORT_PB_IMAGE:-git.openbureau.ch/karim/rapport-pb}:${RAPPORT_PB_TAG:-main}
+    build:
+      context: ../..
+      dockerfile: server/container/Dockerfile.pb
+    container_name: rapport-pb
+    restart: unless-stopped
+    environment:
+      # Nur beim allerersten Start relevant (upsert ist idempotent, läuft aber
+      # bei jedem Container-Start — harmlos, setzt nur ggf. das Passwort neu).
+      SUPERUSER_EMAIL: ${PB_SUPERUSER_EMAIL:-}
+      SUPERUSER_PASSWORD: ${PB_SUPERUSER_PASSWORD:-}
+      # URL des Frontends (nicht der PocketBase-API!) — für Passwort-Reset-Mails,
+      # siehe pb-entrypoint.sh.
+      APP_URL: ${APP_URL:-}
+    volumes:
+      - pb-data:/pb/pb_data
+    ports:
+      # Bewusst nur auf 127.0.0.1 — im LAN/extern läuft der Zugriff über die
+      # gleiche Adresse wie das Frontend (Reverse-Proxy), nicht direkt.
+      # Für reinen LAN-Betrieb ohne Proxy: 127.0.0.1 hier entfernen.
+      - "${PB_PORT:-8090}:8090"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:8090/api/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+
+  # ════════════════════════════════════════════════════════════════════════
+  # Rapport Frontend — die React-App hinter nginx
+  # ════════════════════════════════════════════════════════════════════════
+  app:
+    # Default: aus Gitea-Registry pullen (`docker compose pull` reicht).
+    # Wer das Image selber bauen will (Dev): RAPPORT_APP_IMAGE in .env auf
+    # `rapport-app:main` setzen, dann `docker compose --profile build build app`.
+    image: ${RAPPORT_APP_IMAGE:-git.openbureau.ch/karim/rapport-app}:${RAPPORT_APP_TAG:-main}
+    build:
+      context: ../..
+      dockerfile: server/container/Dockerfile.app
+      args:
+        POCKETBASE_URL: ${API_EXTERNAL_URL}
+    container_name: rapport-server-app
+    restart: unless-stopped
+    depends_on:
+      pb:
+        condition: service_healthy
+    ports:
+      - "${APP_PORT:-8080}:80"
+
+volumes:
+  pb-data:

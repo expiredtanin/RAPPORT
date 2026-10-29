@@ -1,0 +1,11 @@
+{
+  "version": "0.1.2",
+  "notes": "Update-Modal mit Live-Progress + sichtbare Errors.",
+  "pub_date": "2026-05-24T16:15:09Z",
+  "platforms": {
+    "darwin-aarch64": {
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTYUg0T2hQVVkrUTFxS0FKYUdMZlNtY0RCcWRTMXJoL002NGlvaXRHWm5hTmVKd1JQbnJucG84Qm1lZ1lRdG1PZ1orQzZDUXJqNUYzaXpjWTd2R1l4aGkrZi9xVmpBQmc4PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzc5NjM5MTgyCWZpbGU6UkFQUE9SVCBTZXJ2ZXIuYXBwLnRhci5negpnRWRvUlVSeDErQ2szQjZKRC9KSjErNWVYNWhyekdtUlArQnZFa1dwRlMwYUNRdG1hSVBRS0FHSU5wOG01RnBEbklaWlA0TVBxTTlxQmZkbHJpTTBDUT09Cg==",
+      "url": "https://git.kgva.ch/karim/RAPPORT-SERVER-APP/releases/download/v0.1.2/RAPPORT%20Server.app.tar.gz"
+    }
+  }
+}

@@ -1,0 +1,59 @@
+/* RAPPORT-Theme-Overlay für die eingebaute PocketBase-Admin-UI (/_/).
+ *
+ * Die PB-Admin-UI ist eine fertig kompilierte, ins Binary eingebettete Svelte-App —
+ * nicht offiziell themebar. Sie exponiert aber ein sauberes CSS-Custom-Property-System
+ * (--accentColor, --surfaceColor, --primaryColor, ...), definiert auf den exakt gleichen
+ * Selektoren, die PB selbst für Light/Dark nutzt:
+ *   Light: :root, .dropdown, .base-surface
+ *   Dark:  [data-color-scheme=dark], [data-color-scheme=dark] .dropdown
+ * Diese Datei überschreibt nur diese Variablen (keine internen Klassen/Markup-Selektoren —
+ * das wäre fragil über PB-Versionen hinweg). Werte 1:1 aus der App
+ * übernommen (:root/[data-theme=dark]-Block + .btn-primary).
+ *
+ * Eingebunden per <link>, per nginx sub_filter NACH PBs eigenem Stylesheet injiziert
+ * (siehe nginx.conf) — gewinnt bei gleicher Selektor-Spezifität durch Cascade-Reihenfolge,
+ * kein !important nötig.
+ *
+ * KEIN Font-Import: PB sendet "Content-Security-Policy: style-src 'self'" — ein
+ * @import auf Google Fonts wird geblockt UND reisst dabei (empirisch verifiziert)
+ * die komplette restliche Datei aus der Kaskade, nicht nur die Font-Regel. RAPPORTs
+ * DM Mono bleibt deshalb aussen vor, IBM Plex Sans (PB-Default) bleibt stehen.
+ *
+ * KEIN --accentColor hier: PB setzt die Akzentfarbe nach dem Login per JS als INLINE
+ * Style auf <html> (aus settings.meta.accentColor) — das schlägt jede Stylesheet-Regel
+ * unabhängig von Cascade-Reihenfolge/Spezifität. Kommt stattdessen aus pb/
+ * pb_migrations/1787700000_admin_accent_color.js, PBs eigenem Branding-Setting.
+ */
+
+:root, .dropdown, .base-surface {
+  --primaryColor: #252520;
+  --primaryTxtColor: #f0ede8;
+
+  --surfaceColor: #fdfcfa;
+  --surfaceAlt1Color: #f7f4f0;
+  --surfaceAlt2Color: #f0ece4;
+  --surfaceAlt3Color: #e6e1da;
+  --surfaceAlt4Color: #ddd8d0;
+  --surfaceAlt5Color: #d8d2ca;
+  --surfaceTxtColor: #1a1a18;
+  --surfaceTxtHintColor: #6a6660;
+  --surfaceTxtDisabledColor: #b0aca4;
+
+  --borderRadius: 10px;
+  --lgBorderRadius: 18px;
+}
+
+[data-color-scheme=dark], [data-color-scheme=dark] .dropdown {
+  --primaryColor: #2e2e28;
+  --primaryTxtColor: #e8e5df;
+
+  --surfaceColor: #222220;
+  --surfaceAlt1Color: #292924;
+  --surfaceAlt2Color: #2e2e28;
+  --surfaceAlt3Color: #333328;
+  --surfaceAlt4Color: #38382e;
+  --surfaceAlt5Color: color-mix(in srgb, var(--surfaceColor), white 12%);
+  --surfaceTxtColor: #e8e5df;
+  --surfaceTxtHintColor: #9a968e;
+  --surfaceTxtDisabledColor: #565450;
+}
