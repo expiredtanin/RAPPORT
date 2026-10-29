@@ -14,6 +14,7 @@
 // (werden unten per Spread ergänzt), nicht hierher.
 
 import { migrateDashboardLayout } from "../utils";
+import { validateRawData } from "./validate";
 import type { AppData, AppRole, Id, Person, Project, Protocol, User } from "../types";
 
 // Alte Datenformen, die es nur noch in bestehenden Beständen gibt.
@@ -43,11 +44,14 @@ type Merged = Omit<AppData, "projects" | "protocols"> & Pick<RawData, "projects"
 /**
  * Bringt geladene Daten auf den aktuellen Stand des Datenmodells.
  *
- * @param parsed Rohdaten aus localStorage bzw. Cloud (beliebig alt).
+ * @param raw Rohdaten aus localStorage, Datenordner bzw. Cloud (beliebig alt, evtl. beschädigt).
  * @param defaultData Startzustand aus constants.ts; liefert fehlende Felder und Vorlagen.
  * @returns vollständiges `AppData`-Objekt. Die Eingabe wird nicht verändert.
  */
-export function applyMigrations(parsed: RawData, defaultData: AppData): AppData {
+export function applyMigrations(raw: RawData, defaultData: AppData): AppData {
+  // Zuerst die grobe Form prüfen (kaputte Daten sollen nicht beim Rendern abstürzen, siehe validate.ts)
+  const { data: parsed, problems } = validateRawData(raw, defaultData);
+  if (problems.length) console.warn("Geladene Daten repariert:", problems);
   let merged = {
     ...defaultData,
     ...parsed,
