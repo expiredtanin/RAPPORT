@@ -29,7 +29,7 @@ npx tauri build      # Vollständiges App-Bundle
 ./scripts/release.sh # Release-Build mit Signatur — NUR auf explizite Anweisung
 ```
 
-Tests gibt es mit Vitest (`npm test`, Dateien `*.test.ts` neben dem Code) für Rechenlogik und Speicher; keine CI, kein Pre-Commit-Hook. `typecheck`, `lint`, `test` und `build` sind das Minimum, für UI zusätzlich Augenschein.
+Tests gibt es mit Vitest (`npm test`, Dateien `*.test.ts` neben dem Code) für Rechenlogik und Speicher; GitHub-Action [check.yml](.github/workflows/check.yml) prüft jeden Push (typecheck, lint, test, build — kein Tauri-Bundle, kein Release), kein Pre-Commit-Hook. `typecheck`, `lint`, `test` und `build` sind das Minimum, für UI zusätzlich Augenschein.
 
 ---
 

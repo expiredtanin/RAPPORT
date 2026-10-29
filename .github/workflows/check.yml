@@ -1,0 +1,23 @@
+# Prüfung bei jedem Push und Pull Request: dieselben Schritte wie lokal vor einem Commit
+# (CLAUDE.md «Befehle»). Baut nur das Frontend — kein Tauri-Bundle, keine Signatur, kein Release.
+name: Prüfen
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm test
+      - run: npm run build

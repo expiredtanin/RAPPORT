@@ -18,10 +18,11 @@ npx tauri dev      # native App mit Hot-Reload
 |---|---|
 | `npm run typecheck` | TypeScript-Prüfung (`tsc --noEmit`) |
 | `npm run lint` | ESLint |
+| `npm test` | Vitest (`*.test.ts` neben dem Code) |
 | `npm run build` | Frontend-Build nach `dist/` |
 | `npx tauri build` | Vollständiges App-Bundle |
 
-Es gibt keine automatischen Tests und keine CI. Vor jedem Commit mindestens `typecheck`, `lint`, `build` ausführen und die geänderte Ansicht im Browser oder in `tauri dev` durchklicken.
+Tests laufen mit `npm test` (Vitest); die GitHub-Action `.github/workflows/check.yml` prüft jeden Push mit `typecheck`, `lint`, `test` und `build`. Vor jedem Commit trotzdem lokal mindestens `typecheck`, `lint`, `test`, `build` ausführen und die geänderte Ansicht im Browser oder in `tauri dev` durchklicken.
 
 ## Wo liegt was?
 
