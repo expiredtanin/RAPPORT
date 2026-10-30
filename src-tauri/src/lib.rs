@@ -45,6 +45,19 @@ fn finish_quit(app: &tauri::AppHandle) {
     app.exit(0);
 }
 
+/// Anzeigename der Version wie `versionLabel()` in src/changelog.ts: 26.11.0 → «Beta 26.11»,
+/// 26.11.1 → «Beta 26.11.1», alte 0.x-Versionen → «Alpha 0.8.3». Beide Stellen gleich halten.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+fn version_label(major: u64, minor: u64, patch: u64) -> String {
+    if major == 0 {
+        format!("Alpha {major}.{minor}.{patch}")
+    } else if patch == 0 {
+        format!("Beta {major}.{minor}")
+    } else {
+        format!("Beta {major}.{minor}.{patch}")
+    }
+}
+
 fn show_main_window(app: &tauri::AppHandle) {
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.show();
@@ -111,13 +124,36 @@ pub fn run() {
 
             // Das Standard-„Quit“ im macOS-App-Menü (NSApp terminate:) beendet sofort, ohne ExitRequested.
             // Ersetzt durch einen eigenen Eintrag mit derselben id wie im Tray — der Handler unten
-            // bekommt Menü-Events aus beiden Menüs.
+            // bekommt Menü-Events aus beiden Menüs. Ebenso «Über RAPPORT» (erster Eintrag): zeigt die
+            // Version als «Beta 26.11» und unten Copyright/Entwickler aus tauri.conf.json (bundle).
             #[cfg(target_os = "macos")]
             {
                 let app_menu = Menu::default(app.handle())?;
                 if let Some(tauri::menu::MenuItemKind::Submenu(first)) =
                     app_menu.items()?.into_iter().next()
                 {
+                    let pkg = app.package_info();
+                    let bundle = &app.config().bundle;
+                    let about = PredefinedMenuItem::about(
+                        app,
+                        Some("Über RAPPORT"),
+                        Some(
+                            tauri::menu::AboutMetadataBuilder::new()
+                                .name(Some(pkg.name.clone()))
+                                .version(Some(version_label(
+                                    pkg.version.major,
+                                    pkg.version.minor,
+                                    pkg.version.patch,
+                                )))
+                                .copyright(bundle.copyright.clone())
+                                .authors(bundle.publisher.clone().map(|p| vec![p]))
+                                .build(),
+                        ),
+                    )?;
+                    if !first.items()?.is_empty() {
+                        first.remove_at(0)?;
+                    }
+                    first.prepend(&about)?;
                     let count = first.items()?.len();
                     if count > 0 {
                         first.remove_at(count - 1)?;
@@ -187,4 +223,16 @@ pub fn run() {
                 request_quit(app);
             }
         });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::version_label;
+
+    #[test]
+    fn version_label_wie_im_frontend() {
+        assert_eq!(version_label(26, 11, 0), "Beta 26.11");
+        assert_eq!(version_label(26, 11, 2), "Beta 26.11.2");
+        assert_eq!(version_label(0, 8, 3), "Alpha 0.8.3");
+    }
 }

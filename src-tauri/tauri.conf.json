@@ -27,6 +27,8 @@
     "active": true,
     "targets": "all",
     "createUpdaterArtifacts": true,
+    "publisher": "Karim Gabriele Varano",
+    "copyright": "\u00a9 2026 Karim Gabriele Varano \u2014 AGPL-3.0-or-later",
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
