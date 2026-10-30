@@ -2789,7 +2789,7 @@ dependencies = [
 
 [[package]]
 name = "rapport"
-version = "0.8.3"
+version = "26.11.0"
 dependencies = [
  "log",
  "serde",

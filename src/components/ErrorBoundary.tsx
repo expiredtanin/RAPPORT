@@ -6,7 +6,7 @@
 // bleiben unberührt: gespeichert wird weiter über den Adapter, der Fehler betrifft nur die Anzeige.
 
 import { Component, type ErrorInfo, type ReactNode } from "react";
-import { LATEST_VERSION } from "../changelog";
+import { LATEST_VERSION, versionLabel } from "../changelog";
 
 interface Props {
   children: ReactNode;
@@ -47,7 +47,7 @@ export default class ErrorBoundary extends Component<Props, State> {
     const { error, componentStack } = this.state;
     if (!error) return;
     const text = [
-      `Rapport ${LATEST_VERSION} — ${new Date().toISOString()}`,
+      `Rapport ${versionLabel(LATEST_VERSION)} (${LATEST_VERSION}) — ${new Date().toISOString()}`,
       `Ansicht: ${String(this.props.resetKey ?? "(ganze App)")}`,
       "",
       error.stack || `${error.name}: ${error.message}`,

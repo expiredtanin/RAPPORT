@@ -391,6 +391,8 @@ Installation:
 
 ## 10. Build & Release-Workflow
 
+**Versionen nach Datum (seit Beta 26.11):** `Jahr.Monat.Nachtrag` — `26.11.0` ist «Beta 26.11», ein zweites Release im selben Monat `26.11.1` («Beta 26.11.1»). Drei Zahlen, weil der Updater semver vergleicht (26.11.0 > 0.8.3, alte Installationen bekommen das Update). Angezeigt wird überall `versionLabel()` aus [changelog.ts](src/changelog.ts) (Sidebar, Login, «Über Rapport», Changelog, Update-Dialoge); 0.x-Versionen heissen dort weiter «Alpha». Der App-Name ist «RAPPORT» (`productName`/Fenstertitel in tauri.conf.json, bis 0.8.3 «RAPPORT PRE-RELEASE»); der `identifier` bleibt unverändert, sonst gingen localStorage und Berechtigungen bestehender Installationen verloren. `src/changelog.test.ts` prüft, dass `LATEST_VERSION` = package.json-Version ist und einen Changelog-Eintrag hat.
+
 **Versions-Bump betrifft drei Dateien — alle drei müssen synchron sein:**
 1. [package.json](package.json) → `"version"`
 2. [src-tauri/tauri.conf.json](src-tauri/tauri.conf.json) → `"version"`

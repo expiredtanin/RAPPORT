@@ -36,7 +36,7 @@ function writeAttempts(state: AttemptState) {
 /**
  * @param verifyLogin prüft die Zugangsdaten (App.jsx); liefert den Nutzer oder null/false
  * @param settings nur für den Studionamen in der Kopfzeile
- * @param version Anzeige unten (z.B. «0.8.3»)
+ * @param version Anzeige unten (z.B. «Beta 26.11», siehe versionLabel in changelog.ts)
  * @param cloudUnreachable true = Server nicht erreichbar (zeigt Hinweis)
  */
 export default function Login({ verifyLogin, settings, version, cloudUnreachable = false }: {
@@ -450,7 +450,7 @@ export default function Login({ verifyLogin, settings, version, cloudUnreachable
         )}
 
         <div style={{ marginTop: 16, textAlign: "center", fontSize: 9, color: "#c8c4be", letterSpacing: "0.08em" }}>
-          {version ? `V${version}` : ""}
+          {version || ""}
         </div>
       </div>
     </div>

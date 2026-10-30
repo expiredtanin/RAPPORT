@@ -1,6 +1,6 @@
 [package]
 name = "rapport"
-version = "0.8.3"
+version = "26.11.0"
 description = "Rapport — Studio-Management für Architekturbüros"
 authors = ["Karim Gabriele Varano <karim@gabrielevarano.ch>"]
 license = "AGPL-3.0-or-later"

@@ -6,7 +6,7 @@
 
 import type { Dispatch, MouseEvent, SetStateAction } from "react";
 import type { NavItem } from "../constants";
-import { LATEST_VERSION } from "../changelog";
+import { LATEST_VERSION, versionLabel } from "../changelog";
 import type { AppData, CurrentUser, User } from "../types";
 
 export interface SidebarProps {
@@ -168,7 +168,7 @@ export default function Sidebar({
           <button onClick={() => onShowAbout()} style={{ background: "none", border: "none", padding: 0, color: "#888", fontSize: 10, letterSpacing: "0.08em", cursor: "pointer", fontFamily: "inherit", textAlign: "left" }}
             onMouseEnter={e => e.currentTarget.style.color = "#aaa"} onMouseLeave={e => e.currentTarget.style.color = "#888"}>ÜBER RAPPORT</button>
           <button onClick={() => onShowChangelog(LATEST_VERSION)} style={{ background: "none", border: "none", padding: 0, color: "#aaa", fontSize: 10, letterSpacing: "0.08em", cursor: "pointer", fontFamily: "inherit" }}
-            onMouseEnter={e => e.currentTarget.style.color = "#f0ede8"} onMouseLeave={e => e.currentTarget.style.color = "#aaa"}>{LATEST_VERSION}</button>
+            onMouseEnter={e => e.currentTarget.style.color = "#f0ede8"} onMouseLeave={e => e.currentTarget.style.color = "#aaa"}>{versionLabel(LATEST_VERSION)}</button>
         </div>
       </div>}
 

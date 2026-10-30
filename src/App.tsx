@@ -40,7 +40,7 @@ import { useStudioData } from "./hooks/useStudioData";
 import { useAppearance } from "./hooks/useAppearance";
 import { getUserPermissions, getUserInitials, getVisibleNavItems } from "./auth";
 import { ChangelogModal, AboutModal } from "./components/InfoModals";
-import { LATEST_VERSION } from "./changelog";
+import { LATEST_VERSION, versionLabel } from "./changelog";
 
 // Code-split: each view loads on demand to keep the initial bundle small.
 const Dashboard      = lazy(() => import("./views/Dashboard"));
@@ -353,7 +353,7 @@ export default function App() {
       </>;
     }
     return <>
-      <Login verifyLogin={verifyLogin} settings={data.settings} version={LATEST_VERSION} cloudUnreachable={cloudUnreachable} />
+      <Login verifyLogin={verifyLogin} settings={data.settings} version={versionLabel(LATEST_VERSION)} cloudUnreachable={cloudUnreachable} />
       <UpdateNotifier />
     </>;
   }

@@ -8,6 +8,7 @@
 import { useEffect, useState, useCallback } from "react";
 import type { ReactNode } from "react";
 import type { Update } from "@tauri-apps/plugin-updater";
+import { versionLabel } from "../changelog";
 import {
   checkForAppUpdate,
   installAppUpdate,
@@ -107,7 +108,7 @@ export default function UpdatesSupport({ fallbackVersion }: { fallbackVersion?: 
         <Section title="UPDATES">
           <div style={{ display: "flex", justifyContent: "space-between", padding: "4px 0", fontSize: 12, borderBottom: "1px solid #f0ede8" }}>
             <span style={{ color: "var(--text4)" }}>Aktuelle Version</span>
-            <strong style={{ color: "var(--text2)" }}>{version || "—"}</strong>
+            <strong style={{ color: "var(--text2)" }}>{version ? versionLabel(version) : "—"}</strong>
           </div>
           <div style={{ display: "flex", justifyContent: "space-between", padding: "4px 0", fontSize: 12, borderBottom: "1px solid #f0ede8", marginBottom: 16 }}>
             <span style={{ color: "var(--text4)" }}>Letzte Prüfung</span>
@@ -132,7 +133,7 @@ export default function UpdatesSupport({ fallbackVersion }: { fallbackVersion?: 
           {state === "available" && update && (
             <div style={{ marginTop: 10, padding: "14px 14px 12px", background: "#fbf6ef", border: "1px solid #e6d4b3", borderRadius: 8 }}>
               <div style={{ fontSize: 10, letterSpacing: "0.12em", color: "#b07848", fontWeight: 600, marginBottom: 4 }}>UPDATE VERFÜGBAR</div>
-              <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text)", marginBottom: 6 }}>Rapport {update.version}</div>
+              <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text)", marginBottom: 6 }}>Rapport {versionLabel(update.version)}</div>
               {update.body && (
                 <div style={{ fontSize: 12, color: "var(--text3)", lineHeight: 1.5, whiteSpace: "pre-wrap", marginBottom: 10, maxHeight: 160, overflowY: "auto" }}>
                   {update.body}

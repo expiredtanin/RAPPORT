@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
-  "productName": "RAPPORT PRE-RELEASE",
-  "version": "0.8.3",
+  "productName": "RAPPORT",
+  "version": "26.11.0",
   "identifier": "com.karimgabrielevarano.rapport",
   "build": {
     "frontendDist": "../dist",
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "RAPPORT PRE-RELEASE",
+        "title": "RAPPORT",
         "width": 1400,
         "height": 900,
         "resizable": true,

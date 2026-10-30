@@ -2,7 +2,7 @@
 // «Über Rapport» (Lizenz, Technologien). Beide sind absichtlich fest hell/dunkel gestaltet
 // (weisse Karte, dunkler Kopf) und halten keinen eigenen State ausser dem Versions-Tab.
 
-import { CHANGELOGS, LATEST_VERSION } from "../changelog";
+import { CHANGELOGS, LATEST_VERSION, versionLabel } from "../changelog";
 
 /** Changelog-Dialog. `version` wählt den angezeigten Eintrag; `onSelectVersion` wechselt den Tab, `onClose` merkt sich «gesehen». */
 export function ChangelogModal({ version, onSelectVersion, onClose }: { version: string; onSelectVersion: (v: string) => void; onClose: () => void }) {
@@ -16,12 +16,12 @@ export function ChangelogModal({ version, onSelectVersion, onClose }: { version:
         <div style={{ background: "#1a1a18", padding: "28px 32px 20px" }}>
           <div style={{ fontSize: 10, letterSpacing: "0.18em", color: "#b07848", marginBottom: 8, fontWeight: 600 }}>CHANGELOG</div>
           <div style={{ display: "flex", alignItems: "baseline", gap: 16 }}>
-            <div style={{ fontFamily: "'Inter', sans-serif", fontSize: 28, color: "#f0ede8", fontWeight: 400, lineHeight: 1.1 }}>Alpha {changelogVersion}</div>
+            <div style={{ fontFamily: "'Inter', sans-serif", fontSize: 28, color: "#f0ede8", fontWeight: 400, lineHeight: 1.1 }}>{versionLabel(changelogVersion)}</div>
           </div>
           <div style={{ display: "flex", gap: 6, marginTop: 14 }}>
             {versions.map(v => (
               <button key={v} onClick={() => setChangelogVersion(v)} style={{ fontSize: 10, padding: "3px 10px", borderRadius: 20, border: "1px solid", borderColor: v === changelogVersion ? "#b07848" : "#3a3a30", background: v === changelogVersion ? "#b07848" : "transparent", color: v === changelogVersion ? "var(--text)" : "var(--text4)", cursor: "pointer", fontFamily: "inherit", letterSpacing: "0.06em" }}>
-                Alpha {v}
+                {versionLabel(v)}
               </button>
             ))}
           </div>
@@ -56,7 +56,7 @@ export function AboutModal({ onClose }: { onClose: () => void }) {
         <div style={{ background: "#1a1a18", padding: "28px 32px 24px" }}>
           <div style={{ fontSize: 10, letterSpacing: "0.18em", color: "#b07848", marginBottom: 8, fontWeight: 600 }}>ÜBER RAPPORT</div>
           <div style={{ fontFamily: "'Inter', sans-serif", fontSize: 28, color: "#f0ede8", fontWeight: 400, lineHeight: 1.1 }}>Rapport</div>
-          <div style={{ fontSize: 11, color: "var(--text4)", marginTop: 6, letterSpacing: "0.04em" }}>Alpha {LATEST_VERSION} · Studio-Management für Architekturbüros</div>
+          <div style={{ fontSize: 11, color: "var(--text4)", marginTop: 6, letterSpacing: "0.04em" }}>{versionLabel(LATEST_VERSION)} · Studio-Management für Architekturbüros</div>
         </div>
         <div style={{ padding: "20px 32px 8px" }}>
           <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text4)", letterSpacing: "0.1em", marginBottom: 12 }}>LIZENZ</div>

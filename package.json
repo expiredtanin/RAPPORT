@@ -1,7 +1,7 @@
 {
   "name": "rapport",
   "private": true,
-  "version": "0.8.3",
+  "version": "26.11.0",
   "type": "module",
   "scripts": {
     "dev": "vite",

@@ -5,11 +5,37 @@
 // auch als Wert von `rapport_changelog_seen` im localStorage dient, zeigt die App den Dialog
 // nach dem Update einmal automatisch. Die Version in package.json, tauri.conf.json und
 // Cargo.toml muss separat synchron gehalten werden (siehe ARCHITECTURE.md §9/§10).
+//
+// Versionen nach Datum (ab Beta 26.11): «Jahr.Monat.Nachtrag», z.B. 26.11.0 = Beta 26.11, ein zweites
+// Release im selben Monat 26.11.1. Die drei Zahlen braucht der Updater (semver); angezeigt wird
+// `versionLabel` («Beta 26.11», «Beta 26.11.1»). Ältere Versionen (0.x) waren die Alpha.
 
-/** Aktuelle App-Version, wie sie in Sidebar, «Über Rapport» und Changelog angezeigt wird. */
-export const LATEST_VERSION = "0.8.3";
+/** Aktuelle App-Version (semver), Anzeige über `versionLabel`. */
+export const LATEST_VERSION = "26.11.0";
+
+/** Aktuelle Phase für Versionen nach Datum. */
+const RELEASE_STAGE = "Beta";
+
+/**
+ * Anzeigename einer Version: «Beta 26.11» bzw. «Beta 26.11.1» für Datumsversionen,
+ * «Alpha 0.8.3» für die alten 0.x-Versionen.
+ */
+export function versionLabel(version: string): string {
+  const [major, minor, patch] = version.split(".");
+  if (Number(major) < 1) return `Alpha ${version}`;
+  return `${RELEASE_STAGE} ${major}.${minor ?? "0"}${patch && patch !== "0" ? `.${patch}` : ""}`;
+}
 
 export const CHANGELOGS: Record<string, { items: string[][] }> = {
+  "26.11.0": {
+    items: [
+      ["Beta 26.11 — neue Versionsnummern", "Rapport ist jetzt in der Beta und heisst in der App nur noch «RAPPORT». Versionen tragen ab sofort Jahr und Monat (26.11 = November 2026)."],
+      ["Rapport-Ordner", "In der Desktop-App liegen die Daten neu in einem Ordner (Standard: Dokumente/Rapport) statt im begrenzten lokalen Speicher — ohne Grössengrenze, mit Tagesbackup. Bestehende Installationen werden zum Umzug eingeladen. Liegt der Ordner in iCloud Drive oder auf einem NAS, kann eine zweite Person mitarbeiten."],
+      ["Belege als Dateien", "Belege, Logo, Bilder und Schriften liegen im Rapport-Ordner als normale Dateien unter «Dateien/» und sind im Finder lesbar. Belege werden erst beim Öffnen geladen; nicht mehr verwendete Dateien lassen sich in den Einstellungen aufräumen."],
+      ["Robuster bei Fehlern", "Stürzt eine Ansicht ab, erscheint eine Meldung statt eines weissen Fensters (mit «Fehlertext kopieren» für den Support). Beschädigte Daten werden beim Laden repariert und gemeldet."],
+      ["Updates auch für Intel-Macs", "Die App wird für Apple Silicon und Intel gebaut, das automatische Update funktioniert auf beiden."],
+    ],
+  },
   "0.8.3": {
     items: [
       ["Desktop-App-Verhalten", "Kein Text mehr markierbar, kein Rechtsklick-Menü — die App verhält sich jetzt wie eine native Desktop-Applikation. Eingabefelder sind weiterhin voll benutzbar."],

@@ -80,6 +80,7 @@ Tests gibt es mit Vitest (`npm test`, Dateien `*.test.ts` neben dem Code) für R
 **Mach niemals einen Release auf eigene Faust.** Auch nicht "halb" (kein Versions-Bump, kein `release.sh`, kein Tag, kein `latest.json`-Edit), es sei denn Karim sagt es explizit.
 
 Wenn ein Release gewünscht ist, denke an:
+- Versionen nach Datum: `Jahr.Monat.Nachtrag` (`26.11.0` = «Beta 26.11», zweites Release im Monat `26.11.1`); Anzeige über `versionLabel()` in [changelog.ts](src/changelog.ts). App-Name nur «RAPPORT», `identifier` nie ändern.
 - Version in **drei** Dateien synchron: [package.json](package.json), [src-tauri/tauri.conf.json](src-tauri/tauri.conf.json), [src-tauri/Cargo.toml](src-tauri/Cargo.toml). `release.sh` prüft Cargo.toml **nicht** — du musst manuell.
 - Changelog-Entry in [changelog.ts](src/changelog.ts) (`CHANGELOGS`) und `LATEST_VERSION` dort anheben (steuert auch Sidebar, Login-Fusszeile und `rapport_changelog_seen`).
 - `release.sh` braucht `~/.tauri/rapport_updater.key` — wenn fehlt, abbrechen, nicht generieren.

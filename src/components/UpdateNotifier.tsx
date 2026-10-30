@@ -10,6 +10,7 @@
 import { useEffect, useState, useCallback } from "react";
 import type { Update } from "@tauri-apps/plugin-updater";
 import { checkForAppUpdate, installAppUpdate, skipUpdateVersion, isTauri } from "../utils/updater";
+import { versionLabel } from "../changelog";
 
 type UpdateState = "idle" | "checking" | "available" | "downloading" | "installing";
 
@@ -98,10 +99,10 @@ export default function UpdateNotifier() {
           <div style={{ fontSize: 10, letterSpacing: "0.18em", color: "#b07848", marginBottom: 8, fontWeight: 600 }}>UPDATE VERFÜGBAR</div>
           <div style={{ display: "flex", alignItems: "baseline", gap: 12 }}>
             <div style={{ fontFamily: "'Inter', sans-serif", fontSize: 26, color: "#f0ede8", fontWeight: 400, lineHeight: 1.1 }}>
-              Rapport {update.version}
+              Rapport {versionLabel(update.version)}
             </div>
             {update.currentVersion && (
-              <div style={{ fontSize: 11, color: "#666", letterSpacing: "0.04em" }}>von {update.currentVersion}</div>
+              <div style={{ fontSize: 11, color: "#666", letterSpacing: "0.04em" }}>von {versionLabel(update.currentVersion)}</div>
             )}
           </div>
         </div>
