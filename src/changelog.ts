@@ -33,6 +33,7 @@ export const CHANGELOGS: Record<string, { items: string[][] }> = {
       ["Rapport-Ordner", "In der Desktop-App liegen die Daten neu in einem Ordner (Standard: Dokumente/Rapport) statt im begrenzten lokalen Speicher — ohne Grössengrenze, mit Tagesbackup. Bestehende Installationen werden zum Umzug eingeladen. Liegt der Ordner in iCloud Drive oder auf einem NAS, kann eine zweite Person mitarbeiten."],
       ["Belege als Dateien", "Belege, Logo, Bilder und Schriften liegen im Rapport-Ordner als normale Dateien unter «Dateien/» und sind im Finder lesbar. Belege werden erst beim Öffnen geladen; nicht mehr verwendete Dateien lassen sich in den Einstellungen aufräumen."],
       ["Robuster bei Fehlern", "Stürzt eine Ansicht ab, erscheint eine Meldung statt eines weissen Fensters (mit «Fehlertext kopieren» für den Support). Beschädigte Daten werden beim Laden repariert und gemeldet."],
+      ["Aufwand aus eigenen Projekten schätzen", "Projekte haben neu die Felder «Nutzung» und «Geschossfläche». Aus abgeschlossenen Projekten berechnet Rapport, wie viele Stunden pro m² euer Büro typischerweise braucht. In einer Offerte (Aufwandschätzung) schlägt Rapport daraus Stunden je Phase vor — mit Bandbreite und Schwierigkeitsfaktor, nach dem Aufbau der ETH Value-Methode, aber mit euren eigenen Zahlen."],
       ["Updates auch für Intel-Macs", "Die App wird für Apple Silicon und Intel gebaut, das automatische Update funktioniert auf beiden."],
     ],
   },

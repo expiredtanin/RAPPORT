@@ -167,6 +167,25 @@ export interface ProjectPosition {
   [key: string]: unknown;
 }
 
+/**
+ * Nutzung eines Projekts für die Aufwandschätzung aus eigenen Projekten (utils `calcOfficeBenchmarks`).
+ * Gleiche sechs Gruppen wie die Grundmodelle der ETH Value-Methode, damit Zahlen vergleichbar bleiben.
+ */
+export type ProjectUsage = "wohnen" | "arbeiten" | "industrie" | "lager" | "bildung" | "gesundheit";
+
+/** In einer Offerte festgehaltene Grundlage der Schätzung aus eigenen Projekten (Nachvollziehbarkeit). */
+export interface QuoteEstimate {
+  usage: ProjectUsage;
+  /** Geschossfläche GF nach SIA 416 in m² */
+  floorArea: number;
+  /** Anpassungsfaktor für Komplexität/Kontext (1 = übliches Projekt) */
+  factor: number;
+  /** Anzahl abgeschlossener eigener Projekte, auf denen die Schätzung beruht */
+  sampleCount: number;
+  /** Median Stunden je m² GF zum Zeitpunkt der Schätzung */
+  hoursPerM2: number;
+}
+
 export interface Project {
   id: Id;
   number: string;
@@ -193,6 +212,10 @@ export interface Project {
   /** Beteiligte Firmen; `personIds` schränkt auf bestimmte Ansprechpartner der Firma ein */
   projectContacts?: { contactId?: Id; personIds?: Id[]; [key: string]: unknown }[];
   internalMembers?: Id[];
+  /** Nutzung (für die Aufwandschätzung aus eigenen Projekten) */
+  usage?: ProjectUsage | "";
+  /** Geschossfläche GF nach SIA 416 in m² (für die Aufwandschätzung) */
+  floorArea?: number | null;
   createdAt?: Timestamp;
 }
 
@@ -312,6 +335,8 @@ export interface Quote {
     phases: SiaPhase[];
   };
   freeItems?: { id: Id; desc: string; qty: number; price: number }[];
+  /** Modus "manual": Grundlage, falls die Stunden aus eigenen Projekten geschätzt wurden */
+  estimate?: QuoteEstimate | null;
   notes?: string;
   sub: number;
   totalHours?: number;

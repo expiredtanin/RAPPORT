@@ -13,10 +13,11 @@
 //
 // Fachliche Hintergründe (SIA, MWST, Lohnabzüge): docs/FACHLOGIK.md.
 
-import { DEFAULT_ABSENZ_TYPES } from "./constants";
+import { DEFAULT_ABSENZ_TYPES, NON_BILLING_CATEGORIES } from "./constants";
 import type {
   AbsenzType, AppData, ContactCategory, DashboardRow, ProtocolApproval, ProtocolParticipant, DateStr, DeliveryNote, Employee, Feiertag, Id,
-  Invoice, LohnResult, ManualPhase, Person, Protocol, Quote, Role, Settings, SiaItem, SiaPhase, User,
+  Invoice, LohnResult, ManualPhase, Person, Project, ProjectUsage, Protocol, Quote, Role, Settings, SiaItem, SiaPhase,
+  TimeEntry, User,
 } from "./types";
 
 export interface SiaCalcItem extends SiaItem { hours: number }
@@ -90,6 +91,135 @@ export function calcManualHours(phases: ManualPhase[], roles?: Role[]): {
     totalHours: results.reduce((s, p) => s + p.totalHours, 0),
     totalAmount: results.reduce((s, p) => s + p.totalAmount, 0),
   };
+}
+
+/** Bandbreite einer Stichprobe: Median und unterer/oberer Wert (siehe `calcOfficeBenchmarks`). */
+export interface RangeStats { n: number; median: number; low: number; high: number }
+
+/** Ein abgeschlossenes eigenes Projekt als Erfahrungswert. */
+export interface BenchmarkSample {
+  projectId: Id;
+  name: string;
+  floorArea: number;
+  /** erfasste Stunden gesamt */
+  hours: number;
+  hoursPerM2: number;
+  /** erfasste Stunden je Phase (`TimeEntry.phaseId`); ohne Phase nicht enthalten */
+  phaseHours: Record<string, number>;
+}
+
+/** Erfahrungswerte einer Nutzung. */
+export interface UsageBenchmark {
+  samples: BenchmarkSample[];
+  /** Stunden je m² GF */
+  hoursPerM2: RangeStats;
+  /** mittlerer Anteil je Phase an den phasenbezogenen Stunden (Summe 1); leer, wenn nie eine Phase erfasst wurde */
+  phaseShares: Record<string, number>;
+}
+
+/** Ab so vielen Projekten gilt die Bandbreite 10.–90. Perzentil, darunter kleinster bis grösster Wert. */
+const BENCHMARK_PERCENTILE_MIN = 5;
+
+/** Perzentil (p 0…1) einer aufsteigend sortierten, nicht leeren Liste, linear interpoliert. */
+function percentile(sorted: number[], p: number): number {
+  const pos = (sorted.length - 1) * p;
+  const lo = Math.floor(pos);
+  const hi = Math.ceil(pos);
+  return sorted[lo] + (sorted[hi] - sorted[lo]) * (pos - lo);
+}
+
+/** Median und Bandbreite einer Stichprobe (siehe BENCHMARK_PERCENTILE_MIN); leere Liste → alles 0. */
+export function rangeStats(values: number[]): RangeStats {
+  if (!values.length) return { n: 0, median: 0, low: 0, high: 0 };
+  const sorted = [...values].sort((a, b) => a - b);
+  const wide = sorted.length < BENCHMARK_PERCENTILE_MIN;
+  return {
+    n: sorted.length,
+    median: percentile(sorted, 0.5),
+    low: wide ? sorted[0] : percentile(sorted, 0.1),
+    high: wide ? sorted[sorted.length - 1] : percentile(sorted, 0.9),
+  };
+}
+
+/**
+ * Erfahrungswerte des Büros je Nutzung: Stunden je m² Geschossfläche aus abgeschlossenen eigenen Projekten.
+ * Gezählt wird ein Projekt mit Status «abgeschlossen», gesetzter Nutzung, Geschossfläche > 0 und erfassten
+ * Stunden; nicht verrechenbare Kategorien (Wettbewerb) zählen nicht. Gleicher Aufbau wie die ETH
+ * Value-Methode (Bezugsgrösse × Kennwert × Anpassungsfaktor), aber mit den eigenen Zahlen.
+ *
+ * @param projects alle Projekte
+ * @param timeEntries alle Zeiteinträge (Minuten)
+ */
+export function calcOfficeBenchmarks(projects: Project[], timeEntries: TimeEntry[]): Partial<Record<ProjectUsage, UsageBenchmark>> {
+  const candidates = new Map<Id, Project>();
+  for (const p of projects || []) {
+    if (p.status === "abgeschlossen" && p.usage && (p.floorArea || 0) > 0 && !NON_BILLING_CATEGORIES.includes(p.category || "")) {
+      candidates.set(p.id, p);
+    }
+  }
+  const totals = new Map<Id, { minutes: number; phases: Record<string, number> }>();
+  for (const e of timeEntries || []) {
+    if (!candidates.has(e.projectId) || !(e.minutes > 0)) continue;
+    const t = totals.get(e.projectId) || { minutes: 0, phases: {} };
+    t.minutes += e.minutes;
+    if (e.phaseId) t.phases[e.phaseId] = (t.phases[e.phaseId] || 0) + e.minutes;
+    totals.set(e.projectId, t);
+  }
+  const byUsage: Partial<Record<ProjectUsage, BenchmarkSample[]>> = {};
+  for (const [id, t] of totals) {
+    const p = candidates.get(id)!;
+    const hours = t.minutes / 60;
+    const phaseHours = Object.fromEntries(Object.entries(t.phases).map(([ph, m]) => [ph, m / 60]));
+    const usage = p.usage as ProjectUsage;
+    (byUsage[usage] ||= []).push({ projectId: id, name: p.name, floorArea: p.floorArea!, hours, hoursPerM2: hours / p.floorArea!, phaseHours });
+  }
+  const result: Partial<Record<ProjectUsage, UsageBenchmark>> = {};
+  for (const [usage, samples] of Object.entries(byUsage) as [ProjectUsage, BenchmarkSample[]][]) {
+    // Phasenanteile: je Projekt Anteil an seinen phasenbezogenen Stunden, dann über die Projekte gemittelt
+    const shareSum: Record<string, number> = {};
+    let withPhases = 0;
+    for (const s of samples) {
+      const phaseTotal = Object.values(s.phaseHours).reduce((a, b) => a + b, 0);
+      if (phaseTotal <= 0) continue;
+      withPhases++;
+      for (const [ph, h] of Object.entries(s.phaseHours)) shareSum[ph] = (shareSum[ph] || 0) + h / phaseTotal;
+    }
+    const phaseShares = Object.fromEntries(Object.entries(shareSum).map(([ph, sum]) => [ph, sum / withPhases]));
+    result[usage] = {
+      samples: samples.sort((a, b) => a.hoursPerM2 - b.hoursPerM2),
+      hoursPerM2: rangeStats(samples.map(s => s.hoursPerM2)),
+      phaseShares,
+    };
+  }
+  return result;
+}
+
+/** Ergebnis von `estimateEffort`: Stunden gesamt (Bandbreite) und Aufteilung des Medians auf die Phasen. */
+export interface EffortEstimate {
+  total: RangeStats;
+  /** ganze Stunden je Phase (Median × Phasenanteil), in der Reihenfolge der Anteile */
+  phases: { id: string; hours: number }[];
+}
+
+/**
+ * Schätzt den Aufwand eines neuen Projekts aus den Erfahrungswerten:
+ * Stunden = Geschossfläche × Stunden je m² × Anpassungsfaktor (für Median und Bandbreite).
+ *
+ * @param phaseIds nur diese Phasen verteilen (z.B. die Phasen der Offerte); die Anteile werden auf sie
+ *   hochgerechnet, damit Stunden eigener Projektphasen nicht verloren gehen. Fehlt = alle Phasen.
+ * @returns null, wenn es für die Nutzung keine Erfahrungswerte gibt oder Fläche/Faktor fehlen
+ */
+export function estimateEffort(bench: UsageBenchmark | undefined, floorArea: number, factor: number, phaseIds?: string[]): EffortEstimate | null {
+  if (!bench || !bench.hoursPerM2.n || !(floorArea > 0) || !(factor > 0)) return null;
+  const scale = floorArea * factor;
+  const { n, median, low, high } = bench.hoursPerM2;
+  const total = { n, median: Math.round(median * scale), low: Math.round(low * scale), high: Math.round(high * scale) };
+  const shares = Object.entries(bench.phaseShares).filter(([id]) => !phaseIds || phaseIds.includes(id));
+  const shareSum = shares.reduce((s, [, share]) => s + share, 0);
+  const phases = shares
+    .map(([id, share]) => ({ id, hours: Math.round(total.median * share / shareSum) }))
+    .filter(ph => ph.hours > 0);
+  return { total, phases };
 }
 
 /**

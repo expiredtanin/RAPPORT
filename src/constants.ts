@@ -10,7 +10,7 @@
 // falls bestehende Daten betroffen sind — `storage/migrations.js` anpassen.
 // Keine Logik in dieser Datei; Funktionen gehören nach `utils.js`.
 
-import type { AppData, LeadStage, ActivityType, ContactCategory } from "./types";
+import type { AppData, LeadStage, ActivityType, ContactCategory, ProjectUsage } from "./types";
 
 /** localStorage-Key für den gesamten App-State. Nicht ändern ohne Migration (ARCHITECTURE §4). */
 export const STORAGE_KEY = "studio_data_v1";
@@ -65,6 +65,27 @@ export const SIA_PHASE_WEIGHTS: { id: string; label: string; items: { label: str
 
 /** Projekte dieser Kategorien werden erfasst, aber nicht fakturiert. */
 export const NON_BILLING_CATEGORIES = ["Wettbewerb"];
+
+/** Nutzungen für die Aufwandschätzung (gleiche Gruppen wie die Grundmodelle der ETH Value-Methode). */
+export const PROJECT_USAGES: { id: ProjectUsage; label: string; hint: string }[] = [
+  { id: "wohnen", label: "Wohnen", hint: "Mehrfamilienhaus, Einfamilienhaus, Alterswohnen" },
+  { id: "arbeiten", label: "Arbeiten / Dienstleistung", hint: "Büro, Verwaltung, Gewerbe" },
+  { id: "industrie", label: "Industrie", hint: "Produktion, Werkstatt" },
+  { id: "lager", label: "Lager", hint: "Lager, Logistik, Einstellhalle" },
+  { id: "bildung", label: "Bildung / Forschung", hint: "Schule, Kindergarten, Hochschule, Labor" },
+  { id: "gesundheit", label: "Gesundheit / Pflege", hint: "Spital, Pflegeheim, Praxis" },
+];
+
+/**
+ * Anpassungsfaktoren für die Aufwandschätzung, angelehnt an die Einordnung der Value-Methode
+ * (Cynefin: einfach / kompliziert / komplex / chaotisch). 1 = übliches Projekt.
+ */
+export const ESTIMATE_FACTORS: { value: number; label: string; hint: string }[] = [
+  { value: 0.85, label: "Einfach", hint: "Wiederholung, klare Vorgaben, wenig Beteiligte" },
+  { value: 1, label: "Üblich", hint: "Normales Projekt dieser Art" },
+  { value: 1.2, label: "Komplex", hint: "Umbau im Bestand, viele Beteiligte, unklare Vorgaben" },
+  { value: 1.45, label: "Sehr komplex", hint: "Denkmalpflege, Provisorien, laufender Betrieb, grosse Unsicherheit" },
+];
 
 // Projekt-Typen
 export const PROJECT_TYPES = [

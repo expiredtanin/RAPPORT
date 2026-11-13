@@ -2,6 +2,8 @@
 //   "sia"    – Honorar nach SIA-Formel aus Baukosten, Schwierigkeitsgrad und
 //              Teilleistungen (`calcSIAHours`), mal Stundenansatz;
 //   "manual" – Stunden pro Phase und Rolle × Stundensatz der Rolle (`calcManualHours`);
+//              optional vorgeschlagen aus eigenen abgeschlossenen Projekten
+//              (quotes/EffortEstimatePanel, Grundlage in `quote.estimate`);
 //   "free"   – freie Positionen (Menge × Preis), keine Stunden.
 // Die Summen (sub/tax/total/totalHours) werden beim Speichern EINMAL berechnet und
 // mitgespeichert; die Liste zeigt nur diese gespeicherten Werte. Der MWST-Satz wird
@@ -22,6 +24,7 @@ import { SIA_PHASES, SIA_PHASE_WEIGHTS } from "../constants";
 import { calcSIAHours, calcManualHours, generateId, formatCHF, formatDate, formatHours, roundCHF, applyProjectNumberFormat, migrateLinkedQuotes, deriveQuoteBudget, localISODate } from "../utils";
 import { Header, Modal, FormField, StatusSelect, DateInput, ShareButton, SortTh } from "../components/UI";
 import { useConfirm } from "../hooks/useConfirm";
+import { EffortEstimatePanel } from "./quotes/EffortEstimatePanel";
 import type { ManualPhase, Project, Quote, SiaItem, ViewProps } from "../types";
 
 declare global {
@@ -203,7 +206,7 @@ function Quotes({ data, update, saveAll, modal, setModal, setPrintContent, setVi
         alert("Bitte Baukosten eingeben (SIA-Modus)."); return;
       }
     }
-    const q: Quote = { ...form, sub: subTotal, totalHours, tax, total, mwstRate: taxRate, id: (modal?.id as string | undefined) || generateId(), createdAt: modal?.id ? form.createdAt : new Date().toISOString() };
+    const q: Quote = { ...form, estimate: form.mode === "manual" ? form.estimate ?? null : null, sub: subTotal, totalHours, tax, total, mwstRate: taxRate, id: (modal?.id as string | undefined) || generateId(), createdAt: modal?.id ? form.createdAt : new Date().toISOString() };
     const quotes = modal?.id ? (data.quotes||[]).map(x => x.id === modal.id ? q : x) : [...(data.quotes||[]), q];
     update("quotes", quotes);
     setModal(null);
@@ -661,6 +664,12 @@ function Quotes({ data, update, saveAll, modal, setModal, setPrintContent, setVi
           {/* Manueller Modus */}
           {form.mode === "manual" && manCalc && (
             <div>
+              <EffortEstimatePanel
+                key={modal?.id as string || "neu"}
+                data={data} projectId={form.projectId} estimate={form.estimate}
+                phases={form.manualPhases} roles={activeRoles}
+                onApply={(manualPhases, estimate) => setForm(f => ({ ...f, manualPhases, estimate }))}
+              />
               <div style={{ marginBottom: 14, padding: 12, background: "#fff8ed", borderRadius: 6, border: "1px solid #f0e4c4" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
                   <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.08em", color: "var(--text4)" }}>ROLLEN &amp; STUNDENSÄTZE FÜR DIESE OFFERTE</div>

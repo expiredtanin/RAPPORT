@@ -3,10 +3,10 @@
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  calcLohn, calcSIAHours, calcManualHours, deriveQuoteBudget, formatReference, generateQRReference, getWorkdaysInMonth,
+  calcLohn, calcSIAHours, calcManualHours, deriveQuoteBudget, calcOfficeBenchmarks, estimateEffort, rangeStats, formatReference, generateQRReference, getWorkdaysInMonth,
   hashPassword, isQRIban, mod10, parseSeqFromNumber, applyProjectNumberFormat, roundCHF, verifyPassword, formatIban,
 } from "./utils";
-import type { Employee, Quote } from "./types";
+import type { Employee, Project, Quote, TimeEntry } from "./types";
 
 describe("QR-Rechnung", () => {
   it("mod10 rekursiv liefert die Prüfziffer des SIX-Beispiels", () => {
@@ -135,5 +135,62 @@ describe("Passwörter", () => {
     const { hash, salt } = await hashPassword("geheim");
     expect(await verifyPassword("geheim", { passwordHash: hash, passwordSalt: salt })).toBe(true);
     expect(await verifyPassword("falsch", { passwordHash: hash, passwordSalt: salt })).toBe(false);
+  });
+});
+
+describe("Aufwandschätzung aus eigenen Projekten", () => {
+  const proj = (id: string, extra: Partial<Project>): Project =>
+    ({ id, number: id, name: `Projekt ${id}`, clientId: "", billingType: "stundensatz", status: "abgeschlossen", usage: "wohnen", floorArea: 100, ...extra }) as Project;
+  const te = (projectId: string, hours: number, phaseId?: string): TimeEntry =>
+    ({ id: `${projectId}-${phaseId}-${hours}`, date: "2026-01-01", employeeId: "e", projectId, phaseId, minutes: hours * 60 }) as TimeEntry;
+
+  it("rangeStats: unter 5 Werten kleinster bis grösster Wert, ab 5 das 10.–90. Perzentil", () => {
+    expect(rangeStats([3, 1, 2])).toEqual({ n: 3, median: 2, low: 1, high: 3 });
+    const r = rangeStats([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]);
+    expect(r.median).toBe(6);
+    expect(r.low).toBeCloseTo(2);
+    expect(r.high).toBeCloseTo(10);
+    expect(rangeStats([])).toEqual({ n: 0, median: 0, low: 0, high: 0 });
+  });
+
+  it("zählt nur abgeschlossene Projekte mit Nutzung, Fläche und Stunden (ohne Wettbewerb)", () => {
+    const projects = [
+      proj("a", {}),                                      // 300 h / 100 m² = 3
+      proj("b", { floorArea: 200 }),                      // 800 h / 200 m² = 4
+      proj("aktiv", { status: "aktiv" }),
+      proj("ohneFlaeche", { floorArea: 0 }),
+      proj("ohneNutzung", { usage: "" }),
+      proj("wettbewerb", { category: "Wettbewerb" }),
+      proj("buero", { usage: "arbeiten" }),               // 50 h / 100 m²
+    ];
+    const entries = [
+      te("a", 100, "31"), te("a", 200, "51"),
+      te("b", 200, "31"), te("b", 600, "51"),
+      ...["aktiv", "ohneFlaeche", "ohneNutzung", "wettbewerb"].map(id => te(id, 999, "31")),
+      te("buero", 50),
+    ];
+    const b = calcOfficeBenchmarks(projects, entries);
+    expect(Object.keys(b).sort()).toEqual(["arbeiten", "wohnen"]);
+    expect(b.wohnen!.samples.map(s => s.projectId)).toEqual(["a", "b"]);
+    expect(b.wohnen!.hoursPerM2).toEqual({ n: 2, median: 3.5, low: 3, high: 4 });
+    // Anteile je Projekt gemittelt: 31 = (1/3 + 1/4) / 2, 51 = (2/3 + 3/4) / 2
+    expect(b.wohnen!.phaseShares["31"]).toBeCloseTo(7 / 24);
+    expect(b.wohnen!.phaseShares["51"]).toBeCloseTo(17 / 24);
+    // Stunden ohne Phase zählen zur Summe, ergeben aber keine Phasenanteile
+    expect(b.arbeiten!.hoursPerM2.median).toBe(0.5);
+    expect(b.arbeiten!.phaseShares).toEqual({});
+  });
+
+  it("estimateEffort: Fläche × Kennwert × Faktor, Median auf die Phasen verteilt", () => {
+    const b = calcOfficeBenchmarks([proj("a", {}), proj("b", { floorArea: 200 })],
+      [te("a", 100, "31"), te("a", 200, "51"), te("b", 200, "31"), te("b", 600, "51")]);
+    const est = estimateEffort(b.wohnen, 1000, 1.2)!;
+    expect(est.total).toEqual({ n: 2, median: 4200, low: 3600, high: 4800 });
+    expect(est.phases).toEqual([{ id: "31", hours: 1225 }, { id: "51", hours: 2975 }]);
+    // Nur Phasen der Offerte: Anteile werden auf sie hochgerechnet
+    expect(estimateEffort(b.wohnen, 1000, 1.2, ["31"])!.phases).toEqual([{ id: "31", hours: 4200 }]);
+    expect(estimateEffort(b.wohnen, 1000, 1.2, ["99"])!.phases).toEqual([]);
+    expect(estimateEffort(b.lager, 1000, 1)).toBeNull();
+    expect(estimateEffort(b.wohnen, 0, 1)).toBeNull();
   });
 });

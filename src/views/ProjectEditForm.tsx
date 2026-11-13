@@ -2,10 +2,10 @@
 // Projektliste (Projects.tsx) und der Detailansicht (ProjectDetail.tsx).
 
 import React, { useState } from "react";
-import { SIA_PHASES, PROJECT_TYPES, NON_BILLING_CATEGORIES } from "../constants";
+import { SIA_PHASES, PROJECT_TYPES, NON_BILLING_CATEGORIES, PROJECT_USAGES } from "../constants";
 import { calcSIAHours, calcManualHours, deriveQuoteBudget, migrateLinkedQuotes, generateId, formatCHF } from "../utils";
 import { FormField, DateInput } from "../components/UI";
-import type { Project, ProjectPosition, ViewProps } from "../types";
+import type { Project, ProjectPosition, ProjectUsage, ViewProps } from "../types";
 
 /** Formularstand eines Projekts; die Id kommt erst beim Speichern. */
 export type ProjectForm = Omit<Project, "id"> & { id?: string };
@@ -49,6 +49,22 @@ export function ProjectEditForm({ form, setForm, data }: {
             {["aktiv", "pausiert", "abgeschlossen"].map(s => <option key={s}>{s}</option>)}
           </select>
         </FormField>
+      </div>
+      {/* Grundlage für die Aufwandschätzung aus eigenen Projekten (Offerten, Modus «Aufwand») */}
+      <div className="form-row">
+        <FormField label="Nutzung">
+          <select value={form.usage || ""} onChange={e => setForm({ ...form, usage: e.target.value as ProjectUsage | "" })}>
+            <option value="">— keine Angabe —</option>
+            {PROJECT_USAGES.map(u => <option key={u.id} value={u.id} title={u.hint}>{u.label}</option>)}
+          </select>
+        </FormField>
+        <FormField label="Geschossfläche GF (m²)">
+          <input type="number" min={0} step={1} value={form.floorArea ?? ""} placeholder="nach SIA 416"
+            onChange={e => setForm({ ...form, floorArea: e.target.value === "" ? null : Math.max(0, Number(e.target.value)) })} />
+        </FormField>
+        <div style={{ flex: 1, fontSize: 11, color: "var(--text4)", lineHeight: 1.5, alignSelf: "center" }}>
+          Abgeschlossene Projekte mit Nutzung und Fläche liefern die Erfahrungswerte für neue Offerten.
+        </div>
       </div>
       <div className="form-row">
         {NON_BILLING_CATEGORIES.includes(form.category as string) ? (

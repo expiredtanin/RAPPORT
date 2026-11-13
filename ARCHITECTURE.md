@@ -226,7 +226,7 @@ Alle Views liegen in [src/views/](src/views/), werden in [App.tsx](src/App.tsx) 
 | [Time.tsx](src/views/Time.tsx) | ~350 | Wochen-Grid mit Drag&Drop, Tag/Woche/Monat, Absenzen. Teile in [time/](src/views/time/): `timeUtils.ts` (Soll/Saldo/Feiertage, mit `data` als erstem Argument), `WeekGrid`, `WeekForms`, `DayView`, `MonthCalendar`, `SaldoCards`, `FerienModals`, Hooks `useWeekResize`/`useFerienAntrag`/`useExpenses` | **Sehr hoch** |
 | [Invoices.tsx](src/views/Invoices.tsx) | ~300 | Rechnungen, Akonto, QR-Bill, Mahnungen, Planer. Teile in [invoices/](src/views/invoices/): `invoiceHelpers.ts` (`calcTotal`, Nummern, Akonto-Plan), `newInvoiceForm.ts` (`buildNewInvoiceForm`: Vorbefüllung Teil-/Akonto-/Schlussrechnung), `invoiceList.ts`, Dialoge und Tabelle | **Sehr hoch** |
 | [Employees.tsx](src/views/Employees.tsx) | ~240 | Multi-Tab: Stammdaten, Absenzen, Ferien, Lohnabschluss. Teile in [employees/](src/views/employees/): `calc.ts` (`createEmployeeCalc(data)`: Monats-/Ferien-/Überstundensaldo), Tabs und Dialoge | **Sehr hoch** |
-| [Quotes.tsx](src/views/Quotes.tsx) | 980 | Offerten: SIA / manuell / frei, Übernahme als Projekt | Hoch |
+| [Quotes.tsx](src/views/Quotes.tsx) | 980 | Offerten: SIA / manuell / frei, Übernahme als Projekt; im Modus «Aufwand» Schätzung aus eigenen Projekten ([quotes/EffortEstimatePanel](src/views/quotes/EffortEstimatePanel.tsx)) | Hoch |
 | [Protocols.tsx](src/views/Protocols.tsx) | ~880 | Sitzungsprotokolle (Beschluss/Info/Aufgabe); der Mahn-Dialog liegt in components/MahnModal.tsx | Hoch |
 | [Expenses.tsx](src/views/Expenses.tsx) | ~500 | Mitarbeiter-Spesen, Beleg-Upload + Belegerkennung | Hoch |
 | [InternalExpenses.tsx](src/views/InternalExpenses.tsx) | ~400 | Interne Ausgaben (gleich aufgebaut wie Spesen) | Mittel |
@@ -255,6 +255,7 @@ Alle Views liegen in [src/views/](src/views/), werden in [App.tsx](src/App.tsx) 
 **Kalkulation:**
 - `calcSIAHours(baukosten, schwierigkeit, phasen)` — SIA-102-Formel `p = Z1 + Z2/∛B`
 - `calcManualHours(phases, roles)` — Stundenansatz × Stunden pro Rolle
+- `calcOfficeBenchmarks(projects, timeEntries)` / `estimateEffort(bench, gf, faktor, phasen?)` — Aufwandschätzung aus eigenen Projekten: Stunden je m² GF je Nutzung aus abgeschlossenen Projekten (Status «abgeschlossen», `usage` + `floorArea` gesetzt, ohne Wettbewerb), Median und Bandbreite (ab 5 Projekten 10.–90. Perzentil, sonst min–max), Phasenanteile gemittelt. Gleicher Aufbau wie die ETH Value-Methode (Bezugsgrösse × Kennwert × Anpassungsfaktor, sechs Nutzungen = `PROJECT_USAGES`), aber nur mit eigenen Zahlen — deren Kennwerte sind nicht öffentlich und werden bewusst nicht nachgebaut. UI: [quotes/EffortEstimatePanel](src/views/quotes/EffortEstimatePanel.tsx) im Offerten-Modus «Aufwand», Grundlage bleibt als `quote.estimate`
 - `deriveQuoteBudget(linkedQuotes, allQuotes, roles)` — Aggregiert Offerten zu Projekt-Budget
 - `calcLohn(emp, monat, spesen, bonus)` — AHV/ALV/BVG/NBU/KTG/Quellensteuer
 

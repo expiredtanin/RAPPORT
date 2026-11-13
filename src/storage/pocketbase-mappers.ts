@@ -148,6 +148,9 @@ export const fromDB = {
       // für Akonto-/Teilrechnungen (Restbudget), nicht neu berechnet.
       budgetAmount: row.budgetAmount ?? null,
       phasesBudget: row.phasesBudget || [],
+      // Aufwandschätzung (PB-Migration effort_estimate); leer bei Altdaten.
+      usage: row.usage || "",
+      floorArea: row.floorArea || null,
       // PocketBase setzt "created" automatisch beim Insert — Projects.jsx
       // nutzt es als Fallback für die Jahres-Gruppierung, wenn startDate fehlt.
       createdAt: row.created || "",
@@ -206,6 +209,8 @@ export const fromDB = {
       // ausschliesslich "q.sia". "siaConfig" bleibt der PocketBase-Feldname.
       sia: row.siaConfig || null,
       manualPhases: row.manualPhases || [],
+      // Grundlage einer Schätzung aus eigenen Projekten (PB-Migration effort_estimate)
+      estimate: row.estimate || null,
       freeItems: row.freeItems || [],
       quoteRoles: row.quoteRoles || [],
       // Summen werden von Quotes.jsx EINMAL beim Speichern berechnet (calcSIAHours/
@@ -556,6 +561,7 @@ export const toDB = {
       internalMembers: p.internalMembers || [],
       linkedQuotes: p.linkedQuotes || [],
       budgetAmount: p.budgetAmount ?? null, phasesBudget: p.phasesBudget || [],
+      usage: p.usage || "", floorArea: p.floorArea || null,
     };
   },
 
@@ -585,6 +591,7 @@ export const toDB = {
       status: q.status || "entwurf",
       siaConfig: q.sia || null, manualPhases: q.manualPhases || [],
       freeItems: q.freeItems || [], quoteRoles: q.quoteRoles || [],
+      estimate: q.estimate || null,
       sub: q.sub || 0, totalHours: q.totalHours || 0, tax: q.tax || 0, total: q.total || 0,
       mwstRate: q.mwstRate ?? null,
     };
