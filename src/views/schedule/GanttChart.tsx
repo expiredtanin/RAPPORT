@@ -24,7 +24,7 @@ type Row = { type: "group"; group: string; start: DateStr; end: DateStr; count: 
 
 export function GanttChart({
   items, dayWidth, labelWidth = 300, from, to, today, holidays = [], critical, baseline, conflicts = [],
-  selectedId, onSelect, onChange, onLink, renderMeta, collapsible = true,
+  selectedId, onSelect, onChange, onLink, renderMeta, barColor, collapsible = true,
 }: {
   items: ScheduleItem[];
   dayWidth: number;
@@ -51,6 +51,8 @@ export function GanttChart({
   /** Zusatz rechts in der Zeilenbeschriftung (z.B. Verantwortliche, Soll/Ist) */
   renderMeta?: (item: ScheduleItem) => ReactNode;
   collapsible?: boolean;
+  /** eigene Balkenfarbe je Element (CSS-Farbe, z.B. Ferien in der Büroübersicht) */
+  barColor?: (item: ScheduleItem) => string | undefined;
 }) {
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [drag, setDrag] = useState<Drag | null>(null);
@@ -282,7 +284,7 @@ export function GanttChart({
             return (
               <g key={it.id} data-item={it.id}>
                 {base && <rect x={x(base.start)} y={y + ROW_H - 5} width={Math.max(dayWidth, x(base.end) + dayWidth - x(base.start))} height={3} fill="var(--text4)" opacity={0.5} />}
-                <rect x={bx} y={by} width={bw} height={bh} rx={3} fill={isCrit ? "var(--negative)" : "var(--accent)"} fillOpacity={isCrit ? 0.3 : 0.35}
+                <rect x={bx} y={by} width={bw} height={bh} rx={3} fill={isCrit ? "var(--negative)" : barColor?.(it) || "var(--accent)"} fillOpacity={isCrit ? 0.3 : 0.35}
                   stroke={isCrit ? "var(--negative)" : sel ? "var(--text)" : "none"} strokeWidth={isCrit || sel ? 1.6 : 0}
                   style={{ cursor: onChange ? "grab" : "pointer" }} onPointerDown={e => startDrag(e, it.id, "move")} />
                 {prog > 0 && <rect x={bx} y={by} width={bw * prog / 100} height={bh} rx={3} fill={isCrit ? "var(--negative)" : "var(--accent)"} opacity={0.8} pointerEvents="none" />}

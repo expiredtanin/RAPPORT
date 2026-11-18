@@ -34,6 +34,6 @@ export function getVisibleNavItems(userPermissions: string[] | null): NavItem[] 
       const ch = item.children.filter(c => userPermissions.includes(c.id));
       return ch.length > 0 ? { ...item, children: ch } : null;
     }
-    return userPermissions.includes(item.id) ? item : null;
+    return userPermissions.includes(item.id) || (item.alsoWith && userPermissions.includes(item.alsoWith)) ? item : null;
   }).filter((item): item is NavItem => !!item);
 }

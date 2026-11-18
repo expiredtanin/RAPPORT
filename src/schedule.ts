@@ -316,3 +316,23 @@ const CONSTRUCTION_ROWS: TemplateRow[] = [
 export function constructionTemplate(start: DateStr, newId: () => string): ScheduleItem[] {
   return buildFromTemplate(CONSTRUCTION_ROWS, "bau", start, newId);
 }
+
+// ─── Auslastung (Büroübersicht) ────────────────────────────────────────────────
+
+/** Tage, an denen sich mindestens zwei Zeiträume überschneiden (Meilensteine zählen nicht). */
+export function overlapDays(ranges: { start: DateStr; end: DateStr }[]): number {
+  const count = new Map<number, number>();
+  for (const r of ranges) for (let d = dayNum(r.start); d <= dayNum(r.end); d++) count.set(d, (count.get(d) || 0) + 1);
+  let n = 0;
+  for (const c of count.values()) if (c >= 2) n++;
+  return n;
+}
+
+/** Tage, an denen ein Zeitraum aus `tasks` in einen aus `blocked` fällt (z.B. Aufgabe während Ferien). */
+export function blockedDays(tasks: { start: DateStr; end: DateStr }[], blocked: { start: DateStr; end: DateStr }[]): number {
+  const off = new Set<number>();
+  for (const b of blocked) for (let d = dayNum(b.start); d <= dayNum(b.end); d++) off.add(d);
+  const hit = new Set<number>();
+  for (const t of tasks) for (let d = dayNum(t.start); d <= dayNum(t.end); d++) if (off.has(d)) hit.add(d);
+  return hit.size;
+}

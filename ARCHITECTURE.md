@@ -20,6 +20,7 @@ APP/
 ├── src/                          React-Frontend (Migration nach TypeScript läuft, siehe TYPESCRIPT-MIGRATION.md)
 │   ├── main.tsx                  Entry: createRoot().render(<App />)
 │   ├── App.tsx                   Root: Login/Cloud-Setup, View-Routing, Layout  [~420 Z.]
+│   ├── schedule.ts               Terminprogramm (reine Funktionen): Vorlagen SIA/BKP, Nachrücken, Kreise, kritischer Weg, Soll/Ist, Auslastung
 │   ├── crm.ts                    CRM-Auswertungen (reine Funktionen): Umsatz pro Kunde/Empfehler/Herkunft, Trefferquote, Pipeline, Wiedervorlagen
 │   ├── auth.ts                   getUserPermissions / getVisibleNavItems / getUserInitials (reine Funktionen)
 │   ├── hooks/                    useStudioData (data, Laden, save/update, Realtime, Auto-überfällig, saveError), useNavigation (view + Verlauf), useAppearance (Dark Mode, Zoom, Sidebar), useConfirm (Bestätigungsdialog), useCalendarNav (Kalender-Dropdown), useAttachment (Beleg zum Anzeigen: `data:`-URL oder Datei aus dem Datenordner)
@@ -36,7 +37,7 @@ APP/
 │   ├── storage/file-adapter.ts   Datenordner (Rapport-Ordner): studio.json, time/, backups/; Anhänge über file-assets.ts nach Dateien/
 │   ├── storage/data-folder.ts    Rapport-Ordner anlegen/wählen/umziehen (Dialog, Standard ~/Documents/Rapport)
 │   ├── *.test.ts                 Vitest-Tests neben dem Code (`npm test`): utils, storage/file-adapter, storage/validate
-│   ├── views/                    23 Top-Level-Screens, lazy-geladen; Unterordner je grosser View: settings/, time/, invoices/, employees/, project-detail/
+│   ├── views/                    23 Top-Level-Screens, lazy-geladen; Unterordner je grosser View: settings/, time/, invoices/, employees/, project-detail/, schedule/ (Zeitstrahl + Terminprogramm-Editor), quotes/
 │   ├── components/               ErrorBoundary.tsx (fängt Render-Fehler je Ansicht und ganz aussen), UI.tsx (StatusBadge, Modal, FormField, SortTh, …; nur Komponenten, Hooks liegen in hooks/), Sidebar.tsx, InfoModals.tsx (Changelog/Über), MahnModal.tsx (Rechnungen/Buchhaltung), ReceiptViewer.tsx (Belege), UpdateNotifier, UpdatesSupport
 │   ├── print/                    PrintComponents.tsx (Einstieg PrintView + DocPreview), docs/ — Vorlagen je Fachbereich (InvoicePrint mit QR, QuotePrint, ProtocolPrint, …), docDesign/docAssets/paginate
 │   ├── utils/updater.ts          Wrapper um @tauri-apps/plugin-updater + plugin-process
@@ -291,13 +292,19 @@ Alle Views liegen in [src/views/](src/views/), werden in [App.tsx](src/App.tsx) 
 - `migrateDashboardLayout(val)` — Alte Widget-IDs → Row-basiertes Layout
 - `getFeiertageForYear`, `getWorkdaysInMonth`, `getSollStunden`
 
+**Terminprogramm** (`Project.schedule` = `{ items: ScheduleItem[], baselines? }`, Logik in [schedule.ts](src/schedule.ts)):
+- Zwei Programme in einer Liste, getrennt über `ScheduleItem.track`: `planung` (Planungsterminprogramm, Gruppen = SIA-Phasen, `phaseId` für Soll/Ist der Stunden) und `bau` (Bauprogramm, Gruppen wie «Rohbau», `bkp`, `contractorId` = Unternehmer aus den Kontakten). Aufgaben haben Start und Ende (beide inklusive), Meilensteine Start = Ende. Abhängigkeiten nur «Ende → Anfang» mit Abstand in Kalendertagen (`lagDays`), `auto: false` = rückt nicht nach, Konflikt wird gestrichelt rot gezeigt.
+- Gerechnet wird in **Kalendertagen**; Wochenenden/Feiertage sind nur hinterlegt. Nach jeder Änderung `shiftSuccessors` (nur nach hinten); `wouldCreateCycle` verhindert Kreise; `criticalPath` = Rückwärtsrechnung auf den geplanten Terminen (Puffer ≤ 0). «Stand einfrieren» speichert `baselines[track]` (Soll), «Vergleich» zeigt ihn als grauen Strich und die Verschiebung in Tagen.
+- UI: [schedule/ScheduleEditor](src/views/schedule/ScheduleEditor.tsx) als Karte in der Projekt-Detailansicht (bearbeiten mit Recht `projects`), [schedule/GanttChart](src/views/schedule/GanttChart.tsx) (reines SVG, keine Bibliothek; ziehen/Länge/Pfeile nur mit `onChange`/`onLink`), Büroübersicht [Schedules.tsx](src/views/Schedules.tsx) (Nav «Terminplanung», sichtbar mit `termine` oder `projects` über `NavItem.alsoWith`). Druck `schedule` auf A3 quer.
+- **Cloud:** JSON-Feld `projects.schedule` (Migration `1787780000_project_schedule.js`), keine eigene Collection.
+
 ---
 
 ## 7. Print-Modul
 
-[src/print/PrintComponents.tsx](src/print/PrintComponents.tsx) (~310 Zeilen) exportiert `<PrintView>`, das via `setPrintContent(...)` aus App.tsx getriggert wird, und `<DocPreview>` für Einstellungen → Erscheinungsbild. Die Vorlagen selbst liegen je Fachbereich in [src/print/docs/](src/print/docs/) (`InvoicePrint.tsx` mit QR-Zahlteil, `QuotePrint`, `ContractPrint`, `DeliveryNotePrint`, `ProtocolPrint`, `LetterPrint`, `ProjectPrints`, `PayrollPrint`, `AccountingPrint`, `EmployeePrints`, `StudioBudgetPrint`); gemeinsame Typen und `HEADING` in `docs/shared.ts`.
+[src/print/PrintComponents.tsx](src/print/PrintComponents.tsx) (~310 Zeilen) exportiert `<PrintView>`, das via `setPrintContent(...)` aus App.tsx getriggert wird, und `<DocPreview>` für Einstellungen → Erscheinungsbild. Die Vorlagen selbst liegen je Fachbereich in [src/print/docs/](src/print/docs/) (`InvoicePrint.tsx` mit QR-Zahlteil, `QuotePrint`, `ContractPrint`, `DeliveryNotePrint`, `ProtocolPrint`, `LetterPrint`, `ProjectPrints`, `PayrollPrint`, `AccountingPrint`, `EmployeePrints`, `StudioBudgetPrint`, `SchedulePrint`); gemeinsame Typen und `HEADING` in `docs/shared.ts`.
 
-**Content-Typen:** `invoice`, `invoice+qr`, `qrbill`, `quote`, `letter`, `lieferschein`, `protokoll`, `lohn`, `studioBudget`, `buchhaltung`, `projectDetail`, `projectsOverview`, `mitarbeiterOverview`, `timeReport`.
+**Content-Typen:** `invoice`, `invoice+qr`, `qrbill`, `quote`, `letter`, `lieferschein`, `protokoll`, `lohn`, `studioBudget`, `buchhaltung`, `projectDetail`, `projectsOverview`, `mitarbeiterOverview`, `timeReport`, `schedule` (Terminprogramm, **A3 quer** 420×297 mm: gleiche Seitenhöhe wie A4, daher gleiche Paginierung; ohne Briefpapier).
 
 **Druck-Trigger:** `getCurrentWebviewWindow().print()` (Tauri WebView) oder Fallback `window.print()` (Browser).
 

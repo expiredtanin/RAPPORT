@@ -45,6 +45,7 @@ import { LATEST_VERSION, versionLabel } from "./changelog";
 // Code-split: each view loads on demand to keep the initial bundle small.
 const Dashboard      = lazy(() => import("./views/Dashboard"));
 const Projects       = lazy(() => import("./views/Projects"));
+const Schedules      = lazy(() => import("./views/Schedules"));
 const ProjectDetail  = lazy(() => import("./views/ProjectDetail"));
 const Time           = lazy(() => import("./views/Time"));
 const Expenses       = lazy(() => import("./views/Expenses"));
@@ -432,6 +433,7 @@ export default function App() {
           {hasViewAccess && view === "pinnwand"  && <Pinboard  data={data} update={update} currentUser={currentUser} />}
           {hasViewAccess && view === "projects" && !selectedProjectId && <Projects data={data} update={update} saveAll={save} modal={modal} setModal={setModal} onSelect={setSelectedProjectId} setPrintContent={setPrintContent} currentUser={currentUser} userPermissions={userPermissions} />}
           {hasViewAccess && view === "projects" && selectedProjectId && <ProjectDetail data={data} update={update} saveAll={save} projectId={selectedProjectId} onBack={() => setSelectedProjectId(null)} setPrintContent={setPrintContent} modal={modal} setModal={setModal} currentUser={currentUser} userPermissions={userPermissions} />}
+          {hasViewAccess && view === "termine" && <Schedules data={data} setView={navigate} onSelectProject={setSelectedProjectId} />}
           {hasViewAccess && view === "time" && <Time data={data} update={update} currentUser={currentUser} userPermissions={userPermissions} setPrintContent={setPrintContent} />}
           {hasViewAccess && view === "crm" && <Crm data={data} update={update} setView={navigate} />}
           {hasViewAccess && view === "quotes" && <Quotes data={data} update={update} saveAll={save} modal={modal} setModal={setModal} setPrintContent={setPrintContent} setView={navigate} onSelectProject={setSelectedProjectId} />}

@@ -134,6 +134,8 @@ export interface NavItem {
   label: string;
   icon?: string;
   children?: NavItem[];
+  /** auch sichtbar mit dieser Berechtigung (neue Ansicht, ohne bestehende Rollen anpassen zu müssen) */
+  alsoWith?: string;
 }
 
 /** Seitenleiste. `id` dient zugleich als Permission-Id in `AppRole.permissions`. Kinder haben kein Icon. */
@@ -141,6 +143,7 @@ export const NAV_ITEMS: NavItem[] = [
   { id: "dashboard", label: "Übersicht", icon: "grid_view" },
   { id: "pinnwand", label: "Pinnwand", icon: "campaign" },
   { id: "projects", label: "Projekte", icon: "work" },
+  { id: "termine", label: "Terminplanung", icon: "view_timeline", alsoWith: "projects" },
   { id: "time", label: "Zeiterfassung", icon: "schedule" },
   { id: "crm", label: "Akquise", icon: "leaderboard" },
   { id: "quotes", label: "Offerten", icon: "request_quote" },
