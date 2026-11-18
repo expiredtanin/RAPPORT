@@ -31,6 +31,13 @@ export const numToDate = (n: number): DateStr => new Date(n * DAY).toISOString()
 /** Datum plus `days` Kalendertage. */
 export const addDays = (d: DateStr, days: number): DateStr => numToDate(dayNum(d) + days);
 
+/** Dauer lesbar: «5 T», «3 W», «12 W 2 T» (Kalendertage). */
+export function formatDuration(days: number): string {
+  if (days < 14) return `${days} T`;
+  const w = Math.floor(days / 7), r = days % 7;
+  return r ? `${w} W ${r} T` : `${w} W`;
+}
+
 /** Dauer in Tagen (beide Tage inklusive); Meilenstein = 0. */
 export const durationDays = (it: Pick<ScheduleItem, "kind" | "start" | "end">): number =>
   it.kind === "milestone" ? 0 : Math.max(1, dayNum(it.end) - dayNum(it.start) + 1);

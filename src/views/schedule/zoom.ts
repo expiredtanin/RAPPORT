@@ -1,8 +1,9 @@
-// Zoomstufen des Zeitstrahls (GanttChart): Breite eines Tages in Pixeln.
+// Zoomstufen des Zeitstrahls (GanttChart): Breite eines Tages in Pixeln; «alles» passt ein (GanttChart `fit`).
 
-/** Zoomstufen: Tage, Wochen, Monate. */
+/** Zoomstufen: Tage, Wochen, Monate, Alles. */
 export const ZOOM_LEVELS: { id: string; label: string; dayWidth: number }[] = [
   { id: "tag", label: "Tage", dayWidth: 22 },
   { id: "woche", label: "Wochen", dayWidth: 8 },
   { id: "monat", label: "Monate", dayWidth: 2.6 },
+  { id: "alles", label: "Alles", dayWidth: 2 },
 ];

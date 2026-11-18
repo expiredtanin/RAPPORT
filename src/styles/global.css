@@ -179,3 +179,10 @@ label { font-size: 10px; letter-spacing: 0.09em; color: var(--text4); font-weigh
   .hide-mobile { display: none !important; }
   .hide-compact { display: none !important; }
 }
+
+/* Terminprogramm (views/schedule/GanttChart): Ziehgriffe und Verbindungspunkt nur bei Hover/Auswahl */
+.gantt .gantt-handle { opacity: 0; transition: opacity 0.12s; }
+.gantt .gantt-knob { opacity: 0; transition: opacity 0.12s; }
+.gantt .gantt-item:hover .gantt-handle { opacity: 0.45; }
+.gantt .gantt-item:hover .gantt-knob, .gantt .gantt-selected .gantt-knob { opacity: 1; }
+@media print { .gantt .gantt-knob, .gantt .gantt-handle { display: none; } }

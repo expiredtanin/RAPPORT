@@ -2,7 +2,7 @@
 
 import { describe, expect, it } from "vitest";
 import {
-  addDays, constructionTemplate, criticalPath, dayNum, dependencyConflicts, durationDays, groupSpans,
+  addDays, formatDuration, constructionTemplate, criticalPath, dayNum, dependencyConflicts, durationDays, groupSpans,
   phaseProgress, planningTemplate, scheduleOf, shiftSuccessors, wouldCreateCycle, baselineDelta, overlapDays, blockedDays,
 } from "./schedule";
 import { SIA_PHASES } from "./constants";
@@ -20,6 +20,7 @@ describe("Datum und Dauer", () => {
     expect(dayNum("2026-03-30") - dayNum("2026-03-28")).toBe(2); // Zeitumstellung egal (UTC)
     expect(durationDays(task("a", "2026-01-05", "2026-01-09"))).toBe(5);
     expect(durationDays(ms("m", "2026-01-05"))).toBe(0);
+    expect([5, 14, 16, 84].map(formatDuration)).toEqual(["5 T", "2 W", "2 W 2 T", "12 W"]);
   });
 });
 

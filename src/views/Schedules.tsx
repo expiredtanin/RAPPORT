@@ -22,7 +22,7 @@ export default function Schedules({ data, setView, onSelectProject }: Pick<ViewP
   const [mode, setMode] = useState<Mode>("projekte");
   const [tracks, setTracks] = useState<ScheduleTrack[]>(["planung", "bau"]);
   const [onlyActive, setOnlyActive] = useState(true);
-  const [zoom, setZoom] = useState("monat");
+  const [zoom, setZoom] = useState("alles");
   const dayWidth = ZOOM_LEVELS.find(z => z.id === zoom)!.dayWidth;
   const projects = (data.projects || []).filter(p => !onlyActive || p.status !== "abgeschlossen");
 
@@ -36,8 +36,10 @@ export default function Schedules({ data, setView, onSelectProject }: Pick<ViewP
       const group = `${p.number ? p.number + " " : ""}${p.name}`;
       for (const track of tracks) {
         const list = trackItems(s, track);
-        for (const g of groupSpans(list)) {
-          out.push({ id: `${p.id}|${track}|${g.group}`, label: g.group || TRACK_LABELS[track], kind: "task", track, group, start: g.start, end: g.end });
+        // Sammelbalken je Gruppe nur über Aufgaben (Meilensteine erscheinen einzeln); bei beiden Programmen mit Kennzeichen
+        const prefix = tracks.length > 1 ? (track === "planung" ? "Planung · " : "Bau · ") : "";
+        for (const g of groupSpans(list.filter(it => it.kind === "task"))) {
+          out.push({ id: `${p.id}|${track}|${g.group}`, label: prefix + (g.group || TRACK_LABELS[track]), kind: "task", track, group, start: g.start, end: g.end });
         }
         for (const m of list.filter(it => it.kind === "milestone")) {
           out.push({ ...m, id: `${p.id}|${m.id}`, group, deps: [] });
@@ -152,7 +154,9 @@ export default function Schedules({ data, setView, onSelectProject }: Pick<ViewP
         </div>
       ) : (
         <GanttChart
-          items={items} dayWidth={dayWidth} today={today} holidays={holidays} labelWidth={320}
+          items={items} dayWidth={dayWidth} fit={zoom === "alles"} today={today} holidays={holidays} labelWidth={320}
+          labelTitle={mode === "projekte" ? "Projekt / Phase" : "Person / Aufgabe"}
+          describe={it => (projectOf.has(it.id) ? "Klick öffnet das Projekt" : undefined)}
           from={addDays(today, -30)} to={to}
           onSelect={open}
           barColor={it => (it.id.startsWith("ferien|") || it.id.startsWith("abs|") ? "var(--info)" : undefined)}
