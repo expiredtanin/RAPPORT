@@ -151,6 +151,8 @@ export const fromDB = {
       // Aufwandschätzung (PB-Migration effort_estimate); leer bei Altdaten.
       usage: row.usage || "",
       floorArea: row.floorArea || null,
+      // Terminprogramm (PB-Migration project_schedule)
+      schedule: row.schedule || null,
       // PocketBase setzt "created" automatisch beim Insert — Projects.jsx
       // nutzt es als Fallback für die Jahres-Gruppierung, wenn startDate fehlt.
       createdAt: row.created || "",
@@ -562,6 +564,7 @@ export const toDB = {
       linkedQuotes: p.linkedQuotes || [],
       budgetAmount: p.budgetAmount ?? null, phasesBudget: p.phasesBudget || [],
       usage: p.usage || "", floorArea: p.floorArea || null,
+      schedule: p.schedule || null,
     };
   },
 

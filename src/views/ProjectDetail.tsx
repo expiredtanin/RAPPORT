@@ -1,5 +1,5 @@
-// Projekt-Detailansicht: Budget- und Zeitauswertung, Phasen, Offerten/Nachträge, Rechnungen,
-// Protokolle und Zeiteinträge eines Projekts (Datenmodell siehe Kopf von Projects.tsx).
+// Projekt-Detailansicht: Budget- und Zeitauswertung, Phasen, Terminprogramm (Planung/Bau),
+// Offerten/Nachträge, Rechnungen, Protokolle und Zeiteinträge eines Projekts (Datenmodell siehe Kopf von Projects.tsx).
 // Berechtigungen: Offerten- und Rechnungsdaten nur mit «quotes» bzw. «invoices» (`userPermissions`).
 
 import React, { useState } from "react";
@@ -20,6 +20,7 @@ import { InvoicesCard } from "./project-detail/InvoicesCard";
 import { ProtocolsCard } from "./project-detail/ProtocolsCard";
 import { SettingsModal } from "./project-detail/SettingsModal";
 import { BudgetModal } from "./project-detail/BudgetModal";
+import { ScheduleEditor } from "./schedule/ScheduleEditor";
 
 export default
 function ProjectDetail({ data, update, saveAll, projectId, onBack, setPrintContent, userPermissions }: Pick<ViewProps, "data" | "update" | "saveAll" | "setPrintContent" | "modal" | "setModal" | "currentUser" | "userPermissions"> & {
@@ -214,6 +215,9 @@ function ProjectDetail({ data, update, saveAll, projectId, onBack, setPrintConte
       {((project.enabledPhases || []).length > 0 || positions.some(pos => entries.some(e => e.positionId === pos.code)) || customPhaseStats.length > 0) && (
         <PhaseCard project={project} data={data} entries={entries} positions={positions} phaseStats={phaseStats} customPhaseStats={customPhaseStats} customMinsTotal={customMinsTotal} unassignedMins={unassignedMins} phaseChartView={phaseChartView} setPhaseChartView={setPhaseChartView} />
       )}
+
+      {/* Terminprogramm: Planung (SIA-Phasen) und Bau (BKP) */}
+      <ScheduleEditor project={project} data={data} update={update} setPrintContent={setPrintContent} canEdit={isAdmin || userPermissions.includes("projects")} />
 
       {/* Mitarbeiter-Auswertung */}
       {canSeeMitarbeiter && <EmployeeCard project={project} data={data} entries={entries} billingType={billingType} />}

@@ -186,6 +186,56 @@ export interface QuoteEstimate {
   hoursPerM2: number;
 }
 
+/** Terminprogramm: «planung» = Planungsterminprogramm (SIA-Phasen), «bau» = Bauprogramm (BKP-Arbeiten). */
+export type ScheduleTrack = "planung" | "bau";
+
+/** Abhängigkeit «beginnt nach»: das Element startet frühestens `lagDays` Tage nach dem Ende von `fromId`. */
+export interface ScheduleDependency {
+  fromId: Id;
+  /** Abstand in Kalendertagen nach dem Ende des Vorgängers (Standard 0, negativ = Überlappung) */
+  lagDays?: number;
+  /** false = Nachfolger rutscht beim Verschieben nicht automatisch mit (nur Hinweis bei Konflikt) */
+  auto?: boolean;
+}
+
+/** Eine Zeile im Terminprogramm: Aufgabe (Balken) oder Meilenstein (Raute, Start = Ende). */
+export interface ScheduleItem {
+  id: Id;
+  label: string;
+  kind: "task" | "milestone";
+  track: ScheduleTrack;
+  /** Gruppe für die Darstellung, z.B. «31 Vorprojekt» oder «Rohbau»; leer = ohne Gruppe */
+  group?: string;
+  /** Planung: zugehörige SIA-Phase (für Soll/Ist der Stunden) */
+  phaseId?: string;
+  /** Bau: BKP-Nummer, z.B. «211» */
+  bkp?: string;
+  /** erster Tag (inklusive) */
+  start: DateStr;
+  /** letzter Tag (inklusive); bei Meilensteinen = start */
+  end: DateStr;
+  /** verantwortliche Person im Büro (Employee.id) */
+  assigneeId?: Id | null;
+  /** ausführende Firma (Person.id), v.a. im Bauprogramm */
+  contractorId?: Id | null;
+  /** Fortschritt 0–100 % */
+  progress?: number;
+  note?: string;
+  deps?: ScheduleDependency[];
+}
+
+/** Eingefrorener Stand eines Terminprogramms zum Vergleich (Soll) mit dem aktuellen Stand. */
+export interface ScheduleBaseline {
+  savedAt: Timestamp;
+  items: { id: Id; start: DateStr; end: DateStr }[];
+}
+
+/** Terminprogramm eines Projekts (beide Programme in einer Liste, getrennt über `track`). */
+export interface ProjectSchedule {
+  items: ScheduleItem[];
+  baselines?: Partial<Record<ScheduleTrack, ScheduleBaseline>>;
+}
+
 export interface Project {
   id: Id;
   number: string;
@@ -216,6 +266,8 @@ export interface Project {
   usage?: ProjectUsage | "";
   /** Geschossfläche GF nach SIA 416 in m² (für die Aufwandschätzung) */
   floorArea?: number | null;
+  /** Terminprogramm (Planung und Bau), siehe schedule.ts */
+  schedule?: ProjectSchedule | null;
   createdAt?: Timestamp;
 }
 
