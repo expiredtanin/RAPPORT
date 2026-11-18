@@ -227,8 +227,9 @@ export function GanttChart({
       const xs = x(n), xe = x(Math.min(next, range.e + 1));
       // Beschriftung nach Platz: «Mär 2027», «Mär 27», «M» (Januar mit Jahr), sonst keine
       const w = xe - xs;
-      const label = w > 54 ? `${MONTHS[m - 1]} ${y}` : w > 34 ? `${MONTHS[m - 1]} ${String(y).slice(2)}`
-        : w > 9 ? (m === 1 && w > 22 ? `’${String(y).slice(2)}` : MONTHS[m - 1][0]) : "";
+      // Schwellen ≈ Textbreite bei 10 px (6 px je Zeichen) plus Rand, damit Nachbarn nicht zusammenstossen
+      const label = w > 60 ? `${MONTHS[m - 1]} ${y}` : w > 46 ? `${MONTHS[m - 1]} ${String(y).slice(2)}`
+        : w > 12 ? (m === 1 && w > 26 ? `’${String(y).slice(2)}` : MONTHS[m - 1][0]) : "";
       months.push({ x: xs, w, label });
     }
     if (dow === 1 && dw * 7 >= 22) weeks.push({ x: x(n), label: `${getWeekNumber(date + "T00:00:00")}` });

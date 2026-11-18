@@ -303,31 +303,35 @@ export function ScheduleEditor({ project, data, update, setPrintContent, canEdit
           </div>
 
           {/* Auswahl */}
-          <div style={{ minHeight: 38, marginBottom: 8, padding: "6px 10px", borderRadius: 6, background: selected ? "var(--surface2)" : "transparent",
-            border: `1px ${selected ? "solid" : "dashed"} var(--border)`, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", fontSize: 12 }}>
+          {/* Feste Höhe, einzeilig: Auswählen darf den Zeitstrahl nicht verschieben (Doppelklick) */}
+          <div style={{ height: 46, boxSizing: "border-box", marginBottom: 8, padding: "6px 10px", borderRadius: 6, background: selected ? "var(--surface2)" : "transparent",
+            border: `1px ${selected ? "solid" : "dashed"} var(--border)`, display: "flex", gap: 8, alignItems: "center", flexWrap: "nowrap", fontSize: 12, overflow: "hidden" }}>
             {selected ? <>
-              <strong style={{ fontWeight: 600 }}>{selected.kind === "milestone" ? "◆ " : ""}{selected.label}</strong>
-              <span style={{ color: "var(--text3)" }}>
-                {selected.kind === "milestone" ? fmtDate(selected.start) : `${fmtDate(selected.start)} – ${fmtDate(selected.end)} · ${formatDuration(durationDays(selected))}`}
+              <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+                title={`${selected.label} · ${selected.kind === "milestone" ? fmtDate(selected.start) : `${fmtDate(selected.start)} – ${fmtDate(selected.end)}`}`}>
+                <strong style={{ fontWeight: 600 }}>{selected.kind === "milestone" ? "◆ " : ""}{selected.label}</strong>
+                <span style={{ color: "var(--text3)", marginLeft: 10 }}>
+                  {selected.kind === "milestone" ? fmtDate(selected.start) : `${fmtDate(selected.start)} – ${fmtDate(selected.end)} · ${formatDuration(durationDays(selected))}`}
+                </span>
+                {selFloat !== undefined && <span style={{ marginLeft: 10, color: selFloat <= 0 ? "var(--negative)" : "var(--text4)" }}>{selFloat <= 0 ? "kritisch" : `Puffer ${formatDuration(selFloat)}`}</span>}
               </span>
-              {selFloat !== undefined && <span style={{ color: selFloat <= 0 ? "var(--negative)" : "var(--text4)" }}>{selFloat <= 0 ? "kritisch" : `Puffer ${formatDuration(selFloat)}`}</span>}
-              <div style={{ flex: 1 }} />
               {canEdit && <>
-                <button className="btn btn-ghost" style={smallBtn} onClick={() => setEditing({ item: selected, isNew: false })}>Bearbeiten</button>
-                <button className="btn btn-ghost" style={smallBtn} onClick={() => addItem("task")}>+ Folgeaufgabe</button>
-                <button className="btn btn-ghost" style={{ ...smallBtn, color: "var(--negative)" }} onClick={() => removeItem(selected)}>Löschen</button>
+                <button className="btn btn-ghost" style={{ ...smallBtn, flexShrink: 0 }} onClick={() => setEditing({ item: selected, isNew: false })}>Bearbeiten</button>
+                <button className="btn btn-ghost" style={{ ...smallBtn, flexShrink: 0 }} onClick={() => addItem("task")}>+ Folgeaufgabe</button>
+                <button className="btn btn-ghost" style={{ ...smallBtn, flexShrink: 0, color: "var(--negative)" }} onClick={() => removeItem(selected)}>Löschen</button>
               </>}
-              <button className="btn btn-ghost" style={{ ...smallBtn, padding: "4px 8px" }} onClick={() => setSelectedId(null)} title="Auswahl aufheben (Esc)">✕</button>
+              <button className="btn btn-ghost" style={{ ...smallBtn, padding: "4px 8px", flexShrink: 0 }} onClick={() => setSelectedId(null)} title="Auswahl aufheben (Esc)">✕</button>
             </> : (
-              <span style={{ color: "var(--text4)", fontSize: 11 }}>
+              <span style={{ color: "var(--text4)", fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>
                 {canEdit
                   ? "Klick wählt aus · Doppelklick bearbeitet · Balken ziehen verschiebt (in Wochen, mit Alt tageweise) · Enden ziehen ändert die Dauer · Punkt am Balkenende auf eine Zeile ziehen = «beginnt nach»"
                   : "Klick auf eine Zeile zeigt Termine und Puffer."}
               </span>
             )}
           </div>
-          {selected && canEdit && (
-            <div style={{ fontSize: 10, color: "var(--text4)", margin: "-4px 0 8px 2px" }}>
+          {/* Platz immer reserviert: sonst springt der Zeitstrahl beim ersten Klick und ein Doppelklick träfe die Zeile darüber */}
+          {canEdit && (
+            <div style={{ fontSize: 10, color: "var(--text4)", margin: "-4px 0 8px 2px", height: 14, overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis", visibility: selected ? "visible" : "hidden" }}>
               Tastatur: ← → einen Tag, mit ⇧ eine Woche · Enter bearbeiten · Entf löschen · ⌘Z rückgängig · Nachfolger rücken automatisch nach
             </div>
           )}

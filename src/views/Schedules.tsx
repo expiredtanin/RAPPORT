@@ -59,7 +59,7 @@ export default function Schedules({ data, setView, onSelectProject }: Pick<ViewP
         if (onlyActive && p.status === "abgeschlossen") continue;
         for (const it of scheduleOf(p).items) {
           if (it.assigneeId !== emp.id || !tracks.includes(it.track)) continue;
-          tasks.push({ ...it, id: `${p.id}|${it.id}`, label: `${p.number || p.name}: ${it.label}`, group: emp.name, deps: [] });
+          tasks.push({ ...it, id: `${p.id}|${it.id}`, label: `${p.number || p.name}: ${it.bkp ? `${it.bkp} ` : ""}${it.label}`, bkp: undefined, group: emp.name, deps: [] });
         }
       }
       const off: ScheduleItem[] = [];
