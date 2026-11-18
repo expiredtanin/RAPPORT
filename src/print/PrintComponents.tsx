@@ -7,10 +7,10 @@
 //
 // Dokumenttypen: invoice, invoice+qr, qrbill (Zahlteil), quote, vertrag, lieferschein,
 // protokoll, letter, lohn, buchhaltung, studioBudget, projectDetail, projectsOverview,
-// mitarbeiterOverview, timeReport. Die Vorlagen liegen je Fachbereich in print/docs/
+// mitarbeiterOverview, timeReport, schedule (Terminprogramm). Die Vorlagen liegen je Fachbereich in print/docs/
 // (z.B. docs/InvoicePrint.tsx); gemeinsame Typen und `HEADING` in docs/shared.ts.
 //
-// Layout: A4 (QR-Zahlteil: 210×105 mm), Seitenränder aus den Einstellungen
+// Layout: A4 (QR-Zahlteil: 210×105 mm, Terminprogramm: A3 quer ohne Briefpapier), Seitenränder aus den Einstellungen
 // (`pageMargin*`), helle Farben unabhängig vom App-Theme. Die Seite wird per CSS
 // (`@page`, `@media print`) im Block unten gesteuert; der QR-Zahlteil kommt von der
 // Bibliothek swissqrbill (in QRBillPrint). Im Druck zählen nur die gespeicherten
@@ -33,6 +33,7 @@ import type { AppData, DocAsset, Invoice, Person, Protocol, Settings } from "../
 import type { Content } from "./docs/shared";
 import { InvoicePrint, QRBillPrint } from "./docs/InvoicePrint";
 import { QuotePrint } from "./docs/QuotePrint";
+import { SchedulePrint } from "./docs/SchedulePrint";
 import { VertragPrint } from "./docs/ContractPrint";
 import { LieferscheinPrint } from "./docs/DeliveryNotePrint";
 import { ProtokollPrint } from "./docs/ProtocolPrint";
@@ -68,6 +69,9 @@ export function PrintView({ content, onClose, settings, assets }: { content: Con
   const docCss = useMemo(() => buildDocCss(design), [design]);
   const fontFaces = useMemo(() => buildFontFaces(assets), [assets]);
   const isQrOnly = content.type === "qrbill";
+  // Terminprogramm: A3 quer (gleiche Seitenhöhe 297 mm wie A4 hoch, daher gleiche Paginierung); ohne Briefpapier
+  const wide = content.type === "schedule";
+  const pageW = wide ? 420 : 210;
   const paged = !isQrOnly;
   const sheetRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -142,7 +146,7 @@ export function PrintView({ content, onClose, settings, assets }: { content: Con
       <style>{`
         :root { color-scheme: light; }
         .print-page, .print-page * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-        @page { size: ${isQrOnly ? "210mm 105mm" : "A4"}; margin: 0; }
+        @page { size: ${isQrOnly ? "210mm 105mm" : wide ? "420mm 297mm" : "A4"}; margin: 0; }
         .print-page, .print-page * { text-align: left; }
         .print-page .align-right, .print-page .align-right * { text-align: right; }
         .print-page.hide-sender .doc-sender { visibility: hidden; }
@@ -161,7 +165,7 @@ export function PrintView({ content, onClose, settings, assets }: { content: Con
           html, body, #root, #root > div, .print-wrapper { background: white !important; height: auto !important; min-height: 0 !important; margin: 0 !important; padding: 0 !important; }
           .no-print { display: none !important; }
           .print-wrapper { overflow: visible !important; }
-          .print-page { box-shadow: none !important; margin: 0 !important; padding-top: ${mTop}mm !important; padding-bottom: ${mBottom}mm !important; padding-left: ${mLeft}mm !important; padding-right: ${mRight}mm !important; max-width: none !important; width: 210mm !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+          .print-page { box-shadow: none !important; margin: 0 !important; padding-top: ${mTop}mm !important; padding-bottom: ${mBottom}mm !important; padding-left: ${mLeft}mm !important; padding-right: ${mRight}mm !important; max-width: none !important; width: ${pageW}mm !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
           .print-page.paged { padding-bottom: 0 !important; }
           .print-page, .print-page * { text-align: left !important; }
           .print-page .align-right, .print-page .align-right * { text-align: right !important; }
@@ -175,14 +179,14 @@ export function PrintView({ content, onClose, settings, assets }: { content: Con
       {docCss.imports && <style>{docCss.imports}</style>}
       {fontFaces && <style>{fontFaces}</style>}
       <style>{docCss.css}</style>
-      <div className="no-print" style={{ width: "210mm", margin: "0 auto 14px", display: "flex", gap: 10 }}>
+      <div className="no-print" style={{ width: `${pageW}mm`, margin: "0 auto 14px", display: "flex", gap: 10 }}>
         <button onClick={onClose} style={{ padding: "9px 18px", background: "#2a2a22", color: "#fff", border: "none", borderRadius: 4, cursor: "pointer", fontFamily: "DM Mono, monospace", fontSize: 13 }}>← Zurück</button>
         <button onClick={triggerPrint} style={{ padding: "9px 18px", background: "#252520", color: "#f0ede8", border: "none", borderRadius: 4, cursor: "pointer", fontFamily: "DM Mono, monospace", fontSize: 13, fontWeight: 500 }}>Drucken / PDF</button>
       </div>
 
       <div ref={sheetRef} className={sheetClass(design, paged)} data-doc={content.type} style={{
         position: "relative",
-        width: "210mm",
+        width: `${pageW}mm`,
         margin: "0 auto",
         background: "#fff",
         padding: isQrOnly ? 0 : `${mTop}mm ${mRight}mm ${mBottom}mm ${mLeft}mm`,
@@ -193,7 +197,7 @@ export function PrintView({ content, onClose, settings, assets }: { content: Con
         lineHeight: 1.6,
         color: "var(--doc-ink)"
       }}>
-        {!isQrOnly && <LetterheadLayers design={design} followRef={followRef} />}
+        {!isQrOnly && !wide && <LetterheadLayers design={design} followRef={followRef} />}
         {paged && <div className="doc-page-guides no-print" />}
         <div ref={contentRef} className="doc-content" style={{ position: "relative", zIndex: 1 }}>
           {content.type === "invoice" && <InvoicePrint inv={content.inv} client={content.client} settings={settings} />}
@@ -217,6 +221,7 @@ export function PrintView({ content, onClose, settings, assets }: { content: Con
           {content.type === "studioBudget" && <StudioBudgetPrint snapshot={content.snapshot} settings={settings} />}
           {content.type === "protokoll" && <ProtokollPrint protokoll={content.protokoll} data={content.data} settings={settings} />}
           {content.type === "mitarbeiterOverview" && <MitarbeiterOverviewPrint employees={content.employees} settings={settings} />}
+          {content.type === "schedule" && <SchedulePrint content={content} settings={settings} />}
           {content.type === "timeReport" && <TimeReportPrint employee={content.employee} entries={content.entries} month={content.month} data={content.data} settings={settings} />}
         </div>
       </div>

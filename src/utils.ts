@@ -1029,6 +1029,7 @@ export function buildPdfName(
     "quote": "Offerte", "vertrag": "Vertrag", "lieferschein": "Lieferschein", "protokoll": "Protokoll",
     "lohn": "Lohnabrechnung", "letter": "Brief", "projectDetail": "Projekt",
     "projectsOverview": "Projekte", "buchhaltung": "Buchhaltung", "studioBudget": "Budget",
+    "schedule": "Terminprogramm",
   };
   const typ = (content?.type && typeLabels[content.type]) || content?.type || "Dokument";
   let nummer = "";
