@@ -68,10 +68,10 @@ export function WeekGrid({ data, weekDays, weekFTs, todayStr, currentDate, selec
             const isPendingVacDay = !isVacDay && selectedEmpId ? (data.ferienEntries || []).some(f => f.employeeId === selectedEmpId && f.status === "pending" && !f.originalData && ds >= f.dateFrom && ds <= f.dateTo) : false;
             const diff = Math.round((istH - sollH) * 10) / 10;
             return (
-              <div key={ds} style={{ flex: 1, textAlign: "center", padding: "8px 4px 6px", position: "relative", borderLeft: "1px solid var(--border2)", cursor: "pointer", background: isCurDay ? "#1a1a18" : isVacDay ? ((!isPast && Math.ceil((new Date(ds).getTime() - new Date(todayStr).getTime()) / 86400000) > 21) ? "var(--info-bg)" : "var(--positive-bg)") : isPendingVacDay ? "#fff8e8" : isFeiertag ? "#f5f2ed" : "var(--surface)" }}
+              <div key={ds} style={{ flex: 1, textAlign: "center", padding: "8px 4px 6px", position: "relative", borderLeft: "1px solid var(--border2)", cursor: "pointer", background: isCurDay ? "#1a1a18" : isVacDay ? ((!isPast && Math.ceil((new Date(ds).getTime() - new Date(todayStr).getTime()) / 86400000) > 21) ? "var(--info-bg)" : "var(--positive-bg)") : isPendingVacDay ? "var(--warning-bg)" : isFeiertag ? "#f5f2ed" : "var(--surface)" }}
                 onClick={() => { setCurrentDate(ds); setViewMode("tag"); }}>
                 <div style={{ fontSize: 9, letterSpacing: "0.1em", color: isCurDay ? "#e8e5df" : isBeforeEintritt ? "#ddd" : "var(--text5)" }}>{d.toLocaleDateString("de-CH", { weekday: "short" }).toUpperCase()}</div>
-                <div style={{ fontFamily: "'Inter', sans-serif", fontSize: 18, lineHeight: 1.2, color: isCurDay ? "#e8e5df" : isBeforeEintritt ? "var(--text5)" : isThisToday ? "var(--accent)" : isFeiertag ? "#bbb" : "var(--text)" }}>{d.getDate()}</div>
+                <div style={{ fontFamily: "var(--font-ui)", fontSize: 18, lineHeight: 1.2, color: isCurDay ? "#e8e5df" : isBeforeEintritt ? "var(--text5)" : isThisToday ? "var(--accent)" : isFeiertag ? "#bbb" : "var(--text)" }}>{d.getDate()}</div>
                 <div style={{ position: "absolute", top: 8, right: 4, textAlign: "right", lineHeight: 1.2 }}>
                   {(() => {
                     if (!selectedEmp || noWork || isBeforeEintritt) return wkTotal > 0 ? <div style={{ fontSize: 9, fontWeight: 500, color: isCurDay ? "#e8e5df" : "#8a6a3a" }}>{istH.toFixed(1)}h</div> : null;
@@ -117,7 +117,7 @@ export function WeekGrid({ data, weekDays, weekFTs, todayStr, currentDate, selec
           const isMaiTag = ds.slice(5) === "05-01";
           const maiTagBlocked = isMaiTag && (data.settings.blockMaiTag !== false);
           return (
-            <div key={ds} style={{ flex: 1, position: "relative", borderLeft: "1px solid var(--border2)", background: maiTagBlocked || colBeforeEintritt ? "#faf8f5" : isFeiertag ? "#f7f5f1" : "var(--surface)" }}>
+            <div key={ds} style={{ flex: 1, position: "relative", borderLeft: "1px solid var(--border2)", background: maiTagBlocked || colBeforeEintritt ? "var(--surface2)" : isFeiertag ? "#f7f5f1" : "var(--surface)" }}>
               {Array.from({ length: SLOT_COUNT }, (_, slotIdx) => {
                 const isHour = slotIdx % 4 === 0;
                 const isHalf = slotIdx % 2 === 0 && !isHour;

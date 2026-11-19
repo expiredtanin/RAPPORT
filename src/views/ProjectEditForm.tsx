@@ -153,8 +153,8 @@ export function ProjectEditForm({ form, setForm, data }: {
               const currentPhases = isNT ? (pos?.enabledPhases || []) : (form.enabledPhases || []);
               const qRoles = q.quoteRoles || data.settings.roles || [];
               const qH = q.mode === "sia" ? (calcSIAHours(q.sia?.baukosten, q.sia?.schwierigkeit, q.sia?.phases || []).total || 0) : q.mode === "manual" ? (calcManualHours(q.manualPhases || [], qRoles).totalHours || 0) : 0;
-              const bgColor = isNT ? "#f0f5fd" : "#faf8f5";
-              const borderColor = isNT ? "#c8d8ee" : "#ddd8d0";
+              const bgColor = isNT ? "#f0f5fd" : "var(--surface2)";
+              const borderColor = isNT ? "#c8d8ee" : "var(--border)";
               const accentColor = isNT ? "var(--info)" : "var(--positive)";
               return (
                 <div key={lq.quoteId} style={{ marginBottom: 10, border: `1px solid ${borderColor}`, borderRadius: 8, overflow: "hidden" }}>
@@ -169,7 +169,7 @@ export function ProjectEditForm({ form, setForm, data }: {
                     ) : (
                       <span style={{ fontSize: 10, fontWeight: 700, background: "var(--positive-bg)", color: accentColor, padding: "2px 8px", borderRadius: 20 }}>⬡ HO</span>
                     )}
-                    <span style={{ fontWeight: 600, color: "#b07848", fontSize: 12 }}>{q.number}</span>
+                    <span style={{ fontWeight: 600, color: "var(--accent)", fontSize: 12 }}>{q.number}</span>
                     <span style={{ color: "var(--text4)", fontSize: 11 }}>{q.mode === "sia" ? "SIA 102" : q.mode === "manual" ? "Aufwand" : "Pauschal"}</span>
                     {qH > 0 && <span style={{ color: "var(--text3)", fontSize: 11 }}>{qH.toFixed(1)}h</span>}
                     <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 6 }}>

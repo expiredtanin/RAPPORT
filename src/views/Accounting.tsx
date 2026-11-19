@@ -129,10 +129,10 @@ function Accounting({ data, update, setView, setPrintContent }: Pick<ViewProps, 
       {/* KPI-Karten */}
       <div className="responsive-grid-4" style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16, marginBottom: 28 }}>
         {[
-          { label: "UMSATZ NETTO", value: formatCHF(totalInvoiced), sub: totalDraftSub > 0 ? `${invoices.length} Rechnungen — davon ${formatCHF(totalDraftSub)} erwartet` : `${invoices.length} Rechnungen`, color: "var(--positive)" },
-          { label: "DAVON BEZAHLT", value: formatCHF(totalPaid), sub: "eingegangen", color: "var(--positive)" },
-          { label: "OFFEN / ÜBERFÄLLIG", value: formatCHF(totalOpen + totalOverdue), sub: `${overdueInvoices.length} überfällig`, color: totalOverdue > 0 ? "var(--negative)" : "var(--pending)" },
-          { label: "AUSGABEN TOTAL", value: formatCHF(totalAusgaben), sub: `Spesen + ${totalLoehneAnzahl} Lohnabrechnungen (inkl. AG-Abgaben)`, color: "var(--text3)" },
+          { label: "Umsatz netto", value: formatCHF(totalInvoiced), sub: totalDraftSub > 0 ? `${invoices.length} Rechnungen — davon ${formatCHF(totalDraftSub)} erwartet` : `${invoices.length} Rechnungen`, color: "var(--positive)" },
+          { label: "Davon bezahlt", value: formatCHF(totalPaid), sub: "eingegangen", color: "var(--positive)" },
+          { label: "Offen / überfällig", value: formatCHF(totalOpen + totalOverdue), sub: `${overdueInvoices.length} überfällig`, color: totalOverdue > 0 ? "var(--negative)" : "var(--warning)" },
+          { label: "Ausgaben total", value: formatCHF(totalAusgaben), sub: `Spesen + ${totalLoehneAnzahl} Lohnabrechnungen (inkl. AG-Abgaben)` },
         ].map(c => (
           <KpiCard key={c.label} label={c.label} value={c.value} sub={c.sub} color={c.color} />
         ))}
@@ -162,12 +162,12 @@ function Accounting({ data, update, setView, setPrintContent }: Pick<ViewProps, 
               borderTop: row.sep ? "1.5px solid var(--text)" : "none",
               marginTop: row.sep ? 8 : 0,
             }}>
-              <span style={{ fontSize: row.small ? 11 : row.note ? 11 : 13, color: row.expected ? "var(--warning)" : row.pending ? "#b07848" : row.small || row.note ? "var(--text4)" : "var(--text2)", fontStyle: row.note ? "italic" : "normal" }}>
+              <span style={{ fontSize: row.small ? 11 : row.note ? 11 : 13, color: row.expected ? "var(--warning)" : row.pending ? "var(--accent)" : row.small || row.note ? "var(--text4)" : "var(--text2)", fontStyle: row.note ? "italic" : "normal" }}>
                 {row.label}
                 {row.expected && <span style={{ fontSize: 10, marginLeft: 4, background: "var(--warning-bg)", color: "var(--warning)", padding: "1px 8px", borderRadius: 20, fontStyle: "normal", fontWeight: 600 }}>noch nicht fakturiert</span>}
-                {row.pending && <span style={{ fontSize: 10, marginLeft: 4, background: "#fff8ed", color: "#b07848", padding: "1px 8px", borderRadius: 20, fontStyle: "normal", fontWeight: 600 }}>ausstehend</span>}
+                {row.pending && <span style={{ fontSize: 10, marginLeft: 4, background: "var(--warning-bg)", color: "var(--accent)", padding: "1px 8px", borderRadius: 20, fontStyle: "normal", fontWeight: 600 }}>ausstehend</span>}
               </span>
-              <span style={{ fontSize: row.small || row.note ? 11 : 13, fontWeight: row.bold ? 700 : 400, color: row.expected ? "var(--warning)" : row.pending ? "#b07848" : row.value < 0 ? "var(--negative)" : row.bold ? "var(--text)" : "var(--text4)", fontFamily: row.bold ? "'Inter', sans-serif" : "inherit" }}>
+              <span style={{ fontSize: row.small || row.note ? 11 : 13, fontWeight: row.bold ? 700 : 400, color: row.expected ? "var(--warning)" : row.pending ? "var(--accent)" : row.value < 0 ? "var(--negative)" : row.bold ? "var(--text)" : "var(--text4)", fontFamily: row.bold ? "var(--font-ui)" : "inherit" }}>
                 {formatCHF(row.value)}
               </span>
             </div>
@@ -205,7 +205,7 @@ function Accounting({ data, update, setView, setPrintContent }: Pick<ViewProps, 
                         ) : (
                           <>
                             {m.draft > 0 && <div style={{ height: `${(m.draft / maxVal) * 70}px`, background: "#ccc", borderRadius: "2px 2px 0 0", minHeight: 2 }} title={`Entwurf: ${formatCHF(m.draft)}`} />}
-                            {m.open > 0 && <div style={{ height: `${(m.open / maxVal) * 70}px`, background: "#b07848", minHeight: 2 }} title={`Ausstehend: ${formatCHF(m.open)}`} />}
+                            {m.open > 0 && <div style={{ height: `${(m.open / maxVal) * 70}px`, background: "var(--accent)", minHeight: 2 }} title={`Ausstehend: ${formatCHF(m.open)}`} />}
                             {m.paid > 0 && <div style={{ height: `${(m.paid / maxVal) * 70}px`, background: "var(--positive)", borderRadius: m.draft === 0 && m.open === 0 ? "2px 2px 0 0" : 0, minHeight: 2 }} title={`Bezahlt: ${formatCHF(m.paid)}`} />}
                           </>
                         )}
@@ -224,7 +224,7 @@ function Accounting({ data, update, setView, setPrintContent }: Pick<ViewProps, 
                 <div style={{ display: "flex", gap: 14, marginTop: 14, paddingTop: 12, borderTop: "1px solid var(--border2)" }}>
                   {[
                     { color: "var(--positive)", label: "Bezahlt" },
-                    { color: "#b07848", label: "Ausstehend" },
+                    { color: "var(--warning)", label: "Ausstehend" },
                     { color: "var(--text5)", label: "Entwurf" },
                   ].map(l => (
                     <div key={l.label} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 10, color: "var(--text4)" }}>
@@ -350,7 +350,7 @@ function Accounting({ data, update, setView, setPrintContent }: Pick<ViewProps, 
               {[...expenses].sort((a, b) => (b.date || "").localeCompare(a.date || "")).map(e => {
                 const emp = (data.employees || []).find(em => em.id === e.employeeId);
                 const expStatus = e.status || "offen";
-                const statusColors = { offen: "#b07848", genehmigt: "var(--positive)", "auf nächsten Lohn": "var(--info)", ausbezahlt: "var(--positive)" };
+                const statusColors = { offen: "var(--accent)", genehmigt: "var(--positive)", "auf nächsten Lohn": "var(--info)", ausbezahlt: "var(--positive)" };
                 return (
                   <tr key={e.id}>
                     <td>{formatDate(e.date)}</td>

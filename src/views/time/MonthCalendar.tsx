@@ -21,7 +21,7 @@ export function MonthCalendar({ currentDate, setCurrentDate, monthLabel, monthCe
     <div className="card">
     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
       <NavArrows onPrev={() => { const [y,m]=currentDate.split("-").map(Number); const d=new Date(Date.UTC(y,m-1,1)); d.setUTCMonth(d.getUTCMonth()-1); setCurrentDate(d.toISOString().slice(0, 10)); }} onNext={() => { const [y,m]=currentDate.split("-").map(Number); const d=new Date(Date.UTC(y,m-1,1)); d.setUTCMonth(d.getUTCMonth()+1); setCurrentDate(d.toISOString().slice(0, 10)); }} />
-      <div style={{ fontFamily: "'Inter', sans-serif", fontSize: 14, textAlign: "center" }}>{monthLabel}</div>
+      <div style={{ fontFamily: "var(--font-ui)", fontSize: 14, textAlign: "center" }}>{monthLabel}</div>
       <div style={{ width: 55 }} />
     </div>
 
@@ -42,8 +42,8 @@ export function MonthCalendar({ currentDate, setCurrentDate, monthLabel, monthCe
 
         let bg = "transparent";
         if (isSelected) bg = "#1a1a18";
-        else if (cell.isFerien) bg = "#e8f5ee";
-        else if (cell.isPendingFerien) bg = "#fff8e8";
+        else if (cell.isFerien) bg = "var(--positive-bg)";
+        else if (cell.isPendingFerien) bg = "var(--warning-bg)";
         else if (cell.isAbsenz) bg = "#f0f0f0";
         else if (cell.isPendingAbsenz) bg = "#f5f0f8";
         else if (hasEntries && !noWork) bg = "#faf3e4";

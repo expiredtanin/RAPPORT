@@ -27,7 +27,7 @@ export function ReceiptViewer({ expense, onClose }: {
       >
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 18px", borderBottom: "1px solid var(--border)", gap: 12 }}>
           <div style={{ minWidth: 0 }}>
-            <div style={{ fontSize: 15, fontWeight: 600, fontFamily: "'Inter', sans-serif", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            <div style={{ fontSize: 15, fontWeight: 600, fontFamily: "var(--font-ui)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
               {expense.description || expense.category || "Beleg"}
             </div>
             {expense.receiptName && <div style={{ fontSize: 11, color: "var(--text4)", marginTop: 2 }}>{expense.receiptName}</div>}

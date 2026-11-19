@@ -17,14 +17,14 @@ export function InvoiceKpiCards({ filtered, filteredPaid, filteredOpen, filtered
 }) {
   return (
     <div className="responsive-grid-4" style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16, marginBottom: 20 }}>
-      <KpiCard label="BEZAHLT" value={formatCHF(filteredPaid)} color="var(--positive)"
+      <KpiCard label="Bezahlt" value={formatCHF(filteredPaid)} color="var(--positive)"
         sub={`${filtered.filter(i => i.status === "bezahlt").length} Rechnung(en)`} />
-      <KpiCard label="AUSSTEHEND" value={formatCHF(filteredOpen)} color={filteredOverdue > 0 ? "var(--negative)" : "var(--pending)"}
+      <KpiCard label="Ausstehend" value={formatCHF(filteredOpen)} color={filteredOverdue > 0 ? "var(--negative)" : "var(--warning)"}
         sub={filteredOverdue > 0 ? <span style={{ color: "var(--negative)" }}>davon {formatCHF(filteredOverdue)} überfällig</span> : `${filtered.filter(i => i.status === "gesendet" || i.status === "überfällig").length} Rechnung(en)`} />
-      <KpiCard label="UNVERRECHNETE STUNDEN" value={formatHours(totalUnbilledMins)} color={totalUnbilledMins > 0 ? "var(--warning)" : "#aaa"}
+      <KpiCard label="Unverrechnete Stunden" value={formatHours(totalUnbilledMins)} color={totalUnbilledMins > 0 ? "var(--warning)" : "var(--positive)"}
         sub={totalUnbilledAmount > 0 ? `≈ ${formatCHF(totalUnbilledAmount)}` : "Alle verrechnet ✓"} />
-      <div className="card" style={{ borderTop: "3px solid var(--text2)", height: "100%", boxSizing: "border-box" }}>
-        <div style={{ fontSize: 10, color: "var(--text4)", letterSpacing: "0.12em", marginBottom: 8 }}>PROJEKTE MIT PENDENZEN</div>
+      <div className="card kpi">
+        <div className="kpi-label">Projekte mit offenen Stunden</div>
         {unbilledProjects.length === 0 ? (
           <div style={{ fontSize: 12, color: "var(--text5)", marginTop: 4 }}>Keine offenen Stunden</div>
         ) : (

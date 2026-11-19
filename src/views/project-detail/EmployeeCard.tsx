@@ -67,7 +67,7 @@ export function EmployeeCard({ project, data, entries, billingType }: {
                 <td style={{ textAlign: "right" }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 6, justifyContent: "flex-end" }}>
                     <div style={{ width: 60, height: 6, background: "var(--surface3)", borderRadius: 3, overflow: "hidden" }}>
-                      <div style={{ width: `${pct}%`, height: "100%", background: "#b07848", borderRadius: 3 }} />
+                      <div style={{ width: `${pct}%`, height: "100%", background: "var(--accent)", borderRadius: 3 }} />
                     </div>
                     <span style={{ fontSize: 12, color: "var(--text4)", minWidth: 32 }}>{pct}%</span>
                   </div>

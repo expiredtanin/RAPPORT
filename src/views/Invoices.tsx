@@ -26,7 +26,7 @@
 import React, { useState, useEffect } from "react";
 import { generateId, localISODate } from "../utils";
 import { Header } from "../components/UI";
-import { useConfirm } from "../hooks/useConfirm";
+import { changeWithUndo } from "../undo";
 import { MahnModal } from "../components/MahnModal";
 import type { Invoice, InvoiceItem, TimeEntry, ViewProps } from "../types";
 import { AkontoPlanModal } from "./invoices/AkontoPlanModal";
@@ -47,7 +47,7 @@ function Invoices({ data, update, saveAll, modal, setModal, setPrintContent }: P
   const clients = (data.persons || []);
   const [form, setForm] = useState<InvoiceForm>({ number: "", clientId: "", contactId: "", projectId: "", date: localISODate(), dueDate: "", items: [{ id: generateId(), desc: "", qty: 1, price: 0 }], mwst: true, notes: "", status: "entwurf" });
   const [filter, setFilter] = useState(() => { const cid = window.__navClientId || ""; window.__navClientId = null; return { status: "", clientId: cid, year: "", search: "" }; });
-  const [groupBy, setGroupBy] = useState<string>("date");
+  const [groupBy, setGroupBy] = useState<string>("none");
   const [sort, setSort] = useState({ col: "date", dir: -1 });
   const toggleSort = (col: string) => setSort(s => ({ col, dir: s.col === col ? -s.dir : -1 }));
 
@@ -67,15 +67,23 @@ function Invoices({ data, update, saveAll, modal, setModal, setPrintContent }: P
   const [newInvModal, setNewInvModal] = useState(false);
   const [ni, setNi] = useState<NewInvoiceState>({ tab: "projekt", projectId: "", quoteId: "", mode: "teilrechnung", pct: 30, amt: 0, phaseId: "" });
 
+  // Übergaben über `modal`: aus Offerten (mit quoteId) oder aus der Befehlspalette (ohne Vorgabe)
+  /* eslint-disable react-hooks/set-state-in-effect -- einmalige Übergabe, danach wird modal geleert */
   useEffect(() => {
+    if (modal?.type === "newInvoice" && !modal.quoteId) {
+      setNi({ tab: "projekt", projectId: "", quoteId: "", mode: "akonto-stunden", pct: 30, amt: 0 });
+      setNewInvModal(true);
+      setModal(null);
+      return;
+    }
     if (modal?.type === "newInvoice" && modal.quoteId) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- einmalige Übergabe aus Offerten (modal), danach wird modal geleert
       setNi({ tab: "offerte", quoteId: modal.quoteId as string, mode: "schluss", pct: 30, amt: 0 });
       setNewInvModal(true);
       setModal(null);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps -- nur auf neue Übergaben reagieren
   }, [modal?.type, modal?.quoteId]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   // ── Akonto-Planer ──────────────────────────────────────────────
   const emptyAp: AkontoPlan = { projectId: "", clientId: "", totalAmt: 0, mode: "interval", intervalMonths: 4, count: 4, startDate: defaultStartDate(), manualRows: [] };
@@ -146,10 +154,25 @@ function Invoices({ data, update, saveAll, modal, setModal, setPrintContent }: P
     setModal({ type: "invoice", id: inv.id });
   };
 
-  const del = async (id: string) => {
-    if (!(await askConfirm("Rechnung löschen? Zugehörige Zeiteinträge werden wieder als offen markiert."))) return;
-    const updatedEntries = data.timeEntries.map(e => e.invoiceId === id ? { ...e, invoiceId: null } : e);
-    saveAll({ ...data, invoices: invoices.filter(i => i.id !== id), timeEntries: updatedEntries });
+  // Befehlspalette (App.tsx): bestimmte Rechnung öffnen
+  /* eslint-disable react-hooks/set-state-in-effect -- einmalige Übergabe aus der Befehlspalette */
+  useEffect(() => {
+    if (modal?.type !== "openInvoice") return;
+    const inv = invoices.find(i => i.id === modal.id);
+    setModal(null);
+    if (inv) openEdit(inv);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- nur auf neue Aufträge reagieren
+  }, [modal?.type, modal?.id]);
+  /* eslint-enable react-hooks/set-state-in-effect */
+
+  // Löschen ohne Rückfrage, dafür mit «Rückgängig» (undo.ts); Zeiteinträge werden wieder offen.
+  const del = (id: string) => {
+    const inv = invoices.find(i => i.id === id);
+    changeWithUndo(`Rechnung ${inv?.number || ""} gelöscht`.replace("  ", " "), prev => ({
+      ...prev,
+      invoices: (prev.invoices || []).filter(i => i.id !== id),
+      timeEntries: (prev.timeEntries || []).map(e => e.invoiceId === id ? { ...e, invoiceId: null } : e),
+    }));
   };
   // `paidDate` füttert die Zahlungsmoral-Auswertung (crm.ts): beim ersten Wechsel auf «bezahlt» heute setzen, bei Rückstufung entfernen.
   const setStatus = (id: string, status: string) => update("invoices", invoices.map(i => {
@@ -163,7 +186,6 @@ function Invoices({ data, update, saveAll, modal, setModal, setPrintContent }: P
   const [mahnModal, setMahnModal] = useState<{ inv: Invoice } | null>(null);
   const [mahnMode, setMahnMode] = useState<string>("new");
   const [mahnSentDate, setMahnSentDate] = useState(localISODate());
-  const { askConfirm, ConfirmModalEl } = useConfirm();
 
   const openMahnung = (inv: Invoice) => {
     setMahnMode((inv.reminders || []).length === 0 ? "new" : "reprint-0");
@@ -250,7 +272,6 @@ function Invoices({ data, update, saveAll, modal, setModal, setPrintContent }: P
 
   return (
     <div>
-      {ConfirmModalEl}
       <Header title="Rechnungen" action={
         <div style={{ display: "flex", gap: 8 }}>
           <button className="btn btn-ghost" onClick={() => { setAp({ ...emptyAp, startDate: defaultStartDate() }); setAkontoModal(true); }}>Akonto planen</button>

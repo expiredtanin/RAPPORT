@@ -175,7 +175,7 @@ export function PhaseCard({ project, data, entries, positions, phaseStats, custo
             <div style={{ marginBottom: hasPositions ? 20 : 0 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
                 <span style={{ fontSize: 10, fontWeight: 700, background: "var(--positive-bg)", color: "var(--positive)", padding: "2px 8px", borderRadius: 20 }}>⬡ HO</span>
-                {hauptQ?.number && <span style={{ fontWeight: 600, color: "#b07848", fontSize: 12 }}>{hauptQ.number}</span>}
+                {hauptQ?.number && <span style={{ fontWeight: 600, color: "var(--accent)", fontSize: 12 }}>{hauptQ.number}</span>}
                 <span style={{ fontSize: 12, color: "var(--text3)" }}>Hauptauftrag</span>
                 <span style={{ marginLeft: "auto", fontSize: 12, color: "var(--text4)" }}>{formatHours(hoMinsTotal)}</span>
               </div>
@@ -229,7 +229,7 @@ export function PhaseCard({ project, data, entries, positions, phaseStats, custo
               <div key={pos.code} style={{ paddingTop: 20, borderTop: "1px solid var(--border2)" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
                   <span style={{ fontSize: 10, fontWeight: 700, background: "var(--info-bg)", color: "var(--info)", padding: "2px 8px", borderRadius: 20 }}>↪ {pos.code}</span>
-                  {linkedQ?.number && <span style={{ fontWeight: 600, color: "#b07848", fontSize: 12 }}>{linkedQ.number}</span>}
+                  {linkedQ?.number && <span style={{ fontWeight: 600, color: "var(--accent)", fontSize: 12 }}>{linkedQ.number}</span>}
                   <span style={{ fontSize: 12, color: "var(--text3)" }}>{pos.label || "Nachtrag"}</span>
                   <span style={{ marginLeft: "auto", fontSize: 12, color: "var(--info)", fontWeight: 600 }}>{formatHours(posMins)}</span>
                 </div>

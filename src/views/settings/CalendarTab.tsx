@@ -171,7 +171,7 @@ export function CalendarTab({ data, update }: Pick<ViewProps, "data" | "update">
                   <tr key={t.id}>
                     <td><span className="tag" style={{ background: t.color, fontSize: 10 }}>{t.label}</span></td>
                     <td style={{ color: "var(--text4)", fontSize: 12 }}>{t.color}</td>
-                    <td style={{ fontSize: 11, color: isDefault ? (isOverridden ? "#b07848" : "var(--text5)") : "var(--positive)" }}>
+                    <td style={{ fontSize: 11, color: isDefault ? (isOverridden ? "var(--accent)" : "var(--text5)") : "var(--positive)" }}>
                       {isDefault ? (isOverridden ? "Angepasst" : "Standard") : "Eigener"}
                     </td>
                     <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>

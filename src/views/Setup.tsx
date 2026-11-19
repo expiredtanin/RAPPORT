@@ -37,7 +37,7 @@ const S = {
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    fontFamily: "'Inter', sans-serif",
+    fontFamily: "var(--font-ui)",
     color: C.text,
     padding: "32px 16px",
   },
@@ -51,7 +51,7 @@ const S = {
     border: `1px solid ${C.border}`,
   },
   logo: {
-    fontFamily: "Krungthep,'Archivo Black',sans-serif",
+    fontFamily: "var(--font-ui)",
     fontSize: 34,
     color: C.text,
     letterSpacing: "-0.02em",
@@ -95,7 +95,7 @@ const S = {
     borderRadius: 20,
     padding: "9px 12px",
     color: C.text,
-    fontFamily: "'Inter', sans-serif",
+    fontFamily: "var(--font-ui)",
     fontSize: 13,
     outline: "none",
     transition: "border-color 0.15s",
@@ -109,7 +109,7 @@ const S = {
     borderRadius: 16,
     padding: "9px 12px",
     color: C.text,
-    fontFamily: "'Inter', sans-serif",
+    fontFamily: "var(--font-ui)",
     fontSize: 13,
     outline: "none",
     resize: "vertical",
@@ -124,7 +124,7 @@ const S = {
     borderRadius: 20,
     padding: "12px 0",
     color: "#fff",
-    fontFamily: "'Inter', sans-serif",
+    fontFamily: "var(--font-ui)",
     fontSize: 13,
     cursor: "pointer",
     marginTop: 28,
@@ -138,7 +138,7 @@ const S = {
     borderRadius: 20,
     padding: "10px 0",
     color: C.text4,
-    fontFamily: "'Inter', sans-serif",
+    fontFamily: "var(--font-ui)",
     fontSize: 12,
     cursor: "pointer",
     marginTop: 10,
@@ -155,7 +155,7 @@ export function SetupPrompt({ onSetup, onSkip }: { onSetup: () => void; onSkip: 
         <div style={S.logo}>RAPPORT</div>
         <div style={S.sub}>NEUE VERSION</div>
 
-        <div style={{ fontFamily: "'Inter', sans-serif", fontSize: 20, color: C.text, marginBottom: 10 }}>
+        <div style={{ fontFamily: "var(--font-ui)", fontSize: 20, color: C.text, marginBottom: 10 }}>
           Neuer Einrichtungsassistent.
         </div>
         <div style={{ fontSize: 12, color: C.text3, lineHeight: 1.7, marginBottom: 24 }}>
@@ -291,7 +291,7 @@ export default function Setup({ onComplete }: { onComplete: (data: AppData) => v
       <div style={S.logo}>RAPPORT</div>
       <div style={S.sub}>SCHRITT {n} VON {TOTAL}</div>
       {progressEl}
-      <div style={{ fontFamily: "'Inter', sans-serif", fontSize: 20, color: C.text, marginBottom: 6 }}>{title}</div>
+      <div style={{ fontFamily: "var(--font-ui)", fontSize: 20, color: C.text, marginBottom: 6 }}>{title}</div>
       {lead && <div style={{ fontSize: 12, color: C.text3, lineHeight: 1.65, marginBottom: 20 }}>{lead}</div>}
     </>
   );

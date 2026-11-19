@@ -66,18 +66,15 @@ export default function Documents({ data, setView }: Pick<ViewProps, "data" | "s
       {/* KPI-Zeile */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 16, marginBottom: 24 }}>
         {[
-          { label: "Protokolle", count: protocols.length, sub: `${recentProtos.length > 0 ? formatDate(recentProtos[0]?.date) : "—"} zuletzt`, view: "protokolle", color: "var(--positive)", bg: "var(--positive-bg)" },
-          { label: "Lieferscheine", count: deliveryNotes.length, sub: `${recentNotes.length > 0 ? formatDate(recentNotes[0]?.date) : "—"} zuletzt`, view: "lieferscheine", color: "var(--info)", bg: "var(--info-bg)" },
-          { label: "Briefvorlagen", count: letterTemplates.length, sub: "Vorlagen", view: "letters", color: "#7a3e8a", bg: "#f3eafa" },
-        ].map(({ label, count, sub, view: v, color, bg }) => (
-          <div key={label} className="card" style={{ cursor: "pointer", transition: "box-shadow 0.15s" }}
-            onClick={() => setView(v)}>
-            <div style={{ fontSize: 10, letterSpacing: "0.1em", color: "var(--text4)", marginBottom: 8 }}>{label.toUpperCase()}</div>
-            <div style={{ fontSize: 36, fontFamily: "'Inter', sans-serif", fontWeight: 700, color, lineHeight: 1, marginBottom: 4 }}>{count}</div>
-            <div style={{ fontSize: 11, color: "var(--text5)" }}>{sub}</div>
-            <div style={{ marginTop: 12 }}>
-              <span style={{ fontSize: 10, fontWeight: 600, color, background: bg, padding: "3px 10px", borderRadius: 20 }}>→ Öffnen</span>
-            </div>
+          { label: "Protokolle", icon: "description", count: protocols.length, sub: recentProtos.length > 0 ? `zuletzt ${formatDate(recentProtos[0]?.date)}` : "noch keine", view: "protokolle" },
+          { label: "Lieferscheine", icon: "local_shipping", count: deliveryNotes.length, sub: recentNotes.length > 0 ? `zuletzt ${formatDate(recentNotes[0]?.date)}` : "noch keine", view: "lieferscheine" },
+          { label: "Briefvorlagen", icon: "mail", count: letterTemplates.length, sub: "Vorlagen", view: "letters" },
+        ].map(({ label, icon, count, sub, view: v }) => (
+          <div key={label} className="card kpi kpi-link" role="button" tabIndex={0}
+            onClick={() => setView(v)} onKeyDown={e => { if (e.key === "Enter") setView(v); }}>
+            <div className="kpi-label"><span className="msr" style={{ fontSize: 17 }}>{icon}</span>{label}<span className="msr" style={{ fontSize: 16, marginLeft: "auto" }}>arrow_forward</span></div>
+            <div className="kpi-value">{count}</div>
+            <div className="kpi-sub">{sub}</div>
           </div>
         ))}
       </div>
@@ -87,7 +84,7 @@ export default function Documents({ data, setView }: Pick<ViewProps, "data" | "s
         {/* Linke Spalte */}
         <div>
           {/* Letzte Protokolle */}
-          <SectionCard title="LETZTE PROTOKOLLE" count={protocols.length} action="Alle Protokolle →" onAction={() => setView("protokolle")} accent="#e8f5ee">
+          <SectionCard title="LETZTE PROTOKOLLE" count={protocols.length} action="Alle Protokolle →" onAction={() => setView("protokolle")} accent="var(--positive-bg)">
             {recentProtos.length === 0 ? (
               <div className="empty-state">Noch keine Protokolle erfasst.</div>
             ) : (

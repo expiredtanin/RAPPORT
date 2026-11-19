@@ -52,7 +52,7 @@ Tests gibt es mit Vitest (`npm test`, Dateien `*.test.ts` neben dem Code) für R
 ## Tu — Konventionen die hier gelten
 
 - **Inline-Styles** (`style={{}}`) sind etabliert. Keine Tailwind-Vorschläge, keine CSS-Module einführen, ohne dass Karim das initiiert.
-- **Globale Klassen** (`.btn`, `.card`, `.pill`, `.modal`, `.filter-bar`) sind in [styles/global.css](src/styles/global.css) definiert — nutze sie statt eigene zu erfinden.
+- **Globale Klassen** (`.btn`, `.card`, `.pill`, `.modal`, `.filter-bar`, `.row-link`/`.row-actions`, `.kpi`) und Bausteine in [UI.tsx](src/components/UI.tsx) (`Modal` auch als `drawer`, `KpiCard`, `RowMenu`, `EmptyState`) — nutze sie statt eigene zu erfinden. Gestaltungsregeln (eine Schrift Inter, Farbe nur mit Bedeutung, Löschen mit «Rückgängig» über `undo.ts`): [ARCHITECTURE.md §11](ARCHITECTURE.md).
 - **CSS-Variablen** für Theming (`--bg`, `--text`, `--border`, …). Dark Mode ist `data-theme="dark"` am Root. Niemals harte Farben einbauen, ohne CSS-Variable zu prüfen.
 - **Lazy-Loaded Views** — neue Top-Level-Screens in [App.tsx](src/App.tsx) mit `React.lazy()` einbinden, nicht direkt importieren.
 - **Props-Pattern:** Views bekommen `{ data, update, saveAll, modal, setModal, currentUser, … }`. Kein Context, kein Redux. Wenn du State teilst, mach es über `data` oder hebe ihn in App.tsx.

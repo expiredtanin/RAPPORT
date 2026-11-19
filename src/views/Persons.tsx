@@ -10,14 +10,14 @@
 // Gelöschte Firmen lassen Verweise in Projekten und Rechnungen bestehen
 // (dort bleibt dann nur die Id).
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { generateId, formatCHF, formatDate, contactCategory } from "../utils";
 import { isCloudBackend } from "../storage/adapter";
 import { CONTACT_CATEGORIES, CONTACT_TYPES, DEFAULT_LEAD_SOURCES } from "../constants";
 import { clientRevenue, lastContact, referredLeadCount, referredRevenue } from "../crm";
 import ActivityLog from "../components/ActivityLog";
-import { Header, Modal, FormField, StatusBadge } from "../components/UI";
-import { useConfirm } from "../hooks/useConfirm";
+import { Header, Modal, FormField, StatusBadge, RowMenu, EmptyState } from "../components/UI";
+import { changeWithUndo, removeWithUndo } from "../undo";
 import type { AppData, Contact, ContactCategory, Person, UpdateFn, ViewProps } from "../types";
 
 /** Formular einer Firma; die `_haupt*`-Felder gibt es nur beim Neuanlegen (erster Ansprechpartner). */
@@ -283,10 +283,9 @@ declare global {
   }
 }
 
-export default function Persons({ data, update }: Pick<ViewProps, "data" | "update" | "saveAll" | "setView">) {
+export default function Persons({ data, update, modal, setModal }: Pick<ViewProps, "data" | "update" | "saveAll" | "setView" | "modal" | "setModal">) {
   const persons  = data.persons  || [];
   const projects = data.projects || [];
-  const { askConfirm, ConfirmModalEl } = useConfirm();
 
   const [selectedId, setSelectedId] = useState<string | null>(() => { const id = window.__openContactId || null; window.__openContactId = null; return id; });
   const [search,     setSearch]     = useState("");
@@ -297,6 +296,15 @@ export default function Persons({ data, update }: Pick<ViewProps, "data" | "upda
   const [firmForm,    setFirmForm]    = useState<FirmForm>({});
   const [personModal, setPersonModal] = useState<{ isNew?: boolean; firmaId?: string; personId?: string } | null>(null);
   const [personForm,  setPersonForm]  = useState<Partial<PersonForm>>({});
+
+  // Befehlspalette (App.tsx): Kontakt öffnen (auch über einen Ansprechpartner gefunden)
+  useEffect(() => {
+    if (modal?.type !== "openPerson") return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- einmalige Übergabe aus der Befehlspalette
+    setSelectedId(persons.some(x => x.id === modal.id) ? modal.id as string : null);
+    setModal(null);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- nur auf neue Aufträge reagieren
+  }, [modal?.type, modal?.id]);
 
   // ── Counts ─────────────────────────────────────────────────────────────────
   const allPersonsFlat: FlatContact[] = persons.flatMap(firma =>
@@ -400,15 +408,16 @@ export default function Persons({ data, update }: Pick<ViewProps, "data" | "upda
     }
     setFirmModal(null);
   };
-  const deleteFirm = async (id: string) => {
-    if (!await askConfirm("Kontakt löschen? Referenzen in Projekten und Rechnungen bleiben erhalten.")) return;
-    update("persons", persons.filter(p => p.id !== id));
+  // Löschen sofort, mit «Rückgängig» (undo.ts); Referenzen in Projekten und Rechnungen bleiben erhalten.
+  const deleteFirm = (id: string) => {
+    const f = persons.find(p => p.id === id);
+    removeWithUndo(`Kontakt «${f?.name || ""}» gelöscht`, "persons", p => p.id === id);
     if (selectedId === id) setSelectedId(null);
   };
-  const deleteContactFromFirm = async (firmaId: string, personId: string) => {
-    if (!await askConfirm("Ansprechpartner entfernen?")) return;
-    update("persons", persons.map(p => p.id === firmaId
-      ? { ...p, contacts: (p.contacts || []).filter(c => c.id !== personId) } : p));
+  const deleteContactFromFirm = (firmaId: string, personId: string) => {
+    const c = persons.find(p => p.id === firmaId)?.contacts?.find(x => x.id === personId);
+    changeWithUndo(`Ansprechpartner «${c?.name || ""}» entfernt`, prev => ({ ...prev, persons: (prev.persons || []).map(p => p.id === firmaId
+      ? { ...p, contacts: (p.contacts || []).filter(x => x.id !== personId) } : p) }));
   };
 
   // ── Ansprechpartner CRUD ───────────────────────────────────────────────────
@@ -442,7 +451,6 @@ export default function Persons({ data, update }: Pick<ViewProps, "data" | "upda
   if (selectedFirma) {
     return (
       <div>
-        {ConfirmModalEl}
         <FirmaDetail
           firma={selectedFirma}
           data={data}
@@ -464,7 +472,7 @@ export default function Persons({ data, update }: Pick<ViewProps, "data" | "upda
   function renderFirmModal() {
     if (!firmModal) return null;
     return (
-      <Modal
+      <Modal drawer
         title={firmModal.id ? "Kontakt bearbeiten" : "Neuer Kontakt"}
         onClose={() => setFirmModal(null)}
         onSave={saveFirm}
@@ -570,7 +578,7 @@ export default function Persons({ data, update }: Pick<ViewProps, "data" | "upda
   function renderPersonModal() {
     if (!personModal) return null;
     return (
-      <Modal title={personModal.personId ? "Person bearbeiten" : "Neue Person"} onClose={() => setPersonModal(null)} onSave={savePerson}>
+      <Modal drawer title={personModal.personId ? "Person bearbeiten" : "Neue Person"} onClose={() => setPersonModal(null)} onSave={savePerson}>
         <FormField label="Firma *">
           <select value={personForm.firmaId || ""} onChange={e => setPersonForm({ ...personForm, firmaId: e.target.value })}
             style={!personForm.firmaId ? { borderColor: "var(--warning)" } : {}} disabled={!!personModal.personId}>
@@ -596,7 +604,6 @@ export default function Persons({ data, update }: Pick<ViewProps, "data" | "upda
   // ── List render ────────────────────────────────────────────────────────────
   return (
     <div>
-      {ConfirmModalEl}
 
       <Header title="Kontakte" action={
         <div style={{ display: "flex", gap: 8 }}>
@@ -616,7 +623,7 @@ export default function Persons({ data, update }: Pick<ViewProps, "data" | "upda
       </div>
 
       <div className="filter-bar">
-        <span className="filter-label">GRUPPIEREN:</span>
+        <span className="filter-label">Gruppieren</span>
         {activeGroupOpts.map(g => <button key={g.id} className={`pill${groupBy === g.id ? " active" : ""}`} onClick={() => setGroupBy(g.id)}>{g.label}</button>)}
         <div style={{ marginLeft: "auto", fontSize: 12, color: "var(--text4)" }}>
           {showPersonsView
@@ -632,125 +639,111 @@ export default function Persons({ data, update }: Pick<ViewProps, "data" | "upda
           <div className="card" style={{ padding: 48, textAlign: "center", color: "var(--text4)" }}>
             {allPersonsFlat.length === 0 ? "Noch keine Ansprechpartner erfasst." : "Keine Treffer"}
           </div>
-        ) : groupedPersons.map(group => (
-          <div key={group.key} style={{ marginBottom: 20 }}>
-            {group.label && <div style={{ fontSize: 10, letterSpacing: "0.14em", color: "var(--text5)", fontWeight: 600, marginBottom: 8, paddingLeft: 2 }}>{group.label.toUpperCase()} <span style={{ opacity: 0.55 }}>{group.items.length}</span></div>}
-            <div className="card" style={{ padding: 0 }}>
-              <table style={{ width: "100%" }}>
-                <thead><tr>
-                  <th>Name</th>
-                  <th style={{ width: 150 }}>Position</th>
-                  <th style={{ width: 180 }}>Firma</th>
-                  <th>E-Mail</th>
-                  <th style={{ width: 130 }}>Telefon</th>
-                  <th style={{ width: 60 }}></th>
-                </tr></thead>
-                <tbody>
-                  {group.items.map(c => (
-                    <tr key={`${c._firmaId}-${c.id}`}>
-                      <td><strong>{c.name}</strong></td>
-                      <td style={{ fontSize: 12, color: "var(--text3)" }}>{c.position || <span style={{ color: "#ddd" }}>—</span>}</td>
-                      <td>
-                        <span onClick={() => setSelectedId(c._firmaId)} style={{ fontSize: 12, fontWeight: 500, color: "var(--text2)", cursor: "pointer", textDecoration: "underline", textDecorationColor: "transparent" }}
-                          onMouseEnter={e => e.currentTarget.style.textDecorationColor = "currentColor"}
-                          onMouseLeave={e => e.currentTarget.style.textDecorationColor = "transparent"}>
+        ) : (
+          <div className="card" style={{ padding: 0 }}>
+            <table style={{ width: "100%" }}>
+              <thead><tr>
+                <th>Name</th>
+                <th className="hide-narrow" style={{ width: 160 }}>Position</th>
+                <th style={{ width: 200 }}>Firma</th>
+                <th>E-Mail</th>
+                <th className="hide-narrow" style={{ width: 140 }}>Telefon</th>
+                <th style={{ width: 52 }}></th>
+              </tr></thead>
+              <tbody>
+                {groupedPersons.map(group => (
+                  <React.Fragment key={group.key}>
+                    {group.label && <tr><td colSpan={6} className="group-row">{group.label}<span className="group-sum">{group.items.length}</span></td></tr>}
+                    {group.items.map(c => (
+                      <tr key={`${c._firmaId}-${c.id}`} className="row-link" onClick={() => setSelectedId(c._firmaId)}>
+                        <td><strong>{c.name}</strong></td>
+                        <td className="hide-narrow" style={{ fontSize: 12.5, color: "var(--text3)" }}>{c.position || <span style={{ color: "var(--text5)" }}>—</span>}</td>
+                        <td style={{ fontSize: 12.5, color: "var(--text2)" }}>
                           {c._firmaName}
-                        </span>
-                        {c._firmaType && <span style={{ fontSize: 10, color: "var(--text5)", marginLeft: 6 }}>{c._firmaType}</span>}
-                      </td>
-                      <td style={{ fontSize: 12, color: "var(--text3)" }}>{c.email || <span style={{ color: "#ddd" }}>—</span>}</td>
-                      <td style={{ fontSize: 12, color: "var(--text3)" }}>{c.phone || <span style={{ color: "#ddd" }}>—</span>}</td>
-                      <td style={{ textAlign: "right" }}>
-                        <button className="btn btn-ghost" style={{ fontSize: 11, padding: "3px 8px" }} onClick={() => openEditPerson(c._firmaId, c.id)}><span className="msr" style={{ fontSize: 16 }}>edit</span></button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                          {c._firmaType && <span style={{ fontSize: 11, color: "var(--text5)", marginLeft: 6 }}>{c._firmaType}</span>}
+                        </td>
+                        <td style={{ fontSize: 12.5, color: "var(--text3)" }}>{c.email || <span style={{ color: "var(--text5)" }}>—</span>}</td>
+                        <td className="hide-narrow" style={{ fontSize: 12.5, color: "var(--text3)" }}>{c.phone || <span style={{ color: "var(--text5)" }}>—</span>}</td>
+                        <td className="row-actions" onClick={e => e.stopPropagation()}>
+                          <RowMenu items={[
+                            { label: "Bearbeiten", icon: "edit", onClick: () => openEditPerson(c._firmaId, c.id) },
+                            { label: "Firma öffnen", icon: "open_in_new", onClick: () => setSelectedId(c._firmaId) },
+                            { label: "Entfernen", icon: "delete", danger: true, onClick: () => deleteContactFromFirm(c._firmaId, c.id) },
+                          ]} />
+                        </td>
+                      </tr>
+                    ))}
+                  </React.Fragment>
+                ))}
+              </tbody>
+            </table>
           </div>
-        ))
+        )
       ) : (
         /* Firmen-Ansicht */
         filteredFirmen.length === 0 ? (
-          <div className="card" style={{ padding: 48, textAlign: "center", color: "var(--text4)" }}>
-            {persons.length === 0 ? "Noch keine Firmen erfasst." : "Keine Treffer"}
+          <div className="card">
+            {persons.length === 0
+              ? <EmptyState icon="group" title="Noch keine Kontakte" text="Bauherrschaften, Fachplaner, Unternehmer und Behörden — mit Ansprechpartnern, Projekten und Rechnungen an einem Ort."
+                  action={<button className="btn btn-primary" onClick={() => openNewFirm()}>+ Neuer Kontakt</button>} />
+              : <div className="empty-state">Keine Treffer</div>}
           </div>
-        ) : groupedFirmen.map(group => (
-          <div key={group.key} style={{ marginBottom: 20 }}>
-            {group.label && <div style={{ fontSize: 10, letterSpacing: "0.14em", color: "var(--text5)", fontWeight: 600, marginBottom: 8, paddingLeft: 2 }}>{group.label.toUpperCase()} <span style={{ opacity: 0.55 }}>{group.items.length}</span></div>}
-            <div className="card" style={{ padding: 0 }}>
-              <table style={{ width: "100%" }}>
-                <thead><tr>
-                  <th>Kontakt</th>
-                  <th style={{ width: 160 }}>Kategorie</th>
-                  <th style={{ width: 130 }}>Branche / Typ</th>
-                  <th>Adresse</th>
-                  <th>Hauptkontakt</th>
-                  <th style={{ textAlign: "center", width: 72 }}>Projekte</th>
-                  <th style={{ width: 110 }}></th>
-                </tr></thead>
-                <tbody>
-                  {group.items.map(p => {
-                    const addr = [p.street, [p.zip, p.city].filter(Boolean).join(" ")].filter(Boolean).join(", ");
-                    const projCount = projects.filter(pr => pr.clientId === p.id || (pr.projectContacts || []).some(pc => pc.contactId === p.id)).length;
-                    const contacts = p.contacts || [];
-                    const hauptkontakt = contacts[0] || null;
-                    return (
-                      <React.Fragment key={p.id}>
-                        <tr style={{ cursor: "pointer" }} onClick={() => setSelectedId(p.id)}>
+        ) : (
+          <div className="card" style={{ padding: 0 }}>
+            <table style={{ width: "100%" }}>
+              <thead><tr>
+                <th>Kontakt</th>
+                <th style={{ width: 150 }}>Kategorie</th>
+                <th className="hide-narrow" style={{ width: 140 }}>Branche / Typ</th>
+                <th className="hide-narrow">Adresse</th>
+                <th>Hauptkontakt</th>
+                <th style={{ textAlign: "right", width: 80 }}>Projekte</th>
+                <th style={{ width: 52 }}></th>
+              </tr></thead>
+              <tbody>
+                {groupedFirmen.map(group => (
+                  <React.Fragment key={group.key}>
+                    {group.label && <tr><td colSpan={7} className="group-row">{group.label}<span className="group-sum">{group.items.length}</span></td></tr>}
+                    {group.items.map(p => {
+                      const addr = [p.street, [p.zip, p.city].filter(Boolean).join(" ")].filter(Boolean).join(", ");
+                      const projCount = projects.filter(pr => pr.clientId === p.id || (pr.projectContacts || []).some(pc => pc.contactId === p.id)).length;
+                      const contacts = p.contacts || [];
+                      const hauptkontakt = contacts[0] || null;
+                      return (
+                        <tr key={p.id} className="row-link" onClick={() => setSelectedId(p.id)}>
                           <td>
-                            <strong style={{ color: "var(--text)" }}>{p.name}</strong>
-                            {p.email && <div style={{ fontSize: 11, color: "var(--text4)" }}>{p.email}</div>}
+                            <strong>{p.name}</strong>
+                            {p.email && <div style={{ fontSize: 12, color: "var(--text4)" }}>{p.email}</div>}
                           </td>
-                          <td>
-                            <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
-                              <CategoryBadge person={p} />
-                            </div>
-                          </td>
-                          <td style={{ fontSize: 12, color: "var(--text4)" }}>{p.type || <span style={{ color: "#ddd" }}>—</span>}</td>
-                          <td style={{ fontSize: 12, color: "var(--text4)" }}>{addr || <span style={{ color: "#ddd" }}>—</span>}</td>
-                          <td style={{ fontSize: 12 }}>
+                          <td><CategoryBadge person={p} /></td>
+                          <td className="hide-narrow" style={{ fontSize: 12.5, color: "var(--text4)" }}>{p.type || <span style={{ color: "var(--text5)" }}>—</span>}</td>
+                          <td className="hide-narrow" style={{ fontSize: 12.5, color: "var(--text3)" }}>{addr || <span style={{ color: "var(--text5)" }}>—</span>}</td>
+                          <td style={{ fontSize: 12.5 }}>
                             {hauptkontakt ? (
                               <div>
                                 <span style={{ fontWeight: 500 }}>{hauptkontakt.name}</span>
-                                {hauptkontakt.position && <span style={{ color: "var(--text5)" }}>, {hauptkontakt.position}</span>}
-                                {contacts.length > 1 && <span style={{ fontSize: 10, color: "var(--text5)", marginLeft: 6 }}>+{contacts.length - 1}</span>}
+                                {hauptkontakt.position && <span style={{ color: "var(--text4)" }}>, {hauptkontakt.position}</span>}
+                                {contacts.length > 1 && <span style={{ fontSize: 11, color: "var(--text4)", marginLeft: 6 }}>+{contacts.length - 1}</span>}
                               </div>
-                            ) : <span style={{ color: "#ddd" }}>—</span>}
+                            ) : <span style={{ color: "var(--text5)" }}>—</span>}
                           </td>
-                          <td style={{ textAlign: "center", fontSize: 12, color: projCount ? "var(--positive)" : "var(--text5)", fontWeight: projCount ? 600 : 400 }}>{projCount || "—"}</td>
-                          <td style={{ textAlign: "right", whiteSpace: "nowrap" }} onClick={e => e.stopPropagation()}>
-                            <div style={{ display: "flex", gap: 4, justifyContent: "flex-end" }}>
-                              <button className="btn btn-ghost" style={{ fontSize: 11, padding: "3px 8px" }} title="Person hinzufügen" onClick={() => openNewPerson(p.id)}>+ P</button>
-                              <button className="btn btn-ghost" style={{ fontSize: 11, padding: "3px 8px" }} title="Bearbeiten" onClick={() => openEditFirm(p.id)}><span className="msr" style={{ fontSize: 16 }}>edit</span></button>
-                              <button className="btn btn-danger" style={{ fontSize: 11, padding: "3px 7px" }} onClick={() => deleteFirm(p.id)}><span className="msr" style={{ fontSize: 16 }}>close</span></button>
-                            </div>
+                          <td style={{ textAlign: "right", fontSize: 12.5, color: projCount ? "var(--text)" : "var(--text5)", fontWeight: projCount ? 600 : 400 }}>{projCount || "—"}</td>
+                          <td className="row-actions" onClick={e => e.stopPropagation()}>
+                            <RowMenu items={[
+                              { label: "Bearbeiten", icon: "edit", onClick: () => openEditFirm(p.id) },
+                              { label: "Ansprechpartner hinzufügen", icon: "person_add", onClick: () => openNewPerson(p.id) },
+                              { label: "Löschen", icon: "delete", danger: true, onClick: () => deleteFirm(p.id) },
+                            ]} />
                           </td>
                         </tr>
-                        {contacts.map(c => (
-                          <tr key={c.id} style={{ background: "var(--surface2)", cursor: "default" }} onClick={e => e.stopPropagation()}>
-                            <td colSpan={4} style={{ paddingLeft: 28, fontSize: 12, color: "var(--text3)" }}>
-                              <span style={{ color: "var(--text5)", marginRight: 8 }}>↳</span>
-                              <span style={{ fontWeight: 500 }}>{c.name}</span>
-                              {c.position && <span style={{ color: "var(--text4)" }}>, {c.position}</span>}
-                              {c.email && <span style={{ color: "var(--text4)", marginLeft: 10 }}>{c.email}</span>}
-                              {c.phone && <span style={{ color: "var(--text4)", marginLeft: 10 }}>{c.phone}</span>}
-                            </td>
-                            <td colSpan={3} style={{ textAlign: "right", paddingRight: 12 }}>
-                              <button className="btn btn-ghost" style={{ fontSize: 11, padding: "2px 7px" }} onClick={() => openEditPerson(p.id, c.id)}><span className="msr" style={{ fontSize: 16 }}>edit</span></button>
-                              <button className="btn btn-danger" style={{ fontSize: 11, padding: "2px 6px", marginLeft: 4 }} onClick={() => deleteContactFromFirm(p.id, c.id)}><span className="msr" style={{ fontSize: 16 }}>close</span></button>
-                            </td>
-                          </tr>
-                        ))}
-                      </React.Fragment>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+                      );
+                    })}
+                  </React.Fragment>
+                ))}
+              </tbody>
+            </table>
           </div>
-        ))
+        )
       )}
 
       {firmModal && renderFirmModal()}

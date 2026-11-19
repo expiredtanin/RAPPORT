@@ -12,8 +12,8 @@
 
 import React, { useState, useEffect } from "react";
 import { generateId, formatCHF, formatDate, calcManualHours, localISODate } from "../utils";
-import { Header, Modal, FormField, StatusSelect, DateInput, ShareButton, SortTh } from "../components/UI";
-import { useConfirm } from "../hooks/useConfirm";
+import { Header, Modal, FormField, StatusSelect, DateInput, SortTh, RowMenu, EmptyState } from "../components/UI";
+import { removeWithUndo } from "../undo";
 import type { Contract, ViewProps } from "../types";
 
 /** Formularstand: wie `Contract`, aber ohne Id (wird beim Speichern vergeben). */
@@ -44,7 +44,6 @@ function Contracts({ data, saveAll, modal, setModal, setPrintContent }: Pick<Vie
   const [form, setForm] = useState(emptyForm);
   const [filter, setFilter] = useState({ search: "", status: "", contractType: "" });
   const [sort, setSort] = useState({ col: "date", dir: -1 });
-  const { askConfirm, ConfirmModalEl } = useConfirm();
 
   const nextNumber = () => {
     const fmt = data.settings.vertragNumberFormat || "V-YYYY-NNN";
@@ -79,9 +78,9 @@ function Contracts({ data, saveAll, modal, setModal, setPrintContent }: Pick<Vie
     closeFormModal();
   };
 
-  const del = async (id: string) => {
-    if (await askConfirm("Vertrag löschen?"))
-      saveAll({ ...data, contracts: contracts.filter(v => v.id !== id) });
+  const del = (id: string) => {
+    const v = contracts.find(x => x.id === id);
+    removeWithUndo(`Vertrag ${v?.number || ""} gelöscht`, "contracts", x => x.id === id);
   };
 
   // Konvertierung aus Quotes.jsx abfangen: setView("contracts") + setModal({type:"newVertrag", quoteId})
@@ -147,7 +146,6 @@ function Contracts({ data, saveAll, modal, setModal, setPrintContent }: Pick<Vie
 
   return (
     <div>
-      {ConfirmModalEl}
       <Header title="Verträge" action={
         <button className="btn btn-primary" onClick={openNew}>+ Neuer Vertrag</button>
       } />
@@ -172,11 +170,16 @@ function Contracts({ data, saveAll, modal, setModal, setPrintContent }: Pick<Vie
         </div>
       </div>
 
-      {sorted.length === 0 ? (
+      {contracts.length === 0 ? (
+        <div className="card" style={{ padding: 0 }}>
+          <EmptyState icon="handshake" title="Noch keine Verträge" text="Halte Haupt- und Unteraufträge mit Partner, Vergütung und Zahlungsbedingungen fest – oder wandle eine Offerte in einen Vertrag um."
+            action={<button className="btn btn-primary" onClick={openNew}>+ Neuer Vertrag</button>} />
+        </div>
+      ) : sorted.length === 0 ? (
         <div className="card" style={{ padding: 0 }}>
           <table>
-            <thead><tr><th style={{ width: 120 }}>Nr.</th><th style={{ width: 100 }}>Datum</th><th style={{ width: 180 }}>Partner</th><th>Projekt</th><th style={{ width: 130 }}>Art</th><th style={{ width: 110 }}>Summe</th><th style={{ width: 110 }}>Status</th><th style={{ width: 150 }}></th></tr></thead>
-            <tbody><tr><td colSpan={8} className="empty-state">{contracts.length === 0 ? "Noch keine Verträge" : "Keine Treffer"}</td></tr></tbody>
+            <thead><tr><th style={{ width: 120 }}>Nr.</th><th style={{ width: 100 }}>Datum</th><th style={{ width: 180 }}>Partner</th><th>Projekt</th><th style={{ width: 130 }}>Art</th><th style={{ width: 110 }}>Summe</th><th style={{ width: 110 }}>Status</th><th style={{ width: 60 }}></th></tr></thead>
+            <tbody><tr><td colSpan={8} className="empty-state">Keine Treffer</td></tr></tbody>
           </table>
         </div>
       ) : (
@@ -191,13 +194,13 @@ function Contracts({ data, saveAll, modal, setModal, setPrintContent }: Pick<Vie
                 <th style={{ width: 130 }}>Art</th>
                 <SortTh sort={sort} onSort={toggleSort} col="amount" style={{ width: 110 }}>Summe</SortTh>
                 <th style={{ width: 110 }}>Status</th>
-                <th style={{ width: 150 }}></th>
+                <th style={{ width: 60 }}></th>
               </tr>
             </thead>
             <tbody>
               {sorted.map(v => (
-                <tr key={v.id}>
-                  <td><strong style={{ color: "#b07848" }}>{v.number || "—"}</strong></td>
+                <tr key={v.id} className="row-link" onClick={() => openEdit(v)}>
+                  <td><strong style={{ color: "var(--accent)" }}>{v.number || "—"}</strong></td>
                   <td>{formatDate(v.date)}</td>
                   <td>{getClientName(v)}</td>
                   <td style={{ color: "var(--text4)" }}>{getProjectName(v)}</td>
@@ -208,11 +211,12 @@ function Contracts({ data, saveAll, modal, setModal, setPrintContent }: Pick<Vie
                   </td>
                   <td>{formatCHF(v.billingType === "stundensatz" ? v.hourlyRate : v.amount)}{v.billingType === "stundensatz" ? "/h" : ""}</td>
                   <td><StatusSelect value={v.status} options={["entwurf", "unterzeichnet", "beendet"]} onChange={st => saveAll({ ...data, contracts: contracts.map(x => x.id === v.id ? { ...x, status: st } : x) })} /></td>
-                  <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
-                    <ShareButton style={{ padding: "5px 10px", fontSize: 12, marginRight: 4 }}
-                      options={[{ label: "PDF", onClick: () => setPrintContent({ type: "vertrag", vertrag: v, client: (data.persons || []).find(p => p.id === v.clientId), project: data.projects.find(p => p.id === v.projectId), settings: data.settings }) }]} />
-                    <button className="btn btn-ghost" style={{ padding: "5px 10px", fontSize: 12, marginRight: 4 }} onClick={() => openEdit(v)}><span className="msr" style={{ fontSize: 16 }}>edit</span></button>
-                    <button className="btn btn-danger" style={{ padding: "5px 10px", fontSize: 12 }} onClick={() => del(v.id)}><span className="msr" style={{ fontSize: 16 }}>close</span></button>
+                  <td className="row-actions" onClick={e => e.stopPropagation()}>
+                    <RowMenu items={[
+                      { label: "Bearbeiten", icon: "edit", onClick: () => openEdit(v) },
+                      { label: "PDF", icon: "picture_as_pdf", onClick: () => setPrintContent({ type: "vertrag", vertrag: v, client: (data.persons || []).find(p => p.id === v.clientId), project: data.projects.find(p => p.id === v.projectId), settings: data.settings }) },
+                      { label: "Löschen", icon: "delete", danger: true, onClick: () => del(v.id) },
+                    ]} />
                   </td>
                 </tr>
               ))}
@@ -222,7 +226,7 @@ function Contracts({ data, saveAll, modal, setModal, setPrintContent }: Pick<Vie
       )}
 
       {formModal && (
-        <Modal title={formModal === "new" ? "Neuer Vertrag" : "Vertrag bearbeiten"} onClose={closeFormModal} onSave={save} wide>
+        <Modal drawer title={formModal === "new" ? "Neuer Vertrag" : "Vertrag bearbeiten"} onClose={closeFormModal} onSave={save} wide>
           {linkedQuote && (
             <div style={{ fontSize: 12, color: "var(--positive)", background: "var(--positive-bg)", border: "1px solid #b8dbc4", borderRadius: 6, padding: "8px 12px", marginBottom: 14 }}>
               Aus Offerte <strong>{linkedQuote.number}</strong> erstellt.

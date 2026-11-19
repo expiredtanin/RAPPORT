@@ -7,8 +7,8 @@
 
 import React, { useState } from "react";
 import { generateId, formatDate, linkedClientForNote, localISODate } from "../utils";
-import { Header, Modal, FormField, DateInput, ShareButton, SortTh } from "../components/UI";
-import { useConfirm } from "../hooks/useConfirm";
+import { Header, Modal, FormField, DateInput, SortTh, RowMenu, EmptyState } from "../components/UI";
+import { removeWithUndo } from "../undo";
 import type { DeliveryNote, ViewProps } from "../types";
 
 /** Formularstand: wie `DeliveryNote`, aber die Id wird erst beim Speichern vergeben. */
@@ -34,7 +34,6 @@ function DeliveryNotes({ data, saveAll, setPrintContent }: Pick<ViewProps, "data
   const [form, setForm] = useState<NoteForm>(emptyForm);
   const [filter, setFilter] = useState({ search: "", projectId: "", clientId: "" });
   const [sort, setSort] = useState({ col: "date", dir: -1 });
-  const { askConfirm, ConfirmModalEl } = useConfirm();
 
   const notes = data.deliveryNotes || [];
 
@@ -67,9 +66,9 @@ function DeliveryNotes({ data, saveAll, setPrintContent }: Pick<ViewProps, "data
     closeModal();
   };
 
-  const del = async (id: string) => {
-    if (await askConfirm("Lieferschein löschen?"))
-      saveAll({ ...data, deliveryNotes: notes.filter(n => n.id !== id) });
+  const del = (id: string) => {
+    const n = notes.find(x => x.id === id);
+    removeWithUndo(`Lieferschein ${n?.number || ""} gelöscht`, "deliveryNotes", x => x.id === id);
   };
 
   const addItem = () => setForm(f => ({ ...f, items: [...f.items, { id: generateId(), desc: "", qty: 1, unit: "Stk.", note: "" }] }));
@@ -113,7 +112,6 @@ function DeliveryNotes({ data, saveAll, setPrintContent }: Pick<ViewProps, "data
 
   return (
     <div>
-      {ConfirmModalEl}
       <Header title="Lieferscheine" action={
         <button className="btn btn-primary" onClick={openNew}>+ Neuer Lieferschein</button>
       } />
@@ -137,11 +135,16 @@ function DeliveryNotes({ data, saveAll, setPrintContent }: Pick<ViewProps, "data
       </div>
 
       {/* Tabelle */}
-      {sorted.length === 0 ? (
+      {notes.length === 0 ? (
+        <div className="card" style={{ padding: 0 }}>
+          <EmptyState icon="local_shipping" title="Noch keine Lieferscheine" text="Dokumentiere Lieferungen und Planausgaben mit Positionen, Menge und Empfänger – als PDF zum Mitgeben."
+            action={<button className="btn btn-primary" onClick={openNew}>+ Neuer Lieferschein</button>} />
+        </div>
+      ) : sorted.length === 0 ? (
         <div className="card" style={{ padding: 0 }}>
           <table>
-            <thead><tr><th style={{ width: 120 }}>Nr.</th><th style={{ width: 100 }}>Datum</th><th style={{ width: 180 }}>Empfänger</th><th>Projekt</th><th style={{ width: 60 }}>Pos.</th><th style={{ width: 120 }}></th></tr></thead>
-            <tbody><tr><td colSpan={6} className="empty-state">{notes.length === 0 ? "Noch keine Lieferscheine" : "Keine Treffer"}</td></tr></tbody>
+            <thead><tr><th style={{ width: 120 }}>Nr.</th><th style={{ width: 100 }}>Datum</th><th style={{ width: 180 }}>Empfänger</th><th>Projekt</th><th style={{ width: 60 }}>Pos.</th><th style={{ width: 60 }}></th></tr></thead>
+            <tbody><tr><td colSpan={6} className="empty-state">Keine Treffer</td></tr></tbody>
           </table>
         </div>
       ) : (
@@ -154,22 +157,23 @@ function DeliveryNotes({ data, saveAll, setPrintContent }: Pick<ViewProps, "data
                 <SortTh sort={sort} onSort={toggleSort} col="client" style={{ width: 180 }}>Empfänger</SortTh>
                 <SortTh sort={sort} onSort={toggleSort} col="project">Projekt</SortTh>
                 <th style={{ width: 60, textAlign: "center" }}>Pos.</th>
-                <th style={{ width: 120 }}></th>
+                <th style={{ width: 60 }}></th>
               </tr>
             </thead>
             <tbody>
               {sorted.map(n => (
-                <tr key={n.id}>
-                  <td><strong style={{ color: "#b07848" }}>{n.number || "—"}</strong></td>
+                <tr key={n.id} className="row-link" onClick={() => openEdit(n)}>
+                  <td><strong style={{ color: "var(--accent)" }}>{n.number || "—"}</strong></td>
                   <td>{formatDate(n.date)}</td>
                   <td>{getClient(n)}</td>
                   <td style={{ color: "var(--text4)" }}>{getProject(n)}</td>
                   <td style={{ textAlign: "center", color: "var(--text4)", fontSize: 12 }}>{(n.items || []).length}</td>
-                  <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
-                    <ShareButton style={{ padding: "5px 10px", fontSize: 12, marginRight: 4 }}
-                      options={[{ label: "PDF", onClick: () => { const client = linkedClientForNote(n, data); setPrintContent({ type: "lieferschein", note: n, client, settings: data.settings, data }); } }]} />
-                    <button className="btn btn-ghost" style={{ padding: "5px 10px", fontSize: 12, marginRight: 4 }} onClick={() => openEdit(n)}><span className="msr" style={{ fontSize: 16 }}>edit</span></button>
-                    <button className="btn btn-danger" style={{ padding: "5px 10px", fontSize: 12 }} onClick={() => del(n.id)}><span className="msr" style={{ fontSize: 16 }}>close</span></button>
+                  <td className="row-actions" onClick={e => e.stopPropagation()}>
+                    <RowMenu items={[
+                      { label: "Bearbeiten", icon: "edit", onClick: () => openEdit(n) },
+                      { label: "PDF", icon: "picture_as_pdf", onClick: () => { const client = linkedClientForNote(n, data); setPrintContent({ type: "lieferschein", note: n, client, settings: data.settings, data }); } },
+                      { label: "Löschen", icon: "delete", danger: true, onClick: () => del(n.id) },
+                    ]} />
                   </td>
                 </tr>
               ))}
@@ -180,7 +184,7 @@ function DeliveryNotes({ data, saveAll, setPrintContent }: Pick<ViewProps, "data
 
       {/* Modal */}
       {modal && (
-        <Modal title={modal === "new" ? "Neuer Lieferschein" : "Lieferschein bearbeiten"} onClose={closeModal} onSave={save} wide>
+        <Modal drawer title={modal === "new" ? "Neuer Lieferschein" : "Lieferschein bearbeiten"} onClose={closeModal} onSave={save} wide>
 
           {/* Kopfdaten */}
           <div style={{ fontSize: 11, letterSpacing: "0.08em", color: "var(--text4)", marginBottom: 10 }}>ALLGEMEIN</div>

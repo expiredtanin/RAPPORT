@@ -73,7 +73,7 @@ export function ProtocolsCard({ data, saveAll, projectId }: {
               const offene = (proto.traktanden || []).flatMap(t => (t.items || []).filter(it => it.type === "aufgabe" && it.status !== "erledigt")).length;
               return (
                 <tr key={proto.id}>
-                  <td><strong style={{ color: "#b07848" }}>{proto.nummer}</strong></td>
+                  <td><strong style={{ color: "var(--accent)" }}>{proto.nummer}</strong></td>
                   <td>{formatDate(proto.date)}</td>
                   <td style={{ fontSize: 11, color: "var(--text4)" }}>{proto.type}</td>
                   <td>{proto.title || <span style={{ color: "var(--text5)" }}>Kein Titel</span>}</td>

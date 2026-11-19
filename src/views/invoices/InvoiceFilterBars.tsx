@@ -38,7 +38,7 @@ export function InvoiceFilterBars({ filter, setFilter, clients, availableYears, 
       </div>
 
       <div className="filter-bar">
-        <span className="filter-label">GRUPPIEREN:</span>
+        <span className="filter-label">Gruppieren</span>
         {[{ id: "none", label: "Keine" }, { id: "date", label: "Monat" }, { id: "client", label: "Kunde" }, { id: "status", label: "Status" }].map(g => (
           <button key={g.id} className={`pill${groupBy === g.id ? " active" : ""}`} onClick={() => setGroupBy(g.id)}>{g.label}</button>
         ))}

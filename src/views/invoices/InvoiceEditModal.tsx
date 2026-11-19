@@ -96,7 +96,7 @@ export function InvoiceEditModal({ modal, setModal, form, setForm, data, clients
               <input placeholder="Beschreibung" value={item.desc} onChange={e => updateItem(idx, "desc", e.target.value)} style={{ flex: 3 }} />
               <input type="number" step="0.25" placeholder="Menge" value={item.qty} onChange={e => updateItem(idx, "qty", +e.target.value)} style={{ width: 70, textAlign: "right" }} />
               <input type="number" step="0.05" placeholder="CHF" value={item.price} onChange={e => updateItem(idx, "price", +e.target.value)} style={{ width: 90, textAlign: "right" }} />
-              <input type="number" step="1" min={0} max={100} placeholder="0" value={item.discount || 0} onChange={e => updateItem(idx, "discount", +e.target.value)} style={{ width: 60, textAlign: "right", background: hasDiscount ? "#fff8ed" : undefined }} />
+              <input type="number" step="1" min={0} max={100} placeholder="0" value={item.discount || 0} onChange={e => updateItem(idx, "discount", +e.target.value)} style={{ width: 60, textAlign: "right", background: hasDiscount ? "var(--warning-bg)" : undefined }} />
               <div style={{ width: 100, fontSize: 12, textAlign: "right" }}>
                 {hasDiscount && <div style={{ fontSize: 10, color: "var(--text5)", textDecoration: "line-through" }}>{formatCHF(item.qty * item.price)}</div>}
                 <div style={{ color: hasDiscount ? "var(--warning)" : "var(--text4)" }}>{formatCHF(lineTotal)}</div>

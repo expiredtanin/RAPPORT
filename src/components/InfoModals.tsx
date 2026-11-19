@@ -16,7 +16,7 @@ export function ChangelogModal({ version, onSelectVersion, onClose }: { version:
         <div style={{ background: "#1a1a18", padding: "28px 32px 20px" }}>
           <div style={{ fontSize: 10, letterSpacing: "0.18em", color: "#b07848", marginBottom: 8, fontWeight: 600 }}>CHANGELOG</div>
           <div style={{ display: "flex", alignItems: "baseline", gap: 16 }}>
-            <div style={{ fontFamily: "'Inter', sans-serif", fontSize: 28, color: "#f0ede8", fontWeight: 400, lineHeight: 1.1 }}>{versionLabel(changelogVersion)}</div>
+            <div style={{ fontFamily: "var(--font-ui)", fontSize: 28, color: "#f0ede8", fontWeight: 400, lineHeight: 1.1 }}>{versionLabel(changelogVersion)}</div>
           </div>
           <div style={{ display: "flex", gap: 6, marginTop: 14 }}>
             {versions.map(v => (
@@ -55,7 +55,7 @@ export function AboutModal({ onClose }: { onClose: () => void }) {
       <div style={{ background: "var(--surface)", borderRadius: 10, width: "100%", maxWidth: 480, boxShadow: "0 8px 40px rgba(0,0,0,0.18)", overflow: "hidden" }}>
         <div style={{ background: "#1a1a18", padding: "28px 32px 24px" }}>
           <div style={{ fontSize: 10, letterSpacing: "0.18em", color: "#b07848", marginBottom: 8, fontWeight: 600 }}>ÜBER RAPPORT</div>
-          <div style={{ fontFamily: "'Inter', sans-serif", fontSize: 28, color: "#f0ede8", fontWeight: 400, lineHeight: 1.1 }}>Rapport</div>
+          <div style={{ fontFamily: "var(--font-ui)", fontSize: 28, color: "#f0ede8", fontWeight: 400, lineHeight: 1.1 }}>Rapport</div>
           <div style={{ fontSize: 11, color: "var(--text4)", marginTop: 6, letterSpacing: "0.04em" }}>{versionLabel(LATEST_VERSION)} · Studio-Management für Architekturbüros</div>
         </div>
         <div style={{ padding: "20px 32px 8px" }}>

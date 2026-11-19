@@ -10,9 +10,11 @@
 //   --doc-accent        Titel und kräftige Linien           (Standard = Textfarbe)
 // Ohne `settings.docDesign` sieht jedes Dokument genau so aus wie vor dem Design-Feature.
 //
-// Schriften sind CSS-Familiennamen. Mitgeliefert sind Google Fonts (werden nur bei
-// Bedarf per @import geladen, brauchen also Internet) und macOS-Systemschriften;
-// hochgeladene Schriften liegen als Data-URL in `data.docAssets` und funktionieren offline.
+// Schriften sind CSS-Familiennamen. Die Standardschriften (Playfair Display, DM Mono, Inter) sind
+// in der App mitgeliefert (@fontsource, main.tsx) und funktionieren offline; weitere Google Fonts
+// werden nur bei Bedarf per @import geladen (brauchen Internet); dazu macOS-Systemschriften.
+// Hochgeladene Schriften liegen als Data-URL in `data.docAssets` und funktionieren offline.
+// Typografie im Dokument (Kerning, Ligaturen, Ziffern mit fester Breite für Beträge) setzt `buildDocCss`.
 //
 // Der QR-Zahlteil ist ausgenommen: seine Schrift (Arial) ist von der Norm vorgegeben
 // und wird hier gegen eigenes CSS abgesichert.
@@ -23,14 +25,14 @@ import type { DocAsset, DocDesign, Settings } from "../types";
 export interface DocFont {
   family: string;
   stack: string;
-  group: "Google Fonts" | "Systemschriften (macOS)";
+  group: "Mitgeliefert" | "Google Fonts" | "Systemschriften (macOS)";
   google?: string;
 }
 
 export const DOC_FONTS: DocFont[] = [
-  { family: "Playfair Display", stack: "'Playfair Display', serif", group: "Google Fonts", google: "Playfair+Display:ital,wght@0,400;0,700;1,400" },
-  { family: "DM Mono", stack: "'DM Mono', monospace", group: "Google Fonts", google: "DM+Mono:wght@300;400;500" },
-  { family: "Inter", stack: "'Inter', Helvetica, Arial, sans-serif", group: "Google Fonts", google: "Inter:wght@400;500;600;700" },
+  { family: "Playfair Display", stack: "'Playfair Display', Georgia, serif", group: "Mitgeliefert" },
+  { family: "DM Mono", stack: "'DM Mono', Menlo, monospace", group: "Mitgeliefert" },
+  { family: "Inter", stack: "'Inter Variable', 'Inter', Helvetica, Arial, sans-serif", group: "Mitgeliefert" },
   { family: "DM Sans", stack: "'DM Sans', Helvetica, Arial, sans-serif", group: "Google Fonts", google: "DM+Sans:ital,wght@0,400;0,500;0,700;1,400" },
   { family: "IBM Plex Sans", stack: "'IBM Plex Sans', Helvetica, Arial, sans-serif", group: "Google Fonts", google: "IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400" },
   { family: "IBM Plex Mono", stack: "'IBM Plex Mono', monospace", group: "Google Fonts", google: "IBM+Plex+Mono:wght@400;500;600" },
@@ -137,7 +139,7 @@ export function buildDocCss(r: ResolvedDocDesign, scope?: string): { imports: st
     .map(spec => `@import url('https://fonts.googleapis.com/css2?family=${spec}&display=swap');`);
 
   const plain = d.bodyFont ? fontStack(r.body) : fontStack(DEFAULT_DOC_DESIGN.plainFont);
-  const logo = d.headingFont ? fontStack(r.heading) : "'Inter', sans-serif";
+  const logo = d.headingFont ? fontStack(r.heading) : fontStack("Inter");
   const vars = `.print-page {
   --doc-font-heading: ${fontStack(r.heading)};
   --doc-font-body: ${fontStack(r.body)};
@@ -146,6 +148,12 @@ export function buildDocCss(r: ResolvedDocDesign, scope?: string): { imports: st
   --doc-ink: ${r.ink};
   --doc-accent: ${r.accent};
 }
+/* Typografie: Kerning und Ligaturen an, Ziffern mit fester Breite (Beträge stehen bündig untereinander),
+   Silbentrennung im Fliesstext (Sprache de-CH am Blatt), keine Schusterjungen/Hurenkinder in Absätzen. */
+.print-page { font-kerning: normal; font-variant-ligatures: common-ligatures; text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased; font-variant-numeric: tabular-nums lining-nums; }
+.print-page p, .print-page li { hyphens: auto; -webkit-hyphens: auto; orphans: 3; widows: 3; text-wrap: pretty; }
+.print-page h1, .print-page h2, .print-page h3 { text-wrap: balance; hyphens: manual; }
 .qr-bill-wrapper svg, .qr-bill-wrapper svg * { font-family: Arial, Helvetica, sans-serif !important; }`;
 
   const custom = r.customCss.trim() ? (scope ? `@scope (${scope}) {\n${r.customCss}\n}` : r.customCss) : "";

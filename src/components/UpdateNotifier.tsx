@@ -98,7 +98,7 @@ export default function UpdateNotifier() {
         <div style={{ background: "#1a1a18", padding: "28px 32px 20px" }}>
           <div style={{ fontSize: 10, letterSpacing: "0.18em", color: "#b07848", marginBottom: 8, fontWeight: 600 }}>UPDATE VERFÜGBAR</div>
           <div style={{ display: "flex", alignItems: "baseline", gap: 12 }}>
-            <div style={{ fontFamily: "'Inter', sans-serif", fontSize: 26, color: "#f0ede8", fontWeight: 400, lineHeight: 1.1 }}>
+            <div style={{ fontFamily: "var(--font-ui)", fontSize: 26, color: "#f0ede8", fontWeight: 400, lineHeight: 1.1 }}>
               Rapport {versionLabel(update.version)}
             </div>
             {update.currentVersion && (

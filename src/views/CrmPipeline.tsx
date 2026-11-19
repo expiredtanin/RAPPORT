@@ -88,10 +88,10 @@ export default function CrmPipeline({ data, update, setView }: Pick<ViewProps, "
     <div>
       {ConfirmModalEl}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14, marginBottom: 20 }} className="responsive-grid-4">
-        <KpiCard label="OFFENE LEADS" value={open.length} sub={`${leads.length - open.length} abgeschlossen`} color="var(--info)" />
-        <KpiCard label="PIPELINE (NETTO)" value={formatCHF(pipelineValue(leads))} sub={`gewichtet ${formatCHF(pipelineValue(leads, true))}`} color="#b07848" />
-        <KpiCard label={`TREFFERQUOTE ${year}`} value={winRate === null ? "—" : `${Math.round(winRate * 100)} %`} sub="gewonnen / entschieden" color="var(--positive)" />
-        <KpiCard label="WIEDERVORLAGEN" value={follow.length} sub={overdue ? `${overdue} überfällig` : "keine überfällig"} color={overdue ? "var(--warning)" : "var(--text3)"} />
+        <KpiCard label="Offene Leads" value={open.length} sub={`${leads.length - open.length} abgeschlossen`} color="var(--info)" />
+        <KpiCard label="Pipeline (netto)" value={formatCHF(pipelineValue(leads))} sub={`gewichtet ${formatCHF(pipelineValue(leads, true))}`} />
+        <KpiCard label={`Trefferquote ${year}`} value={winRate === null ? "—" : `${Math.round(winRate * 100)} %`} sub="gewonnen / entschieden" color="var(--positive)" />
+        <KpiCard label="Wiedervorlagen" value={follow.length} sub={overdue ? `${overdue} überfällig` : "keine überfällig"} color={overdue ? "var(--warning)" : "var(--text3)"} />
       </div>
 
       <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}>

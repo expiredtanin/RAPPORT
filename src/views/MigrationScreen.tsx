@@ -49,12 +49,11 @@ export default function MigrationScreen({ data, onComplete }: {
       minHeight: "100vh", minWidth: "100vw",
       background: "#ebe7e1",
       display: "flex", alignItems: "center", justifyContent: "center",
-      fontFamily: "'Inter', sans-serif",
+      fontFamily: "var(--font-ui)",
       position: "fixed", inset: 0, zIndex: 9999,
       overflowY: "auto", padding: "24px 0",
     }}>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Archivo+Black&family=Inter:wght@400;500;600;700&display=swap');
         @keyframes mig-fade-in {
           from { opacity: 0; transform: translateY(16px); }
           to   { opacity: 1; transform: translateY(0); }
@@ -64,7 +63,7 @@ export default function MigrationScreen({ data, onComplete }: {
           width: 100%; padding: 13px;
           background: #1a1a18; color: #f0ede8;
           border: none; border-radius: 20px;
-          font-family: 'Inter', sans-serif; font-size: 13px;
+          font-family: var(--font-ui); font-size: 13px;
           font-weight: 500; letter-spacing: 0.04em;
           cursor: pointer; transition: background 0.18s;
         }
@@ -73,7 +72,7 @@ export default function MigrationScreen({ data, onComplete }: {
           width: 100%; padding: 13px;
           background: transparent; color: #1a1a18;
           border: 2px solid #1a1a18; border-radius: 20px;
-          font-family: 'Inter', sans-serif; font-size: 13px;
+          font-family: var(--font-ui); font-size: 13px;
           font-weight: 500; letter-spacing: 0.04em;
           cursor: pointer; transition: background 0.18s;
           display: flex; align-items: center; justify-content: center; gap: 8px;
@@ -95,7 +94,7 @@ export default function MigrationScreen({ data, onComplete }: {
       }}>
         {/* Header */}
         <div style={{ textAlign: "center", marginBottom: 28 }}>
-          <div style={{ fontFamily: "Krungthep, 'Archivo Black', sans-serif", fontSize: 30, color: "#1a1a18", letterSpacing: "-0.02em", lineHeight: 1 }}>
+          <div style={{ fontFamily: "var(--font-ui)", fontSize: 30, color: "#1a1a18", letterSpacing: "-0.02em", lineHeight: 1 }}>
             RAPPORT
           </div>
           <div style={{ fontSize: 9, color: "#b0aca4", letterSpacing: "0.2em", marginTop: 6, fontWeight: 500 }}>

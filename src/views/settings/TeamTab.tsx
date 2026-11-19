@@ -194,7 +194,7 @@ export function TeamTab({ s, setField, data, update, isAdmin }: DraftProps & Pic
       {/* Cloud: Mitarbeiter einladen Modal */}
       {inviteModal && (
         <Modal onClose={() => setInviteModal(null)} hideFooter>
-          <h3 style={{ marginBottom: 6, fontFamily: "'Inter', sans-serif", fontSize: 22 }}>Mitarbeiter einladen</h3>
+          <h3 style={{ marginBottom: 6, fontFamily: "var(--font-ui)", fontSize: 22 }}>Mitarbeiter einladen</h3>
           <p style={{ fontSize: 12, color: "var(--text4)", marginBottom: 18, lineHeight: 1.6 }}>
             Konto wird angelegt und der Person als Studio-Mitglied zugeordnet. Das temporäre Passwort teilen Sie der Person separat mit.
           </p>
@@ -261,7 +261,7 @@ export function TeamTab({ s, setField, data, update, isAdmin }: DraftProps & Pic
       {/* Cloud: Erfolgs-Bestätigung mit Credentials zum Weitergeben */}
       {inviteResult?.ok && (
         <Modal onClose={() => setInviteResult(null)} hideFooter>
-          <h3 style={{ marginBottom: 6, fontFamily: "'Inter', sans-serif", fontSize: 22 }}>Eingeladen ✓</h3>
+          <h3 style={{ marginBottom: 6, fontFamily: "var(--font-ui)", fontSize: 22 }}>Eingeladen ✓</h3>
           <p style={{ fontSize: 13, color: "var(--text3)", marginBottom: 18, lineHeight: 1.6 }}>
             Bitte teilen Sie diese Zugangsdaten der Person mit. Sie kann sich damit anmelden und das Passwort danach selbst ändern.
           </p>

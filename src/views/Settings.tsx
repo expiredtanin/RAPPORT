@@ -16,7 +16,7 @@
 // Änderungen); Feiertage, Absenzen und Rollen werden dagegen sofort gespeichert.
 // Nicht-Admins sehen nur «Mein Profil».
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Header } from "../components/UI";
 import UpdatesSupport from "../components/UpdatesSupport";
 import DocDesignSettings from "../components/DocDesignSettings";
@@ -60,6 +60,18 @@ export default function Settings({ data, update, currentUser, uiZoom, setUiZoom,
     setTimeout(() => setSaved(false), 2500);
   };
 
+  // ⌘S / Ctrl+S speichert ungespeicherte Einstellungen
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "s" && isDirty) {
+        e.preventDefault();
+        update("settings", s); setSaved(true); setTimeout(() => setSaved(false), 2500);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [isDirty, s, update]);
+
   if (!isAdmin) {
     return <PersonalSettings data={data} update={update} currentUser={currentUser} uiZoom={uiZoom || 1} setUiZoom={setUiZoom || (() => {})} />;
   }
@@ -80,9 +92,11 @@ export default function Settings({ data, update, currentUser, uiZoom, setUiZoom,
         {/* Stable header — Speichern only for settings tabs */}
         <Header title="Einstellungen" action={
           SETTINGS_TABS.has(tab)
-            ? <button className="btn btn-primary" style={{ background: saved ? "var(--positive)" : isDirty ? "#8a6a3a" : "#2a2a22", transition: "background 0.3s" }} onClick={save}>
-                {saved ? "✓ Gespeichert" : isDirty ? "Speichern *" : "Gespeichert"}
-              </button>
+            ? (isDirty
+                ? <button className="btn btn-primary" onClick={save} title="Änderungen speichern (⌘S)">Änderungen speichern</button>
+                : <span style={{ display: "inline-flex", alignItems: "center", gap: 6, height: 36, fontSize: 13, color: saved ? "var(--positive)" : "var(--text4)" }}>
+                    <span className="msr" style={{ fontSize: 17 }}>check_circle</span>{saved ? "Gespeichert" : "Alles gespeichert"}
+                  </span>)
             : null
         } />
 

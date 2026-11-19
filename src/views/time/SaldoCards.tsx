@@ -29,7 +29,7 @@ export function SaldoCards({ selectedEmp, currentDate, totalSaldo, monthSaldo, f
               </div>
             ))}
             {totalSaldo && (
-              <div style={{ display: "flex", justifyContent: "space-between", marginTop: 4, paddingTop: 4, borderTop: "1px solid var(--border)", fontFamily: "'Inter', sans-serif", fontSize: 13 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", marginTop: 4, paddingTop: 4, borderTop: "1px solid var(--border)", fontFamily: "var(--font-ui)", fontSize: 13 }}>
                 <span>Saldo</span>
                 <strong style={{ color: totalSaldo.saldo >= 0 ? "var(--positive)" : "var(--negative)" }}>
                   {totalSaldo.saldo === 0 ? "0h" : `${totalSaldo.saldo > 0 ? "+" : ""}${totalSaldo.saldo}h`}
@@ -48,7 +48,7 @@ export function SaldoCards({ selectedEmp, currentDate, totalSaldo, monthSaldo, f
               </div>
             ))}
             {monthSaldo && (
-              <div style={{ display: "flex", justifyContent: "space-between", marginTop: 4, paddingTop: 4, borderTop: "1px solid var(--border)", fontFamily: "'Inter', sans-serif", fontSize: 13 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", marginTop: 4, paddingTop: 4, borderTop: "1px solid var(--border)", fontFamily: "var(--font-ui)", fontSize: 13 }}>
                 <span>Saldo</span>
                 <strong style={{ color: monthSaldo.saldo >= 0 ? "var(--positive)" : "var(--negative)" }}>
                   {monthSaldo.saldo === 0 ? "0h" : `${monthSaldo.saldo > 0 ? "+" : ""}${monthSaldo.saldo}h`}
@@ -69,7 +69,7 @@ export function SaldoCards({ selectedEmp, currentDate, totalSaldo, monthSaldo, f
               </div>
             ))}
             {ferienSaldo && (
-              <div style={{ display: "flex", justifyContent: "space-between", marginTop: 4, paddingTop: 4, borderTop: "1px solid var(--border)", fontFamily: "'Inter', sans-serif", fontSize: 13 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", marginTop: 4, paddingTop: 4, borderTop: "1px solid var(--border)", fontFamily: "var(--font-ui)", fontSize: 13 }}>
                 <span>Rest</span>
                 <strong style={{ color: ferienSaldo.rest >= 0 ? "var(--positive)" : "var(--negative)" }}>
                   {ferienSaldo.rest === 0 ? "0h" : `${ferienSaldo.rest > 0 ? "+" : ""}${ferienSaldo.rest}h`}

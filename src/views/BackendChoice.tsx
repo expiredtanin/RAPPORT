@@ -78,7 +78,7 @@ export default function BackendChoice() {
       minHeight: "100vh", minWidth: "100vw",
       background: "#ebe7e1",
       display: "flex", alignItems: "center", justifyContent: "center",
-      fontFamily: "'Inter', sans-serif",
+      fontFamily: "var(--font-ui)",
       position: "fixed", inset: 0, zIndex: 9999,
       padding: 20,
     }}>
@@ -119,7 +119,7 @@ export default function BackendChoice() {
         width: "100%", maxWidth: 460,
       }}>
         <div style={{ textAlign: "center", marginBottom: 36 }}>
-          <div style={{ fontFamily: "Krungthep, 'Archivo Black', sans-serif", fontSize: 40, color: "#1a1a18", letterSpacing: "-0.02em", lineHeight: 1 }}>
+          <div style={{ fontFamily: "var(--font-ui)", fontSize: 40, color: "#1a1a18", letterSpacing: "-0.02em", lineHeight: 1 }}>
             RAPPORT
           </div>
           <div style={{ fontSize: 10, color: "#b0aca4", letterSpacing: "0.22em", marginTop: 10, fontWeight: 500 }}>

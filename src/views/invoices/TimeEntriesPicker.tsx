@@ -80,7 +80,7 @@ export function TimeEntriesPicker({ form, setForm, data, openEntriesForProject, 
                   <td style={{ padding: "5px 8px" }}>{formatDate(e.date)}</td>
                   <td style={{ padding: "5px 8px", color: "var(--text4)" }}>
                     {phase?.id || "—"}
-                    {pos && <span style={{ marginLeft: 4, fontWeight: 600, color: "var(--pending)", fontSize: 10, background: "#fffbe8", padding: "0 4px", borderRadius: 20 }}>{pos.code}</span>}
+                    {pos && <span style={{ marginLeft: 4, fontWeight: 600, color: "var(--pending)", fontSize: 10, background: "var(--warning-bg)", padding: "0 4px", borderRadius: 20 }}>{pos.code}</span>}
                   </td>
                   <td style={{ padding: "5px 8px", color: "var(--text3)" }}>{e.description || "—"}</td>
                   <td style={{ padding: "5px 8px", textAlign: "right", color: "var(--text4)" }}>{formatHours(e.minutes)}</td>

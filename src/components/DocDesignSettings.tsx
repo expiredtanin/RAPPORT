@@ -118,7 +118,7 @@ export default function DocDesignSettings({ s, setField, data, update }: {
         <option value="">Standard ({standard})</option>
         {!known && <option value={value}>{value} (Datei fehlt)</option>}
         {families.length > 0 && <optgroup label="Eigene Schriften">{families.map(f => <option key={f} value={f}>{f}</option>)}</optgroup>}
-        {(["Google Fonts", "Systemschriften (macOS)"] as const).map(g => (
+        {(["Mitgeliefert", "Google Fonts", "Systemschriften (macOS)"] as const).map(g => (
           <optgroup key={g} label={g}>{DOC_FONTS.filter(f => f.group === g).map(f => <option key={f.family} value={f.family}>{f.family}</option>)}</optgroup>
         ))}
       </select>
@@ -199,7 +199,7 @@ export default function DocDesignSettings({ s, setField, data, update }: {
           </label>
           <div style={{ ...hint, marginTop: 10 }}>
             .woff2, .woff, .otf oder .ttf — mehrere Schnitte (Regular, Bold, Italic) auf einmal möglich; Gewicht und Stil werden aus dem Dateinamen erkannt.
-            Hochgeladene Schriften funktionieren offline, Google Fonts brauchen beim Drucken Internet. Bitte die Lizenz der Schrift beachten.
+            Mitgelieferte und hochgeladene Schriften funktionieren offline, die übrigen Google Fonts brauchen beim Drucken Internet. Bitte die Lizenz der Schrift beachten.
           </div>
         </div>
 

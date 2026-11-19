@@ -9,6 +9,7 @@
 import React, { useState, useRef } from "react";
 import { generateId, getFeiertageForYear, imageFileToJpeg, localISODate } from "../utils";
 import type { BlogPost, CurrentUser, AppData, Poll, ViewProps } from "../types";
+import { EmptyState } from "../components/UI";
 
 type PostForm = Partial<BlogPost> & Pick<BlogPost, "title" | "body" | "type" | "pinned"> & { eventDate: string; image: string; poll: Poll | null };
 
@@ -49,7 +50,7 @@ function PollBlock({ poll, postId, currentUserId, onVote }: {
                 borderRadius: 20, cursor: "pointer", fontSize: 13, fontFamily: "inherit",
                 color: "var(--text)", transition: "border-color 0.15s",
               }}
-                onMouseEnter={e => e.currentTarget.style.borderColor = "#9a7858"}
+                onMouseEnter={e => e.currentTarget.style.borderColor = "var(--accent)"}
                 onMouseLeave={e => e.currentTarget.style.borderColor = "var(--border)"}
               >{opt.label}</button>
             ) : (
@@ -99,7 +100,7 @@ function PostCard({ post, currentUser, canWrite, onEdit, onDelete, onPin, onVote
               {meta.label.toUpperCase()}
             </span>
             {isDraft && <span style={{ fontSize: 10, color: "var(--pending)", background: "var(--pending-bg)", fontWeight: 600, padding: "2px 10px", borderRadius: 20, letterSpacing: "0.06em" }}>ENTWURF</span>}
-            {post.pinned && <span style={{ fontSize: 10, color: "#b07848", fontWeight: 600, letterSpacing: "0.06em", display: "flex", alignItems: "center", gap: 3 }}><span className="msr" style={{ fontSize: 12 }}>push_pin</span> ANGEPINNT</span>}
+            {post.pinned && <span style={{ fontSize: 10, color: "var(--accent)", fontWeight: 600, letterSpacing: "0.06em", display: "flex", alignItems: "center", gap: 3 }}><span className="msr" style={{ fontSize: 12 }}>push_pin</span> ANGEPINNT</span>}
             {post.eventDate && (
               <span style={{ fontSize: 11, color: "var(--positive)", background: "var(--positive-bg)", padding: "2px 10px", borderRadius: 20 }}>
                 📅 {new Date(post.eventDate).toLocaleDateString("de-CH", { weekday: "short", day: "numeric", month: "long" })}
@@ -128,13 +129,13 @@ function PostCard({ post, currentUser, canWrite, onEdit, onDelete, onPin, onVote
           </div>
         </div>
 
-        {post.title && <div style={{ fontSize: 17, fontFamily: "'Inter', sans-serif", color: "var(--text)", marginBottom: 8, lineHeight: 1.3 }}>{post.title}</div>}
+        {post.title && <div style={{ fontSize: 17, fontFamily: "var(--font-ui)", color: "var(--text)", marginBottom: 8, lineHeight: 1.3 }}>{post.title}</div>}
 
         <div style={{ fontSize: 13, color: "var(--text2)", lineHeight: 1.7, whiteSpace: "pre-wrap", overflow: "hidden", maxHeight: expanded ? "none" : "6.8em" }}>
           {post.body}
         </div>
         {isLong && (
-          <button onClick={() => setExpanded(e => !e)} style={{ background: "none", border: "none", color: "#9a7858", fontSize: 12, cursor: "pointer", fontFamily: "inherit", padding: "4px 0", marginTop: 2 }}>
+          <button onClick={() => setExpanded(e => !e)} style={{ background: "none", border: "none", color: "var(--accent)", fontSize: 12, cursor: "pointer", fontFamily: "inherit", padding: "4px 0", marginTop: 2 }}>
             {expanded ? "Weniger anzeigen ↑" : "Mehr anzeigen ↓"}
           </button>
         )}
@@ -189,7 +190,7 @@ function PostModal({ initial, onSave, onClose }: {
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal" style={{ maxWidth: 580 }} onClick={e => e.stopPropagation()}>
-        <div style={{ fontFamily: "'Inter', sans-serif", fontSize: 20, marginBottom: 20, color: "var(--text)" }}>
+        <div style={{ fontFamily: "var(--font-ui)", fontSize: 20, marginBottom: 20, color: "var(--text)" }}>
           {initial ? "Beitrag bearbeiten" : "Neuer Beitrag"}
         </div>
 
@@ -378,7 +379,7 @@ export default function Pinboard({ data, update, currentUser }: Pick<ViewProps, 
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 24 }}>
         <div>
-          <h1 style={{ fontFamily: "'Inter', sans-serif", fontSize: 30, fontWeight: 400, letterSpacing: "-0.02em", lineHeight: 1.1, color: "var(--text)", marginBottom: 6 }}>Pinnwand</h1>
+          <h1 style={{ fontFamily: "var(--font-ui)", fontSize: 30, fontWeight: 400, letterSpacing: "-0.02em", lineHeight: 1.1, color: "var(--text)", marginBottom: 6 }}>Pinnwand</h1>
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
             {FILTER_OPTS.map(opt => (
               <button key={opt.id} onClick={() => setFilter(opt.id)} style={btnStyle(filter === opt.id)}>{opt.label}</button>
@@ -406,11 +407,9 @@ export default function Pinboard({ data, update, currentUser }: Pick<ViewProps, 
       )}
 
       {sorted.length === 0 && (
-        <div style={{ textAlign: "center", padding: "60px 0", color: "var(--text4)" }}>
-          <div style={{ fontSize: 32, marginBottom: 12 }}>📋</div>
-          <div style={{ fontSize: 14 }}>Noch keine Beiträge</div>
-          {canWrite && <div style={{ fontSize: 12, marginTop: 6 }}>Erstelle den ersten Beitrag mit dem Button oben rechts.</div>}
-        </div>
+        <EmptyState icon="campaign" title="Noch keine Beiträge"
+          text="Die Pinnwand ist für Ankündigungen, Events und Umfragen im Büro — alle sehen sie auf der Übersicht."
+          action={canWrite ? <button className="btn btn-primary" onClick={() => setModal({ mode: "create" })}>+ Erster Beitrag</button> : undefined} />
       )}
 
       {sorted.length > 0 && (

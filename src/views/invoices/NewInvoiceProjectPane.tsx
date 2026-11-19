@@ -51,7 +51,7 @@ export function NewInvoiceProjectPane({ ni, setNi, data, invoices, proj, bType }
               if (id === "akonto") return setNi(n => ({ ...n, mode: bType === "stundensatz" ? "akonto-stunden" : "akonto-percent" }));
               setNi(n => ({ ...n, mode: bType === "stundensatz" ? "teilrechnung" : "teilrechnung-percent" }));
             }} style={{
-              flex: 1, padding: "10px 8px", border: `2px solid ${active ? color : "#ddd8d0"}`,
+              flex: 1, padding: "10px 8px", border: `2px solid ${active ? color : "var(--border)"}`,
               borderRadius: 8, background: active ? color : "transparent",
               color: active ? "#fff" : "var(--text3)", fontFamily: "inherit", fontSize: 12,
               fontWeight: 600, cursor: "pointer", letterSpacing: "0.03em",
@@ -66,7 +66,7 @@ export function NewInvoiceProjectPane({ ni, setNi, data, invoices, proj, bType }
               ? (id === "percent" ? "akonto-percent" : id === "amount" ? "akonto-amount" : id === "phase" ? "akonto-phase" : "akonto-stunden")
               : (id === "percent" ? "teilrechnung-percent" : id === "amount" ? "teilrechnung-amount" : id === "phase" ? "phase" : "teilrechnung")
             }))} style={{
-              padding: "5px 12px", border: `1.5px solid ${active ? "#1a1a18" : "#ddd8d0"}`,
+              padding: "5px 12px", border: `1.5px solid ${active ? "#1a1a18" : "var(--border)"}`,
               borderRadius: 20, background: active ? "#1a1a18" : "transparent",
               color: active ? "#f0ede8" : "var(--text3)", fontFamily: "inherit",
               fontSize: 11, cursor: "pointer",
@@ -95,7 +95,7 @@ export function NewInvoiceProjectPane({ ni, setNi, data, invoices, proj, bType }
                     borderBottom: "1px solid var(--border2)", cursor: alreadyBilled ? "not-allowed" : "pointer",
                     opacity: alreadyBilled ? 0.4 : 1,
                   }}>
-                    <div style={{ width: 13, height: 13, borderRadius: "50%", flexShrink: 0, border: isSelected ? `4px solid ${kind === "akonto" ? "#b07848" : "#2d5a8e"}` : "2px solid #ccc" }} />
+                    <div style={{ width: 13, height: 13, borderRadius: "50%", flexShrink: 0, border: isSelected ? `4px solid ${kind === "akonto" ? "var(--accent)" : "var(--info)"}` : "2px solid #ccc" }} />
                     <div style={{ flex: 1 }}>
                       <div style={{ fontSize: 12, fontWeight: 500 }}>{phInfo?.label || ph.id}</div>
                       <div style={{ fontSize: 10, color: "var(--text4)" }}>{ph.hours}h × {formatCHF(proj.hourlyRate || 0)}/h = <strong>{formatCHF(amt)}</strong></div>
@@ -112,8 +112,8 @@ export function NewInvoiceProjectPane({ ni, setNi, data, invoices, proj, bType }
           <>
             {/* Ebene 1: Art der Rechnung */}
             <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
-              <KindBtn id="akonto" label="Akonto" color="#b07848" />
-              <KindBtn id="teilrechnung" label="Teilrechnung" color="#2d5a8e" />
+              <KindBtn id="akonto" label="Akonto" color="var(--accent)" />
+              <KindBtn id="teilrechnung" label="Teilrechnung" color="var(--info)" />
               <KindBtn id="schluss" label="Schlussrechnung" color="#1a1a18" />
             </div>
 
@@ -129,13 +129,13 @@ export function NewInvoiceProjectPane({ ni, setNi, data, invoices, proj, bType }
 
             {/* Inputs */}
             {kind !== "schluss" && subMode === "percent" && (
-              <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", background: kind === "akonto" ? "#fff8ed" : "#edf2fa", borderRadius: 6, border: `1px solid ${kind === "akonto" ? "#f0e4c4" : "#c4d4ea"}`, marginBottom: 10 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", background: kind === "akonto" ? "var(--warning-bg)" : "var(--info-bg)", borderRadius: 6, border: `1px solid ${kind === "akonto" ? "#f0e4c4" : "#c4d4ea"}`, marginBottom: 10 }}>
                 <input type="number" min={1} max={100} step="1" value={ni.pct} onChange={e => setNi(n => ({ ...n, pct: Math.max(0, Math.min(100, +e.target.value || 0)) }))} style={{ width: 80, textAlign: "right", background: "var(--surface)" }} />
                 <span style={{ fontSize: 13, color: "var(--text3)" }}>% von {formatCHF(projBudget)} = <strong>{formatCHF(projBudget * ni.pct / 100)}</strong></span>
               </div>
             )}
             {kind !== "schluss" && subMode === "amount" && (
-              <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", background: kind === "akonto" ? "#fff8ed" : "#edf2fa", borderRadius: 6, border: `1px solid ${kind === "akonto" ? "#f0e4c4" : "#c4d4ea"}`, marginBottom: 10 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", background: kind === "akonto" ? "var(--warning-bg)" : "var(--info-bg)", borderRadius: 6, border: `1px solid ${kind === "akonto" ? "#f0e4c4" : "#c4d4ea"}`, marginBottom: 10 }}>
                 <span style={{ fontSize: 13, color: "var(--text3)" }}>CHF</span>
                 <input type="number" min={0} step="50" value={ni.amt} onChange={e => setNi(n => ({ ...n, amt: Math.max(0, +e.target.value || 0) }))} style={{ width: 140, textAlign: "right", background: "var(--surface)" }} />
               </div>
@@ -155,7 +155,7 @@ export function NewInvoiceProjectPane({ ni, setNi, data, invoices, proj, bType }
 
             {/* Stunden-Info */}
             {bType === "stundensatz" && kind !== "schluss" && subMode === "stunden" && (
-              <div style={{ padding: "8px 14px", background: kind === "akonto" ? "#fff8ed" : "#edf2fa", borderRadius: 6, fontSize: 11, color: kind === "akonto" ? "#b07848" : "#2d5a8e", marginBottom: 10 }}>
+              <div style={{ padding: "8px 14px", background: kind === "akonto" ? "var(--warning-bg)" : "var(--info-bg)", borderRadius: 6, fontSize: 11, color: kind === "akonto" ? "var(--accent)" : "var(--info)", marginBottom: 10 }}>
                 Alle offenen Stunden bis heute vorausgewählt — im nächsten Schritt einzeln ab-/anwählbar.
               </div>
             )}

@@ -19,7 +19,7 @@
 // Render-Block mit `hasViewAccess` einbinden. Versions-Changelog: `CHANGELOGS` + `LATEST_VERSION` in changelog.ts.
 
 import React, { useState, useEffect, Suspense, lazy } from "react";
-import { NAV_ITEMS, defaultData, statusCssVars } from "./constants";
+import { defaultData, statusCssVars } from "./constants";
 import { verifyPassword, withHashedPassword, stripCredentials } from "./utils";
 import { storage, cloudStorage, isCloudBackend, isServerMode } from "./storage/adapter";
 import { pickAndActivateDataFolder } from "./storage/data-folder";
@@ -34,6 +34,9 @@ import MigrationScreen from "./views/MigrationScreen";
 import UpdateNotifier from "./components/UpdateNotifier";
 import DataFolderHint from "./components/DataFolderHint";
 import Sidebar from "./components/Sidebar";
+import Toaster from "./components/Toaster";
+import CommandPalette from "./components/CommandPalette";
+import type { PaletteTarget } from "./commandPalette";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { useNavigation } from "./hooks/useNavigation";
 import { useStudioData } from "./hooks/useStudioData";
@@ -240,7 +243,7 @@ export default function App() {
   const [changelogVersion, setChangelogVersion] = useState(LATEST_VERSION);
   const [showAbout, setShowAbout] = useState(false);
   const [navOpen, setNavOpen] = useState(false);
-  const [expandedNav, setExpandedNav] = useState(new Set(["buchhaltung"]));
+  const [expandedNav, setExpandedNav] = useState(new Set<string>());
   const { darkMode, setDarkMode, setSidebarCollapsed, collapsed, uiZoom, setUiZoom } = useAppearance();
 
   // Navigation zu Protokoll von Projekt aus
@@ -271,14 +274,31 @@ export default function App() {
     return () => { cancelled = true; if (unlisten) unlisten(); };
   }, [navigate]);
 
-  // Auto-expand parent when navigating to a child
+  // Befehlspalette: ⌘K / Ctrl+K öffnet und schliesst
+  const [paletteOpen, setPaletteOpen] = useState(false);
   useEffect(() => {
-    NAV_ITEMS.forEach(item => {
-      if (item.children?.some(c => c.id === view)) {
-        setExpandedNav(prev => { const next = new Set(prev); next.add(item.id); return next; });
-      }
-    });
-  }, [view]);
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && !e.altKey && e.key.toLowerCase() === "k") { e.preventDefault(); setPaletteOpen(o => !o); }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  // Escape schliesst den obersten Dialog — für alle `.modal-overlay` an einer Stelle (ein Klick auf den
+  // Hintergrund schliesst sie ohnehin). Menüs und Kalender fangen Escape vorher ab (preventDefault).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape" || e.defaultPrevented) return;
+      const overlays = [...document.querySelectorAll<HTMLElement>(".modal-overlay")];
+      if (overlays.length === 0) return;
+      const z = (el: HTMLElement) => Number(getComputedStyle(el).zIndex) || 0;
+      const top = overlays.reduce((best, el) => (z(el) >= z(best) ? el : best));
+      e.preventDefault();
+      top.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   // Boot-Spinner während Initial-Load (Adapter ist async, auch wenn LocalStorage <50ms)
   if (loading) return <ViewFallback />;
@@ -369,17 +389,39 @@ export default function App() {
     );
   }
 
+  /** Führt einen Treffer der Befehlspalette aus (Ansicht, Datensatz oder Aktion). Views übernehmen `modal`-Aufträge beim Öffnen. */
+  const runPalette = (t: PaletteTarget) => {
+    const open = (v: string, m: ModalState = null) => { setSelectedProjectId(null); navigate(v); setModal(m); };
+    switch (t.kind) {
+      case "view": open(t.view); break;
+      case "project": navigate("projects"); setSelectedProjectId(t.id); break;
+      case "invoice": open("invoices", { type: "openInvoice", id: t.id }); break;
+      case "quote": open("quotes", { type: "openQuote", id: t.id }); break;
+      case "person": open("personen", { type: "openPerson", id: t.id }); break;
+      case "protocol": window.dispatchEvent(new CustomEvent("openProtokoll", { detail: { id: t.id } })); break;
+      case "action":
+        if (t.action === "toggleDark") setDarkMode(d => !d);
+        else if (t.action === "newProject") open("projects", { type: "newProject" });
+        else if (t.action === "newInvoice") open("invoices", { type: "newInvoice" });
+        else if (t.action === "newQuote") open("quotes", { type: "newQuote" });
+        else if (t.action === "newProtocol") open("protokolle", { type: "newProtocol" });
+        break;
+    }
+  };
+
   return (
-    <div className="app-wrapper" data-theme={darkMode ? "dark" : "light"} style={{ display: "flex", height: "100%", overflow: "hidden", background: "var(--bg)", fontFamily: "'Inter', sans-serif", color: "var(--text)" }}>
+    <div className="app-wrapper" data-theme={darkMode ? "dark" : "light"} style={{ display: "flex", height: "100%", overflow: "hidden", background: "var(--bg)", fontFamily: "var(--font-ui)", color: "var(--text)" }}>
       <style>{statusCssVars()}</style>
 
       {/* Mobile Header */}
       <div className="mobile-header">
-        <button onClick={() => setNavOpen(o => !o)} style={{ background: "none", border: "none", color: "#aaa", fontSize: 22, padding: 0, lineHeight: 1 }}>☰</button>
-        <div style={{ fontFamily: "Krungthep, 'Archivo Black', sans-serif", fontSize: 24, color: "#f0ede8", letterSpacing: "-0.02em", lineHeight: 1 }}>RAPPORT</div>
+        <button onClick={() => setNavOpen(o => !o)} className="side-icon-btn" aria-label="Menü öffnen"><span className="msr" style={{ fontSize: 22 }}>menu</span></button>
+        <div className="side-wordmark">RAPPORT</div>
       </div>
 
       <DataFolderHint data={data} />
+      <Toaster />
+      {paletteOpen && <CommandPalette data={data} navItems={visibleNavItems} onRun={runPalette} onClose={() => setPaletteOpen(false)} />}
 
       {/* Sidebar */}
       <Sidebar
@@ -392,10 +434,23 @@ export default function App() {
         onShowChangelog={v => { setChangelogVersion(v); setShowChangelog(true); }}
         currentUser={currentUser} currentUserRecord={currentUserRecord} userInitials={userInitials}
         darkMode={darkMode} setDarkMode={setDarkMode} handleLogout={handleLogout}
+        onOpenPalette={() => setPaletteOpen(true)}
       />
 
       {/* Main */}
-      <div className="main-content" style={{ flex: 1, padding: "28px 24px", overflowY: "auto", minWidth: 0, background: "var(--bg)", zoom: uiZoom !== 1 ? uiZoom : undefined }}>
+      <div className="main-content" style={{ flex: 1, padding: "28px 36px 40px", overflowY: "auto", minWidth: 0, background: "var(--bg)", zoom: uiZoom !== 1 ? uiZoom : undefined }}>
+        {/* Reiter eines Bereichs (Buchhaltung, Dokumente): nur sichtbar, wenn die Seitenleiste nur Symbole zeigt */}
+        {(() => {
+          const section = visibleNavItems.find(i => i.children && (i.id === view || i.children.some(c => c.id === view)));
+          if (!section?.children) return null;
+          return (
+            <nav className={`section-tabs${collapsed ? " show" : ""}`} aria-label={section.label}>
+              {[{ id: section.id, label: "Übersicht" }, ...section.children].map(c => (
+                <button key={c.id} className={`pill${view === c.id ? " active" : ""}`} onClick={() => navigate(c.id)}>{c.label}</button>
+              ))}
+            </nav>
+          );
+        })()}
         {/* Bleibt stehen, bis wieder ein Speichern gelingt — sonst gingen Änderungen unbemerkt verloren */}
         {saveError && (
           <div role="alert" style={{ marginBottom: 16, padding: "10px 14px", borderRadius: 6, fontSize: 13,
@@ -440,13 +495,13 @@ export default function App() {
           {hasViewAccess && view === "contracts" && <Contracts data={data} update={update} saveAll={save} modal={modal} setModal={setModal} setPrintContent={setPrintContent} setView={navigate} />}
           {hasViewAccess && view === "dokumente" && <Documents data={data} setView={navigate} />}
           {hasViewAccess && view === "lieferscheine" && <DeliveryNotes data={data} update={update} saveAll={save} setPrintContent={setPrintContent} />}
-          {hasViewAccess && view === "protokolle" && <Protocols data={data} update={update} saveAll={save} setPrintContent={setPrintContent} />}
+          {hasViewAccess && view === "protokolle" && <Protocols data={data} update={update} saveAll={save} setPrintContent={setPrintContent} modal={modal} setModal={setModal} />}
           {hasViewAccess && view === "buchhaltung" && <Accounting data={data} update={update} setView={navigate} setPrintContent={setPrintContent} />}
           {hasViewAccess && view === "invoices" && <Invoices data={data} update={update} saveAll={save} modal={modal} setModal={setModal} setPrintContent={setPrintContent} setView={navigate} />}
           {hasViewAccess && view === "loehne" && <Payroll data={data} update={update} saveAll={save} setPrintContent={setPrintContent} setView={navigate} />}
           {hasViewAccess && view === "expenses" && <Expenses data={data} update={update} standalone setView={navigate} />}
           {hasViewAccess && view === "internal-expenses" && <InternalExpenses data={data} update={update} setView={navigate} />}
-          {hasViewAccess && view === "personen" && <Persons data={data} update={update} saveAll={save} setView={navigate} />}
+          {hasViewAccess && view === "personen" && <Persons data={data} update={update} saveAll={save} setView={navigate} modal={modal} setModal={setModal} />}
           {hasViewAccess && view === "mitarbeiter" && <Employees data={data} update={update} saveAll={save} setPrintContent={setPrintContent} />}
           {hasViewAccess && view === "letters" && <Letters data={data} update={update} setPrintContent={setPrintContent} />}
           {hasViewAccess && view === "settings" && <Settings data={data} update={update} currentUser={currentUser} uiZoom={uiZoom} setUiZoom={setUiZoom} setView={navigate} />}

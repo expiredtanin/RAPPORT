@@ -412,7 +412,7 @@ export function GanttChart({
 
       {/* Kalender und Balken */}
       <div ref={scrollRef} style={{ flex: 1, overflowX: fit ? "hidden" : "auto", minWidth: 0 }}>
-        <svg ref={svgRef} width={width} height={Math.max(height, HEADER_H + ROW_H)} style={{ display: "block", fontFamily: "'Inter', sans-serif" }}
+        <svg ref={svgRef} width={width} height={Math.max(height, HEADER_H + ROW_H)} style={{ display: "block", fontFamily: "var(--font-ui)" }}
           aria-label="Terminprogramm">
           <defs>
             <pattern id={hatchId} width={6} height={6} patternUnits="userSpaceOnUse" patternTransform="rotate(45)">

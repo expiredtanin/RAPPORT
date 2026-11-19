@@ -212,17 +212,22 @@ function Time({ data, update, currentUser, userPermissions, setPrintContent }: P
         {/* Tages-Erfassung */}
         <div style={{ position: "relative" }}>
           {!selectedEmpId && isAdmin && (
-            <div style={{ position: "absolute", inset: 0, background: "rgba(250,248,245,0.88)", zIndex: 10, borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", backdropFilter: "blur(1px)" }}>
-              <div style={{ textAlign: "center", color: "var(--text4)" }}>
+            <div style={{ position: "absolute", inset: 0, background: "color-mix(in srgb, var(--bg) 82%, transparent)", zIndex: 10, borderRadius: "var(--r-card)", display: "flex", alignItems: "flex-start", justifyContent: "center", paddingTop: 120, backdropFilter: "blur(2px)" }}>
+              <div className="card" style={{ textAlign: "center", maxWidth: 420, boxShadow: "var(--shadow-pop)" }}>
                 {employees.length === 0 ? (
                   <>
-                    <div style={{ fontSize: 13, fontWeight: 500, color: "var(--text3)" }}>Noch keine Mitarbeiter erfasst</div>
-                    <div style={{ fontSize: 11, color: "var(--text5)", marginTop: 4 }}>Mitarbeiter unter «Mitarbeiter» anlegen</div>
+                    <div style={{ fontSize: 15, fontWeight: 600 }}>Noch keine Mitarbeitenden erfasst</div>
+                    <div style={{ fontSize: 13, color: "var(--text4)", marginTop: 4 }}>Mitarbeitende unter «Mitarbeiter» anlegen, dann hier Stunden erfassen.</div>
                   </>
                 ) : (
                   <>
-                    <div style={{ fontSize: 13, fontWeight: 500, color: "var(--text3)" }}>Bitte zuerst einen Mitarbeiter wählen</div>
-                    <div style={{ fontSize: 11, color: "var(--text5)", marginTop: 4 }}>Mitarbeiterwahl rechts →</div>
+                    <div style={{ fontSize: 15, fontWeight: 600 }}>Für wen erfassen?</div>
+                    <div style={{ fontSize: 13, color: "var(--text4)", marginTop: 4, marginBottom: 14 }}>Dein Login ist mit keiner Person verknüpft (Einstellungen → Team).</div>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 8, justifyContent: "center" }}>
+                      {employees.map(e => (
+                        <button key={e.id} className="pill" onClick={() => setSelectedEmpId(e.id)}>{e.name}</button>
+                      ))}
+                    </div>
                   </>
                 )}
               </div>
@@ -233,12 +238,12 @@ function Time({ data, update, currentUser, userPermissions, setPrintContent }: P
             <div ref={navCalRef} style={{ flex: 1, textAlign: "center", position: "relative" }}>
               {viewMode === "tag" ? (
                 <div onClick={() => setNavCalOpen(o => !o)} style={{ cursor: "pointer", display: "inline-block" }} title="Datum wählen">
-                  <div style={{ fontFamily: "'Inter', sans-serif", fontSize: 18, fontWeight: 400 }}>
+                  <div style={{ fontFamily: "var(--font-ui)", fontSize: 18, fontWeight: 400 }}>
                     {`${weekdayLabel}, ${new Date(currentDate).toLocaleDateString("de-CH", { day: "numeric", month: "long" })}`}
                   </div>
                 </div>
               ) : (
-                <div style={{ fontFamily: "'Inter', sans-serif", fontSize: 18, fontWeight: 400 }}>{weekLabel}</div>
+                <div style={{ fontFamily: "var(--font-ui)", fontSize: 18, fontWeight: 400 }}>{weekLabel}</div>
               )}
               {navCalOpen && (
                 <CalendarPopup
@@ -340,7 +345,7 @@ function Time({ data, update, currentUser, userPermissions, setPrintContent }: P
           <div style={{ position: "fixed", inset: 0, zIndex: 999 }} onClick={() => setContextMenu(null)} onContextMenu={ev => { ev.preventDefault(); setContextMenu(null); }} />
           <div style={{ position: "fixed", top: contextMenu.y, left: contextMenu.x, zIndex: 1000, background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 6, boxShadow: "0 4px 16px rgba(0,0,0,0.12)", minWidth: 180, padding: "4px 0" }}>
             <button style={{ display: "block", width: "100%", textAlign: "left", padding: "8px 14px", fontSize: 12, background: "none", border: "none", cursor: "pointer", fontFamily: "inherit", color: "var(--text)" }}
-              onMouseEnter={ev => ev.currentTarget.style.background = "#faf8f5"}
+              onMouseEnter={ev => ev.currentTarget.style.background = "var(--surface2)"}
               onMouseLeave={ev => ev.currentTarget.style.background = "none"}
               onClick={() => { duplicateToNextDay(contextMenu.entry); setContextMenu(null); }}>
               Auf morgen kopieren

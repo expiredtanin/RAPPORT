@@ -35,25 +35,30 @@ export function StatusBadge({ status, label }: { status: string; label?: string 
   const { color, bg, border } = statusStyle(status);
   return (
     <span style={{
-      display: "inline-block", padding: "2px 10px", borderRadius: 20,
-      fontSize: 11, fontWeight: 600, letterSpacing: "0.04em",
-      color, background: bg, border: `1.5px solid ${border}`,
-    }}>{label ?? status}</span>
+      display: "inline-flex", alignItems: "center", gap: 6, padding: "2px 9px 2px 8px", borderRadius: 999,
+      fontSize: 11.5, fontWeight: 550, whiteSpace: "nowrap",
+      color, background: bg, border: `1px solid ${border}`,
+    }}><span aria-hidden style={{ width: 6, height: 6, borderRadius: "50%", background: "currentColor", flexShrink: 0 }} />{label ?? status}</span>
   );
 }
 
-/** Dropdown im Stil der StatusBadge. Klick stoppt die Weitergabe, damit es in klickbaren Zeilen funktioniert. */
+/**
+ * Dropdown im Stil der StatusBadge. Klick stoppt die Weitergabe, damit es in klickbaren Zeilen funktioniert.
+ * Mindestbreite nach der längsten Option, damit enge Tabellenspalten den Text nicht abschneiden.
+ */
 export function StatusSelect({ value, options, onChange }: { value: string; options: string[]; onChange: (value: string) => void }) {
   const { color, bg, border } = statusStyle(value);
+  const longest = Math.max(value.length, ...options.map(o => o.length));
   return (
     <select
       value={value}
       onChange={e => onChange(e.target.value)}
       onClick={e => e.stopPropagation()}
+      aria-label="Status"
       style={{
-        fontSize: 11, height: 26, padding: "0 20px 0 8px",
-        background: bg, color, border: `1.5px solid ${border}`,
-        fontWeight: 600, borderRadius: 20, cursor: "pointer",
+        fontSize: 11.5, height: 26, padding: "0 24px 0 10px", width: "auto", minWidth: `calc(${longest}ch + 36px)`, flexShrink: 0,
+        background: bg, color, border: `1px solid ${border}`, backgroundImage: "none",
+        fontWeight: 550, borderRadius: 999, cursor: "pointer", boxShadow: "none",
         fontFamily: "inherit", appearance: "auto",
       }}
     >
@@ -70,9 +75,9 @@ export function StatusSelect({ value, options, onChange }: { value: string; opti
 /** Seitentitel mit optionaler Aktionszeile rechts (Buttons, Filter). */
 export function Header({ title, action }: { title: ReactNode; action?: ReactNode }) {
   return (
-    <div style={{ marginBottom: 10, paddingBottom: 7, borderBottom: "1px solid var(--border)" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-        <h1 style={{ fontFamily: "'Inter', sans-serif", fontSize: 30, fontWeight: 400, letterSpacing: "-0.02em", lineHeight: 1.1 }}>{title}</h1>
+    <div style={{ marginBottom: 18, paddingBottom: 14, borderBottom: "1px solid var(--border)" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16, flexWrap: "wrap" }}>
+        <h1 style={{ fontFamily: "var(--font-ui)", fontSize: 30, fontWeight: 600, letterSpacing: "-0.03em", lineHeight: 1.1, minWidth: 0 }}>{title}</h1>
         {action}
       </div>
     </div>
@@ -124,17 +129,33 @@ export interface ModalProps {
   wide?: boolean;
   /** Inhalt darf überstehen (z.B. Kalender-Popup) */
   overflow?: boolean;
+  /** als Schublade von rechts statt mittig (Formulare zu Listeneinträgen: die Liste bleibt sichtbar) */
+  drawer?: boolean;
 }
 
-/** Dialog mit Abbrechen/Speichern-Footer. Klick auf den Hintergrund schliesst ihn. */
-export function Modal({ title, onClose, onSave, saveLabel, hideSave, hideFooter, children, wide, overflow }: ModalProps) {
+/**
+ * Dialog mit Abbrechen/Speichern-Footer. Klick auf den Hintergrund oder Escape schliesst ihn (Escape für alle
+ * `.modal-overlay` zentral in App.tsx, immer nur der oberste). Enter in einem einzeiligen Feld oder ⌘↩ speichert.
+ */
+export function Modal({ title, onClose, onSave, saveLabel, hideSave, hideFooter, children, wide, overflow, drawer }: ModalProps) {
+  const onKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key !== "Enter" || !onSave || hideSave || hideFooter || e.nativeEvent.isComposing) return;
+    const t = e.target as HTMLElement;
+    const singleLine = t.tagName === "INPUT" && !["checkbox", "radio", "button", "submit", "file"].includes((t as HTMLInputElement).type);
+    if (e.metaKey || e.ctrlKey || (singleLine && !e.shiftKey)) { e.preventDefault(); onSave(); }
+  };
   return (
-    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className="modal" style={{ ...(wide ? { maxWidth: 740 } : {}), ...(overflow ? { overflow: "visible" } : {}) }}>
-        {title && <h2 style={{ fontFamily: "'Inter', sans-serif", fontWeight: 400, marginBottom: 26, fontSize: 24, letterSpacing: "-0.01em" }}>{title}</h2>}
-        {children}
+    <div className={`modal-overlay${drawer ? " drawer-overlay" : ""}`} onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className={`modal${drawer ? " drawer" : ""}`} role="dialog" aria-modal="true" onKeyDown={onKeyDown} style={{ ...(wide ? { maxWidth: drawer ? 720 : 740 } : {}), ...(overflow ? { overflow: "visible" } : {}) }}>
+        {title && (
+          <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, marginBottom: 22 }}>
+            <h2 style={{ fontFamily: "var(--font-ui)", fontWeight: 600, fontSize: 21, letterSpacing: "-0.02em" }}>{title}</h2>
+            {drawer && <button className="btn-icon" onClick={onClose} aria-label="Schliessen" title="Schliessen (esc)"><span className="msr">close</span></button>}
+          </div>
+        )}
+        <div className={drawer ? "drawer-body" : undefined}>{children}</div>
         {!hideFooter && (
-          <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 24, paddingTop: 20, borderTop: "1px solid var(--border2)" }}>
+          <div className={drawer ? "drawer-foot" : undefined} style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 24, paddingTop: 20, borderTop: "1px solid var(--border2)" }}>
             <button className="btn btn-ghost" onClick={onClose}>Abbrechen</button>
             {!hideSave && <button className="btn btn-primary" onClick={onSave}>{saveLabel || "Speichern"}</button>}
           </div>
@@ -144,8 +165,8 @@ export function Modal({ title, onClose, onSave, saveLabel, hideSave, hideFooter,
   );
 }
 
-// Gemeinsame KPI-Kachel (Label + grosser Wert + optionale Sub-Zeile, farbiger
-// oberer Rand). War vorher in mehreren Views (Dashboard, Accounting, Invoices,
+// Gemeinsame KPI-Kachel (Label + grosser Wert + optionale Sub-Zeile). Seit Beta 26.11 ohne farbigen
+// Rand: `color` färbt nur noch einen Punkt vor dem Label (Bedeutung), der Wert bleibt in Textfarbe. War vorher in mehreren Views (Dashboard, Accounting, Invoices,
 // Expenses, Projects) leicht unterschiedlich neu implementiert (fontSize 20/22/24,
 // verschiedene marginBottom-Werte, teils hartkodierte statt Theme-Farben) —
 // dadurch wirkten die Kacheln je nach Seite uneinheitlich. `go`/`setView` optional
@@ -160,15 +181,14 @@ export function KpiCard({ label, value, sub, color, go, setView }: {
   setView?: (view: string) => void;
 }) {
   return (
-    <div className="card"
+    <div className={`card kpi${go && setView ? " kpi-link" : ""}`}
       onClick={go && setView ? () => setView(go) : undefined}
-      style={{ borderTop: `3px solid ${color || "var(--border)"}`, cursor: go && setView ? "pointer" : "default", transition: "transform 0.15s", height: "100%", boxSizing: "border-box" }}
-      onMouseEnter={go && setView ? e => { e.currentTarget.style.transform = "translateY(-2px)"; } : undefined}
-      onMouseLeave={go && setView ? e => { e.currentTarget.style.transform = ""; } : undefined}
+      role={go && setView ? "button" : undefined} tabIndex={go && setView ? 0 : undefined}
+      onKeyDown={go && setView ? e => { if (e.key === "Enter") setView(go); } : undefined}
     >
-      <div style={{ fontSize: 10, color: "var(--text4)", letterSpacing: "0.12em", marginBottom: 8 }}>{label}</div>
-      <div style={{ fontSize: 24, fontFamily: "'Inter', sans-serif", fontWeight: 700, color: color || "var(--text)", marginBottom: 3 }}>{value}</div>
-      {sub && <div style={{ fontSize: 11, color: "var(--text5)" }}>{sub}</div>}
+      <div className="kpi-label">{color && <span className="kpi-dot" style={{ background: color }} />}{label}</div>
+      <div className="kpi-value">{value}</div>
+      {sub && <div className="kpi-sub">{sub}</div>}
     </div>
   );
 }
@@ -190,7 +210,7 @@ export function ShareButton({ options, className = "btn btn-ghost", style, title
   useEffect(() => {
     if (!open) return;
     const onDoc = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
-    const onEsc = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
+    const onEsc = (e: KeyboardEvent) => { if (e.key === "Escape") { e.preventDefault(); setOpen(false); } };
     document.addEventListener("mousedown", onDoc);
     document.addEventListener("keydown", onEsc);
     return () => { document.removeEventListener("mousedown", onDoc); document.removeEventListener("keydown", onEsc); };
@@ -213,18 +233,9 @@ export function ShareButton({ options, className = "btn btn-ghost", style, title
         <span className="msr" style={{ fontSize: 16, verticalAlign: "middle" }}>ios_share</span>
       </button>
       {open && (
-        <div style={{
-          position: "absolute", top: "100%", right: 0, marginTop: 4, zIndex: 50,
-          background: "var(--surface)", border: "1px solid var(--border2)", borderRadius: 8,
-          boxShadow: "0 4px 16px rgba(0,0,0,0.14)", overflow: "hidden", minWidth: 130,
-        }}>
+        <div className="menu-pop" style={{ right: 0 }}>
           {opts.map(o => (
-            <button key={o.label}
-              style={{ display: "block", width: "100%", textAlign: "left", padding: "9px 14px", border: "none", background: "none", cursor: "pointer", fontSize: 13, color: "var(--text)" }}
-              onMouseEnter={e => { e.currentTarget.style.background = "var(--surface2)"; }}
-              onMouseLeave={e => { e.currentTarget.style.background = "none"; }}
-              onClick={(ev) => { setOpen(false); o.onClick(ev); }}
-            >{o.label}</button>
+            <button key={o.label} className="menu-item" onClick={(ev) => { setOpen(false); o.onClick(ev); }}>{o.label}</button>
           ))}
         </div>
       )}
@@ -239,7 +250,7 @@ export function StudioLogo({ settings, size = 24 }: { settings: Pick<Settings, "
     return <img src={settings.logo} alt={settings.name} style={{ maxHeight: h, maxWidth: h * 5, display: "block" }} />;
   }
   // `--doc-font-logo` setzt nur die Druckansicht (print/docDesign.ts); sonst gilt Inter
-  return <div style={{ fontFamily: "var(--doc-font-logo, 'Inter', sans-serif)", fontSize: size, fontWeight: 400, fontStyle: "italic", letterSpacing: "-0.01em" }}>{settings.name}</div>;
+  return <div style={{ fontFamily: "var(--doc-font-logo, var(--font-ui))", fontSize: size, fontWeight: 400, fontStyle: "italic", letterSpacing: "-0.01em" }}>{settings.name}</div>;
 }
 
 /**
@@ -493,7 +504,7 @@ export function RichEditor({ value, onChange, minHeight = 420, compact = false }
           minHeight, padding: compact ? "8px 10px" : "20px 24px", outline: "none",
           fontSize: compact ? 12 : 13, lineHeight: 1.8, color: "var(--text)",
           background: "var(--surface)",
-          fontFamily: "'Inter', sans-serif",
+          fontFamily: "var(--font-ui)",
         }}
       />
     </div>
@@ -547,7 +558,7 @@ export function CalendarPopup({ value, onChange, onClose, align = "left", showCl
     >
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
         <button onMouseDown={e => { e.preventDefault(); prevMonth(); }} style={{ background: "none", border: "none", cursor: "pointer", padding: "2px 8px", fontSize: 14, color: "var(--text4)", lineHeight: 1 }}>←</button>
-        <div style={{ fontFamily: "'Inter', sans-serif", fontSize: 13, color: "var(--text)" }}>
+        <div style={{ fontFamily: "var(--font-ui)", fontSize: 13, color: "var(--text)" }}>
           {firstDay.toLocaleDateString("de-CH", { month: "long", year: "numeric" })}
         </div>
         <button onMouseDown={e => { e.preventDefault(); nextMonth(); }} style={{ background: "none", border: "none", cursor: "pointer", padding: "2px 8px", fontSize: 14, color: "var(--text4)", lineHeight: 1 }}>→</button>
@@ -570,7 +581,7 @@ export function CalendarPopup({ value, onChange, onClose, align = "left", showCl
               style={{
                 aspectRatio: "1", fontSize: 11, cursor: "pointer",
                 fontFamily: "inherit", borderRadius: 4,
-                border: isToday && !isSelected ? "1.5px solid #b07848" : "1.5px solid transparent",
+                border: isToday && !isSelected ? "1.5px solid var(--accent)" : "1.5px solid transparent",
                 background: isSelected ? "var(--text)" : "transparent",
                 color: isSelected ? "var(--bg)" : isWeekend ? "var(--text5)" : "var(--text)",
                 fontWeight: isToday && !isSelected ? 600 : 400,
@@ -654,10 +665,60 @@ export function NavArrows({ onPrev, onNext, disabledNext = false }: { onPrev: ()
     >{children}</button>
   );
   return (
-    <div style={{ display: "flex", border: "1px solid var(--border2)", borderRadius: 20, overflow: "hidden" }}>
-      {btn(onPrev, false, "‹")}
+    <div style={{ display: "flex", border: "1px solid var(--border3)", borderRadius: "var(--r-ctl)", overflow: "hidden", background: "var(--surface)" }}>
+      {btn(onPrev, false, <span className="msr" style={{ fontSize: 18 }} aria-label="Zurück">chevron_left</span>)}
       <div style={{ width: 1, background: "var(--border2)", alignSelf: "stretch" }} />
-      {btn(onNext, disabledNext, "›")}
+      {btn(onNext, disabledNext, <span className="msr" style={{ fontSize: 18 }} aria-label="Weiter">chevron_right</span>)}
+    </div>
+  );
+}
+
+/** Eintrag im Zeilenmenü. `danger` = rot (Löschen), `hidden` blendet ihn aus. */
+export interface RowMenuItem { label: string; icon?: string; onClick: () => void; danger?: boolean; hidden?: boolean }
+
+/**
+ * «⋯»-Menü am Zeilenende (Bearbeiten, Exportieren, Löschen …). Ersetzt die Reihe sichtbarer Knöpfe pro Zeile:
+ * die Zeile selbst öffnet per Klick, seltene Aktionen liegen im Menü. Klicks gehen nicht an die Zeile weiter.
+ */
+export function RowMenu({ items, label = "Aktionen" }: { items: RowMenuItem[]; label?: string }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
+    const onEsc = (e: KeyboardEvent) => { if (e.key === "Escape") { e.preventDefault(); e.stopImmediatePropagation(); setOpen(false); } };
+    document.addEventListener("mousedown", onDoc);
+    document.addEventListener("keydown", onEsc, true);
+    return () => { document.removeEventListener("mousedown", onDoc); document.removeEventListener("keydown", onEsc, true); };
+  }, [open]);
+  const visible = items.filter(i => !i.hidden);
+  if (visible.length === 0) return null;
+  return (
+    <div ref={ref} className="row-menu" onClick={e => e.stopPropagation()}>
+      <button className="btn-icon" aria-label={label} title={label} aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen(o => !o)}>
+        <span className="msr" style={{ fontSize: 20 }}>more_horiz</span>
+      </button>
+      {open && (
+        <div className="menu-pop" role="menu" style={{ right: 0 }}>
+          {visible.map((it, i) => (
+            <button key={i} role="menuitem" className={`menu-item${it.danger ? " danger" : ""}`} onClick={() => { setOpen(false); it.onClick(); }}>
+              {it.icon && <span className="msr" style={{ fontSize: 17 }}>{it.icon}</span>}{it.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Leerer Zustand einer Liste: Symbol, ein Satz Erklärung und die naheliegende Handlung. */
+export function EmptyState({ icon = "inbox", title, text, action }: { icon?: string; title: ReactNode; text?: ReactNode; action?: ReactNode }) {
+  return (
+    <div className="empty">
+      <span className="msr empty-ico">{icon}</span>
+      <div className="empty-title">{title}</div>
+      {text && <div className="empty-text">{text}</div>}
+      {action && <div style={{ marginTop: 14 }}>{action}</div>}
     </div>
   );
 }

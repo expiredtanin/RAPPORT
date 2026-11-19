@@ -36,7 +36,7 @@ function BarList({ rows, extra, empty, onOpen }: { rows: GroupRow[]; extra?: (r:
         <div key={r.key} className="bar-row">
           <div style={{ color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", cursor: onOpen ? "pointer" : "default", textDecoration: onOpen ? "underline dotted" : "none" }} title={onOpen ? `${r.label} öffnen` : r.label} onClick={onOpen ? () => onOpen(r.key) : undefined}>{r.label}</div>
           <div style={{ background: "var(--surface3)", borderRadius: 4, height: 8 }}>
-            <div style={{ width: `${Math.max((r.revenue / max) * 100, 1)}%`, height: "100%", background: "#b07848", borderRadius: 4 }} />
+            <div style={{ width: `${Math.max((r.revenue / max) * 100, 1)}%`, height: "100%", background: "var(--accent)", borderRadius: 4 }} />
           </div>
           <div style={{ textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{formatCHF(r.revenue)}</div>
           <div style={{ textAlign: "right", color: "var(--text4)" }}>{Math.round((r.revenue / total) * 100)} %</div>
@@ -82,10 +82,10 @@ export default function CrmAuswertung({ data, setView }: { data: AppData; setVie
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14, marginBottom: 8 }} className="responsive-grid-4">
-        <KpiCard label="UMSATZ (NETTO)" value={formatCHF(revenue)} sub={`${billed.length} Rechnungen, ohne Entwürfe`} color="var(--positive)" />
-        <KpiCard label="TREFFERQUOTE" value={pct(overallWinRate(data, year))} sub={`${avg.count} ${avg.count === 1 ? "Zusage" : "Zusagen"}`} color="var(--info)" />
-        <KpiCard label="Ø BIS ZUSAGE" value={avg.avgDays === null ? "—" : `${Math.round(avg.avgDays)} Tage`} sub="von Anfrage bis Zusage" color="#b07848" />
-        <KpiCard label="Ø MEETINGS PRO ZUSAGE" value={num1(avg.avgMeetings)} sub="Meeting + Besichtigung" color="var(--warning)" />
+        <KpiCard label="Umsatz (netto)" value={formatCHF(revenue)} sub={`${billed.length} Rechnungen, ohne Entwürfe`} color="var(--positive)" />
+        <KpiCard label="Trefferquote" value={pct(overallWinRate(data, year))} sub={`${avg.count} ${avg.count === 1 ? "Zusage" : "Zusagen"}`} color="var(--info)" />
+        <KpiCard label="Ø bis Zusage" value={avg.avgDays === null ? "—" : `${Math.round(avg.avgDays)} Tage`} sub="von Anfrage bis Zusage" />
+        <KpiCard label="Ø Meetings pro Zusage" value={num1(avg.avgMeetings)} sub="Meeting + Besichtigung" color="var(--warning)" />
       </div>
       <div style={{ fontSize: 11, color: "var(--text5)", marginBottom: 20 }}>
         {revenue > 0

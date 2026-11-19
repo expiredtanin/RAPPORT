@@ -67,7 +67,7 @@ export function TimeEntriesCard({ project, data, update, entries, positions, bil
                   ) : phase ? (
                     <span>
                       <span style={{ color: "var(--text3)" }}>{phase.label.split(" ")[0]}</span>
-                      {pos && <span style={{ fontWeight: 600, color: "var(--pending)", background: "#fffbe8", padding: "1px 5px", borderRadius: 20, marginLeft: 5, fontSize: 11 }}>{pos.code}</span>}
+                      {pos && <span style={{ fontWeight: 600, color: "var(--pending)", background: "var(--warning-bg)", padding: "1px 5px", borderRadius: 20, marginLeft: 5, fontSize: 11 }}>{pos.code}</span>}
                     </span>
                   ) : <span style={{ color: "var(--text5)" }}>—</span>}
                 </td>

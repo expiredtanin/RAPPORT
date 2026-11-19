@@ -68,7 +68,7 @@ export default class ErrorBoundary extends Component<Props, State> {
     const retry = () => (fullscreen ? window.location.reload() : this.setState({ error: null, componentStack: "", copied: false }));
     return (
       <div style={fullscreen
-        ? { position: "fixed", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", background: "var(--bg, #ebe7e1)", padding: 24, fontFamily: "'Inter', sans-serif" }
+        ? { position: "fixed", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", background: "var(--bg, #ebe7e1)", padding: 24, fontFamily: "var(--font-ui)" }
         : { padding: "40px 0", display: "flex", justifyContent: "center" }}>
         <div role="alert" className="card" style={{ maxWidth: 520, padding: "28px 30px" }}>
           <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 10 }}>Diese Ansicht konnte nicht angezeigt werden</div>

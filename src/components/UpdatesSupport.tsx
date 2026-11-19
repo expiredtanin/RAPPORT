@@ -132,7 +132,7 @@ export default function UpdatesSupport({ fallbackVersion }: { fallbackVersion?: 
 
           {state === "available" && update && (
             <div style={{ marginTop: 10, padding: "14px 14px 12px", background: "#fbf6ef", border: "1px solid #e6d4b3", borderRadius: 8 }}>
-              <div style={{ fontSize: 10, letterSpacing: "0.12em", color: "#b07848", fontWeight: 600, marginBottom: 4 }}>UPDATE VERFÜGBAR</div>
+              <div style={{ fontSize: 10, letterSpacing: "0.12em", color: "var(--accent)", fontWeight: 600, marginBottom: 4 }}>UPDATE VERFÜGBAR</div>
               <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text)", marginBottom: 6 }}>Rapport {versionLabel(update.version)}</div>
               {update.body && (
                 <div style={{ fontSize: 12, color: "var(--text3)", lineHeight: 1.5, whiteSpace: "pre-wrap", marginBottom: 10, maxHeight: 160, overflowY: "auto" }}>
@@ -159,7 +159,7 @@ export default function UpdatesSupport({ fallbackVersion }: { fallbackVersion?: 
                 <div style={{
                   height: "100%",
                   width: pct !== null ? `${pct}%` : "100%",
-                  background: "#b07848",
+                  background: "var(--accent)",
                   transition: "width 0.2s",
                   animation: pct === null ? "rapport-us-pulse 1.2s ease-in-out infinite" : undefined,
                 }} />
@@ -175,7 +175,7 @@ export default function UpdatesSupport({ fallbackVersion }: { fallbackVersion?: 
           )}
 
           {error && (
-            <div style={{ marginTop: 10, padding: "10px 12px", background: "#fdf0f0", border: "1px solid #f3c4c4", borderRadius: 6, fontSize: 12, color: "var(--negative)" }}>
+            <div style={{ marginTop: 10, padding: "10px 12px", background: "var(--negative-bg)", border: "1px solid #f3c4c4", borderRadius: 6, fontSize: 12, color: "var(--negative)" }}>
               {error}
             </div>
           )}

@@ -219,12 +219,12 @@ export default function Dashboard({ data, setView, currentUser, userPermissions,
 
   // ─── Widget content renderers ──────────────────────────────────────
   const wContent: Record<string, () => React.ReactNode> = {
-    "kpi-projekte": () => <KpiCard label="AKTIVE PROJEKTE" value={activeProjects.length} color="#b07848" go="projects" setView={!editMode?setView:undefined} sub={`${data.projects.filter(p=>p.status==="abgeschlossen").length} abgeschlossen`} />,
+    "kpi-projekte": () => <KpiCard label="Aktive Projekte" value={activeProjects.length} go="projects" setView={!editMode?setView:undefined} sub={`${data.projects.filter(p=>p.status==="abgeschlossen").length} abgeschlossen`} />,
     "kpi-stunden": () => (!myEmpId && !canSeeAllEmp)
-      ? <KpiCard label={`STUNDEN ${new Date().toLocaleString("de-CH",{month:"long"}).toUpperCase()}`} value="—" color="var(--positive)" sub="Kein Mitarbeiterprofil verknüpft" />
-      : <KpiCard label={`STUNDEN ${new Date().toLocaleString("de-CH",{month:"long"}).toUpperCase()}`} value={formatHours(myEmpId?myMonthMins:monthMins)} color="var(--positive)" go="time" setView={!editMode?setView:undefined} sub={!myEmpId&&lastMoMins>0?`Vormonat: ${formatHours(lastMoMins)}`:undefined} />,
-    "kpi-ausstehend": () => <KpiCard label="AUSSTEHEND" value={formatCHF(openAmount)} color={overdueInvoices.length>0?"var(--negative)":"var(--pending)"} go="invoices" setView={!editMode?setView:undefined} sub={overdueInvoices.length>0?`${overdueInvoices.length} überfällig`:`${openInvoices.length} gesendet`} />,
-    "kpi-umsatz": () => <KpiCard label="UMSATZ DIESES JAHR" value={formatCHF(paidThisYear)} color="var(--positive)" go="invoices" setView={!editMode?setView:undefined} sub="bezahlt (netto)" />,
+      ? <KpiCard label={`Stunden ${new Date().toLocaleString("de-CH",{month:"long"})}`} value="—" color="var(--positive)" sub="Kein Mitarbeiterprofil verknüpft" />
+      : <KpiCard label={`Stunden ${new Date().toLocaleString("de-CH",{month:"long"})}`} value={formatHours(myEmpId?myMonthMins:monthMins)} color="var(--positive)" go="time" setView={!editMode?setView:undefined} sub={!myEmpId&&lastMoMins>0?`Vormonat: ${formatHours(lastMoMins)}`:undefined} />,
+    "kpi-ausstehend": () => <KpiCard label="Ausstehend" value={formatCHF(openAmount)} color={overdueInvoices.length>0?"var(--negative)":"var(--warning)"} go="invoices" setView={!editMode?setView:undefined} sub={overdueInvoices.length>0?`${overdueInvoices.length} überfällig`:`${openInvoices.length} gesendet`} />,
+    "kpi-umsatz": () => <KpiCard label="Umsatz dieses Jahr" value={formatCHF(paidThisYear)} color="var(--positive)" go="invoices" setView={!editMode?setView:undefined} sub="bezahlt (netto)" />,
     "warnungen": () => {
       // "Warnungen" mischt zwei Berechtigungsbereiche (Rechnungen/Offerten) —
       // hier pro Teilblock statt über DASHBOARD_WIDGETS.perm gaten, sonst
@@ -241,7 +241,7 @@ export default function Dashboard({ data, setView, currentUser, userPermissions,
             <span className="msr" style={{fontSize:18}}>warning</span>
             <div><div style={{fontSize:12,fontWeight:600,color:"var(--negative)"}}>{overdueInvoices.length} überfällige Rechnung{overdueInvoices.length>1?"en":""}</div><div style={{fontSize:11,color:"var(--warning)",marginTop:2}}>{formatCHF(overdueInvoices.reduce((s,i)=>s+i.total,0))} ausstehend</div></div>
           </div>}
-          {showExpired&&<div onClick={!editMode?()=>setView("quotes"):undefined} style={{flex:1,minWidth:180,padding:"12px 16px",background:"#fffbe8",border:"1.5px solid #e0d090",borderRadius:8,cursor:editMode?"default":"pointer",display:"flex",alignItems:"center",gap:12}}>
+          {showExpired&&<div onClick={!editMode?()=>setView("quotes"):undefined} style={{flex:1,minWidth:180,padding:"12px 16px",background:"var(--warning-bg)",border:"1.5px solid #e0d090",borderRadius:8,cursor:editMode?"default":"pointer",display:"flex",alignItems:"center",gap:12}}>
             <div style={{fontSize:18}}>⏱</div>
             <div><div style={{fontSize:12,fontWeight:600,color:"var(--pending)"}}>{expiredQuotes.length} Offerte{expiredQuotes.length>1?"n":""} abgelaufen</div><div style={{fontSize:11,color:"var(--text4)",marginTop:2}}>Gültigkeit überschritten</div></div>
           </div>}
@@ -274,7 +274,7 @@ export default function Dashboard({ data, setView, currentUser, userPermissions,
           <button onClick={()=>setView("invoices")} style={{background:"none",border:"none",fontSize:11,color:"var(--text4)",cursor:"pointer",fontFamily:"inherit"}}>→</button>
         </div>
         {totalUnbilled===0?<div style={{fontSize:13,color:"var(--positive)",textAlign:"center",padding:"20px 0"}}>✓ Alles verrechnet</div>:<>
-          <div style={{fontSize:22,fontFamily:"'Inter', sans-serif",fontWeight:700,color:"var(--warning)",marginBottom:2}}>{formatHours(totalUnbilled)}</div>
+          <div style={{fontSize:22,fontFamily:"var(--font-ui)",fontWeight:700,color:"var(--warning)",marginBottom:2}}>{formatHours(totalUnbilled)}</div>
           <div style={{fontSize:11,color:"var(--text5)",marginBottom:16}}>≈ {formatCHF(unbilledProjects.reduce((s,p)=>s+p.unbilledAmt,0))}</div>
           {unbilledProjects.slice(0,5).map(p=><div key={p.id} style={{display:"flex",justifyContent:"space-between",padding:"5px 0",borderBottom:"1px solid var(--border2)",fontSize:12}}><span style={{color:"var(--text2)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:"60%"}}>{p.name}</span><span style={{color:"var(--warning)",flexShrink:0}}>{formatHours(p.unbilledMins)}</span></div>)}
         </>}
@@ -294,8 +294,8 @@ export default function Dashboard({ data, setView, currentUser, userPermissions,
             {monthlyRevenue.map(({m,paid})=>(
               <div key={m} style={{flex:1,minWidth:0,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"flex-end",height:"100%",gap:4}}>
                 <div style={{fontSize:10,color:paid>0?"var(--text3)":"transparent",fontVariantNumeric:"tabular-nums"}}>{paid>0?short(paid):"–"}</div>
-                <div style={{width:"100%",height:paid>0?`${Math.max((paid/maxRev)*64,6)}px`:"2px",background:m===thisMonth?"#b07848":paid>0?"var(--positive)":"var(--border2)",borderRadius:"3px 3px 0 0",transition:"height 0.3s"}} title={`${new Date(m+"-01").toLocaleString("de-CH",{month:"long",year:"numeric"})}: ${formatCHF(paid)}`} />
-                <div style={{fontSize:10,color:m===thisMonth?"#b07848":"var(--text4)"}}>{new Date(m+"-01").toLocaleString("de-CH",{month:"short"})}</div>
+                <div style={{width:"100%",height:paid>0?`${Math.max((paid/maxRev)*64,6)}px`:"2px",background:m===thisMonth?"var(--accent)":paid>0?"var(--positive)":"var(--border2)",borderRadius:"3px 3px 0 0",transition:"height 0.3s"}} title={`${new Date(m+"-01").toLocaleString("de-CH",{month:"long",year:"numeric"})}: ${formatCHF(paid)}`} />
+                <div style={{fontSize:10,color:m===thisMonth?"var(--accent)":"var(--text4)"}}>{new Date(m+"-01").toLocaleString("de-CH",{month:"short"})}</div>
               </div>
             ))}
           </div>
@@ -440,15 +440,15 @@ export default function Dashboard({ data, setView, currentUser, userPermissions,
           <div style={{fontSize:11,fontWeight:600,letterSpacing:"0.1em",color:"var(--text4)",marginBottom:14}}>FERIENSTAND {thisYear}</div>
           <div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}>
             <div style={{textAlign:"center"}}>
-              <div style={{fontSize:22,fontFamily:"'Inter', sans-serif",fontWeight:700,color:"var(--positive)"}}>{restTage}</div>
+              <div style={{fontSize:22,fontFamily:"var(--font-ui)",fontWeight:700,color:"var(--positive)"}}>{restTage}</div>
               <div style={{fontSize:10,color:"var(--text4)"}}>Verbleibend</div>
             </div>
             <div style={{textAlign:"center"}}>
-              <div style={{fontSize:22,fontFamily:"'Inter', sans-serif",fontWeight:700,color:"var(--text)"}}>{bezogenTage}</div>
+              <div style={{fontSize:22,fontFamily:"var(--font-ui)",fontWeight:700,color:"var(--text)"}}>{bezogenTage}</div>
               <div style={{fontSize:10,color:"var(--text4)"}}>Bezogen</div>
             </div>
             <div style={{textAlign:"center"}}>
-              <div style={{fontSize:22,fontFamily:"'Inter', sans-serif",fontWeight:700,color:"var(--text3)"}}>{anspruchTage}</div>
+              <div style={{fontSize:22,fontFamily:"var(--font-ui)",fontWeight:700,color:"var(--text3)"}}>{anspruchTage}</div>
               <div style={{fontSize:10,color:"var(--text4)"}}>Anspruch</div>
             </div>
           </div>
@@ -499,7 +499,7 @@ export default function Dashboard({ data, setView, currentUser, userPermissions,
           <div style={{fontSize:11,fontWeight:600,letterSpacing:"0.1em",color:"var(--text4)",marginBottom:14}}>STUNDENSALDO</div>
           <div style={{marginBottom:14}}>
             <div style={{fontSize:10,color:"var(--text4)",marginBottom:4}}>JAHRESSALDO {thisYear}</div>
-            <div style={{fontSize:26,fontFamily:"'Inter', sans-serif",fontWeight:700,color:isPos?"var(--positive)":"var(--negative)"}}>
+            <div style={{fontSize:26,fontFamily:"var(--font-ui)",fontWeight:700,color:isPos?"var(--positive)":"var(--negative)"}}>
               {isPos?"+":""}{formatHours(Math.abs(deltaMin))}
               <span style={{fontSize:13,fontWeight:400,marginLeft:4}}>{isPos?"Überstunden":"Minusstunden"}</span>
             </div>
@@ -549,7 +549,7 @@ export default function Dashboard({ data, setView, currentUser, userPermissions,
               return (
                 <div key={kw} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:3}}>
                   <div style={{fontSize:9,color:over?"var(--positive)":"var(--text4)"}}>{mins>0?formatHours(mins):""}</div>
-                  <div style={{width:"100%",height:`${Math.max(pct*72,mins>0?4:1)}px`,background:isCurrent?(over?"var(--positive)":"#b07848"):over?"#2d6a4f33":"var(--border2)",borderRadius:"3px 3px 0 0",transition:"height 0.3s"}}/>
+                  <div style={{width:"100%",height:`${Math.max(pct*72,mins>0?4:1)}px`,background:isCurrent?(over?"var(--positive)":"var(--accent)"):over?"#2d6a4f33":"var(--border2)",borderRadius:"3px 3px 0 0",transition:"height 0.3s"}}/>
                   <div style={{fontSize:9,color:isCurrent?"var(--text2)":"var(--text5)",fontWeight:isCurrent?600:400}}>KW{kw}</div>
                 </div>
               );
@@ -599,7 +599,7 @@ export default function Dashboard({ data, setView, currentUser, userPermissions,
               <div key={p.id} style={{marginBottom:12,paddingBottom:12,borderBottom:"1px solid var(--border2)"}}>
                 <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:4}}>
                   <span style={{fontSize:9,fontWeight:600,color:TYPE_COLOR[p.type]||"var(--info)",letterSpacing:"0.06em"}}>{(TYPE_LABEL[p.type]||"").toUpperCase()}</span>
-                  {p.pinned&&<span className="msr" style={{fontSize:12,color:"#b07848"}}>push_pin</span>}
+                  {p.pinned&&<span className="msr" style={{fontSize:12,color:"var(--accent)"}}>push_pin</span>}
                 </div>
                 {p.title&&<div style={{fontSize:13,fontWeight:500,color:"var(--text)",marginBottom:2}}>{p.title}</div>}
                 <div style={{fontSize:11,color:"var(--text3)",lineHeight:1.5,display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical",overflow:"hidden"}}>{p.body}</div>
@@ -648,7 +648,7 @@ export default function Dashboard({ data, setView, currentUser, userPermissions,
                       <div style={{fontSize:11,color:over?"var(--positive)":"var(--text4)",fontWeight:over?600:400}}>{formatHours(e.istMin)}{e.sollMin>0?` / ${formatHours(e.sollMin)}`:""}</div>
                     </div>
                     <div style={{height:3,background:"var(--border2)",borderRadius:2}}>
-                      <div style={{width:`${Math.min(e.pct,1)*100}%`,height:"100%",background:over?"var(--positive)":e.pct>0.8?"#b07848":"var(--border3)",borderRadius:2,transition:"width 0.3s"}}/>
+                      <div style={{width:`${Math.min(e.pct,1)*100}%`,height:"100%",background:over?"var(--positive)":e.pct>0.8?"var(--accent)":"var(--border3)",borderRadius:2,transition:"width 0.3s"}}/>
                     </div>
                   </div>
                 );
@@ -778,7 +778,7 @@ export default function Dashboard({ data, setView, currentUser, userPermissions,
       {/* Header */}
       <div style={{marginBottom:28,display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
         <div>
-          <h1 style={{fontFamily:"'Inter', sans-serif",fontSize:30,fontWeight:400,letterSpacing:"-0.02em",lineHeight:1.1,color:"var(--text)"}}>
+          <h1 style={{fontFamily:"var(--font-ui)",fontSize:30,fontWeight:400,letterSpacing:"-0.02em",lineHeight:1.1,color:"var(--text)"}}>
             {data.settings.name||"Studio"}
           </h1>
           <div style={{fontSize:11,color:"var(--text4)",letterSpacing:"0.1em",marginTop:6}}>

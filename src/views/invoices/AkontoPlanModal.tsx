@@ -23,7 +23,7 @@ export function AkontoPlanModal({ ap, setAp, apRows, data, clients, onClose, onC
   return (
     <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
       <div className="modal" style={{ maxWidth: 540 }}>
-        <h2 style={{ fontFamily: "'Inter', sans-serif", fontWeight: 400, fontSize: 22, marginBottom: 20 }}>Akonto-Plan erstellen</h2>
+        <h2 style={{ fontFamily: "var(--font-ui)", fontWeight: 400, fontSize: 22, marginBottom: 20 }}>Akonto-Plan erstellen</h2>
 
         {/* Projekt */}
         <div className="form-row" style={{ marginBottom: 14 }}>

@@ -257,7 +257,7 @@ function Payroll({ data, saveAll, setPrintContent }: Pick<ViewProps, "data" | "u
           <div>
             <div className="card" style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 20px", marginBottom: 16 }}>
               <NavArrows onPrev={goPrev} onNext={goNext} disabledNext={isAtFuture} />
-              <div style={{ flex: 1, textAlign: "center", fontFamily: "'Inter', sans-serif", fontSize: 18 }}>{months[selMonth]} {selYear}</div>
+              <div style={{ flex: 1, textAlign: "center", fontFamily: "var(--font-ui)", fontSize: 18 }}>{months[selMonth]} {selYear}</div>
             </div>
             <div className="card" style={{ padding: 0 }}>
               <div className="panel-label">MITARBEITER</div>
@@ -283,7 +283,7 @@ function Payroll({ data, saveAll, setPrintContent }: Pick<ViewProps, "data" | "u
                     const calc = entry ? entry : calcLohn({ ...emp, monatslohn: effBrutto, pensum: getEffPensum(emp) }, monatStr, spesen, (bonusOverride[emp.id] as number) || 0);
                     return (
                       <tr key={emp.id} onClick={() => available && setSelEmpId(emp.id)}
-                        style={{ cursor: available ? "pointer" : "default", background: selEmpId === emp.id ? "#faf8f5" : "", opacity: available ? 1 : 0.35 }}>
+                        style={{ cursor: available ? "pointer" : "default", background: selEmpId === emp.id ? "var(--surface2)" : "", opacity: available ? 1 : 0.35 }}>
                         <td>
                           <strong>{emp.name}</strong>
                           {emp.role && <div style={{ fontSize: 11, color: "var(--text4)" }}>{emp.role}</div>}
@@ -330,7 +330,7 @@ function Payroll({ data, saveAll, setPrintContent }: Pick<ViewProps, "data" | "u
             {selectedEmp && isMonatAvailable(selectedEmp) ? (
               <div className="card">
                 <div className="section-label" style={{ marginBottom: 4 }}>LOHNABRECHNUNG</div>
-                <div style={{ fontFamily: "'Inter', sans-serif", fontSize: 18, marginBottom: 2 }}>{selectedEmp.name}</div>
+                <div style={{ fontFamily: "var(--font-ui)", fontSize: 18, marginBottom: 2 }}>{selectedEmp.name}</div>
                 <div style={{ fontSize: 11, color: "var(--text4)", marginBottom: 16 }}>{[selectedEmp.role, `${months[selMonth]} ${selYear}`, cardPensum < 100 ? `${cardPensum}%` : null].filter(Boolean).join(" · ")}</div>
                 {existingEntry
                   ? renderCalc(existingEntry, { ...selectedEmp, ...existingEntry.empSnapshot, saetzeSnapshot: existingEntry.saetzeSnapshot } as Employee & { saetzeSnapshot?: SaetzeSnapshot }, false, existingEntry.saetzeSnapshot?.pensum || 100)

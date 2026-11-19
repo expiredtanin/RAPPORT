@@ -305,7 +305,7 @@ export function DocPreview({ settings, assets, sample, width }: { settings: Sett
   );
   const guide = (top: string, label: string): React.ReactNode => (
     <div style={{ position: "absolute", left: 0, right: 0, top, borderTop: "1px dashed #c33", zIndex: 3 }}>
-      <span style={{ position: "absolute", right: "4mm", top: 2, fontFamily: "Inter, sans-serif", fontSize: 9, color: "#c33" }}>{label}</span>
+      <span style={{ position: "absolute", right: "4mm", top: 2, fontFamily: "var(--font-ui)", fontSize: 9, color: "#c33" }}>{label}</span>
     </div>
   );
   return (

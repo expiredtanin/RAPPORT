@@ -57,7 +57,7 @@ export function FerienModals({ data, selectedEmp, employees, ferienUebersicht, s
                         )}
                         {f.note && <div style={{ fontSize: 11, color: "var(--text5)", marginTop: 2 }}>{f.note}</div>}
                       </div>
-                      <span style={{ fontSize: 10, padding: "2px 10px", borderRadius: 20, background: isPending ? "#fff8e8" : "var(--positive-bg)", color: isPending ? "var(--warning)" : "var(--positive)", fontWeight: 600, flexShrink: 0, whiteSpace: "nowrap" }}>
+                      <span style={{ fontSize: 10, padding: "2px 10px", borderRadius: 20, background: isPending ? "var(--warning-bg)" : "var(--positive-bg)", color: isPending ? "var(--warning)" : "var(--positive)", fontWeight: 600, flexShrink: 0, whiteSpace: "nowrap" }}>
                         {isEditPending ? "Änderung" : isPending ? "pendent" : "bestätigt"}
                       </span>
                       {!isPast && !isPending && (

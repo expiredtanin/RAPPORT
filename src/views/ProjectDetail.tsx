@@ -191,8 +191,8 @@ function ProjectDetail({ data, update, saveAll, projectId, onBack, setPrintConte
 
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 24 }}>
         <div>
-          <div style={{ fontSize: 11, letterSpacing: "0.1em", color: "var(--text4)", marginBottom: 6 }}>{project.number && <span style={{ color: "#b07848", marginRight: 8 }}>{project.number}</span>}{(project.category || "—").toUpperCase()} · {client?.name || "Kein Auftraggeber"}</div>
-          <h1 style={{ fontFamily: "'Inter', sans-serif", fontSize: 34, fontWeight: 400, letterSpacing: "-0.01em" }}>{project.name}</h1>
+          <div style={{ fontSize: 11, letterSpacing: "0.1em", color: "var(--text4)", marginBottom: 6 }}>{project.number && <span style={{ color: "var(--accent)", marginRight: 8 }}>{project.number}</span>}{(project.category || "—").toUpperCase()} · {client?.name || "Kein Auftraggeber"}</div>
+          <h1 style={{ fontFamily: "var(--font-ui)", fontSize: 34, fontWeight: 400, letterSpacing: "-0.01em" }}>{project.name}</h1>
           {project.description && <div style={{ fontSize: 13, color: "var(--text3)", marginTop: 6, maxWidth: 600 }}>{project.description}</div>}
         </div>
         <div style={{ display: "flex", gap: 8 }}>

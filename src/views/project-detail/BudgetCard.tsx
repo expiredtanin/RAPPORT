@@ -165,7 +165,7 @@ export function BudgetCard({ project, data, entries, positions, projectInvoices,
                       {isNT ? "↪ " : "⬡ "}{lq.role}
                     </span>
                     <span style={{ fontSize: 12, color: "var(--text3)" }}>
-                      {q.number && <span style={{ color: "#b07848", marginRight: 6, fontWeight: 600 }}>{q.number}</span>}
+                      {q.number && <span style={{ color: "var(--accent)", marginRight: 6, fontWeight: 600 }}>{q.number}</span>}
                       {q.projectName || "—"}
                     </span>
                   </div>

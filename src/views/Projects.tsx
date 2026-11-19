@@ -18,16 +18,16 @@
 // Berechtigungen: Offerten- und Rechnungsdaten sind nur sichtbar, wenn die Rolle
 // «quotes» bzw. «invoices» hat (`userPermissions`).
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { PROJECT_TYPES } from "../constants";
 import { generateId, formatHours, applyProjectNumberFormat, parseSeqFromNumber, localISODate } from "../utils";
-import { Header, Modal, StatusBadge, ShareButton, SortTh } from "../components/UI";
-import { useConfirm } from "../hooks/useConfirm";
+import { Header, Modal, StatusBadge, ShareButton, SortTh, RowMenu } from "../components/UI";
+import { removeWithUndo } from "../undo";
 import type { Project, ViewProps } from "../types";
 import { ProjectEditForm, type ProjectForm } from "./ProjectEditForm";
 
 export default
-function Projects({ data, update, saveAll, modal, setModal, onSelect, setPrintContent }: Pick<ViewProps, "data" | "update" | "saveAll" | "modal" | "setModal" | "setPrintContent" | "currentUser" | "userPermissions"> & {
+function Projects({ data, saveAll, modal, setModal, onSelect, setPrintContent }: Pick<ViewProps, "data" | "update" | "saveAll" | "modal" | "setModal" | "setPrintContent" | "currentUser" | "userPermissions"> & {
   /** Öffnet die Detailansicht eines Projekts */
   onSelect: (projectId: string) => void;
 }) {
@@ -36,7 +36,6 @@ function Projects({ data, update, saveAll, modal, setModal, onSelect, setPrintCo
   const [form, setForm] = useState<ProjectForm>(emptyForm);
   const [filter, setFilter] = useState(() => { const cid = window.__navClientId || ""; window.__navClientId = null; return { category: "", status: "", search: "", clientId: cid }; });
   const [groupBy, setGroupBy] = useState<string>("status");
-  const { askConfirm, ConfirmModalEl } = useConfirm();
   const [showAddBeteiligter, setShowAddBeteiligter] = useState(false);
   const [editingContactId, setEditingContactId] = useState<string | null>(null);
   const [addContactId, setAddContactId] = useState("");
@@ -70,7 +69,14 @@ function Projects({ data, update, saveAll, modal, setModal, onSelect, setPrintCo
   const resetBeteiligter = () => { setShowAddBeteiligter(false); setEditingContactId(null); setAddContactId(""); setAddPersonIds([]); };
   const openEdit = (p: Project, e?: React.MouseEvent) => { e?.stopPropagation(); setForm({ ...emptyForm, ...p, enabledPhases: p.enabledPhases || [], projectContacts: p.projectContacts || [] }); resetBeteiligter(); setModal({ type: "project", id: p.id }); };
   const openNew = () => { setForm({ ...emptyForm, number: nextProjectNumber(), startDate: localISODate() }); resetBeteiligter(); setModal({ type: "project" }); };
-  const del = async (id: string, e?: React.MouseEvent) => { e?.stopPropagation(); if (await askConfirm("Projekt wirklich löschen?")) update("projects", data.projects.filter(p => p.id !== id)); };
+  const del = (id: string) => { const p = data.projects.find(x => x.id === id); removeWithUndo(`Projekt «${p?.name || ""}» gelöscht`, "projects", x => x.id === id); };
+
+  // Befehlspalette (App.tsx): «Neues Projekt»
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- einmalige Übergabe aus der Befehlspalette
+    if (modal?.type === "newProject") openNew();
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- nur auf neue Aufträge reagieren
+  }, [modal?.type]);
 
   const projectMinutes = (id: string) => data.timeEntries.filter(e => e.projectId === id).reduce((s, e) => s + (e.minutes || 0), 0);
 
@@ -128,7 +134,6 @@ function Projects({ data, update, saveAll, modal, setModal, onSelect, setPrintCo
 
   return (
     <div>
-      {ConfirmModalEl}
       <Header title="Projekte" action={
         <div style={{ display: "flex", gap: 8 }}>
           <ShareButton options={[{ label: "Gesamt-PDF", onClick: () => setPrintContent({ type: "projectsOverview", projects: data.projects, data }) }]} />
@@ -153,7 +158,7 @@ function Projects({ data, update, saveAll, modal, setModal, onSelect, setPrintCo
       </div>
 
       <div className="filter-bar">
-        <span className="filter-label">GRUPPIEREN:</span>
+        <span className="filter-label">Gruppieren</span>
         {[{ id: "none", label: "Keine" }, { id: "status", label: "Status" }, { id: "category", label: "Kategorie" }, { id: "client", label: "Auftraggeber" }, { id: "year", label: "Jahr" }].map(g => (
           <button key={g.id} className={`pill${groupBy === g.id ? " active" : ""}`} onClick={() => setGroupBy(g.id)}>{g.label}</button>
         ))}
@@ -164,7 +169,7 @@ function Projects({ data, update, saveAll, modal, setModal, onSelect, setPrintCo
           <thead><tr>
             <SortTh sort={sort} onSort={toggleSort} col="number" style={{ width: 90 }}>Nr.</SortTh>
             <SortTh sort={sort} onSort={toggleSort} col="name">Projekt</SortTh>
-            <SortTh sort={sort} onSort={toggleSort} col="category">Kategorie</SortTh>
+            <SortTh sort={sort} onSort={toggleSort} col="category" className="hide-narrow">Kategorie</SortTh>
             <SortTh sort={sort} onSort={toggleSort} col="client">Kunde</SortTh>
             <SortTh sort={sort} onSort={toggleSort} col="hours">Stunden</SortTh>
             <SortTh sort={sort} onSort={toggleSort} col="status">Status</SortTh>
@@ -176,9 +181,9 @@ function Projects({ data, update, saveAll, modal, setModal, onSelect, setPrintCo
               <React.Fragment key={group.key}>
                 {groupBy !== "none" && group.label && (
                   <tr>
-                    <td colSpan={7} style={{ background: "var(--surface3)", padding: "6px 12px", fontSize: 10, letterSpacing: "0.1em", color: "var(--text4)", fontWeight: 600, textTransform: "uppercase", borderTop: "1px solid var(--border)" }}>
+                    <td colSpan={7} className="group-row">
                       {group.label}
-                      <span style={{ float: "right", fontWeight: 400, letterSpacing: 0, textTransform: "none", fontSize: 11, color: "var(--text5)" }}>
+                      <span className="group-sum">
                         {group.items.length} Projekt{group.items.length !== 1 ? "e" : ""}
                       </span>
                     </td>
@@ -192,13 +197,13 @@ function Projects({ data, update, saveAll, modal, setModal, onSelect, setPrintCo
                   const pct = budget > 0 ? (usedHours / budget) * 100 : 0;
                   const barColor = pct >= 100 ? "var(--negative)" : pct >= 80 ? "var(--warning)" : "var(--positive)";
                   return (
-                    <tr key={p.id} onClick={() => onSelect(p.id)} style={{ cursor: "pointer" }}>
+                    <tr key={p.id} className="row-link" onClick={() => onSelect(p.id)}>
                       <td style={{ fontSize: 11, color: "var(--text4)", fontWeight: 500 }}>{p.number || "—"}</td>
                       <td><strong>{p.name}</strong>{p.description && <div style={{ fontSize: 11, color: "var(--text5)", marginTop: 2 }}>{p.description.slice(0, 60)}</div>}</td>
-                      <td style={{ fontSize: 12 }}>{p.category || "—"}</td>
+                      <td className="hide-narrow" style={{ fontSize: 12 }}>{p.category || "—"}</td>
                       <td>{client?.name || "—"}</td>
                       <td>
-                        <div style={{ fontSize: 12, fontWeight: 500, color: budget > 0 ? barColor : "var(--text)" }}>
+                        <div style={{ fontSize: 12, fontWeight: 500, color: "var(--text2)", whiteSpace: "nowrap" }}>
                           {formatHours(usedMins)}{budget > 0 && ` / ${budget}h`}
                         </div>
                         {budget > 0 && (
@@ -208,9 +213,12 @@ function Projects({ data, update, saveAll, modal, setModal, onSelect, setPrintCo
                         )}
                       </td>
                       <td><StatusBadge status={p.status} /></td>
-                      <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
-                        <button className="btn btn-ghost" style={{ marginRight: 6, padding: "5px 12px", fontSize: 12 }} onClick={(e) => openEdit(p, e)}><span className="msr" style={{ fontSize: 16 }}>edit</span></button>
-                        <button className="btn btn-danger" style={{ padding: "5px 12px", fontSize: 12 }} onClick={(e) => del(p.id, e)}><span className="msr" style={{ fontSize: 16 }}>close</span></button>
+                      <td className="row-actions" onClick={e => e.stopPropagation()}>
+                        <RowMenu items={[
+                          { label: "Öffnen", icon: "open_in_new", onClick: () => onSelect(p.id) },
+                          { label: "Stammdaten bearbeiten", icon: "edit", onClick: () => openEdit(p) },
+                          { label: "Löschen", icon: "delete", danger: true, onClick: () => del(p.id) },
+                        ]} />
                       </td>
                     </tr>
                   );

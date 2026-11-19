@@ -6,8 +6,8 @@ import React, { useState, useRef } from "react";
 import { INTERNAL_EXPENSE_CATEGORIES } from "../constants";
 import { generateId, formatCHF, formatDate, receiptToDataUrl, checkLocalBudget, localISODate } from "../utils";
 import { isLocalBackend } from "../storage/adapter";
-import { Header, Modal, FormField, DateInput, KpiCard, SortTh } from "../components/UI";
-import { useConfirm } from "../hooks/useConfirm";
+import { Header, Modal, FormField, DateInput, KpiCard, SortTh, RowMenu, EmptyState } from "../components/UI";
+import { removeWithUndo } from "../undo";
 import { extractReceiptText, parseReceiptFields } from "../ocr";
 import type { Expense, InternalExpense, ViewProps } from "../types";
 import { ReceiptViewer, type ReceiptTarget } from "../components/ReceiptViewer";
@@ -32,7 +32,6 @@ function InternalExpenses({ data, update }: Pick<ViewProps, "data" | "update" | 
   const [receiptView, setReceiptView] = useState<ReceiptTarget | null>(null);
   const [scanning, setScanning] = useState(false);
   const receiptInputRef = useRef<HTMLInputElement>(null);
-  const { askConfirm: askConfirmInt, ConfirmModalEl: ConfirmModalElInt } = useConfirm();
 
   const items = data.internalExpenses || [];
   const years = Array.from(new Set(items.map(e => (e.date || "").slice(0, 4)).filter(Boolean))).sort().reverse();
@@ -49,7 +48,7 @@ function InternalExpenses({ data, update }: Pick<ViewProps, "data" | "update" | 
     update("internalExpenses", updated);
     closeModal();
   };
-  const del = async (id: string) => { if (await askConfirmInt("Ausgabe löschen?")) update("internalExpenses", items.filter(e => e.id !== id)); };
+  const del = (id: string) => { const e = items.find(x => x.id === id); removeWithUndo(`Ausgabe${e?.description ? " «" + e.description + "»" : ""} gelöscht`, "internalExpenses", x => x.id === id); };
 
   const runReceiptScan = async (dataUrl: string) => {
     setScanning(true);
@@ -141,7 +140,6 @@ function InternalExpenses({ data, update }: Pick<ViewProps, "data" | "update" | 
 
   return (
     <div>
-      {ConfirmModalElInt}
       <ReceiptViewer expense={receiptView} onClose={() => setReceiptView(null)} />
       <Header title="Ausgaben" action={
         <div style={{ display: "flex", gap: 8 }}>
@@ -153,7 +151,7 @@ function InternalExpenses({ data, update }: Pick<ViewProps, "data" | "update" | 
       {catModal && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", zIndex: 100, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
           <div className="modal" style={{ maxWidth: 420 }}>
-            <div style={{ fontSize: 18, fontFamily: "'Inter', sans-serif", fontWeight: 400, marginBottom: 20 }}>Kategorien verwalten</div>
+            <div style={{ fontSize: 18, fontFamily: "var(--font-ui)", fontWeight: 400, marginBottom: 20 }}>Kategorien verwalten</div>
             <div style={{ marginBottom: 16 }}>
               {intCats.map((cat, idx) => {
                 const inUse = items.some(e => e.category === cat);
@@ -200,9 +198,9 @@ function InternalExpenses({ data, update }: Pick<ViewProps, "data" | "update" | 
 
       {allFiltered.length > 0 && (
         <div className="responsive-grid-4" style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16, marginBottom: 20 }}>
-          <KpiCard label="TOTAL BRUTTO" value={formatCHF(totalBrutto)} color="var(--info)" sub={`${allFiltered.length} Einträge`} />
-          <KpiCard label="NETTO" value={formatCHF(totalNet)} color="#888" sub="abzgl. Vorsteuer" />
-          <KpiCard label="VORSTEUER" value={formatCHF(totalTax)} color="var(--warning)" sub="rückforderbar" />
+          <KpiCard label="Total brutto" value={formatCHF(totalBrutto)} color="var(--info)" sub={`${allFiltered.length} Einträge`} />
+          <KpiCard label="Netto" value={formatCHF(totalNet)} sub="abzgl. Vorsteuer" />
+          <KpiCard label="Vorsteuer" value={formatCHF(totalTax)} color="var(--warning)" sub="rückforderbar" />
           <div className="card" style={{ borderTop: "3px solid var(--positive)", height: "100%", boxSizing: "border-box" }}>
             <div style={{ fontSize: 10, color: "var(--text4)", letterSpacing: "0.12em", marginBottom: 8 }}>TOP KATEGORIE</div>
             {categoryTotals[0] ? (
@@ -215,7 +213,7 @@ function InternalExpenses({ data, update }: Pick<ViewProps, "data" | "update" | 
                       <span>{formatCHF(c.amount)}</span>
                     </div>
                     <div style={{ height: 3, background: "var(--border2)", borderRadius: 2 }}>
-                      <div style={{ width: `${(c.amount / categoryTotals[0].amount) * 100}%`, height: "100%", background: "#b07848", borderRadius: 2 }} />
+                      <div style={{ width: `${(c.amount / categoryTotals[0].amount) * 100}%`, height: "100%", background: "var(--accent)", borderRadius: 2 }} />
                     </div>
                   </div>
                 ))}
@@ -244,17 +242,22 @@ function InternalExpenses({ data, update }: Pick<ViewProps, "data" | "update" | 
       </div>
 
       <div className="filter-bar">
-        <span className="filter-label">GRUPPIEREN:</span>
+        <span className="filter-label">Gruppieren</span>
         {[{ id: "date", label: "Monat" }, { id: "category", label: "Kategorie" }].map(g => (
           <button key={g.id} className={`pill${groupBy === g.id ? " active" : ""}`} onClick={() => setGroupBy(g.id as typeof groupBy)}>{g.label}</button>
         ))}
       </div>
 
-      {allFiltered.length === 0 ? (
+      {items.length === 0 ? (
+        <div className="card" style={{ padding: 0 }}>
+          <EmptyState icon="receipt_long" title="Noch keine internen Ausgaben" text="Erfasse Büroausgaben wie Miete, Software oder Versicherungen – auch wiederkehrende – für die Übersicht der Bürokosten."
+            action={<button className="btn btn-primary" onClick={openNew}>+ Ausgabe erfassen</button>} />
+        </div>
+      ) : allFiltered.length === 0 ? (
         <div className="card" style={{ padding: 0 }}>
           <table>
             <thead><tr><th style={{ width: 100 }}>Datum</th><th style={{ width: 190 }}>Kategorie</th><th>Beschreibung</th><th style={{ width: 80 }}>Wiederk.</th><th style={{ textAlign: "right", width: 110 }}>Netto</th><th style={{ textAlign: "right", width: 100 }}>Vorsteuer</th><th style={{ textAlign: "right", width: 120 }}>Brutto</th><th style={{ width: 90 }}></th></tr></thead>
-            <tbody><tr><td colSpan={8} className="empty-state">{items.length === 0 ? "Noch keine internen Ausgaben" : "Keine Treffer"}</td></tr></tbody>
+            <tbody><tr><td colSpan={8} className="empty-state">Keine Treffer</td></tr></tbody>
           </table>
         </div>
       ) : (
@@ -280,20 +283,18 @@ function InternalExpenses({ data, update }: Pick<ViewProps, "data" | "update" | 
                 return (
                   <React.Fragment key={group.key}>
                     {groupedData.length > 1 && (
-                      <tr style={{ background: "var(--surface3)" }}>
-                        <td colSpan={groupBy === "category" ? 5 : 6} style={{ padding: "6px 12px", fontSize: 11, fontWeight: 600, letterSpacing: "0.04em", color: "var(--text3)" }}>
+                      <tr>
+                        <td colSpan={groupBy === "category" ? 7 : 8} className="group-row">
                           {group.label}
-                          <span style={{ marginLeft: 10, fontWeight: 400, color: "var(--text4)", fontSize: 10 }}>{group.items.length} Einträge</span>
+                          <span className="group-sum">{group.items.length} {group.items.length === 1 ? "Eintrag" : "Einträge"} · {formatCHF(gBrutto)}</span>
                         </td>
-                        <td style={{ padding: "6px 12px", textAlign: "right", fontSize: 11, fontWeight: 600 }}>{formatCHF(gBrutto)}</td>
-                        <td></td>
                       </tr>
                     )}
                     {group.items.map(e => {
                       const net = getNet(e);
                       const tax = getTax(e);
                       return (
-                        <tr key={e.id}>
+                        <tr key={e.id} className="row-link" onClick={() => openEdit(e)}>
                           <td>{formatDate(e.date)}</td>
                           {groupBy !== "category" && <td>{e.category}</td>}
                           <td style={{ color: "var(--text3)" }}>{e.description || "—"}</td>
@@ -303,14 +304,16 @@ function InternalExpenses({ data, update }: Pick<ViewProps, "data" | "update" | 
                           <td style={{ textAlign: "right" }}>{formatCHF(net)}</td>
                           <td style={{ textAlign: "right", color: "var(--text4)" }}>{e.mwstRate > 0 ? formatCHF(tax) : "—"}</td>
                           <td style={{ textAlign: "right" }}><strong>{formatCHF(e.amount)}</strong></td>
-                          <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
+                          <td className="row-actions" onClick={ev => ev.stopPropagation()}>
                             {e.receiptData && (
-                              <button className="btn btn-ghost" title="Beleg anzeigen" style={{ padding: "5px 10px", fontSize: 12, marginRight: 4 }} onClick={() => setReceiptView(e)}>
-                                <span className="msr" style={{ fontSize: 14, verticalAlign: "middle" }}>receipt_long</span>
+                              <button className="btn btn-ghost btn-sm" title="Beleg anzeigen" style={{ marginRight: 2 }} onClick={() => setReceiptView(e)}>
+                                <span className="msr" style={{ fontSize: 15 }}>receipt_long</span>
                               </button>
                             )}
-                            <button className="btn btn-ghost" style={{ padding: "5px 10px", fontSize: 12, marginRight: 4 }} onClick={() => openEdit(e)}><span className="msr" style={{ fontSize: 16 }}>edit</span></button>
-                            <button className="btn btn-danger" style={{ padding: "5px 10px", fontSize: 12 }} onClick={() => del(e.id)}><span className="msr" style={{ fontSize: 16 }}>close</span></button>
+                            <RowMenu items={[
+                              { label: "Bearbeiten", icon: "edit", onClick: () => openEdit(e) },
+                              { label: "Löschen", icon: "delete", danger: true, onClick: () => del(e.id) },
+                            ]} />
                           </td>
                         </tr>
                       );
@@ -344,7 +347,7 @@ function InternalExpenses({ data, update }: Pick<ViewProps, "data" | "update" | 
       )}
 
       {modal && (
-        <Modal title={modal === "new" ? "Ausgabe erfassen" : "Ausgabe bearbeiten"} onClose={closeModal} onSave={save}>
+        <Modal drawer title={modal === "new" ? "Ausgabe erfassen" : "Ausgabe bearbeiten"} onClose={closeModal} onSave={save}>
           <div className="form-row">
             <FormField label="Datum"><DateInput value={form.date} onChange={e => setForm({ ...form, date: e.target.value })} /></FormField>
             <FormField label="Kategorie">
@@ -374,7 +377,7 @@ function InternalExpenses({ data, update }: Pick<ViewProps, "data" | "update" | 
           <div style={{ borderTop: "1px solid var(--border2)", paddingTop: 12, marginTop: 4 }}>
             <label style={{ fontSize: 10, color: "var(--text4)", letterSpacing: "0.08em", display: "block", marginBottom: 8 }}>BELEG / RECHNUNG</label>
             {scanning && (
-              <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "#b07848", marginBottom: 8 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "var(--accent)", marginBottom: 8 }}>
                 <span className="msr" style={{ fontSize: 15 }}>autorenew</span>
                 Beleg wird gelesen — Betrag/Datum werden automatisch erkannt (bitte nachher prüfen) …
               </div>
@@ -389,7 +392,7 @@ function InternalExpenses({ data, update }: Pick<ViewProps, "data" | "update" | 
                 <button className="btn btn-danger" type="button" style={{ fontSize: 12 }} onClick={() => setForm(f => ({ ...f, receiptData: null, receiptName: null }))}>Entfernen</button>
               </div>
             ) : (
-              <label style={{ display: "inline-flex", alignItems: "center", gap: 6, cursor: "pointer", fontSize: 12, color: "#b07848", border: "1px dashed #b07848", borderRadius: 4, padding: "6px 14px", marginBottom: 12 }}>
+              <label style={{ display: "inline-flex", alignItems: "center", gap: 6, cursor: "pointer", fontSize: 12, color: "var(--accent)", border: "1px dashed var(--accent)", borderRadius: 4, padding: "6px 14px", marginBottom: 12 }}>
                 <span className="msr" style={{ fontSize: 15 }}>upload_file</span>
                 Rechnung hochladen (Bild oder PDF)
                 <input ref={receiptInputRef} type="file" accept="image/*,application/pdf" onChange={handleReceiptUpload} style={{ display: "none" }} />

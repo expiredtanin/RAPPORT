@@ -118,7 +118,7 @@ export function DayView({ data, selectedEmp, dayEntries, dayTotalMins, daySoll, 
               <tr style={{ borderTop: "1px solid var(--border2)", background: "var(--surface2)" }}>
                 <td colSpan={3} style={{ padding: "6px 12px", fontSize: 11, color: "var(--text4)" }}>{selectedEmp.name}{daySoll === 0 ? " · Wochenende / Feiertag" : " · Soll heute"}</td>
                 <td colSpan={2} style={{ padding: "6px 8px", textAlign: "right", fontSize: 12 }}>
-                  {daySoll > 0 ? (<><span style={{ color: "var(--text4)" }}>{Math.round(daySoll * 10) / 10}h Soll&nbsp;·&nbsp;</span><span style={{ fontWeight: 600, color: dayDiff === 0 ? "var(--text2)" : dayDiff > 0 ? "var(--positive)" : "var(--negative)" }}>{dayDiff === 0 ? "±0h" : `${dayDiff > 0 ? "+" : ""}${dayDiff}h`}</span></>) : (<span style={{ fontWeight: 600, color: "#b07848" }}>{Math.round(dayIst * 10) / 10}h</span>)}
+                  {daySoll > 0 ? (<><span style={{ color: "var(--text4)" }}>{Math.round(daySoll * 10) / 10}h Soll&nbsp;·&nbsp;</span><span style={{ fontWeight: 600, color: dayDiff === 0 ? "var(--text2)" : dayDiff > 0 ? "var(--positive)" : "var(--negative)" }}>{dayDiff === 0 ? "±0h" : `${dayDiff > 0 ? "+" : ""}${dayDiff}h`}</span></>) : (<span style={{ fontWeight: 600, color: "var(--accent)" }}>{Math.round(dayIst * 10) / 10}h</span>)}
                 </td>
                 <td></td>
               </tr>

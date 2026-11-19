@@ -13,7 +13,7 @@ export function InvoiceSendModal({ invoice, invoices, clients, update, setPrintC
   return (
     <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
       <div className="modal" style={{ maxWidth: 360 }}>
-        <h2 style={{ fontFamily: "'Inter', sans-serif", fontWeight: 400, fontSize: 18, marginBottom: 16 }}>Rechnung {invoice.number}</h2>
+        <h2 style={{ fontFamily: "var(--font-ui)", fontWeight: 400, fontSize: 18, marginBottom: 16 }}>Rechnung {invoice.number}</h2>
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           <button className="btn btn-primary" onClick={() => {
             update("invoices", invoices.map(i => i.id === invoice.id ? { ...i, status: "gesendet", sentDate: localISODate() } : i));

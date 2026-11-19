@@ -37,7 +37,7 @@ export default function ResetPassword({ onComplete, onCancel }: {
       minHeight: "100vh", minWidth: "100vw",
       background: "#ebe7e1",
       display: "flex", alignItems: "center", justifyContent: "center",
-      fontFamily: "'Inter', sans-serif",
+      fontFamily: "var(--font-ui)",
       position: "fixed", inset: 0, zIndex: 9999,
     }}>
       <div style={{
@@ -47,7 +47,7 @@ export default function ResetPassword({ onComplete, onCancel }: {
         border: "1px solid #ddd8d0",
       }}>
         <div style={{ textAlign: "center", marginBottom: 30 }}>
-          <div style={{ fontFamily: "Krungthep, 'Archivo Black', sans-serif", fontSize: 32, color: "#1a1a18", letterSpacing: "-0.02em", lineHeight: 1 }}>RAPPORT</div>
+          <div style={{ fontFamily: "var(--font-ui)", fontSize: 32, color: "#1a1a18", letterSpacing: "-0.02em", lineHeight: 1 }}>RAPPORT</div>
           <div style={{ fontSize: 9, color: "#b0aca4", letterSpacing: "0.2em", marginTop: 8, fontWeight: 500 }}>NEUES PASSWORT</div>
           <div style={{ width: 32, height: 1.5, background: "#ddd8d0", margin: "16px auto 0" }} />
         </div>

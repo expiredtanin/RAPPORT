@@ -117,7 +117,7 @@ export function SystemTab({ s, setField, data, setView, isAdmin }: DraftProps & 
       {initModal && (
         <div className="modal-overlay" onClick={() => setInitModal(false)}>
           <div className="modal" style={{ maxWidth: 440 }} onClick={e => e.stopPropagation()}>
-            <div style={{ fontFamily: "'Inter', sans-serif", fontSize: 20, marginBottom: 6 }}>Neu initialisieren</div>
+            <div style={{ fontFamily: "var(--font-ui)", fontSize: 20, marginBottom: 6 }}>Neu initialisieren</div>
             <p style={{ fontSize: 13, color: "var(--text3)", lineHeight: 1.7, marginBottom: 16 }}>
               Die App wird auf den Ausgangszustand zurückgesetzt. Alle Projekte, Rechnungen, Mitarbeitende und Einstellungen gehen unwiderruflich verloren.
             </p>
@@ -272,7 +272,7 @@ export function SystemTab({ s, setField, data, setView, isAdmin }: DraftProps & 
       {/* Cloud: Neues Studio anlegen Modal */}
       {newStudioModal && (
         <Modal onClose={() => setNewStudioModal(null)} hideFooter>
-          <h3 style={{ marginBottom: 6, fontFamily: "'Inter', sans-serif", fontSize: 22 }}>Weiteres Studio anlegen</h3>
+          <h3 style={{ marginBottom: 6, fontFamily: "var(--font-ui)", fontSize: 22 }}>Weiteres Studio anlegen</h3>
           <p style={{ fontSize: 12, color: "var(--text4)", marginBottom: 18, lineHeight: 1.6 }}>
             Neues Studio auf derselben Cloud-Instanz. Sie werden Admin. Stammdaten (Rollen, Templates, Absenz-Typen) werden automatisch eingespielt.
           </p>
@@ -296,7 +296,7 @@ export function SystemTab({ s, setField, data, setView, isAdmin }: DraftProps & 
               <div style={{ border: "1px solid var(--border3)", borderRadius: 8, padding: 4, maxHeight: 180, overflowY: "auto" }}>
                 {myStudios.map(s => (
                   <label key={s.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 10px", cursor: "pointer", fontSize: 13, borderRadius: 6 }}
-                    onMouseEnter={e => e.currentTarget.style.background = "#f7f4f0"}
+                    onMouseEnter={e => e.currentTarget.style.background = "var(--surface2)"}
                     onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
                     <input
                       type="checkbox"

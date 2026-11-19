@@ -6,7 +6,7 @@ import { SCHEDULE_PAPERS, SCHEDULE_SCALES, type SchedulePrintLayout, type Schedu
 
 const chip = (on: boolean): React.CSSProperties => ({
   border: `1.5px solid ${on ? "#252520" : "#bdb8b0"}`, background: on ? "#252520" : "#fff", color: on ? "#f0ede8" : "#2a2a22",
-  borderRadius: 14, padding: "4px 11px", fontSize: 12, cursor: "pointer", fontFamily: "'Inter', sans-serif", lineHeight: 1.4,
+  borderRadius: 14, padding: "4px 11px", fontSize: 12, cursor: "pointer", fontFamily: "var(--font-ui)", lineHeight: 1.4,
 });
 
 /** Formatwahl für den Druck eines Terminprogramms. */
@@ -18,7 +18,7 @@ export function ScheduleFormatBar({ opts, setOpts, layout, pageH }: {
   pageH: number;
 }) {
   return (
-    <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center", padding: "10px 12px", background: "#f4f2ee", borderRadius: 6, fontSize: 12, color: "#2a2a22", fontFamily: "'Inter', sans-serif" }}>
+    <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center", padding: "10px 12px", background: "#f4f2ee", borderRadius: 6, fontSize: 12, color: "#2a2a22", fontFamily: "var(--font-ui)" }}>
       <span style={{ color: "#777" }}>Papier</span>
       {SCHEDULE_PAPERS.map(p => (
         <button key={p.id} style={chip(opts.paper === p.id)} onClick={() => setOpts({ ...opts, paper: p.id })} title={`${p.w} × ${p.h} mm`}>{p.label}</button>

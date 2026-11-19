@@ -22,8 +22,8 @@
 import React, { useState, useEffect } from "react";
 import { SIA_PHASES, SIA_PHASE_WEIGHTS } from "../constants";
 import { calcSIAHours, calcManualHours, generateId, formatCHF, formatDate, formatHours, roundCHF, applyProjectNumberFormat, migrateLinkedQuotes, deriveQuoteBudget, localISODate } from "../utils";
-import { Header, Modal, FormField, StatusSelect, DateInput, ShareButton, SortTh } from "../components/UI";
-import { useConfirm } from "../hooks/useConfirm";
+import { Header, Modal, FormField, StatusSelect, DateInput, SortTh, RowMenu } from "../components/UI";
+import { removeWithUndo } from "../undo";
 import { EffortEstimatePanel } from "./quotes/EffortEstimatePanel";
 import type { ManualPhase, Project, Quote, SiaItem, ViewProps } from "../types";
 
@@ -72,10 +72,9 @@ function Quotes({ data, update, saveAll, modal, setModal, setPrintContent, setVi
   };
   const [form, setForm] = useState<QuoteForm>(emptyForm);
   const [filter, setFilter] = useState(() => { const cid = window.__navClientId || ""; window.__navClientId = null; return { status: "", search: "", clientId: cid, year: "" }; });
-  const [groupBy, setGroupBy] = useState("date");
+  const [groupBy, setGroupBy] = useState("none");
   const [sort, setSort] = useState({ col: "date", dir: -1 });
   const compact = true;
-  const { askConfirm, ConfirmModalEl } = useConfirm();
 
   const toggleSort = (col: string) => setSort(s => ({ col, dir: s.col === col ? -s.dir : -1 }));
 
@@ -103,7 +102,17 @@ function Quotes({ data, update, saveAll, modal, setModal, setPrintContent, setVi
     setForm({ ...emptyForm, ...q, manualPhases: q.manualPhases || emptyManualPhases(), quoteRoles: q.quoteRoles || defaultQuoteRoles(), sia: q.sia || emptyForm.sia, freeItems: q.freeItems || [{ id: generateId(), desc: "", qty: 1, price: 0 }] });
     setModal({ type: "quote", id: q.id });
   };
-  const del = async (id: string) => { if (await askConfirm("Offerte löschen?")) update("quotes", (data.quotes||[]).filter(q => q.id !== id)); };
+  // Aufträge der Befehlspalette (App.tsx): Offerte öffnen oder neue anlegen
+  /* eslint-disable react-hooks/set-state-in-effect -- einmalige Übergabe aus der Befehlspalette */
+  useEffect(() => {
+    if (modal?.type === "openQuote") {
+      const q = (data.quotes || []).find(x => x.id === modal.id);
+      if (q) openEdit(q); else setModal(null);
+    } else if (modal?.type === "newQuote") openNew();
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- nur auf neue Aufträge reagieren
+  }, [modal?.type, modal?.id]);
+  /* eslint-enable react-hooks/set-state-in-effect */
+  const del = (id: string) => { const q = (data.quotes || []).find(x => x.id === id); removeWithUndo(`Offerte ${q?.number || ""} gelöscht`, "quotes", x => x.id === id); };
   const setStatus = (id: string, st: string) => update("quotes", (data.quotes||[]).map(q => q.id === id ? { ...q, status: st } : q));
 
   const createProjectFromQuote = (q: Quote) => {
@@ -303,7 +312,6 @@ function Quotes({ data, update, saveAll, modal, setModal, setPrintContent, setVi
 
   return (
     <div>
-      {ConfirmModalEl}
       <Header title="Offerten" action={<button className="btn btn-primary" onClick={openNew}>+ Neue Offerte</button>} />
       <div className="filter-bar">
         <input className="pill" placeholder="Suche…" value={filter.search} onChange={e => setFilter({...filter, search: e.target.value})} style={{ minWidth: 180 }} />
@@ -323,23 +331,23 @@ function Quotes({ data, update, saveAll, modal, setModal, setPrintContent, setVi
       </div>
 
       <div className="filter-bar">
-        <span className="filter-label">GRUPPIEREN:</span>
+        <span className="filter-label">Gruppieren</span>
         {[{ id: "none", label: "Keine" }, { id: "date", label: "Monat" }, { id: "client", label: "Kunde" }, { id: "status", label: "Status" }].map(g => (
           <button key={g.id} className={`pill${groupBy === g.id ? " active" : ""}`} onClick={() => setGroupBy(g.id)}>{g.label}</button>
         ))}
       </div>
       <div className="card" style={{ padding: 0 }}>
         <table>
-          <thead><tr><SortTh sort={sort} onSort={toggleSort} col="number" style={{ width: 100 }}>Nr.</SortTh><SortTh sort={sort} onSort={toggleSort} col="client">Kunde</SortTh><th className={compact ? "hide-compact" : ""}>Modus</th><SortTh sort={sort} onSort={toggleSort} col="date" className={compact ? "hide-compact" : ""}>Datum</SortTh><SortTh sort={sort} onSort={toggleSort} col="validUntil" className={compact ? "hide-compact" : ""}>Gültig bis</SortTh><SortTh sort={sort} onSort={toggleSort} col="total" style={{ textAlign: "right" }}>Honorar</SortTh><SortTh sort={sort} onSort={toggleSort} col="status">Status</SortTh><th></th></tr></thead>
+          <thead><tr><SortTh sort={sort} onSort={toggleSort} col="number" style={{ width: 100 }}>Nr.</SortTh><SortTh sort={sort} onSort={toggleSort} col="client">Kunde</SortTh><th className="hide-narrow">Modus</th><SortTh sort={sort} onSort={toggleSort} col="date" className={compact ? "hide-compact" : ""}>Datum</SortTh><SortTh sort={sort} onSort={toggleSort} col="validUntil" className="hide-narrow">Gültig bis</SortTh><SortTh sort={sort} onSort={toggleSort} col="total" style={{ textAlign: "right" }}>Honorar</SortTh><SortTh sort={sort} onSort={toggleSort} col="status">Status</SortTh><th></th></tr></thead>
           <tbody>
             {filtered.length === 0 && <tr><td colSpan={8} className="empty-state">{(data.quotes||[]).length === 0 ? "Noch keine Offerten" : "Keine Treffer"}</td></tr>}
             {groupedQuotes.map(group => (
               <React.Fragment key={group.key}>
                 {groupBy !== "none" && group.label && (
                   <tr>
-                    <td colSpan={8} style={{ background: "var(--surface3)", padding: "6px 12px", fontSize: 10, letterSpacing: "0.1em", color: "var(--text4)", fontWeight: 600, textTransform: "uppercase", borderTop: "1px solid var(--border)" }}>
+                    <td colSpan={8} className="group-row">
                       {group.label}
-                      <span style={{ float: "right", fontWeight: 400, letterSpacing: 0, textTransform: "none", fontSize: 11, color: "var(--text5)" }}>
+                      <span className="group-sum">
                         {group.items.length} · {formatCHF(group.items.reduce((s, q) => s + (q.total || 0), 0))}
                       </span>
                     </td>
@@ -351,12 +359,12 @@ function Quotes({ data, update, saveAll, modal, setModal, setPrintContent, setVi
                 ? (data.invoices || []).filter(i => (i.quoteId === q.id || (q.projectId && i.projectId === q.projectId)) && i.status !== "entwurf").reduce((s, i) => s + (i.sub || 0), 0)
                 : 0;
               return (
-                <tr key={q.id}>
+                <tr key={q.id} className="row-link" onClick={() => openEdit(q)}>
                   <td><strong>{q.number}</strong>{q.projectName && <div style={{ fontSize: 11, color: "var(--text4)", marginTop: 1 }}>{q.projectName}</div>}</td>
                   <td>{cl?.name || "—"}</td>
-                  <td style={{ fontSize: 11, color: "var(--text4)" }}>{q.mode === "sia" ? "SIA 102" : q.mode === "free" ? "Freie Positionen" : "Aufwand"}</td>
+                  <td className="hide-narrow" style={{ fontSize: 12, color: "var(--text4)" }}>{q.mode === "sia" ? "SIA 102" : q.mode === "free" ? "Freie Positionen" : "Aufwand"}</td>
                   <td>{formatDate(q.date)}</td>
-                  <td>{formatDate(q.validUntil)}</td>
+                  <td className="hide-narrow">{formatDate(q.validUntil)}</td>
                   <td style={{ textAlign: "right" }}>
                     <strong>{formatCHF(q.total)}</strong>
                     {qInvoiced > 0 && <div style={{ fontSize: 10, color: "var(--positive)", marginTop: 1 }}>verrechnet {formatCHF(qInvoiced)}</div>}
@@ -364,18 +372,28 @@ function Quotes({ data, update, saveAll, modal, setModal, setPrintContent, setVi
                   <td>
                     <StatusSelect value={q.status} options={["entwurf","gesendet","angenommen","abgelehnt","abgelaufen"]} onChange={v => setStatus(q.id, v)} />
                   </td>
-                  <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
-                    <ShareButton style={{ marginRight: 6, padding: "5px 10px", fontSize: 12 }} options={[{ label: "PDF", onClick: () => setPrintContent({ type: "quote", quote: q, client: cl, settings: data.settings }) }]} />
-                    {!q.convertedToInvoiceId && <button className="btn btn-ghost" style={{ marginRight: 6, padding: "5px 10px", fontSize: 12, borderColor: "var(--positive)", color: "var(--positive)" }} onClick={() => convertToInvoice(q)}>→ Rechnung</button>}
-                    <button className="btn btn-ghost" style={{ marginRight: 6, padding: "5px 10px", fontSize: 12, borderColor: "#9a7858", color: "#9a7858" }} onClick={() => convertToVertrag(q)}>→ Vertrag</button>
-                    {(q.mode === "sia" || q.mode === "manual" || q.mode === "free") && (() => {
-                      const linkedProj = data.projects.find(p => migrateLinkedQuotes(p).some(lq => lq.quoteId === q.id));
-                      return linkedProj
-                        ? <button className="btn btn-ghost" style={{ marginRight: 6, padding: "5px 10px", fontSize: 12, borderColor: "var(--info)", color: "var(--info)" }} onClick={() => { const suggested = q.projectName || linkedProj.name || ("Projekt " + q.number); setPmMode("new"); setPmName(suggested); setPmAttachId(linkedProj.id); setProjectModal(q); }}>⬡ {linkedProj.number || "Projekt"}</button>
-                        : <button className="btn btn-ghost" style={{ marginRight: 6, padding: "5px 10px", fontSize: 12, borderColor: "var(--pending)", color: "var(--pending)" }} onClick={() => { const suggested = q.projectName || (data.projects.find(p => p.id === q.projectId)?.name) || ("Projekt " + q.number); setPmMode("new"); setPmName(suggested); setPmAttachId(q.projectId || ""); setProjectModal(q); }}>→ Projekt</button>;
+                  <td className="row-actions" onClick={e => e.stopPropagation()}>
+                    {(() => {
+                      const projectMode = q.mode === "sia" || q.mode === "manual" || q.mode === "free";
+                      const linkedProj = projectMode ? data.projects.find(p => migrateLinkedQuotes(p).some(lq => lq.quoteId === q.id)) : undefined;
+                      const openProjectModal = () => {
+                        const suggested = q.projectName || linkedProj?.name || data.projects.find(p => p.id === q.projectId)?.name || ("Projekt " + q.number);
+                        setPmMode("new"); setPmName(suggested); setPmAttachId(linkedProj?.id || q.projectId || ""); setProjectModal(q);
+                      };
+                      return (
+                        <>
+                          {linkedProj && <button className="btn btn-quiet btn-sm" title="Mit Projekt verknüpft" onClick={openProjectModal} style={{ marginRight: 2 }}><span className="msr" style={{ fontSize: 15 }}>work</span>{linkedProj.number || "Projekt"}</button>}
+                          <RowMenu items={[
+                            { label: "Bearbeiten", icon: "edit", onClick: () => openEdit(q) },
+                            { label: "PDF", icon: "picture_as_pdf", onClick: () => setPrintContent({ type: "quote", quote: q, client: cl, settings: data.settings }) },
+                            { label: "Rechnung erstellen", icon: "receipt_long", hidden: !!q.convertedToInvoiceId, onClick: () => convertToInvoice(q) },
+                            { label: "Vertrag erstellen", icon: "handshake", onClick: () => convertToVertrag(q) },
+                            { label: linkedProj ? "Projekt-Verknüpfung" : "Projekt erstellen", icon: "work", hidden: !projectMode, onClick: openProjectModal },
+                            { label: "Löschen", icon: "delete", danger: true, onClick: () => del(q.id) },
+                          ]} />
+                        </>
+                      );
                     })()}
-                    <button className="btn btn-ghost" style={{ marginRight: 6, padding: "5px 10px", fontSize: 12 }} onClick={() => openEdit(q)}><span className="msr" style={{ fontSize: 16 }}>edit</span></button>
-                    <button className="btn btn-danger" style={{ padding: "5px 10px", fontSize: 12 }} onClick={() => del(q.id)}><span className="msr" style={{ fontSize: 16 }}>close</span></button>
                   </td>
                 </tr>
               );
@@ -438,7 +456,7 @@ function Quotes({ data, update, saveAll, modal, setModal, setPrintContent, setVi
           return (
             <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setProjectModal(null)}>
               <div className="modal">
-                <h2 style={{ fontFamily: "'Inter', sans-serif", fontWeight: 400, marginBottom: 16, fontSize: 22 }}>Offerte verknüpft</h2>
+                <h2 style={{ fontFamily: "var(--font-ui)", fontWeight: 400, marginBottom: 16, fontSize: 22 }}>Offerte verknüpft</h2>
                 <div style={{ marginBottom: 20, padding: 12, background: "var(--surface2)", borderRadius: 6, border: "1px solid var(--border2)", fontSize: 12 }}>
                   <div style={{ fontSize: 10, letterSpacing: "0.08em", color: "var(--text4)", marginBottom: 6 }}>OFFERTE</div>
                   <div><strong>{q.number}</strong>{q.projectName ? " · " + q.projectName : ""}</div>
@@ -602,7 +620,7 @@ function Quotes({ data, update, saveAll, modal, setModal, setPrintContent, setVi
           {/* SIA-Modus */}
           {form.mode === "sia" && siaCalc && (
             <div>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10, marginBottom: 14, padding: 14, background: "#fff8ed", borderRadius: 6, border: "1px solid #f0e4c4" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10, marginBottom: 14, padding: 14, background: "var(--warning-bg)", borderRadius: 6, border: "1px solid #f0e4c4" }}>
                 <FormField label="Baukosten (CHF)">
                   <input type="number" value={form.sia.baukosten} onChange={e => setForm({...form, sia: {...form.sia, baukosten: +e.target.value}})} style={{ background: "var(--surface)" }} />
                 </FormField>
@@ -670,7 +688,7 @@ function Quotes({ data, update, saveAll, modal, setModal, setPrintContent, setVi
                 phases={form.manualPhases} roles={activeRoles}
                 onApply={(manualPhases, estimate) => setForm(f => ({ ...f, manualPhases, estimate }))}
               />
-              <div style={{ marginBottom: 14, padding: 12, background: "#fff8ed", borderRadius: 6, border: "1px solid #f0e4c4" }}>
+              <div style={{ marginBottom: 14, padding: 12, background: "var(--warning-bg)", borderRadius: 6, border: "1px solid #f0e4c4" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
                   <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.08em", color: "var(--text4)" }}>ROLLEN &amp; STUNDENSÄTZE FÜR DIESE OFFERTE</div>
                   <div style={{ display: "flex", gap: 6 }}>
@@ -761,7 +779,7 @@ function Quotes({ data, update, saveAll, modal, setModal, setPrintContent, setVi
                               <input type="number" min={0} step="0.5" value={rawPh.hoursByRole?.[r.id] || 0}
                                 onChange={e => updateManualHours(rawPh.id, r.id, e.target.value)}
                                 disabled={!rawPh.enabled}
-                                style={{ width: 56, height: 26, fontSize: 11, textAlign: "right", background: rawPh.enabled ? "#fff8ed" : undefined }} />
+                                style={{ width: 56, height: 26, fontSize: 11, textAlign: "right", background: rawPh.enabled ? "var(--warning-bg)" : undefined }} />
                             </td>
                           ))}
                           <td style={{ padding: "4px 8px", textAlign: "right", color: "var(--text4)" }}>{calcPh ? formatHours(Math.round(calcPh.totalHours*60)) : "—"}</td>

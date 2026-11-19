@@ -22,6 +22,7 @@ import { storage, cloudStorage, isCloudBackend, isFileBackend, fileStorage } fro
 import { applyMigrations, type RawData } from "../storage/migrations";
 import type { AppData, CurrentUser, Invoice } from "../types";
 import { localISODate } from "../utils";
+import { registerUndoSaver } from "../undo";
 
 /** Cloud: Token aus dem Passwort-Reset-Link "{APP_URL}/#/reset-password/{TOKEN}" (PocketBase-Mailtemplate, pb/pb_migrations); sonst null. */
 function readResetToken(): string | null {
@@ -168,6 +169,9 @@ export function useStudioData(currentUser: CurrentUser | null) {
   const update = useCallback(<K extends keyof AppData>(key: K, value: AppData[K] | ((prev: AppData[K]) => AppData[K])) => {
     save(prev => ({ ...prev, [key]: typeof value === "function" ? (value as (p: AppData[K]) => AppData[K])(prev[key]) : value }));
   }, [save]);
+
+  // «Rückgängig» für Löschungen (undo.ts) speichert über denselben Weg
+  useEffect(() => registerUndoSaver(save), [save]);
 
   // Datenordner: Änderungen der anderen Person übernehmen (neuer Gesamtstand, bereits mit unseren Änderungen verrechnet).
   useEffect(() => {

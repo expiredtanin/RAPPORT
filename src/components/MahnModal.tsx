@@ -45,7 +45,7 @@ export function MahnModal({ inv, data, update, setPrintContent, onClose, mahnMod
   return (
     <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
       <div className="modal" style={{ maxWidth: 480 }}>
-        <h2 style={{ fontFamily: "'Inter', sans-serif", fontWeight: 400, marginBottom: 6, fontSize: 22 }}>Mahnung</h2>
+        <h2 style={{ fontFamily: "var(--font-ui)", fontWeight: 400, marginBottom: 6, fontSize: 22 }}>Mahnung</h2>
         <div style={{ fontSize: 12, color: "var(--text4)", marginBottom: 20 }}>Rechnung {inv.number} · {formatCHF(inv.total)}</div>
         {reminders.length > 0 && (
           <div style={{ marginBottom: 20, padding: "10px 14px", background: "var(--surface2)", borderRadius: 6, border: "1px solid var(--border2)" }}>

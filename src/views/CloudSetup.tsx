@@ -22,20 +22,20 @@ const C = {
 };
 
 const S = {
-  wrap: { background: C.bg, minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'Inter', sans-serif", color: C.text, padding: "32px 16px" },
+  wrap: { background: C.bg, minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "var(--font-ui)", color: C.text, padding: "32px 16px" },
   card: { width: "100%", maxWidth: 460, background: C.surface, borderRadius: 14, padding: "44px 40px", boxShadow: "0 2px 24px rgba(60,50,40,0.10)", border: `1px solid ${C.border}`, maxHeight: "92vh", overflowY: "auto" },
-  logo: { fontFamily: "Krungthep,'Archivo Black',sans-serif", fontSize: 34, color: C.text, letterSpacing: "-0.02em", textAlign: "center", marginBottom: 4 },
+  logo: { fontFamily: "var(--font-ui)", fontSize: 34, color: C.text, letterSpacing: "-0.02em", textAlign: "center", marginBottom: 4 },
   sub: { textAlign: "center", fontSize: 10, color: C.text4, letterSpacing: "0.14em", marginBottom: 32 },
   progress: { display: "flex", gap: 6, justifyContent: "center", marginBottom: 32 },
   dot: (active: boolean, done: boolean): CSSProperties => ({ width: active ? 22 : 8, height: 8, borderRadius: 4, background: done ? C.text : active ? C.text : C.border, opacity: done ? 1 : active ? 1 : 0.4, transition: "all 0.3s" }),
   label: { fontSize: 9, letterSpacing: "0.14em", color: C.text4, display: "block", marginBottom: 5, marginTop: 16 },
-  input: { width: "100%", boxSizing: "border-box", background: C.surface, border: `1px solid ${C.border}`, borderRadius: 20, padding: "9px 12px", color: C.text, fontFamily: "'Inter', sans-serif", fontSize: 13, outline: "none", transition: "border-color 0.15s" },
+  input: { width: "100%", boxSizing: "border-box", background: C.surface, border: `1px solid ${C.border}`, borderRadius: 20, padding: "9px 12px", color: C.text, fontFamily: "var(--font-ui)", fontSize: 13, outline: "none", transition: "border-color 0.15s" },
   inputErr: { border: `1px solid ${C.dangerBorder}` },
-  textarea: { width: "100%", boxSizing: "border-box", background: C.surface, border: `1px solid ${C.border}`, borderRadius: 16, padding: "9px 12px", color: C.text, fontFamily: "'Inter', sans-serif", fontSize: 13, outline: "none", resize: "vertical", minHeight: 64 },
+  textarea: { width: "100%", boxSizing: "border-box", background: C.surface, border: `1px solid ${C.border}`, borderRadius: 16, padding: "9px 12px", color: C.text, fontFamily: "var(--font-ui)", fontSize: 13, outline: "none", resize: "vertical", minHeight: 64 },
   err: { fontSize: 11, color: C.danger, marginTop: 4 },
   hint: { fontSize: 11, color: C.text4, marginTop: 5, lineHeight: 1.5 },
-  btnPrimary: { width: "100%", background: C.text, border: "none", borderRadius: 20, padding: "12px 0", color: "#fff", fontFamily: "'Inter', sans-serif", fontSize: 13, cursor: "pointer", marginTop: 28, letterSpacing: "0.04em", transition: "opacity 0.15s" },
-  btnGhost: { width: "100%", background: "transparent", border: `1px solid ${C.border}`, borderRadius: 20, padding: "10px 0", color: C.text4, fontFamily: "'Inter', sans-serif", fontSize: 12, cursor: "pointer", marginTop: 10 },
+  btnPrimary: { width: "100%", background: C.text, border: "none", borderRadius: 20, padding: "12px 0", color: "#fff", fontFamily: "var(--font-ui)", fontSize: 13, cursor: "pointer", marginTop: 28, letterSpacing: "0.04em", transition: "opacity 0.15s" },
+  btnGhost: { width: "100%", background: "transparent", border: `1px solid ${C.border}`, borderRadius: 20, padding: "10px 0", color: C.text4, fontFamily: "var(--font-ui)", fontSize: 12, cursor: "pointer", marginTop: 10 },
 } satisfies Record<string, CSSProperties | ((...args: never[]) => CSSProperties)>;
 
 /** Optionale Studio-Felder, die beim Anlegen mitgeschickt werden. */
@@ -118,7 +118,7 @@ export default function CloudSetup({ cloudInit, cloudUrl }: {
       <div style={S.logo}>RAPPORT</div>
       <div style={S.sub}>SCHRITT {n} VON {TOTAL} · CLOUD</div>
       {progressEl}
-      <div style={{ fontFamily: "'Inter', sans-serif", fontSize: 20, color: C.text, marginBottom: 6 }}>{title}</div>
+      <div style={{ fontFamily: "var(--font-ui)", fontSize: 20, color: C.text, marginBottom: 6 }}>{title}</div>
       {lead && <div style={{ fontSize: 12, color: C.text3, lineHeight: 1.65, marginBottom: 20 }}>{lead}</div>}
     </>
   );

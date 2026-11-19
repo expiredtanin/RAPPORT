@@ -166,7 +166,7 @@ export default function Login({ verifyLogin, settings, version, cloudUnreachable
       minHeight: "100vh", minWidth: "100vw",
       background: "#ebe7e1",
       display: "flex", alignItems: "center", justifyContent: "center",
-      fontFamily: "'Inter', sans-serif",
+      fontFamily: "var(--font-ui)",
       position: "fixed", inset: 0, zIndex: 9999,
     }}>
       <style>{`
@@ -189,7 +189,7 @@ export default function Login({ verifyLogin, settings, version, cloudUnreachable
           width: 100%; box-sizing: border-box;
           background: #f7f4f0; border: 1.5px solid #ddd8d0;
           border-radius: 20px; padding: 11px 14px;
-          font-family: 'Inter', sans-serif; font-size: 13px;
+          font-family: var(--font-ui); font-size: 13px;
           color: #1a1a18; outline: none;
           transition: border-color 0.18s, box-shadow 0.18s;
         }
@@ -208,7 +208,7 @@ export default function Login({ verifyLogin, settings, version, cloudUnreachable
           width: 100%; padding: 13px;
           background: #1a1a18; color: #f0ede8;
           border: none; border-radius: 20px;
-          font-family: 'Inter', sans-serif; font-size: 13px;
+          font-family: var(--font-ui); font-size: 13px;
           font-weight: 500; letter-spacing: 0.04em;
           cursor: pointer; transition: background 0.18s, box-shadow 0.18s;
         }
@@ -225,7 +225,7 @@ export default function Login({ verifyLogin, settings, version, cloudUnreachable
           background: transparent;
           border: none;
           color: #6a6660;
-          font-family: 'Inter', sans-serif;
+          font-family: var(--font-ui);
           font-size: 10px;
           letter-spacing: 0.1em;
           text-transform: uppercase;
@@ -257,7 +257,7 @@ export default function Login({ verifyLogin, settings, version, cloudUnreachable
         margin: "0 20px",
       }}>
         <div style={{ textAlign: "center", marginBottom: 36 }}>
-          <div style={{ fontFamily: "Krungthep, 'Archivo Black', sans-serif", fontSize: 36, color: "#1a1a18", letterSpacing: "-0.02em", lineHeight: 1 }}>
+          <div style={{ fontFamily: "var(--font-ui)", fontSize: 36, color: "#1a1a18", letterSpacing: "-0.02em", lineHeight: 1 }}>
             RAPPORT
           </div>
           <div style={{ fontSize: 9, color: "#b0aca4", letterSpacing: "0.2em", marginTop: 8, fontWeight: 500 }}>

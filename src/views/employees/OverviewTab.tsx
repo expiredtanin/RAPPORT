@@ -33,7 +33,7 @@ export default function OverviewTab({ data, employees, absences, absenzTypes, cl
           {/* Monats-Navigator */}
           <div className="card" style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 20px", marginBottom: 20 }}>
             <button className="btn btn-ghost" style={{ padding: "0 12px" }} onClick={() => { if (viewMonth === 0) { setViewMonth(11); setViewYear(y => y - 1); } else setViewMonth(m => m - 1); }}>←</button>
-            <div style={{ flex: 1, textAlign: "center", fontFamily: "'Inter', sans-serif", fontSize: 18 }}>
+            <div style={{ flex: 1, textAlign: "center", fontFamily: "var(--font-ui)", fontSize: 18 }}>
               {months[viewMonth]} {viewYear}
               {closedMonths.includes(`${viewYear}-${String(viewMonth + 1).padStart(2, "0")}`) && (
                 <span style={{ marginLeft: 10, fontSize: 11, background: "#1a1a18", color: "#f0ede8", padding: "2px 8px", borderRadius: 20, fontFamily: "inherit", fontWeight: 400 }}>geschlossen</span>
@@ -77,7 +77,7 @@ export default function OverviewTab({ data, employees, absences, absenzTypes, cl
                       <td style={{ textAlign: "right", fontWeight: 500 }}>{s.istH}h</td>
                       <td style={{ textAlign: "right", color: "var(--pending)" }}>{s.ferienH > 0 ? `${s.ferienH}h` : "—"}</td>
                       <td style={{ textAlign: "right", color: "var(--text4)" }}>{s.absenzH > 0 ? `${s.absenzH}h` : "—"}</td>
-                      <td style={{ textAlign: "right", fontWeight: 700, fontFamily: "'Inter', sans-serif", color: saldoColor }}>
+                      <td style={{ textAlign: "right", fontWeight: 700, fontFamily: "var(--font-ui)", color: saldoColor }}>
                         {s.saldo > 0 ? "+" : ""}{s.saldo}h
                       </td>
                       <td style={{ textAlign: "right", color: fs.restH < 0 ? "var(--negative)" : "var(--positive)", fontWeight: 500 }}>
@@ -137,7 +137,7 @@ export default function OverviewTab({ data, employees, absences, absenzTypes, cl
                                 </td>
                               );
                             })}
-                            <td style={{ textAlign: "right", fontWeight: 700, fontFamily: "'Inter', sans-serif", color: ytd > 0 ? "var(--positive)" : ytd < 0 ? "var(--negative)" : "var(--text4)" }}>
+                            <td style={{ textAlign: "right", fontWeight: 700, fontFamily: "var(--font-ui)", color: ytd > 0 ? "var(--positive)" : ytd < 0 ? "var(--negative)" : "var(--text4)" }}>
                               {ytd > 0 ? "+" : ""}{ytd}h
                             </td>
                           </tr>
@@ -350,9 +350,9 @@ export default function OverviewTab({ data, employees, absences, absenzTypes, cl
                                 <td style={{ fontWeight: 500, fontSize: 12 }}>{emp.name}</td>
                                 {monthly.map((h, i) => {
                                   const isFuture = viewYear > curYear || (viewYear === curYear && i > curMonth);
-                                  return <td key={i} style={{ textAlign: "right", color: isFuture ? "#ddd" : h > 0 ? "#2d5a8e" : "#ddd" }}>{h > 0 && !isFuture ? `${h}h` : "—"}</td>;
+                                  return <td key={i} style={{ textAlign: "right", color: isFuture ? "#ddd" : h > 0 ? "var(--info)" : "#ddd" }}>{h > 0 && !isFuture ? `${h}h` : "—"}</td>;
                                 })}
-                                <td style={{ textAlign: "right", fontWeight: 700, color: total > 0 ? "#2d5a8e" : "var(--text4)" }}>{total > 0 ? `${total}h` : "—"}</td>
+                                <td style={{ textAlign: "right", fontWeight: 700, color: total > 0 ? "var(--info)" : "var(--text4)" }}>{total > 0 ? `${total}h` : "—"}</td>
                                 <td style={{ textAlign: "right", color: "var(--text5)" }}>{prevTotal > 0 ? `${prevTotal}h` : "—"}</td>
                                 <td style={{ textAlign: "right", fontWeight: 500, color: delta > 0 ? "var(--warning)" : delta < 0 ? "var(--positive)" : "var(--text4)" }}>
                                   {delta !== 0 ? `${delta > 0 ? "+" : ""}${delta}h` : "—"}

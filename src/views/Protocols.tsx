@@ -17,11 +17,12 @@
 // per Drag & Drop. `window.__openProtokoll` öffnet beim Einstieg ein bestimmtes Protokoll
 // (von anderen Ansichten gesetzt).
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { PROTOKOLL_TYPES } from "../constants";
 import { generateId, formatDate, htmlToText, initialsOf, participantKuerzel, responsibleLabel, protocolApproval, nextProtoSeq, applyProtoNumberFormat, localISODate } from "../utils";
-import { Header, Modal, FormField, RichEditor, DateInput, ShareButton, SortTh } from "../components/UI";
+import { Header, Modal, FormField, RichEditor, DateInput, ShareButton, SortTh, RowMenu, EmptyState } from "../components/UI";
 import { useConfirm } from "../hooks/useConfirm";
+import { removeWithUndo } from "../undo";
 import { baselineChanges, glyphOf, scheduleOf, TRACK_LABELS, trackItems, upcomingItems } from "../schedule";
 import type { AppData, Protocol, ProtocolApproval, ProtocolEntry, ProtocolParticipant, ProtocolTraktandum, ViewProps } from "../types";
 
@@ -39,7 +40,7 @@ declare global {
 }
 
 export default
-function Protokolle({ data, saveAll, setPrintContent }: Pick<ViewProps, "data" | "update" | "saveAll" | "setPrintContent">) {
+function Protokolle({ data, saveAll, setPrintContent, modal, setModal }: Pick<ViewProps, "data" | "update" | "saveAll" | "setPrintContent"> & Partial<Pick<ViewProps, "modal" | "setModal">>) {
   const today = localISODate();
   const protokolle = data.protocols || [];
 
@@ -53,28 +54,10 @@ function Protokolle({ data, saveAll, setPrintContent }: Pick<ViewProps, "data" |
 
   const detail = detailId ? protokolle.find(p => p.id === detailId) : null;
 
-  // hooks must be called before any early return
-  const { askConfirm, ConfirmModalEl } = useConfirm();
-  const deleteProtokoll = async (id: string) => {
-    if (await askConfirm("Protokoll löschen?")) {
-      saveAll({ ...data, protocols: protokolle.filter(x => x.id !== id) });
-    }
+  const deleteProtokoll = (id: string) => {
+    const p = protokolle.find(x => x.id === id);
+    removeWithUndo(`Protokoll ${p?.nummer || ""} gelöscht`, "protocols", x => x.id === id);
   };
-
-  // ── Detail-Ansicht ────────────────────────────────────────────
-  if (detail) {
-    return <ProtokollDetail
-      protokoll={detail}
-      data={data}
-      onBack={() => setDetailId(null)}
-      onSave={p => { saveAll({ ...data, protocols: protokolle.map(x => x.id === p.id ? p : x) }); }}
-      onDelete={id => { saveAll({ ...data, protocols: protokolle.filter(x => x.id !== id) }); setDetailId(null); }}
-      setPrintContent={setPrintContent}
-      saveAll={saveAll}
-    />;
-  }
-
-  // ── Listenansicht ─────────────────────────────────────────────
 
   const newProtokoll = () => {
     const defaultType = PROTOKOLL_TYPES[0];
@@ -105,6 +88,31 @@ function Protokolle({ data, saveAll, setPrintContent }: Pick<ViewProps, "data" |
     setDetailId(p.id);
   };
 
+  // Befehlspalette (App.tsx): «Neues Protokoll»
+  /* eslint-disable react-hooks/set-state-in-effect -- einmalige Übergabe aus der Befehlspalette */
+  useEffect(() => {
+    if (modal?.type !== "newProtocol") return;
+    setModal?.(null);
+    newProtokoll();
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- nur auf neue Aufträge reagieren
+  }, [modal?.type]);
+  /* eslint-enable react-hooks/set-state-in-effect */
+
+  // ── Detail-Ansicht ────────────────────────────────────────────
+  if (detail) {
+    return <ProtokollDetail
+      protokoll={detail}
+      data={data}
+      onBack={() => setDetailId(null)}
+      onSave={p => { saveAll({ ...data, protocols: protokolle.map(x => x.id === p.id ? p : x) }); }}
+      onDelete={id => { saveAll({ ...data, protocols: protokolle.filter(x => x.id !== id) }); setDetailId(null); }}
+      setPrintContent={setPrintContent}
+      saveAll={saveAll}
+    />;
+  }
+
+  // ── Listenansicht ─────────────────────────────────────────────
+
   const filtered = protokolle.filter(p => {
     if (filter.type && p.type !== filter.type) return false;
     if (filter.projectId && p.projectId !== filter.projectId) return false;
@@ -134,7 +142,6 @@ function Protokolle({ data, saveAll, setPrintContent }: Pick<ViewProps, "data" |
 
   return (
     <div>
-      {ConfirmModalEl}
       <Header title="Protokolle" action={
         <button className="btn btn-primary" onClick={newProtokoll}>+ Neues Protokoll</button>
       } />
@@ -182,11 +189,16 @@ function Protokolle({ data, saveAll, setPrintContent }: Pick<ViewProps, "data" |
         </div>
       </div>
 
-      {sorted.length === 0 ? (
+      {protokolle.length === 0 ? (
+        <div className="card" style={{ padding: 0 }}>
+          <EmptyState icon="description" title="Noch keine Protokolle" text="Halte Sitzungen und Besprechungen mit Teilnehmern, Beschlüssen und Aufgaben fest – offene Aufgaben erscheinen hier gesammelt."
+            action={<button className="btn btn-primary" onClick={newProtokoll}>+ Neues Protokoll</button>} />
+        </div>
+      ) : sorted.length === 0 ? (
         <div className="card" style={{ padding: 0 }}>
           <table>
-            <thead><tr><th style={{ width: 130 }}>Nr.</th><th style={{ width: 100 }}>Datum</th><th style={{ width: 160 }}>Typ</th><th>Titel</th><th style={{ width: 160 }}>Projekt</th><th style={{ width: 50 }}>TN</th><th style={{ width: 50 }}>📌</th><th style={{ width: 130 }}></th></tr></thead>
-            <tbody><tr><td colSpan={8} className="empty-state">{protokolle.length === 0 ? "Noch keine Protokolle" : "Keine Treffer"}</td></tr></tbody>
+            <thead><tr><th style={{ width: 130 }}>Nr.</th><th style={{ width: 100 }}>Datum</th><th style={{ width: 160 }}>Typ</th><th>Titel</th><th style={{ width: 160 }}>Projekt</th><th style={{ width: 50 }}>TN</th><th style={{ width: 50 }}>📌</th><th style={{ width: 60 }}></th></tr></thead>
+            <tbody><tr><td colSpan={8} className="empty-state">Keine Treffer</td></tr></tbody>
           </table>
         </div>
       ) : (
@@ -201,7 +213,7 @@ function Protokolle({ data, saveAll, setPrintContent }: Pick<ViewProps, "data" |
                 <th style={{ width: 160 }}>Projekt</th>
                 <th style={{ width: 50, textAlign: "center" }}>TN</th>
                 <th style={{ width: 50, textAlign: "center" }}><span className="msr" style={{ fontSize: 14, verticalAlign: "middle" }}>push_pin</span></th>
-                <th style={{ width: 130 }}></th>
+                <th style={{ width: 60 }}></th>
               </tr>
             </thead>
             <tbody>
@@ -211,8 +223,8 @@ function Protokolle({ data, saveAll, setPrintContent }: Pick<ViewProps, "data" |
                 const total = (p.participants || []).length;
                 const offeneTasks = (p.traktanden || []).flatMap(t => (t.items || []).filter(it => it.type === "aufgabe" && it.status !== "erledigt")).length;
                 return (
-                  <tr key={p.id} onClick={() => setDetailId(p.id)} style={{ cursor: "pointer" }}>
-                    <td style={{ whiteSpace: "nowrap" }}><strong style={{ color: "#b07848" }}>{p.nummer}</strong></td>
+                  <tr key={p.id} className="row-link" onClick={() => setDetailId(p.id)}>
+                    <td style={{ whiteSpace: "nowrap" }}><strong style={{ color: "var(--accent)" }}>{p.nummer}</strong></td>
                     <td>{formatDate(p.date)}</td>
                     <td><span style={{ fontSize: 11, color: "var(--text3)" }}>{p.type}</span></td>
                     <td><strong>{p.title || <span style={{ color: "var(--text5)", fontWeight: 400 }}>Kein Titel</span>}</strong></td>
@@ -221,13 +233,12 @@ function Protokolle({ data, saveAll, setPrintContent }: Pick<ViewProps, "data" |
                     <td style={{ textAlign: "center" }}>
                       {offeneTasks > 0 && <span style={{ fontSize: 11, color: "var(--warning)", fontWeight: 600 }}>{offeneTasks}</span>}
                     </td>
-                    <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
-                      <ShareButton style={{ fontSize: 12, padding: "5px 10px", marginRight: 4 }}
-                        options={[{ label: "PDF", onClick: e => { e.stopPropagation(); setPrintContent({ type: "protokoll", protokoll: p, data, settings: data.settings }); } }]} />
-                      <button className="btn btn-ghost" style={{ fontSize: 12, padding: "5px 10px", marginRight: 4 }}
-                        onClick={e => { e.stopPropagation(); setDetailId(p.id); }}><span className="msr" style={{ fontSize: 16 }}>edit</span></button>
-                      <button className="btn btn-danger" style={{ fontSize: 12, padding: "5px 10px" }}
-                        onClick={e => { e.stopPropagation(); deleteProtokoll(p.id); }}><span className="msr" style={{ fontSize: 16 }}>close</span></button>
+                    <td className="row-actions" onClick={e => e.stopPropagation()}>
+                      <RowMenu items={[
+                        { label: "Bearbeiten", icon: "edit", onClick: () => setDetailId(p.id) },
+                        { label: "PDF", icon: "picture_as_pdf", onClick: () => setPrintContent({ type: "protokoll", protokoll: p, data, settings: data.settings }) },
+                        { label: "Löschen", icon: "delete", danger: true, onClick: () => deleteProtokoll(p.id) },
+                      ]} />
                     </td>
                   </tr>
                 );
@@ -566,12 +577,12 @@ function ProtokollDetail({ protokoll, data, onBack, onSave, onDelete, setPrintCo
             value={p.title}
             onChange={e => setField("title", e.target.value)}
             placeholder="Protokolltitel…"
-            style={{ fontSize: 28, fontFamily: "'Inter', sans-serif", fontWeight: 400, background: "none", border: "none", borderBottom: "2px solid var(--border)", borderRadius: 0, padding: "4px 0", width: "100%", outline: "none", color: "var(--text)" }}
+            style={{ fontSize: 28, fontFamily: "var(--font-ui)", fontWeight: 400, background: "none", border: "none", borderBottom: "2px solid var(--border)", borderRadius: 0, padding: "4px 0", width: "100%", outline: "none", color: "var(--text)" }}
           />
           <div style={{ fontSize: 12, color: "var(--text4)", marginTop: 6 }}>
             {p.nummer}
             {p.type && <span> · {p.type}</span>}
-            {(() => { const proj = data.projects.find(x => x.id === p.projectId); return proj?.number ? <span style={{ color: "#b07848", marginLeft: 8, fontWeight: 600 }}>{proj.number}</span> : null; })()}
+            {(() => { const proj = data.projects.find(x => x.id === p.projectId); return proj?.number ? <span style={{ color: "var(--accent)", marginLeft: 8, fontWeight: 600 }}>{proj.number}</span> : null; })()}
           </div>
         </div>
         <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>

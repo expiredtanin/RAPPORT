@@ -327,7 +327,7 @@ function StudioBudget({ data, update, setPrintContent }: Pick<ViewProps, "data" 
       <Header title="Budget" action={
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
           <button className="btn btn-ghost" onClick={() => setShowVersions(v => !v)}>
-            ⊞ Versionen {versions.length > 0 && <span style={{ marginLeft: 4, background: "#b07848", color: "var(--text)", borderRadius: 20, fontSize: 10, padding: "1px 6px", fontWeight: 700 }}>{versions.length}</span>}
+            ⊞ Versionen {versions.length > 0 && <span style={{ marginLeft: 4, background: "var(--accent)", color: "var(--text)", borderRadius: 20, fontSize: 10, padding: "1px 6px", fontWeight: 700 }}>{versions.length}</span>}
           </button>
           <ShareButton options={[{ label: "PDF", onClick: () => setPrintContent({ type: "studioBudget", snapshot: buildSnapshot("Aktuell"), settings: data.settings }) }]} />
           <button className="btn btn-primary" onClick={saveSettings}>Speichern</button>
@@ -336,7 +336,7 @@ function StudioBudget({ data, update, setPrintContent }: Pick<ViewProps, "data" 
 
       {/* Versions-Panel */}
       {showVersions && (
-        <div className="card" style={{ marginBottom: 20, borderLeft: "4px solid #b07848" }}>
+        <div className="card" style={{ marginBottom: 20, borderLeft: "4px solid var(--accent)" }}>
           <div style={{ fontSize: 11, letterSpacing: "0.1em", color: "var(--text4)", marginBottom: 14 }}>VERSIONEN</div>
 
           {/* Neue Version speichern */}
@@ -372,7 +372,7 @@ function StudioBudget({ data, update, setPrintContent }: Pick<ViewProps, "data" 
                   <tr key={v.id}>
                     <td style={{ padding: "8px 8px 8px 0", fontWeight: 500, fontSize: 13, borderBottom: "1px solid var(--border2)" }}>{v.name}</td>
                     <td style={{ padding: "8px", textAlign: "right", fontSize: 12, borderBottom: "1px solid var(--border2)" }}>{formatCHF(Math.round(v.results?.selbstkosten || 0))}</td>
-                    <td style={{ padding: "8px", textAlign: "right", fontSize: 12, fontWeight: 600, color: "#b07848", borderBottom: "1px solid var(--border2)" }}>{formatCHF(Math.round(v.results?.zielHonorar || 0))}</td>
+                    <td style={{ padding: "8px", textAlign: "right", fontSize: 12, fontWeight: 600, color: "var(--accent)", borderBottom: "1px solid var(--border2)" }}>{formatCHF(Math.round(v.results?.zielHonorar || 0))}</td>
                     <td style={{ padding: "8px", textAlign: "right", fontSize: 12, borderBottom: "1px solid var(--border2)" }}>{formatCHF(Math.round(v.results?.gesamtKosten || 0))}</td>
                     <td style={{ padding: "8px 0 8px 8px", textAlign: "right", fontSize: 11, color: "var(--text4)", borderBottom: "1px solid var(--border2)" }}>
                       {new Date(v.savedAt).toLocaleDateString("de-CH")}
@@ -394,33 +394,42 @@ function StudioBudget({ data, update, setPrintContent }: Pick<ViewProps, "data" 
       )}
 
       {/* ── ANALYSE — full width, ganz oben ── */}
-      <div className="card" style={{ borderTop: `3px solid ${rateOk ? "var(--positive)" : "var(--negative)"}`, marginBottom: 20 }}>
+      <div className="card" style={{ marginBottom: 20 }}>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr auto", gap: 0, alignItems: "stretch" }}>
           <div style={{ padding: "14px 20px 14px 0", borderRight: "1px solid var(--border2)" }}>
             <div style={{ fontSize: 10, color: "var(--text4)", letterSpacing: "0.1em", marginBottom: 8 }}>SELBSTKOSTENSATZ</div>
-            <div style={{ fontSize: 32, fontFamily: "'Inter', sans-serif", fontWeight: 700, lineHeight: 1 }}>{formatCHF(Math.round(selbstkosten))}</div>
+            <div style={{ fontSize: 32, fontFamily: "var(--font-ui)", fontWeight: 700, lineHeight: 1 }}>{formatCHF(Math.round(selbstkosten))}</div>
             <div style={{ fontSize: 10, color: "var(--text4)", marginTop: 6 }}>pro produktive Stunde</div>
           </div>
           <div style={{ padding: "14px 20px", borderRight: "1px solid var(--border2)" }}>
             <div style={{ fontSize: 10, color: "var(--text4)", letterSpacing: "0.1em", marginBottom: 8 }}>ZIEL-HONORAR</div>
-            <div style={{ fontSize: 32, fontFamily: "'Inter', sans-serif", fontWeight: 700, color: "#b07848", lineHeight: 1 }}>{formatCHF(Math.round(zielHonorar))}</div>
+            <div style={{ fontSize: 32, fontFamily: "var(--font-ui)", fontWeight: 700, color: "var(--accent)", lineHeight: 1 }}>{formatCHF(Math.round(zielHonorar))}</div>
             <div style={{ fontSize: 10, color: "var(--text4)", marginTop: 6 }}>inkl. {b.zielMarge}% Marge</div>
           </div>
           <div style={{ padding: "14px 20px", borderRight: "1px solid var(--border2)" }}>
             <div style={{ fontSize: 10, color: "var(--text4)", letterSpacing: "0.1em", marginBottom: 8 }}>GESAMTKOSTEN / JAHR</div>
-            <div style={{ fontSize: 32, fontFamily: "'Inter', sans-serif", fontWeight: 700, lineHeight: 1 }}>{formatCHF(gesamtKosten)}</div>
+            <div style={{ fontSize: 32, fontFamily: "var(--font-ui)", fontWeight: 700, lineHeight: 1 }}>{formatCHF(gesamtKosten)}</div>
             <div style={{ fontSize: 10, color: "var(--text4)", marginTop: 6 }}>{jahresStundenFallback}h verfügbar · {produktivStunden}h produktiv</div>
           </div>
           <div style={{ padding: "14px 0 14px 20px", display: "flex", flexDirection: "column", justifyContent: "center", minWidth: 180 }}>
-            <div style={{ padding: "10px 14px", borderRadius: 6, border: `1.5px solid ${rateOk ? "#b8dcc8" : "#e8b0b0"}`, background: rateOk ? "#f0f8f4" : "var(--negative-bg)" }}>
+            {gesamtKosten <= 0 ? (
+              <div style={{ padding: "10px 14px", borderRadius: 10, border: "1px solid color-mix(in srgb, var(--warning) 35%, transparent)", background: "var(--warning-bg)", maxWidth: 220 }}>
+                <div style={{ fontSize: 12, fontWeight: 600, color: "var(--warning)", marginBottom: 4 }}>Noch nicht berechenbar</div>
+                <div style={{ fontSize: 12, color: "var(--text2)", lineHeight: 1.45 }}>
+                  {personalKosten <= 0 ? "Es sind keine Löhne hinterlegt. Bei den Mitarbeitenden den Lohn erfassen oder unten «übersteuern»." : "Es sind keine Kosten erfasst."}
+                </div>
+              </div>
+            ) : (
+            <div style={{ padding: "10px 14px", borderRadius: 10, border: `1px solid ${rateOk ? "color-mix(in srgb, var(--positive) 35%, transparent)" : "color-mix(in srgb, var(--negative) 35%, transparent)"}`, background: rateOk ? "var(--positive-bg)" : "var(--negative-bg)" }}>
               <div style={{ fontSize: 11, fontWeight: 600, color: rateOk ? "var(--positive)" : "var(--negative)", marginBottom: 4 }}>
                 {rateOk ? "✓ Ansatz ausreichend" : "⚠ Ansatz zu tief"}
               </div>
-              <div style={{ fontSize: 20, fontWeight: 700, fontFamily: "'Inter', sans-serif", color: rateOk ? "var(--positive)" : "var(--negative)" }}>
+              <div style={{ fontSize: 20, fontWeight: 700, fontFamily: "var(--font-ui)", color: rateOk ? "var(--positive)" : "var(--negative)" }}>
                 {rateOk ? "+" : ""}{formatCHF(Math.round(rateDiff))}
               </div>
               <div style={{ fontSize: 10, color: "var(--text4)", marginTop: 3 }}>Aktuell {formatCHF(currentRate)}/h</div>
             </div>
+            )}
             {selbstkosten > 0 && (
               <div style={{ marginTop: 10 }}>
                 <div style={{ height: 4, background: "var(--border)", borderRadius: 2, overflow: "hidden" }}>
@@ -487,7 +496,7 @@ function StudioBudget({ data, update, setPrintContent }: Pick<ViewProps, "data" 
             )}
             <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 600, fontSize: 13, paddingTop: 8, borderTop: "1.5px solid var(--border)" }}>
               <span>Total Personalkosten</span>
-              <span style={{ fontFamily: "'Inter', sans-serif" }}>{formatCHF(personalKosten)}</span>
+              <span style={{ fontFamily: "var(--font-ui)" }}>{formatCHF(personalKosten)}</span>
             </div>
           </div>
 
@@ -557,7 +566,7 @@ function StudioBudget({ data, update, setPrintContent }: Pick<ViewProps, "data" 
 
             <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 600, fontSize: 13, paddingTop: 8, borderTop: "1.5px solid var(--border)" }}>
               <span>Total Fixkosten</span>
-              <span style={{ fontFamily: "'Inter', sans-serif" }}>{formatCHF(fixKosten + extraKosten)}</span>
+              <span style={{ fontFamily: "var(--font-ui)" }}>{formatCHF(fixKosten + extraKosten)}</span>
             </div>
           </div>
 
@@ -583,7 +592,7 @@ function StudioBudget({ data, update, setPrintContent }: Pick<ViewProps, "data" 
                 <div style={{ fontSize: 10, letterSpacing: "0.08em", color: "var(--text4)", marginBottom: 8 }}>AUS RECHNUNGEN {currentYear}</div>
                 {[
                   { label: "Bezahlt", value: paidRevenue, color: "var(--positive)" },
-                  { label: "Versendet / Überfällig", value: sentRevenue, color: "#b07848" },
+                  { label: "Versendet / Überfällig", value: sentRevenue, color: "var(--accent)" },
                 ].map(({ label, value, color }) => value > 0 && (
                   <div key={label} style={{ display: "flex", justifyContent: "space-between", fontSize: 12, marginBottom: 4 }}>
                     <span style={{ color: "var(--text3)" }}>{label}</span>
@@ -615,7 +624,7 @@ function StudioBudget({ data, update, setPrintContent }: Pick<ViewProps, "data" 
                 <div style={{ fontSize: 10, letterSpacing: "0.08em", color: "var(--text4)", marginBottom: 8 }}>AUS OFFERTEN {currentYear}</div>
                 {[
                   { label: "Angenommen", value: acceptedQuoteRevenue, color: "var(--positive)" },
-                  { label: "Gesendet", value: sentQuoteRevenue, color: "#b07848" },
+                  { label: "Gesendet", value: sentQuoteRevenue, color: "var(--accent)" },
                 ].map(({ label, value, color }) => value > 0 && (
                   <div key={label} style={{ display: "flex", justifyContent: "space-between", fontSize: 12, marginBottom: 4 }}>
                     <span style={{ color: "var(--text3)" }}>{label}</span>
@@ -677,7 +686,7 @@ function StudioBudget({ data, update, setPrintContent }: Pick<ViewProps, "data" 
 
             <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 600, fontSize: 13, paddingTop: 8, borderTop: "1.5px solid var(--border)" }}>
               <span>Total Einnahmen</span>
-              <span style={{ fontFamily: "'Inter', sans-serif", color: "var(--positive)" }}>{formatCHF(totalRevenue)}</span>
+              <span style={{ fontFamily: "var(--font-ui)", color: "var(--positive)" }}>{formatCHF(totalRevenue)}</span>
             </div>
           </div>
 
@@ -733,7 +742,7 @@ function StudioBudget({ data, update, setPrintContent }: Pick<ViewProps, "data" 
             ].map((r, i) => (
               <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: r.total ? "8px 0 2px" : r.indent ? "2px 0 2px 12px" : "4px 0", borderTop: r.total ? "2px solid var(--text)" : "none", borderBottom: r.total ? "none" : "1px solid var(--border2)", marginTop: r.total ? 4 : 0 }}>
                 <span style={{ fontSize: r.total ? 13 : r.indent ? 11 : 12, fontWeight: r.total || r.bold ? 700 : 400, color: r.total || r.bold ? "var(--text)" : "var(--text2)" }}>{r.label}</span>
-                <span style={{ fontSize: r.total ? 15 : 12, fontWeight: r.total || r.bold ? 700 : 400, fontFamily: r.total || r.bold ? "'Inter', sans-serif" : "inherit" }}>{formatCHF(r.value)}</span>
+                <span style={{ fontSize: r.total ? 15 : 12, fontWeight: r.total || r.bold ? 700 : 400, fontFamily: r.total || r.bold ? "var(--font-ui)" : "inherit" }}>{formatCHF(r.value)}</span>
               </div>
             ))}
             {totalRevenue > 0 && (
@@ -752,7 +761,7 @@ function StudioBudget({ data, update, setPrintContent }: Pick<ViewProps, "data" 
                 </div>
                 <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 0 2px", borderTop: "2px solid var(--text)", marginTop: 4 }}>
                   <span style={{ fontSize: 13, fontWeight: 700 }}>Ergebnis</span>
-                  <span style={{ fontSize: 15, fontWeight: 700, fontFamily: "'Inter', sans-serif", color: ergebnis >= 0 ? "var(--positive)" : "var(--negative)" }}>
+                  <span style={{ fontSize: 15, fontWeight: 700, fontFamily: "var(--font-ui)", color: ergebnis >= 0 ? "var(--positive)" : "var(--negative)" }}>
                     {ergebnis >= 0 ? "+" : ""}{formatCHF(ergebnis)}
                   </span>
                 </div>

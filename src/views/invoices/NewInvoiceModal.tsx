@@ -80,7 +80,7 @@ export function NewInvoiceModal({ ni, setNi, data, invoices, openEntriesForProje
   return (
     <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
       <div className="modal" style={{ maxWidth: 520 }}>
-        <h2 style={{ fontFamily: "'Inter', sans-serif", fontWeight: 400, marginBottom: 16, fontSize: 22 }}>Neue Rechnung</h2>
+        <h2 style={{ fontFamily: "var(--font-ui)", fontWeight: 400, marginBottom: 16, fontSize: 22 }}>Neue Rechnung</h2>
 
         {/* Tabs */}
         <div style={{ display: "flex", gap: 0, marginBottom: 18, borderBottom: "1.5px solid var(--border)" }}>
