@@ -251,7 +251,6 @@ label { font-size: 12px; color: var(--text3); font-weight: 500; }
   .mobile-close { display: block !important; }
   .mobile-col-toggle { display: inline-flex !important; }
   .app-wrapper { flex-direction: column !important; }
-  .form-row { flex-direction: column !important; }
   .card { padding: 14px !important; }
   .modal { padding: 18px !important; margin: 10px; }
   .responsive-grid-2 { grid-template-columns: minmax(0, 1fr) !important; }
@@ -483,3 +482,40 @@ button.today-row:hover { background: var(--surface3); }
 @media (max-width: 640px) { .ws-figs { grid-template-columns: repeat(2, minmax(0, 1fr)); } .ws-figs > div:nth-child(3) { border-left: none; } .ws-figs > div:nth-child(n+3) { border-top: 1px solid var(--border2); } }
 @media (max-width: 1100px) { .ws-list { display: none; } .ws-back { display: inline-flex; } .ws { margin: -24px -22px -32px; } .ws-head, .ws-body, .ws-stack { padding-left: 22px; padding-right: 22px; } }
 @media (max-width: 768px) { .ws { margin: -16px; } .ws-phases div { font-size: 0; height: 0; padding-top: 4px; } .ws-actions .btn span:not(.msr) { display: none; } }
+
+/* ── Niedrige Fenster (MacBook 13" mit «Grösserer Text», Fenster nicht maximiert) ──
+ * Die Seitenleiste wird kompakter, damit alle Einträge ohne Scrollen sichtbar bleiben;
+ * Vor/Zurück gibt es weiter über ⌘[ / ⌘] und die Befehlspalette. */
+@media (max-height: 820px) {
+  .side-head { padding: 18px 20px 12px; }
+  .sidebar.collapsed .side-head { padding: 18px 0 12px; }
+  .side-wordmark { font-size: 24px; }
+  .side-studio { display: none; }
+  .side-search { margin-bottom: 4px; padding: 5px 10px; }
+  .side-link { padding: 5px 10px; }
+  .sidebar.collapsed .side-link { padding: 6px 0; }
+  .side-child { padding: 3px 10px; }
+  .side-group { padding: 10px 10px 3px; }
+  .side-sep, .sidebar.collapsed .side-group { margin: 7px 10px; }
+  .side-history { display: none; }
+  .side-foot { padding: 6px 10px; }
+}
+@media (max-height: 820px) and (max-width: 1100px) and (min-width: 769px) {
+  .sidebar:not(.open) .side-head { padding: 18px 0 12px; }
+  .sidebar:not(.open) .side-link { padding: 6px 0; }
+  .sidebar:not(.open) .side-group { margin: 7px 10px; }
+  .sidebar:not(.open) .side-user { flex-direction: row !important; }
+  .sidebar:not(.open) .side-user > span { flex-direction: row !important; }
+  .sidebar:not(.open) .side-icon-btn { width: 22px; }
+}
+@media (max-height: 620px) {
+  .side-search { display: none; }
+  .side-link { padding: 4px 10px; }
+  .sidebar.collapsed .side-link, .sidebar:not(.open) .side-link { padding-top: 4px; padding-bottom: 4px; }
+}
+/* Kennzahlen in «Heute» dürfen nicht aus der Karte laufen */
+.office-figs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.office-figs b { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: clamp(15px, 1.35vw, 19px); }
+/* Dialoge liegen über der mobilen Kopfzeile */
+.mobile-header { z-index: 90; }
+@media (max-width: 560px) { .form-row { flex-direction: column !important; } }
