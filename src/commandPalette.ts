@@ -15,7 +15,7 @@ export type PaletteTarget =
   | { kind: "quote"; id: string }
   | { kind: "protocol"; id: string }
   | { kind: "person"; id: string }
-  | { kind: "action"; action: "newProject" | "newInvoice" | "newQuote" | "newProtocol" | "toggleDark" };
+  | { kind: "action"; action: "newProject" | "newInvoice" | "newQuote" | "newProtocol" | "toggleDark"; projectId?: string };
 
 /** Ein Eintrag der Palette. */
 export interface PaletteEntry {

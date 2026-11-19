@@ -67,7 +67,10 @@ export default function Sidebar({
         <span className="msr" style={{ fontSize: 17 }}>search</span>{!collapsed && <><span>Suchen …</span><kbd>⌘K</kbd></>}
       </button>
       <nav className="side-nav" aria-label="Hauptnavigation">
-        {items.map(item => {
+        {items.map((item, idx) => {
+          const prevGroup = idx > 0 ? items[idx - 1].group : undefined;
+          const groupHead = item.group !== undefined && item.group !== prevGroup
+            ? (item.group ? <div className="side-group">{item.group}</div> : <div className="side-sep" />) : null;
           const isParentActive = view === item.id || (item.children || []).some(c => c.id === view);
           const isExpanded = !collapsed && (expandedNav.has(item.id) || isParentActive);
           const toggleExpand = (e: MouseEvent) => {
@@ -80,6 +83,7 @@ export default function Sidebar({
           };
           return (
             <div key={item.id}>
+              {groupHead}
               <div className={`side-item${isParentActive ? " active" : ""}`}>
                 <button className="side-link" onClick={() => go(item.id)} title={collapsed ? item.label : undefined} aria-current={view === item.id ? "page" : undefined}>
                   <span className="msr side-ico">{item.icon}</span>

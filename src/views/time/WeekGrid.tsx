@@ -5,9 +5,10 @@ import type { RefObject, MutableRefObject } from "react";
 import { SIA_PHASES } from "../../constants";
 import type { AppData, Employee, Feiertag } from "../../types";
 import {
-  SLOT_COUNT, SLOT_H, SLOT_START_H, PROJ_COLORS, slotToTime, getSollForDay, isApprovedVacationDay,
+  SLOT_COUNT, SLOT_H, SLOT_START_H, slotToTime, getSollForDay, isApprovedVacationDay,
   type SlotPoint, type WeekForm, type ResizeState, type ContextMenuState,
 } from "./timeUtils";
+import { projectColor } from "./projectColor";
 
 /** Props des Wochenrasters: Zustand der Auswahl/Vorschau und die Handler aus Time.tsx. */
 interface WeekGridProps {
@@ -144,7 +145,7 @@ export function WeekGrid({ data, weekDays, weekFTs, todayStr, currentDate, selec
                 if (top < 0) return null;
                 const height = Math.max(SLOT_H, (dispMins / 15) * SLOT_H) - 2;
                 const proj = data.projects.find(p => p.id === e.projectId);
-                const bg = PROJ_COLORS[data.projects.findIndex(p => p.id === e.projectId) % PROJ_COLORS.length] || PROJ_COLORS[0];
+                const pc = projectColor(e.projectId);
                 const handleH = Math.min(5, Math.floor(height / 3));
                 const phaseDisplay = e.phaseId ? (() => {
                   const cp = (proj?.customPhases||[]).find(c => c.id === e.phaseId);
@@ -164,7 +165,7 @@ export function WeekGrid({ data, weekDays, weekFTs, todayStr, currentDate, selec
                 return (
                   <div key={e.id} title={`${proj?.name||"—"}: ${(dispMins/60).toFixed(1)}h${e.description?" · "+e.description:""}`}
                     onContextMenu={ev => { ev.preventDefault(); setContextMenu({ x: ev.clientX, y: ev.clientY, entry: e }); }}
-                    style={{ position: "absolute", top, left: 2, right: 2, height, background: bg, borderRadius: 3, padding: `${handleH}px 4px`, fontSize: 9, color: "#fff", overflow: "hidden", zIndex: isRes ? 10 : 2, boxSizing: "border-box", userSelect: "none" }}>
+                    style={{ position: "absolute", top, left: 2, right: 2, height, background: pc.tint, borderLeft: `3px solid ${pc.solid}`, borderRadius: 3, padding: `${handleH}px 4px`, fontSize: 9, color: pc.text, overflow: "hidden", zIndex: isRes ? 10 : 2, boxSizing: "border-box", userSelect: "none" }}>
                     <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: handleH, cursor: "ns-resize", background: "rgba(0,0,0,0.15)", borderRadius: "3px 3px 0 0", zIndex: 1 }} onMouseDown={ev => startResizing(ev, "top")} />
                     <div style={{ position: "absolute", top: handleH, left: 0, right: 0, bottom: handleH, cursor: isMoving ? "grabbing" : "grab", zIndex: 1 }} onMouseDown={ev => startResizing(ev, "move")} />
                     <div style={{ fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", paddingTop: 1, pointerEvents: "none" }}>{proj?.name||"—"}</div>

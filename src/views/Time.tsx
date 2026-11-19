@@ -49,7 +49,7 @@ function Time({ data, update, currentUser, userPermissions, setPrintContent }: P
   const isAdmin = userPermissions === null;
   const [currentDate, setCurrentDate] = useState(localISODate());
   const [selectedEmpId, setSelectedEmpId] = useState(() => myEmployeeId || "");
-  const [viewMode, setViewMode] = useState<string>("woche");
+  const [viewMode, setViewMode] = useState<string>(() => (typeof window !== "undefined" && window.innerWidth < 700 ? "tag" : "woche"));
   const [weekSelectStart, setWeekSelectStart] = useState<SlotPoint | null>(null);
   const [weekHover, setWeekHover] = useState<SlotPoint | null>(null);
   const [weekForm, setWeekForm] = useState<WeekForm | null>(null);

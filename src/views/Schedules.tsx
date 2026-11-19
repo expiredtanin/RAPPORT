@@ -8,7 +8,7 @@
 import { useMemo, useState } from "react";
 import { TRACK_LABELS, addDays, blockedDays, groupSpans, holidayDates, overlapDays, scheduleOf, trackItems } from "../schedule";
 import { getAbsenzTypes, localISODate } from "../utils";
-import { Header } from "../components/UI";
+import { EmptyState, Header } from "../components/UI";
 import { GanttChart } from "./schedule/GanttChart";
 import { ZOOM_LEVELS } from "./schedule/zoom";
 import type { ScheduleItem, ScheduleTrack, ViewProps } from "../types";
@@ -96,6 +96,7 @@ export default function Schedules({ data, setView, onSelectProject }: Pick<ViewP
     onSelectProject(pid);
     setView("projects");
   };
+  const openProject = (pid: string) => { onSelectProject(pid); setView("projects"); };
   const toggleTrack = (t: ScheduleTrack) => setTracks(prev => prev.includes(t) ? (prev.length > 1 ? prev.filter(x => x !== t) : prev) : [...prev, t]);
 
   return (
@@ -147,11 +148,20 @@ export default function Schedules({ data, setView, onSelectProject }: Pick<ViewP
       )}
 
       {items.length === 0 ? (
-        <div className="card" style={{ padding: 28, textAlign: "center", fontSize: 13, color: "var(--text3)" }}>
-          {mode === "projekte"
-            ? "Noch keine Terminprogramme. Im Projekt unter «Terminprogramm» aus den SIA-Phasen oder der BKP-Vorlage erstellen."
-            : "Noch keine zugewiesenen Aufgaben oder Abwesenheiten. Im Terminprogramm eines Projekts eine Aufgabe öffnen und «Verantwortlich» wählen."}
-        </div>
+        mode === "projekte"
+          ? <EmptyState
+              icon="view_timeline"
+              title="Noch keine Terminprogramme"
+              text="Im Projekt unter «Terminprogramm» aus den SIA-Phasen oder der BKP-Vorlage erstellen."
+              action={without.length > 0 && (
+                <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
+                  {without.map(p => (
+                    <button key={p.id} className="btn btn-ghost" onClick={() => openProject(p.id)}>{p.name} — Terminprogramm anlegen</button>
+                  ))}
+                </div>
+              )}
+            />
+          : <EmptyState icon="view_timeline" title="Noch keine zugewiesenen Aufgaben" text="Im Terminprogramm eines Projekts eine Aufgabe öffnen und «Verantwortlich» wählen." />
       ) : (
         <GanttChart
           items={items} dayWidth={dayWidth} fit={zoom === "alles"} today={today} holidays={holidays} labelWidth={320}
@@ -162,9 +172,14 @@ export default function Schedules({ data, setView, onSelectProject }: Pick<ViewP
           barColor={it => (it.id.startsWith("ferien|") || it.id.startsWith("abs|") ? "var(--info)" : undefined)}
         />
       )}
-      {mode === "projekte" && without.length > 0 && (
+      {mode === "projekte" && items.length > 0 && without.length > 0 && (
         <div style={{ fontSize: 11, color: "var(--text4)", marginTop: 10 }}>
-          Ohne Terminprogramm: {without.map(p => p.name).join(", ")}
+          Ohne Terminprogramm: {without.map((p, i) => (
+            <span key={p.id}>
+              {i > 0 && ", "}
+              <button onClick={() => openProject(p.id)} style={{ background: "none", border: "none", padding: 0, font: "inherit", color: "var(--text3)", textDecoration: "underline", cursor: "pointer" }}>{p.name}</button>
+            </span>
+          ))}
         </div>
       )}
     </div>

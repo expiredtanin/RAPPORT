@@ -34,7 +34,6 @@ export const SLOT_COUNT = (SLOT_END_H - SLOT_START_H) * 4;
 export const SLOT_H = 12;
 /** Slot-Index → Uhrzeit "HH:MM" (Slot 0 = 00:00, je 15 Minuten). */
 export const slotToTime = (idx: number) => { const m = SLOT_START_H * 60 + idx * 15; return `${String(Math.floor(m/60)).padStart(2,"0")}:${String(m%60).padStart(2,"0")}`; };
-export const PROJ_COLORS = ["#b07848","#4a7c8c","#6b8c4a","#8c5a7c","#5a6c8c","#8c7a4a","#5a8c7a","#8c6a5a"];
 
 /** Feiertage für ein Jahr auflösen (jährlich wiederkehrende aufs Jahr, plus «Vortag»-Einträge). */
 export const resolveFTs = (data: AppData, yr: number | string): Feiertag[] => {

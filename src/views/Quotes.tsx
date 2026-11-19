@@ -608,7 +608,7 @@ function Quotes({ data, update, saveAll, modal, setModal, setPrintContent, setVi
                         </td>
                         <td style={{ padding: "4px 6px", textAlign: "right", color: "var(--text4)" }}>{formatCHF(it.qty * it.price)}</td>
                         <td style={{ padding: "4px 4px", textAlign: "center" }}>
-                          <button className="btn btn-danger" style={{ padding: "0 7px", height: 26, fontSize: 11 }} onClick={() => setForm({...form, freeItems: form.freeItems.filter((_,i) => i!==idx)})}><span className="msr" style={{ fontSize: 16 }}>close</span></button>
+                          <button className="btn-icon" title="Position entfernen" aria-label="Position entfernen" onClick={() => setForm({...form, freeItems: form.freeItems.filter((_,i) => i!==idx)})}><span className="msr" style={{ fontSize: 18 }}>close</span></button>
                         </td>
                       </tr>
                     ))}
@@ -744,9 +744,9 @@ function Quotes({ data, update, saveAll, modal, setModal, setPrintContent, setVi
                           />
                         </td>
                         <td style={{ padding: "3px 4px", textAlign: "center" }}>
-                          <button className="btn btn-danger" style={{ padding: "0 7px", height: 26, fontSize: 11 }}
+                          <button className="btn-icon" title="Position entfernen" aria-label="Position entfernen"
                             onClick={() => setForm(f => ({ ...f, quoteRoles: f.quoteRoles.filter((_, i) => i !== idx), manualPhases: f.manualPhases.map(p => { const h = { ...p.hoursByRole }; delete h[r.id]; return { ...p, hoursByRole: h }; }) }))}>
-                            <span className="msr" style={{ fontSize: 16 }}>close</span>
+                            <span className="msr" style={{ fontSize: 18 }}>close</span>
                           </button>
                         </td>
                       </tr>

@@ -47,6 +47,7 @@ import { LATEST_VERSION, versionLabel } from "./changelog";
 
 // Code-split: each view loads on demand to keep the initial bundle small.
 const Dashboard      = lazy(() => import("./views/Dashboard"));
+const Today = lazy(() => import("./views/Today"));
 const Projects       = lazy(() => import("./views/Projects"));
 const Schedules      = lazy(() => import("./views/Schedules"));
 const ProjectDetail  = lazy(() => import("./views/ProjectDetail"));
@@ -232,7 +233,8 @@ export default function App() {
   const currentUserRecord = (data.users || []).find(u => u.id === currentUser?.id);
   const userInitials = getUserInitials(currentUser);
   const visibleNavItems = getVisibleNavItems(userPermissions);
-  const initialView = !userPermissions ? "dashboard" : (userPermissions.includes("dashboard") ? "dashboard" : (userPermissions[0] || "dashboard"));
+  // Startansicht «Heute» für alle, die Zeit erfassen; sonst wie bisher die Übersicht bzw. die erste erlaubte Ansicht
+  const initialView = !userPermissions || userPermissions.includes("time") ? "heute" : (userPermissions.includes("dashboard") ? "dashboard" : (userPermissions[0] || "dashboard"));
   const allAccessibleViews = visibleNavItems.flatMap(item => item.children ? item.children.map(c => c.id) : [item.id]);
   const { view, navigate, goBack, goForward, navCanBack, navCanForward } = useNavigation(initialView);
   const hasViewAccess = userPermissions === null || allAccessibleViews.includes(view);
@@ -402,9 +404,9 @@ export default function App() {
       case "action":
         if (t.action === "toggleDark") setDarkMode(d => !d);
         else if (t.action === "newProject") open("projects", { type: "newProject" });
-        else if (t.action === "newInvoice") open("invoices", { type: "newInvoice" });
+        else if (t.action === "newInvoice") open("invoices", { type: "newInvoice", projectId: t.projectId });
         else if (t.action === "newQuote") open("quotes", { type: "newQuote" });
-        else if (t.action === "newProtocol") open("protokolle", { type: "newProtocol" });
+        else if (t.action === "newProtocol") open("protokolle", { type: "newProtocol", projectId: t.projectId });
         break;
     }
   };
@@ -484,10 +486,11 @@ export default function App() {
               <button className="btn" onClick={() => navigate("dashboard")}>Zum Dashboard</button>
             </div>
           )}
+          {hasViewAccess && view === "heute" && <Today data={data} currentUser={currentUser} userPermissions={userPermissions} run={runPalette} onOpenPalette={() => setPaletteOpen(true)} />}
           {hasViewAccess && view === "dashboard"  && <Dashboard data={data} setView={navigate} currentUser={currentUser} userPermissions={userPermissions} saveAll={save} />}
           {hasViewAccess && view === "pinnwand"  && <Pinboard  data={data} update={update} currentUser={currentUser} />}
           {hasViewAccess && view === "projects" && !selectedProjectId && <Projects data={data} update={update} saveAll={save} modal={modal} setModal={setModal} onSelect={setSelectedProjectId} setPrintContent={setPrintContent} currentUser={currentUser} userPermissions={userPermissions} />}
-          {hasViewAccess && view === "projects" && selectedProjectId && <ProjectDetail data={data} update={update} saveAll={save} projectId={selectedProjectId} onBack={() => setSelectedProjectId(null)} setPrintContent={setPrintContent} modal={modal} setModal={setModal} currentUser={currentUser} userPermissions={userPermissions} />}
+          {hasViewAccess && view === "projects" && selectedProjectId && <ProjectDetail data={data} update={update} saveAll={save} projectId={selectedProjectId} onBack={() => setSelectedProjectId(null)} onSelect={setSelectedProjectId} run={runPalette} setPrintContent={setPrintContent} modal={modal} setModal={setModal} currentUser={currentUser} userPermissions={userPermissions} />}
           {hasViewAccess && view === "termine" && <Schedules data={data} setView={navigate} onSelectProject={setSelectedProjectId} />}
           {hasViewAccess && view === "time" && <Time data={data} update={update} currentUser={currentUser} userPermissions={userPermissions} setPrintContent={setPrintContent} />}
           {hasViewAccess && view === "crm" && <Crm data={data} update={update} setView={navigate} />}

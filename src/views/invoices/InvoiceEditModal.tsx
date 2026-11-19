@@ -101,7 +101,7 @@ export function InvoiceEditModal({ modal, setModal, form, setForm, data, clients
                 {hasDiscount && <div style={{ fontSize: 10, color: "var(--text5)", textDecoration: "line-through" }}>{formatCHF(item.qty * item.price)}</div>}
                 <div style={{ color: hasDiscount ? "var(--warning)" : "var(--text4)" }}>{formatCHF(lineTotal)}</div>
               </div>
-              <button className="btn btn-danger" style={{ width: 32, padding: 0, fontSize: 12 }} onClick={() => removeItem(idx)}><span className="msr" style={{ fontSize: 16 }}>close</span></button>
+              <button className="btn-icon" title="Position entfernen" aria-label="Position entfernen" onClick={() => removeItem(idx)}><span className="msr" style={{ fontSize: 18 }}>close</span></button>
             </div>
           );
         })}

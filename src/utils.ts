@@ -1171,3 +1171,16 @@ export async function imageFileToJpeg(file: Blob, max: number, quality: number, 
 export function receiptToDataUrl(file: File): Promise<string> {
   return file.type === "application/pdf" ? readAsDataUrl(file) : imageFileToJpeg(file, 1600, 0.82);
 }
+
+/** Tages-Soll in Stunden einer Person: Wochenstunden (Standard 35) × Pensum (Standard 100 %) ÷ 5 — gleiche Regel wie in der Zeiterfassung. */
+export function dailySollHours(emp: Partial<Pick<Employee, "wochenstunden" | "pensum">>): number {
+  return ((emp.wochenstunden || 35) * ((emp.pensum || 100) / 100)) / 5;
+}
+
+/** Stunden als Tage der Person, z.B. «25 T» / «20.5 T» (eine Dezimale nur, wenn nicht ganzzahlig). */
+export function formatDays(hours: number, emp: Partial<Pick<Employee, "wochenstunden" | "pensum">>): string {
+  const per = dailySollHours(emp);
+  if (!per) return "0 T";
+  const d = Math.round((hours / per) * 10) / 10;
+  return `${Number.isInteger(d) ? d : d.toFixed(1)} T`;
+}

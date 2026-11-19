@@ -136,33 +136,36 @@ export interface NavItem {
   children?: NavItem[];
   /** auch sichtbar mit dieser Berechtigung (neue Ansicht, ohne bestehende Rollen anpassen zu müssen) */
   alsoWith?: string;
+  /** Gruppe in der Seitenleiste: ohne = «Arbeiten» (oben), sonst Überschrift (z.B. «Büro»); "" = Gruppe ohne Überschrift */
+  group?: string;
 }
 
 /** Seitenleiste. `id` dient zugleich als Permission-Id in `AppRole.permissions`. Kinder haben kein Icon. */
 export const NAV_ITEMS: NavItem[] = [
-  { id: "dashboard", label: "Übersicht", icon: "grid_view" },
-  { id: "pinnwand", label: "Pinnwand", icon: "campaign" },
+  { id: "heute", label: "Heute", icon: "today", alsoWith: "time" },
   { id: "projects", label: "Projekte", icon: "work" },
-  { id: "termine", label: "Terminplanung", icon: "view_timeline", alsoWith: "projects" },
   { id: "time", label: "Zeiterfassung", icon: "schedule" },
-  { id: "crm", label: "Akquise", icon: "leaderboard" },
-  { id: "quotes", label: "Offerten", icon: "request_quote" },
-  { id: "contracts", label: "Verträge", icon: "handshake" },
-  { id: "buchhaltung", label: "Buchhaltung", icon: "account_balance", children: [
+  { id: "termine", label: "Terminplanung", icon: "view_timeline", alsoWith: "projects" },
+  { id: "pinnwand", label: "Pinnwand", icon: "campaign" },
+  { id: "dashboard", label: "Übersicht", icon: "grid_view", group: "Büro" },
+  { id: "crm", label: "Akquise", icon: "leaderboard", group: "Büro" },
+  { id: "quotes", label: "Offerten", icon: "request_quote", group: "Büro" },
+  { id: "contracts", label: "Verträge", icon: "handshake", group: "Büro" },
+  { id: "buchhaltung", label: "Buchhaltung", icon: "account_balance", group: "Büro", children: [
     { id: "invoices", label: "Rechnungen" },
     { id: "internal-expenses", label: "Ausgaben" },
     { id: "expenses", label: "Spesen" },
     { id: "loehne", label: "Löhne" },
     { id: "studio-budget", label: "Budget" },
   ]},
-  { id: "dokumente", label: "Dokumente", icon: "folder", children: [
+  { id: "dokumente", label: "Dokumente", icon: "folder", group: "Büro", children: [
     { id: "protokolle", label: "Protokolle" },
     { id: "lieferscheine", label: "Lieferscheine" },
     { id: "letters", label: "Briefe" },
   ]},
-  { id: "personen", label: "Kontakte", icon: "group" },
-  { id: "mitarbeiter", label: "Mitarbeiter", icon: "badge" },
-  { id: "settings", label: "Einstellungen", icon: "settings" },
+  { id: "personen", label: "Kontakte", icon: "group", group: "Büro" },
+  { id: "mitarbeiter", label: "Mitarbeiter", icon: "badge", group: "Büro" },
+  { id: "settings", label: "Einstellungen", icon: "settings", group: "" },
 ];
 
 /** Textfarbe pro Status (Projekt, Rechnung, Offerte, Spesen). Schlüssel = Status-String wie in den Daten. */

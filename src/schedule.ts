@@ -452,7 +452,7 @@ const projectProtocols = (protocols: Protocol[], projectId: Id) =>
   (protocols || []).filter(p => p.projectId === projectId).sort((a, b) => (a.date || "").localeCompare(b.date || ""));
 
 /** Mitarbeitende/r zu einem Verantwortlichen-Text (Name, Vorname oder Kürzel). */
-function matchEmployee(responsible: string | undefined, employees: Pick<Employee, "id" | "name">[]): Id | undefined {
+export function matchEmployee(responsible: string | undefined, employees: Pick<Employee, "id" | "name">[]): Id | undefined {
   const r = (responsible || "").trim().toLowerCase();
   if (!r) return undefined;
   const initials = (n: string) => n.split(/\s+/).filter(Boolean).map(w => w[0]).join("").toLowerCase();

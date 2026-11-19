@@ -1,8 +1,8 @@
-// Reiter «Ferien & Intern / Absenzen»: pendente Anträge (genehmigen/ablehnen), Ferieneinträge,
+// Reiter «Ferien & Absenzen»: pendente Anträge (genehmigen/ablehnen), Ferieneinträge,
 // Absenzliste und Ferienanspruch-Übersicht pro Mitarbeiter.
 
 import React from "react";
-import { formatDate } from "../../utils";
+import { formatDate, formatDays } from "../../utils";
 import type { Absence, AbsenzType, Employee, FerienEntry, ViewProps } from "../../types";
 import type { useConfirm } from "../../hooks/useConfirm";
 import type { EmployeeCalc } from "./calc";
@@ -27,7 +27,7 @@ interface FerienTabProps {
   calc: EmployeeCalc;
 }
 
-/** Reiter «Ferien & Intern / Absenzen» der Mitarbeiter-Ansicht. */
+/** Reiter «Ferien & Absenzen» der Mitarbeiter-Ansicht. */
 export default function FerienTab({ data, update, askConfirm, employees, absences, ferienEntries, absenzTypes, selectedEmpId, setSelectedEmpId, setFerienForm, setModal, delFerien, delAbs, viewYear, setViewYear, calc }: FerienTabProps) {
   const { calcFerienYear } = calc;
   return (
@@ -198,11 +198,11 @@ export default function FerienTab({ data, update, askConfirm, employees, absence
                   <tr key={emp.id}>
                     <td><strong>{emp.name}</strong></td>
                     <td style={{ color: "var(--text4)" }}>{emp.pensum || 100}%</td>
-                    <td style={{ textAlign: "right" }}>{fs.anspruchH}h</td>
-                    <td style={{ textAlign: "right", color: "var(--text4)" }}>{fs.ubertragH}h</td>
-                    <td style={{ textAlign: "right" }}>{fs.bezogenH}h</td>
-                    <td style={{ textAlign: "right", color: "var(--pending)" }}>{fs.zukunftH}h</td>
-                    <td style={{ textAlign: "right", fontWeight: 700, color: fs.restH < 0 ? "var(--negative)" : "var(--positive)" }}>{fs.restH}h</td>
+                    <td style={{ textAlign: "right" }}>{formatDays(fs.anspruchH, emp)}<div style={{ fontSize: 10, color: "var(--text4)", fontWeight: 400, textAlign: "right" }}>{fs.anspruchH} h</div></td>
+                    <td style={{ textAlign: "right", color: "var(--text4)" }}>{formatDays(fs.ubertragH, emp)}<div style={{ fontSize: 10, color: "var(--text4)", fontWeight: 400, textAlign: "right" }}>{fs.ubertragH} h</div></td>
+                    <td style={{ textAlign: "right" }}>{formatDays(fs.bezogenH, emp)}<div style={{ fontSize: 10, color: "var(--text4)", fontWeight: 400, textAlign: "right" }}>{fs.bezogenH} h</div></td>
+                    <td style={{ textAlign: "right", color: "var(--pending)" }}>{formatDays(fs.zukunftH, emp)}<div style={{ fontSize: 10, color: "var(--text4)", fontWeight: 400, textAlign: "right" }}>{fs.zukunftH} h</div></td>
+                    <td style={{ textAlign: "right", fontWeight: 700, color: fs.restH < 0 ? "var(--negative)" : "var(--positive)" }}>{formatDays(fs.restH, emp)}<div style={{ fontSize: 10, color: "var(--text4)", fontWeight: 400, textAlign: "right" }}>{fs.restH} h</div></td>
                   </tr>
                 );
               })}

@@ -3,7 +3,8 @@
 
 import { SIA_PHASES } from "../../constants";
 import type { AppData, TimeEntry, UpdateFn } from "../../types";
-import { PROJ_COLORS, slotToTime, getFirstPhaseForProject, type SlotPoint, type WeekForm, type WeekEditForm } from "./timeUtils";
+import { slotToTime, getFirstPhaseForProject, type SlotPoint, type WeekForm, type WeekEditForm } from "./timeUtils";
+import { projectColor } from "./projectColor";
 
 /** Props der Formulare unter dem Wochenraster. */
 interface WeekFormsProps {
@@ -151,7 +152,7 @@ export function WeekForms({ data, update, weekSelectStart, setWeekSelectStart, w
           const onPhaseChangeE = (val: string) => { if (!val) { updateEntry(e.id, { phaseId: "", positionId: "" }); return; } const [ph, pos] = val.split("|"); updateEntry(e.id, { phaseId: ph, positionId: pos || "" }); };
           const isInvoiced = !!e.invoiceId;
           const disabledE = isInvoiced || isMonthClosed(e.date);
-          const bgE = PROJ_COLORS[data.projects.findIndex(p => p.id === e.projectId) % PROJ_COLORS.length] || PROJ_COLORS[0];
+          const bgE = projectColor(e.projectId).solid;
           const durE = e.startTime && e.endTime ? (() => { const [sh,sm]=e.startTime.split(":").map(Number); const [eh,em]=e.endTime.split(":").map(Number); return (eh*60+em)-(sh*60+sm); })() : e.minutes;
           return (
             <div style={{ borderTop: `2px solid ${bgE}`, padding: "12px 16px", background: "var(--surface2)" }}>

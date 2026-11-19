@@ -1,16 +1,22 @@
-// Projekt-Detailansicht: Budget- und Zeitauswertung, Phasen, Terminprogramm (Planung/Bau),
-// Offerten/Nachträge, Rechnungen, Protokolle und Zeiteinträge eines Projekts (Datenmodell siehe Kopf von Projects.tsx).
+// Projekt-Arbeitsraum (seit Beta 26.11): links die Projektliste, rechts das Projekt mit Phasenleiste, Aktionen
+// (Stoppuhr, Protokoll, Rechnung) und Reitern — Überblick, Stunden, Termine, Honorar & Rechnungen, Protokolle,
+// Beteiligte. Die Reiter zeigen die Karten aus project-detail/ (Budget- und Zeitauswertung, Phasen,
+// Terminprogramm, Offerten/Nachträge, Rechnungen, Protokolle, Zeiteinträge); Datenmodell siehe Kopf von Projects.tsx.
 // Berechtigungen: Offerten- und Rechnungsdaten nur mit «quotes» bzw. «invoices» (`userPermissions`).
 
 import React, { useState } from "react";
 import { NON_BILLING_CATEGORIES } from "../constants";
 import { deriveQuoteBudget, migrateLinkedQuotes } from "../utils";
-import { ShareButton } from "../components/UI";
+import { RowMenu } from "../components/UI";
+import type { PaletteTarget } from "../commandPalette";
+import { readTimer, writeTimer, weekAgenda } from "../today";
+import { showToast } from "../toast";
+import { formatHours, localISODate } from "../utils";
+import { ProjectList, PhaseBar, OverviewTab, PeopleList, type WsFigure } from "./project-detail/Workspace";
 import type { ProjectPosition, ViewProps } from "../types";
 import type { ProjectForm } from "./ProjectEditForm";
 import { type BudgetForm, type LinkedQuote, computePhaseStats } from "./project-detail/helpers";
 import { KpiRow } from "./project-detail/KpiRow";
-import { ContactsBar } from "./project-detail/ContactsBar";
 import { BudgetCard } from "./project-detail/BudgetCard";
 import { PhaseCard } from "./project-detail/PhaseCard";
 import { EmployeeCard } from "./project-detail/EmployeeCard";
@@ -23,9 +29,13 @@ import { BudgetModal } from "./project-detail/BudgetModal";
 import { ScheduleEditor } from "./schedule/ScheduleEditor";
 
 export default
-function ProjectDetail({ data, update, saveAll, projectId, onBack, setPrintContent, userPermissions }: Pick<ViewProps, "data" | "update" | "saveAll" | "setPrintContent" | "modal" | "setModal" | "currentUser" | "userPermissions"> & {
+function ProjectDetail({ data, update, saveAll, projectId, onBack, onSelect, run, setPrintContent, userPermissions, currentUser }: Pick<ViewProps, "data" | "update" | "saveAll" | "setPrintContent" | "modal" | "setModal" | "currentUser" | "userPermissions"> & {
   projectId: string;
   onBack: () => void;
+  /** anderes Projekt öffnen (Projektliste) */
+  onSelect: (id: string) => void;
+  /** Aktionen wie in der Befehlspalette (neue Rechnung/Protokoll zum Projekt, zu «Heute») */
+  run: (t: PaletteTarget) => void;
 }) {
   // userPermissions (aus App.tsx, bereits rollen-aufgelöst) statt des nie befüllten Legacy-Felds
   // currentUser.permissions — letzteres ist für rollenbasierte Cloud-User immer undefined.
@@ -35,6 +45,7 @@ function ProjectDetail({ data, update, saveAll, projectId, onBack, setPrintConte
   const canSeeMitarbeiter = isAdmin || userPermissions.includes("mitarbeiter");
   const project = data.projects.find(p => p.id === projectId);
   const emptySettingsForm: ProjectForm = { number: "", name: "", clientId: "", category: "Direktauftrag", billingType: "stundensatz", hourlyRate: data.settings.defaultHourlyRate, budget: 0, status: "aktiv", description: "", startDate: "", enabledPhases: [], budgetHours: 0, linkedQuotes: [], positions: [], customPhases: [], internalMembers: [] };
+  const [tab, setTab] = useState("ueberblick");
   const [budgetModal, setBudgetModal] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [budgetChartView, setBudgetChartView] = useState("einzeln");
@@ -55,7 +66,7 @@ function ProjectDetail({ data, update, saveAll, projectId, onBack, setPrintConte
     setSettingsOpen(true);
   };
   const saveSettings = () => {
-    if (!settingsForm.name?.trim()) { alert("Bitte einen Projektnamen eingeben."); return; }
+    if (!settingsForm.name?.trim()) { showToast("Bitte einen Projektnamen eingeben."); return; }
     update("projects", data.projects.map(p => p.id === projectId ? { ...p, ...settingsForm } : p));
     setSettingsOpen(false);
   };
@@ -185,53 +196,109 @@ function ProjectDetail({ data, update, saveAll, projectId, onBack, setPrintConte
   const paidTotal = paidInvoices.reduce((s, i) => s + (i.total || 0), 0);
   const openTotal = openInvoices.reduce((s, i) => s + (i.total || 0), 0);
 
+  // ── Arbeitsraum ────────────────────────────────────────────────
+  const canSeeTime = isAdmin || userPermissions.includes("time");
+  const nextTerm = weekAgenda(data, localISODate(), 60, { projectId })[0];
+  const invoicedTotal = projectInvoices.filter(i => i.status !== "entwurf").reduce((s, i) => s + (i.sub || 0), 0);
+  const chf0 = (n: number) => Math.round(n).toLocaleString("de-CH").replace(/[’\u2019]/g, "'");
+  const figures: WsFigure[] = [
+    { label: "Stunden", value: formatHours(totalMinutes), sub: budget > 0 ? `von ${budget} h · ${Math.round(budgetPct)} %` : `${entries.length} Einträge`, tone: budgetPct >= 100 ? "neg" : budgetPct >= 80 ? "warn" : undefined },
+    ...(canSeeInvoices ? [{ label: "Honorar verrechnet", value: chf0(invoicedTotal), sub: project.budgetAmount ? `von CHF ${chf0(project.budgetAmount)}` : `${projectInvoices.length} Rechnung(en)` }] : []),
+    showOffen
+      ? { label: "Offen zu verrechnen", value: formatHours(openMinutes), sub: project.hourlyRate ? `≈ CHF ${chf0(openMinutes / 60 * (project.hourlyRate as number))}` : undefined, tone: openMinutes > 0 ? "warn" as const : undefined }
+      : { label: "Budget genutzt", value: budget > 0 ? `${Math.round(budgetPct)} %` : "—", sub: isCostControl ? "Kostenkontrolle" : undefined, tone: budgetPct >= 100 ? "neg" as const : undefined },
+    { label: "Nächster Termin", value: nextTerm ? nextTerm.label : "—", sub: nextTerm ? new Date(nextTerm.date + "T12:00:00").toLocaleDateString("de-CH", { weekday: "short", day: "numeric", month: "numeric" }) : "nichts geplant" },
+  ];
+  const overrun = phaseStats.filter(ps => ps.phaseBudget > 0 && ps.hours > ps.phaseBudget * 1.02).map(ps => ps.id as string);
+  const hasPhases = (project.enabledPhases || []).length > 0 || positions.some(pos => entries.some(e => e.positionId === pos.code)) || customPhaseStats.length > 0;
+  const phaseCard = hasPhases ? <PhaseCard project={project} data={data} entries={entries} positions={positions} phaseStats={phaseStats} customPhaseStats={customPhaseStats} customMinsTotal={customMinsTotal} unassignedMins={unassignedMins} phaseChartView={phaseChartView} setPhaseChartView={setPhaseChartView} /> : null;
+  const openBudget = () => { openBudgetModal(); setBudgetModal(true); };
+  const myEmpId = currentUser?.employeeId || "";
+  const startTimer = () => {
+    const running = readTimer();
+    if (running) { showToast("Es läuft schon eine Stoppuhr — unter «Heute» wechseln"); run({ kind: "view", view: "heute" }); return; }
+    if (!myEmpId) { showToast("Dein Login ist mit keiner Person verknüpft — Person unter «Heute» wählen"); run({ kind: "view", view: "heute" }); return; }
+    writeTimer({ employeeId: myEmpId, projectId, start: new Date().toISOString() });
+    showToast(`Stoppuhr für «${project.name}» läuft`);
+    run({ kind: "view", view: "heute" });
+  };
+  const protocolCount = (data.protocols || []).filter(p => p.projectId === projectId).length;
+  const peopleCount = (project.projectContacts || []).length + (project.clientId ? 1 : 0);
+  const tabs = [
+    { id: "ueberblick", label: "Überblick" },
+    { id: "stunden", label: "Stunden" },
+    { id: "termine", label: "Termine" },
+    ...(canSeeQuotes || canSeeInvoices ? [{ id: "honorar", label: "Honorar & Rechnungen" }] : []),
+    { id: "protokolle", label: "Protokolle", count: protocolCount },
+    { id: "beteiligte", label: "Beteiligte", count: peopleCount },
+  ];
+
   return (
-    <div>
-      <button className="btn btn-ghost" onClick={onBack} style={{ marginBottom: 18, padding: "6px 14px", fontSize: 12 }}>← Alle Projekte</button>
+    <div className="ws">
+      <ProjectList data={data} currentId={projectId} onSelect={id => { setTab("ueberblick"); onSelect(id); }} />
+      <div className="ws-main">
+        <div className="ws-head">
+          <button className="btn btn-quiet btn-sm ws-back" onClick={onBack}><span className="msr" style={{ fontSize: 16 }}>arrow_back</span>Alle Projekte</button>
+          <div className="ws-crumb">{project.number && <b>{project.number}</b>}{[project.category, client?.name].filter(Boolean).join(" · ")}</div>
+          <div className="ws-title">
+            <h1>{project.name}</h1>
+            <div className="ws-actions">
+              {canSeeTime && <button className="btn btn-ghost" onClick={startTimer} title="Stoppuhr für dieses Projekt starten"><span className="msr" style={{ fontSize: 17 }}>play_arrow</span>Stoppuhr</button>}
+              <button className="btn btn-ghost" onClick={() => run({ kind: "action", action: "newProtocol", projectId })}><span className="msr" style={{ fontSize: 17 }}>description</span>Protokoll</button>
+              {canSeeInvoices && <button className="btn btn-primary" onClick={() => run({ kind: "action", action: "newInvoice", projectId })}><span className="msr" style={{ fontSize: 17 }}>receipt_long</span>Rechnung</button>}
+              <RowMenu label="Weitere Aktionen" items={[
+                { label: "Projekteinstellungen", icon: "tune", hidden: !isAdmin, onClick: openSettings },
+                { label: "Budget / Offerten", icon: "request_quote", hidden: !canSeeQuotes, onClick: openBudget },
+                { label: "PDF Projektblatt", icon: "picture_as_pdf", onClick: () => setPrintContent({ type: "projectDetail", project, client, entries, phaseStats, unassignedMins, totalMinutes, totalAmount, billingType, invoices: projectInvoices, data }) },
+              ]} />
+            </div>
+          </div>
+          {project.description && <div className="ws-desc">{project.description}</div>}
+          <PhaseBar project={project} entries={entries} />
+          <nav className="ws-tabs" role="tablist">
+            {tabs.map(t => (
+              <button key={t.id} role="tab" aria-selected={tab === t.id} className={tab === t.id ? "on" : ""} onClick={() => setTab(t.id)}>
+                {t.label}{t.count ? <span className="ws-count">{t.count}</span> : null}
+              </button>
+            ))}
+          </nav>
+        </div>
 
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 24 }}>
-        <div>
-          <div style={{ fontSize: 11, letterSpacing: "0.1em", color: "var(--text4)", marginBottom: 6 }}>{project.number && <span style={{ color: "var(--accent)", marginRight: 8 }}>{project.number}</span>}{(project.category || "—").toUpperCase()} · {client?.name || "Kein Auftraggeber"}</div>
-          <h1 style={{ fontFamily: "var(--font-ui)", fontSize: 34, fontWeight: 400, letterSpacing: "-0.01em" }}>{project.name}</h1>
-          {project.description && <div style={{ fontSize: 13, color: "var(--text3)", marginTop: 6, maxWidth: 600 }}>{project.description}</div>}
-        </div>
-        <div style={{ display: "flex", gap: 8 }}>
-          {isAdmin && <button className="btn btn-ghost" onClick={openSettings}>Einstellungen</button>}
-          {canSeeQuotes && <button className="btn btn-ghost" onClick={() => { openBudgetModal(); setBudgetModal(true); }}>Budget / Offerten</button>}
-          <ShareButton options={[{ label: "PDF", onClick: () => setPrintContent({ type: "projectDetail", project, client, entries, phaseStats, unassignedMins, totalMinutes, totalAmount, billingType, invoices: projectInvoices, data }) }]} />
-        </div>
+        {tab === "ueberblick" && (
+          <OverviewTab data={data} project={project} figures={figures} phaseCard={phaseCard} overrun={overrun}
+            onNachtrag={canSeeQuotes ? openBudget : undefined} onOpenTab={setTab} />
+        )}
+        {tab === "stunden" && (
+          <div className="ws-stack">
+            <KpiRow project={project} data={data} entries={entries} totalMinutes={totalMinutes} totalHours={totalHours} budget={budget} budgetPct={budgetPct} budgetColor={budgetColor} isCostControl={isCostControl} isNonBilling={isNonBilling} invoicedMinutes={invoicedMinutes} openMinutes={openMinutes} />
+            {phaseCard}
+            {canSeeMitarbeiter && <EmployeeCard project={project} data={data} entries={entries} billingType={billingType} />}
+            <TimeEntriesCard project={project} data={data} update={update} entries={entries} positions={positions} billingType={billingType} isAdmin={isAdmin} canSeeMitarbeiter={canSeeMitarbeiter} canSeeInvoices={canSeeInvoices} />
+          </div>
+        )}
+        {tab === "termine" && (
+          <div className="ws-stack">
+            <ScheduleEditor project={project} data={data} update={update} setPrintContent={setPrintContent} canEdit={isAdmin || userPermissions.includes("projects")} />
+          </div>
+        )}
+        {tab === "honorar" && (
+          <div className="ws-stack">
+            {canSeeQuotes && <BudgetCard project={project} data={data} entries={entries} positions={positions} projectInvoices={projectInvoices} budget={budget} totalHours={totalHours} budgetPct={budgetPct} budgetColor={budgetColor} canSeeInvoices={canSeeInvoices} budgetChartView={budgetChartView} setBudgetChartView={setBudgetChartView} onOpenBudget={openBudget} />}
+            {canSeeQuotes && <QuotesCard data={data} projectId={projectId} client={client} setPrintContent={setPrintContent} />}
+            {canSeeInvoices && projectInvoices.length > 0 && (
+              <InvoicesCard projectInvoices={projectInvoices} client={client} setPrintContent={setPrintContent} showOffen={showOffen} paidTotal={paidTotal} openTotal={openTotal} />
+            )}
+          </div>
+        )}
+        {tab === "protokolle" && (
+          <div className="ws-stack"><ProtocolsCard data={data} saveAll={saveAll} projectId={projectId} /></div>
+        )}
+        {tab === "beteiligte" && (
+          <div className="ws-stack" style={{ maxWidth: 720 }}>
+            <PeopleList data={data} project={project} onEdit={isAdmin ? openSettings : undefined} />
+          </div>
+        )}
       </div>
-
-      <KpiRow project={project} data={data} entries={entries} totalMinutes={totalMinutes} totalHours={totalHours} budget={budget} budgetPct={budgetPct} budgetColor={budgetColor} isCostControl={isCostControl} isNonBilling={isNonBilling} invoicedMinutes={invoicedMinutes} openMinutes={openMinutes} />
-
-      {/* Projektbeteiligte */}
-      {(project.projectContacts || []).length > 0 && <ContactsBar project={project} data={data} />}
-
-      {/* Stundenbudget-Anzeige — offertenabgeleitet (Hauptofferten-Betrag etc.),
-          daher wie der "Budget / Offerten"-Button an canSeeQuotes gekoppelt. */}
-      {canSeeQuotes && <BudgetCard project={project} data={data} entries={entries} positions={positions} projectInvoices={projectInvoices} budget={budget} totalHours={totalHours} budgetPct={budgetPct} budgetColor={budgetColor} canSeeInvoices={canSeeInvoices} budgetChartView={budgetChartView} setBudgetChartView={setBudgetChartView} onOpenBudget={() => { openBudgetModal(); setBudgetModal(true); }} />}
-
-      {/* Aufwand pro Phase — Hauptofferte + Nachträge in einer Karte */}
-      {((project.enabledPhases || []).length > 0 || positions.some(pos => entries.some(e => e.positionId === pos.code)) || customPhaseStats.length > 0) && (
-        <PhaseCard project={project} data={data} entries={entries} positions={positions} phaseStats={phaseStats} customPhaseStats={customPhaseStats} customMinsTotal={customMinsTotal} unassignedMins={unassignedMins} phaseChartView={phaseChartView} setPhaseChartView={setPhaseChartView} />
-      )}
-
-      {/* Terminprogramm: Planung (SIA-Phasen) und Bau (BKP) */}
-      <ScheduleEditor project={project} data={data} update={update} setPrintContent={setPrintContent} canEdit={isAdmin || userPermissions.includes("projects")} />
-
-      {/* Mitarbeiter-Auswertung */}
-      {canSeeMitarbeiter && <EmployeeCard project={project} data={data} entries={entries} billingType={billingType} />}
-
-      <TimeEntriesCard project={project} data={data} update={update} entries={entries} positions={positions} billingType={billingType} isAdmin={isAdmin} canSeeMitarbeiter={canSeeMitarbeiter} canSeeInvoices={canSeeInvoices} />
-
-      {canSeeQuotes && <QuotesCard data={data} projectId={projectId} client={client} setPrintContent={setPrintContent} />}
-
-      {canSeeInvoices && projectInvoices.length > 0 && (
-        <InvoicesCard projectInvoices={projectInvoices} client={client} setPrintContent={setPrintContent} showOffen={showOffen} paidTotal={paidTotal} openTotal={openTotal} />
-      )}
-
-      {/* Protokolle zum Projekt */}
-      <ProtocolsCard data={data} saveAll={saveAll} projectId={projectId} />
 
       {/* Einstellungen Modal */}
       {settingsOpen && (

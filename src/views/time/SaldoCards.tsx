@@ -14,6 +14,8 @@ interface SaldoCardsProps {
 
 /** Drei Blöcke: Saldo seit Eintritt, Monatssaldo, Ferien des laufenden Jahres. */
 export function SaldoCards({ selectedEmp, currentDate, totalSaldo, monthSaldo, ferienSaldo }: SaldoCardsProps) {
+  // Riesiges Minus bei kaum erfassten Stunden deutet eher auf fehlende ältere Einträge als auf echte Minusstunden
+  const suspectSaldo = !!totalSaldo && Math.abs(totalSaldo.saldo) > 500 && totalSaldo.ist < totalSaldo.soll * 0.3;
   return (
     <>
       {selectedEmp && (
@@ -31,9 +33,14 @@ export function SaldoCards({ selectedEmp, currentDate, totalSaldo, monthSaldo, f
             {totalSaldo && (
               <div style={{ display: "flex", justifyContent: "space-between", marginTop: 4, paddingTop: 4, borderTop: "1px solid var(--border)", fontFamily: "var(--font-ui)", fontSize: 13 }}>
                 <span>Saldo</span>
-                <strong style={{ color: totalSaldo.saldo >= 0 ? "var(--positive)" : "var(--negative)" }}>
+                <strong style={{ color: suspectSaldo ? "var(--text2)" : totalSaldo.saldo >= 0 ? "var(--positive)" : "var(--negative)" }}>
                   {totalSaldo.saldo === 0 ? "0h" : `${totalSaldo.saldo > 0 ? "+" : ""}${totalSaldo.saldo}h`}
                 </strong>
+              </div>
+            )}
+            {suspectSaldo && (
+              <div style={{ marginTop: 4, fontSize: 11, color: "var(--text4)" }}>
+                Sehr grosser Minussaldo — fehlen ältere Einträge? Stichtag/Übertrag unter Mitarbeiter → Personen anpassen.
               </div>
             )}
           </div>

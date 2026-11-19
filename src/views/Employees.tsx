@@ -177,8 +177,8 @@ function Employees({ data, update, saveAll, setPrintContent }: Pick<ViewProps, "
 
   const TABS = [
     { id: "übersicht", label: "Übersicht" },
-    { id: "ferien", label: "Ferien & Intern / Absenzen" },
-    { id: "mitarbeiter", label: "Mitarbeiter" },
+    { id: "ferien", label: "Ferien & Absenzen" },
+    { id: "mitarbeiter", label: "Personen" },
     { id: "monatsabschluss", label: "Monatsabschluss" },
     { id: "jahresabschluss", label: "Jahresabschluss" },
   ];

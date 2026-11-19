@@ -71,7 +71,7 @@ function Invoices({ data, update, saveAll, modal, setModal, setPrintContent }: P
   /* eslint-disable react-hooks/set-state-in-effect -- einmalige Übergabe, danach wird modal geleert */
   useEffect(() => {
     if (modal?.type === "newInvoice" && !modal.quoteId) {
-      setNi({ tab: "projekt", projectId: "", quoteId: "", mode: "akonto-stunden", pct: 30, amt: 0 });
+      setNi({ tab: "projekt", projectId: (modal.projectId as string) || "", quoteId: "", mode: "akonto-stunden", pct: 30, amt: 0 });
       setNewInvModal(true);
       setModal(null);
       return;

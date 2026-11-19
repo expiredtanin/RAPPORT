@@ -4,7 +4,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   calcLohn, calcSIAHours, calcManualHours, deriveQuoteBudget, calcOfficeBenchmarks, estimateEffort, rangeStats, formatReference, generateQRReference, getWorkdaysInMonth,
-  hashPassword, isQRIban, mod10, parseSeqFromNumber, applyProjectNumberFormat, roundCHF, verifyPassword, formatIban,
+  hashPassword, isQRIban, mod10, parseSeqFromNumber, applyProjectNumberFormat, roundCHF, verifyPassword, formatIban, dailySollHours, formatDays,
 } from "./utils";
 import type { Employee, Project, Quote, TimeEntry } from "./types";
 
@@ -192,5 +192,17 @@ describe("Aufwandschätzung aus eigenen Projekten", () => {
     expect(estimateEffort(b.wohnen, 1000, 1.2, ["99"])!.phases).toEqual([]);
     expect(estimateEffort(b.lager, 1000, 1)).toBeNull();
     expect(estimateEffort(b.wohnen, 0, 1)).toBeNull();
+  });
+});
+
+describe("Tage statt Stunden", () => {
+  it("Tages-Soll aus Wochenstunden und Pensum", () => {
+    expect(dailySollHours({ wochenstunden: 40, pensum: 100 })).toBe(8);
+    expect(dailySollHours({ wochenstunden: 40, pensum: 50 })).toBe(4);
+    expect(dailySollHours({})).toBe(7);
+  });
+  it("formatiert Tage mit Dezimale nur wenn nötig", () => {
+    expect(formatDays(200, { wochenstunden: 40, pensum: 100 })).toBe("25 T");
+    expect(formatDays(164, { wochenstunden: 40, pensum: 100 })).toBe("20.5 T");
   });
 });

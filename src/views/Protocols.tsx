@@ -59,13 +59,15 @@ function Protokolle({ data, saveAll, setPrintContent, modal, setModal }: Pick<Vi
     removeWithUndo(`Protokoll ${p?.nummer || ""} gelöscht`, "protocols", x => x.id === id);
   };
 
-  const newProtokoll = () => {
+  /** Neues Protokoll (optional gleich einem Projekt zugeordnet, z.B. aus dem Projekt-Arbeitsraum) und öffnen. */
+  const newProtokoll = (projectId = "") => {
+    const proj = projectId ? data.projects.find(x => x.id === projectId) : undefined;
     const defaultType = PROTOKOLL_TYPES[0];
     const abbr = data.settings.protokollTypeAbbreviations || {};
     const typKuerzel = abbr[defaultType] || "SO";
     const seq = nextProtoSeq(protokolle);
     const nummer = applyProtoNumberFormat(data.settings.protokollNumberFormat || "YYYY-TT-NN", {
-      date: today, projectNumber: "", seq, typKuerzel,
+      date: today, projectNumber: proj?.number || "", seq, typKuerzel,
     });
     const p: Protocol = {
       id: generateId(),
@@ -75,7 +77,7 @@ function Protokolle({ data, saveAll, setPrintContent, modal, setModal }: Pick<Vi
       time: "10:00",
       endTime: "",
       location: "",
-      projectId: "",
+      projectId: proj?.id || "",
       projectManual: "",
       nummer,
       participants: [],
@@ -93,7 +95,7 @@ function Protokolle({ data, saveAll, setPrintContent, modal, setModal }: Pick<Vi
   useEffect(() => {
     if (modal?.type !== "newProtocol") return;
     setModal?.(null);
-    newProtokoll();
+    newProtokoll((modal.projectId as string) || "");
   // eslint-disable-next-line react-hooks/exhaustive-deps -- nur auf neue Aufträge reagieren
   }, [modal?.type]);
   /* eslint-enable react-hooks/set-state-in-effect */
@@ -143,7 +145,7 @@ function Protokolle({ data, saveAll, setPrintContent, modal, setModal }: Pick<Vi
   return (
     <div>
       <Header title="Protokolle" action={
-        <button className="btn btn-primary" onClick={newProtokoll}>+ Neues Protokoll</button>
+        <button className="btn btn-primary" onClick={() => newProtokoll()}>+ Neues Protokoll</button>
       } />
 
       {/* Offene Aufgaben-Banner */}
@@ -192,7 +194,7 @@ function Protokolle({ data, saveAll, setPrintContent, modal, setModal }: Pick<Vi
       {protokolle.length === 0 ? (
         <div className="card" style={{ padding: 0 }}>
           <EmptyState icon="description" title="Noch keine Protokolle" text="Halte Sitzungen und Besprechungen mit Teilnehmern, Beschlüssen und Aufgaben fest – offene Aufgaben erscheinen hier gesammelt."
-            action={<button className="btn btn-primary" onClick={newProtokoll}>+ Neues Protokoll</button>} />
+            action={<button className="btn btn-primary" onClick={() => newProtokoll()}>+ Neues Protokoll</button>} />
         </div>
       ) : sorted.length === 0 ? (
         <div className="card" style={{ padding: 0 }}>
@@ -340,6 +342,14 @@ function ProtokollDetail({ protokoll, data, onBack, onSave, onDelete, setPrintCo
   const [folgeSelection, setFolgeSelection] = useState<FolgeSelection[] | null>(null); // built on open
 
   const save = () => onSave(p);
+  // ⌘S / Ctrl+S speichert bei ungespeicherten Änderungen
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "s" && isDirty) { e.preventDefault(); onSave(p); }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [isDirty, p, onSave]);
   const setField = <K extends keyof Protocol>(k: K, v: Protocol[K]) => setP(prev => {
     const updated = { ...prev, [k]: v };
     if (k === "projectId" || k === "date" || k === "type") {
@@ -589,9 +599,11 @@ function ProtokollDetail({ protokoll, data, onBack, onSave, onDelete, setPrintCo
           <button className="btn btn-ghost" onClick={async () => { if (await askConfirm("Protokoll löschen?")) onDelete(p.id); }}>Löschen</button>
           <button className="btn btn-ghost" onClick={() => setShowFolge(true)} title="Neue Sitzung auf Basis dieses Protokolls erstellen">↪ Folgesitzung</button>
           <ShareButton options={[{ label: "PDF", onClick: () => setPrintContent({ type: "protokoll", protokoll: p, data, settings: data.settings }) }]} />
-          <button className="btn btn-primary" onClick={save} style={isDirty ? { background: "var(--positive)" } : {}}>
-            {isDirty ? "Speichern ●" : "Gespeichert"}
-          </button>
+          {isDirty
+            ? <button className="btn btn-primary" onClick={save} title="Speichern (⌘S)">Speichern</button>
+            : <span style={{ display: "inline-flex", alignItems: "center", gap: 6, height: 36, fontSize: 13, color: "var(--text4)" }}>
+                <span className="msr" style={{ fontSize: 17 }}>check_circle</span>Gespeichert
+              </span>}
         </div>
       </div>
 
