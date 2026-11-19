@@ -2,7 +2,7 @@
 
 /** Zoomstufen: Tage, Wochen, Monate, Alles. */
 export const ZOOM_LEVELS: { id: string; label: string; dayWidth: number }[] = [
-  { id: "tag", label: "Tage", dayWidth: 22 },
+  { id: "tag", label: "Tage", dayWidth: 28 },
   { id: "woche", label: "Wochen", dayWidth: 8 },
   { id: "monat", label: "Monate", dayWidth: 2.6 },
   { id: "alles", label: "Alles", dayWidth: 2 },

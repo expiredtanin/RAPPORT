@@ -292,7 +292,7 @@ export function ScheduleEditor({ project, data, update, setPrintContent, canEdit
         <div style={{ padding: 16 }}>
           {/* Zusammenfassung und Bearbeiten */}
           <div style={{ display: "flex", flexWrap: "wrap", gap: 14, alignItems: "center", marginBottom: 10, fontSize: 12, color: "var(--text3)" }}>
-            {range && <span><strong style={{ color: "var(--text)", fontWeight: 600 }}>{fmtDate(range.start)} – {fmtDate(range.end)}</strong> · {formatDuration(totalDays)}</span>}
+            {range && <span><strong style={{ color: "var(--text)", fontWeight: 600 }}>{fmtDate(range.start)} – {fmtDate(range.end)}</strong> · {zoom === "tag" ? `${totalDays} Tage` : formatDuration(totalDays)}</span>}
             {showCritical && <span style={{ color: "var(--negative)" }}>{crit.critical.size} kritisch</span>}
             {conflicts.length > 0 && <span style={{ color: "var(--negative)" }} title="Pfeile mit «rückt nach» aus, deren Folgeaufgabe zu früh beginnt (gestrichelt)">⚠ {conflicts.length} {conflicts.length === 1 ? "Abhängigkeit verletzt" : "Abhängigkeiten verletzt"}</span>}
             <div style={{ flex: 1 }} />
@@ -315,7 +315,7 @@ export function ScheduleEditor({ project, data, update, setPrintContent, canEdit
                 title={`${selected.label} · ${selected.kind === "milestone" ? fmtDate(selected.start) : `${fmtDate(selected.start)} – ${fmtDate(selected.end)}`}`}>
                 <strong style={{ fontWeight: 600 }}>{glyphOf(selected) ? `${glyphOf(selected)} ` : ""}{selected.label}</strong>
                 <span style={{ color: "var(--text3)", marginLeft: 10 }}>
-                  {selected.kind === "milestone" ? fmtDate(selected.start) : `${fmtDate(selected.start)} – ${fmtDate(selected.end)} · ${formatDuration(durationDays(selected))}`}
+                  {selected.kind === "milestone" ? fmtDate(selected.start) : `${fmtDate(selected.start)} – ${fmtDate(selected.end)} · ${zoom === "tag" ? `${durationDays(selected)} Tage` : formatDuration(durationDays(selected))}`}
                 </span>
                 {selFloat !== undefined && <span style={{ marginLeft: 10, color: selFloat <= 0 ? "var(--negative)" : "var(--text4)" }}>{selFloat <= 0 ? "kritisch" : `Puffer ${formatDuration(selFloat)}`}</span>}
               </span>

@@ -87,6 +87,9 @@ export function ScheduleLegend({ items, breaks = 0, critical = false, baseline =
   );
 }
 
+const WEEKDAYS = ["So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"];
+/** Ab dieser Tagesbreite (px) zeigt der Kopf jeden Tag (Wochentag + Datum) und Dauern in Tagen. */
+const DAY_VIEW_MIN = 18;
 const MONTHS = ["Jan", "Feb", "Mär", "Apr", "Mai", "Jun", "Jul", "Aug", "Sep", "Okt", "Nov", "Dez"];
 
 /** Standard-Zeilenhöhe; im Druck kleiner (`rowHeight`), damit das Programm auf eine Seite passt. */
@@ -299,7 +302,10 @@ export function GanttChart({
 
   // ── Kalenderkopf ──
   const months: { x: number; w: number; label: string }[] = [];
-  const weeks: { x: number; label: string }[] = [];
+  const weeks: { x: number; label: string; month: string }[] = [];
+  /** Tagesansicht: jeder Tag mit Wochentag und Datum */
+  const dayView = dw >= DAY_VIEW_MIN;
+  const days: { x: number; wd: string; d: string; weekend: boolean; holiday: boolean; isToday: boolean }[] = [];
   const shade: { x: number; w: number; kind: "weekend" | "holiday" }[] = [];
   const holidaySet = new Set(holidays);
   for (let n = range.s; n <= range.e; n++) {
@@ -316,7 +322,8 @@ export function GanttChart({
         : w > 12 ? (m === 1 && w > 26 ? `’${String(y).slice(2)}` : MONTHS[m - 1][0]) : "";
       months.push({ x: xs, w, label });
     }
-    if (dow === 1 && dw * 7 >= 22) weeks.push({ x: x(n), label: `${getWeekNumber(date + "T00:00:00")}` });
+    if (dow === 1 && dw * 7 >= 22) weeks.push({ x: x(n), label: `${getWeekNumber(date + "T00:00:00")}`, month: `${MONTHS[Number(date.slice(5, 7)) - 1]} ${date.slice(2, 4)}` });
+    if (dayView) days.push({ x: x(n), wd: WEEKDAYS[dow], d: String(Number(date.slice(8, 10))), weekend: dow === 0 || dow === 6, holiday: holidaySet.has(date), isToday: date === today });
     if (holidaySet.has(date)) shade.push({ x: x(n), w: Math.max(dw, 1), kind: "holiday" });
     else if ((dow === 0 || dow === 6) && dw >= 12) shade.push({ x: x(n), w: dw, kind: "weekend" });
   }
@@ -415,10 +422,25 @@ export function GanttChart({
           {months.map(m => (
             <g key={m.x}>
               <line x1={m.x} x2={m.x} y1={0} y2={height} stroke="var(--border)" />
-              {m.label && <text x={m.x + (m.w > 22 ? 4 : 2)} y={15} fontSize={10} fontWeight={500} fill="var(--text3)">{m.label}</text>}
+              {m.label && <text x={m.x + (m.w > 22 ? 4 : 2)} y={dayView ? 13 : 15} fontSize={10} fontWeight={dayView ? 600 : 500} fill="var(--text3)">{m.label}</text>}
             </g>
           ))}
-          {weeks.map(w => (
+          {dayView ? <>
+            {/* Tagesansicht: oben Monat + KW, darunter Wochentag und Datum je Tag */}
+            {days.map(d => (
+              <g key={d.x}>
+                <line x1={d.x} x2={d.x} y1={18} y2={height} stroke="var(--border)" strokeOpacity={d.wd === "Mo" ? 0.7 : 0.22} />
+                {d.isToday && <rect x={d.x + 1} y={19} width={dw - 2} height={HEADER_H - 20} rx={3} fill="var(--negative)" opacity={0.14} />}
+                <text x={d.x + dw / 2} y={27} fontSize={7.5} textAnchor="middle" fill={d.weekend || d.holiday ? "var(--text4)" : "var(--text3)"}>{d.wd}</text>
+                <text x={d.x + dw / 2} y={37} fontSize={9.5} textAnchor="middle" fontWeight={d.isToday ? 700 : 500}
+                  fill={d.isToday ? "var(--negative)" : d.weekend || d.holiday ? "var(--text4)" : "var(--text)"}>{d.d}</text>
+              </g>
+            ))}
+            {/* Monatsnamen nur am Monatsanfang; jede KW trägt den Monat mit, damit er beim Scrollen sichtbar bleibt */}
+            {weeks.filter(w => !months.some(m => m.label && m.x > w.x - 64 && m.x < w.x + 96)).map(w => (
+              <text key={`kw-${w.x}`} x={w.x + 3} y={13} fontSize={9} fill="var(--text4)">KW {w.label} · {w.month}</text>
+            ))}
+          </> : weeks.map(w => (
             <g key={w.x}>
               <line x1={w.x} x2={w.x} y1={22} y2={height} stroke="var(--border)" strokeOpacity={0.4} />
               <text x={w.x + 3} y={33} fontSize={9} fill="var(--text4)">{w.label}</text>
@@ -457,9 +479,12 @@ export function GanttChart({
           {shade.map(s => <rect key={`${s.kind}-${s.x}`} x={s.x} y={HEADER_H} width={s.w} height={height - HEADER_H} fill={s.kind === "holiday" ? "var(--warning-bg)" : "var(--surface2)"} opacity={s.kind === "holiday" ? 0.9 : 0.6} pointerEvents="none" />)}
           {todayX >= 0 && todayX <= width && (
             <g pointerEvents="none">
-              <line x1={todayX} x2={todayX} y1={HEADER_H - 6} y2={height} stroke="var(--negative)" strokeWidth={1.5} />
-              <rect x={Math.max(0, Math.min(width - 34, todayX - 17))} y={HEADER_H - 13} width={34} height={12} rx={6} fill="var(--negative)" />
-              <text x={Math.max(17, Math.min(width - 17, todayX))} y={HEADER_H - 4} fontSize={8.5} fill="#fff" textAnchor="middle" fontWeight={600}>heute</text>
+              <line x1={todayX} x2={todayX} y1={dayView ? HEADER_H : HEADER_H - 6} y2={height} stroke="var(--negative)" strokeWidth={1.5} />
+              {/* In der Tagesansicht ist der Tag im Kopf markiert, sonst ein Schild «heute» */}
+              {!dayView && <>
+                <rect x={Math.max(0, Math.min(width - 34, todayX - 17))} y={HEADER_H - 13} width={34} height={12} rx={6} fill="var(--negative)" />
+                <text x={Math.max(17, Math.min(width - 17, todayX))} y={HEADER_H - 4} fontSize={8.5} fill="#fff" textAnchor="middle" fontWeight={600}>heute</text>
+              </>}
             </g>
           )}
 
@@ -516,8 +541,8 @@ export function GanttChart({
             const by = y + BAR_PAD, bh = ROW_H - 2 * BAR_PAD;
             const prog = Math.max(0, Math.min(100, it.progress || 0));
             const hitX = bw < MIN_HIT ? bx - (MIN_HIT - bw) / 2 : bx, hitW = Math.max(bw, MIN_HIT);
-            const label = dragging ? `${fmtShort(it.start)} – ${fmtShort(it.end)} · ${formatDuration(durationDays(it))}`
-              : it.variant === "serie" ? `${seriesDates(it).length} Termine` : formatDuration(durationDays(it));
+            const label = dragging ? `${fmtShort(it.start)} – ${fmtShort(it.end)} · ${dayView ? `${durationDays(it)} T` : formatDuration(durationDays(it))}`
+              : it.variant === "serie" ? `${seriesDates(it).length} Termine` : dayView ? `${durationDays(it)} T` : formatDuration(durationDays(it));
             return (
               <g key={it.id} data-item={it.id} className={cls} onDoubleClick={() => onOpen?.(it.id)} onPointerEnter={() => setHoverRow(i)}>
                 <title>{tip(it)}</title>
