@@ -15,9 +15,50 @@
 // Benutzt von views/schedule (Editor, Büroübersicht) und print/docs/SchedulePrint.
 
 import { getFeiertageForYear } from "./utils";
-import type { DateStr, Feiertag, Id, Project, ProjectSchedule, ScheduleItem, ScheduleTrack, TimeEntry } from "./types";
+import type {
+  DateStr, Feiertag, Id, Project, ProjectSchedule, ScheduleBreak, ScheduleItem, ScheduleMarker, ScheduleTrack, ScheduleVariant, TimeEntry,
+} from "./types";
 
 const DAY = 86400000;
+
+/** Termin-Symbole (Meilenstein-Zeilen) mit Zeichen für Listen/Legende; gezeichnet wird in GanttChart (`markerPath`). */
+export const SCHEDULE_MARKERS: { id: ScheduleMarker; label: string; glyph: string; hint: string }[] = [
+  { id: "meilenstein", label: "Meilenstein", glyph: "◆", hint: "Etappenziel, z.B. Baubeginn, Aufrichte" },
+  { id: "abgabe", label: "Abgabe / Frist", glyph: "▼", hint: "z.B. Baueingabe, Wettbewerbsabgabe, Planlieferung" },
+  { id: "entscheid", label: "Entscheid / Freigabe", glyph: "◇", hint: "z.B. Bauherrenentscheid, Baubewilligung" },
+  { id: "sitzung", label: "Sitzung", glyph: "●", hint: "z.B. Bauherrensitzung, Baukommission" },
+  { id: "lieferung", label: "Lieferung", glyph: "■", hint: "z.B. Fenster, Küche, Lift" },
+  { id: "abnahme", label: "Abnahme / Übergabe", glyph: "★", hint: "z.B. Bauabnahme, Bezug" },
+  { id: "vertrag", label: "Vertragstermin", glyph: "▲", hint: "verbindlicher Termin, z.B. mit Konventionalstrafe" },
+];
+
+/** Darstellungen von Balken (leer = eigene Leistung). */
+export const SCHEDULE_VARIANTS: { id: ScheduleVariant | ""; label: string; hint: string }[] = [
+  { id: "", label: "Eigene Leistung", hint: "voller Balken" },
+  { id: "extern", label: "Durch Dritte", hint: "nur umrandet, z.B. Bewilligungsverfahren, Leistungen des Bauherrn" },
+  { id: "reserve", label: "Reserve / Puffer", hint: "schraffiert" },
+  { id: "serie", label: "Terminserie", hint: "wiederkehrender Termin, z.B. Bausitzung alle 2 Wochen" },
+];
+
+/** Symbol eines Elements: Termin → `marker` (Standard Meilenstein), Terminserie → `marker` (Standard Sitzung). */
+export const markerOf = (it: Pick<ScheduleItem, "kind" | "marker" | "variant">): ScheduleMarker =>
+  it.marker || (it.kind === "task" && it.variant === "serie" ? "sitzung" : "meilenstein");
+
+/** Zeichen für die Zeilenbeschriftung: Symbol bei Terminen und Serien, sonst leer. */
+export const glyphOf = (it: Pick<ScheduleItem, "kind" | "marker" | "variant">): string =>
+  it.kind === "milestone" || it.variant === "serie" ? SCHEDULE_MARKERS.find(m => m.id === markerOf(it))!.glyph : "";
+
+/** Termine einer Terminserie: ab Beginn alle `repeatDays` Tage (Standard 14) bis zum Ende. */
+export function seriesDates(it: Pick<ScheduleItem, "start" | "end" | "repeatDays">): DateStr[] {
+  const step = Math.max(1, Math.round(it.repeatDays || 14));
+  const out: DateStr[] = [];
+  for (let d = dayNum(it.start); d <= dayNum(it.end) && out.length < 500; d += step) out.push(numToDate(d));
+  return out;
+}
+
+/** Unterbrüche, die in einem Programm gelten (ohne `track` = in beiden). */
+export const breaksOf = (schedule: ProjectSchedule, track: ScheduleTrack): ScheduleBreak[] =>
+  (schedule.breaks || []).filter(b => !b.track || b.track === track);
 
 /** Bezeichnungen der beiden Programme. */
 export const TRACK_LABELS: Record<ScheduleTrack, string> = { planung: "Planungsterminprogramm", bau: "Bauprogramm" };
@@ -55,7 +96,7 @@ export function moveItem(it: ScheduleItem, days: number): ScheduleItem {
 /** Leeres Terminprogramm; `null`/alte Daten werden zu einer gültigen Form. */
 export function scheduleOf(project: Pick<Project, "schedule"> | undefined): ProjectSchedule {
   const s = project?.schedule;
-  return { items: Array.isArray(s?.items) ? s!.items : [], baselines: s?.baselines || {} };
+  return { items: Array.isArray(s?.items) ? s!.items : [], baselines: s?.baselines || {}, breaks: Array.isArray(s?.breaks) ? s!.breaks : [] };
 }
 
 /** Elemente eines Programms (Planung oder Bau) in gespeicherter Reihenfolge. */
@@ -251,19 +292,27 @@ interface TemplateRow {
   bkp?: string;
   after?: string[];
   lagDays?: number;
+  marker?: ScheduleMarker;
+  variant?: ScheduleVariant;
 }
 
 /** Übliche Dauern der SIA-Phasen in Wochen (Startwerte, danach im Projekt anpassen). */
 const PHASE_WEEKS: Record<string, number> = { "11": 4, "21": 6, "22": 4, "31": 8, "32": 12, "33": 12, "41": 10, "51": 16, "52": 52, "53": 6 };
 
-/** Meilensteine, die nach einer Phase folgen. */
-const PHASE_MILESTONES: Record<string, string> = { "32": "Baueingabe", "33": "Baubewilligung", "41": "Vergabe / Baubeginn", "53": "Bauabnahme" };
+/** Termine, die nach einer Phase folgen, mit passendem Symbol. */
+const PHASE_MILESTONES: Record<string, { label: string; marker: ScheduleMarker }> = {
+  "32": { label: "Baueingabe", marker: "abgabe" },
+  "33": { label: "Baubewilligung", marker: "entscheid" },
+  "41": { label: "Vergabe / Baubeginn", marker: "meilenstein" },
+  "53": { label: "Bauabnahme", marker: "abnahme" },
+};
 
 /** Baut aus Vorlagenzeilen echte Elemente ab `start`, verkettet über `after`. */
 function buildFromTemplate(rows: TemplateRow[], track: ScheduleTrack, start: DateStr, newId: () => string): ScheduleItem[] {
   const ids = new Map(rows.map(r => [r.key, newId()]));
   const items: ScheduleItem[] = rows.map(r => ({
     id: ids.get(r.key)!, label: r.label, kind: r.milestone ? "milestone" : "task", track, group: r.group,
+    ...(r.marker ? { marker: r.marker } : {}), ...(r.variant ? { variant: r.variant } : {}),
     phaseId: r.phaseId, bkp: r.bkp, start,
     end: r.milestone ? start : addDays(start, r.weeks * 7 - 1),
     deps: (r.after || []).filter(k => ids.has(k)).map(k => ({ fromId: ids.get(k)!, lagDays: r.lagDays || 0 })),
@@ -288,10 +337,12 @@ export function planningTemplate(
     if (ph.id === "41") before41 = prev;
     // 51 beginnt mit 41 (gleicher Vorgänger), 52 folgt auf 41
     const after = ph.id === "51" && list.some(p => p.id === "41") ? before41 : prev;
-    rows.push({ key: ph.id, label: ph.label.replace(/^\d+\s*/, ""), group: ph.label, weeks: PHASE_WEEKS[ph.id] || 6, phaseId: ph.id, after: after ? [after] : [] });
+    // Bewilligungsverfahren läuft bei der Behörde: Balken «durch Dritte»
+    rows.push({ key: ph.id, label: ph.label.replace(/^\d+\s*/, ""), group: ph.label, weeks: PHASE_WEEKS[ph.id] || 6, phaseId: ph.id, after: after ? [after] : [], variant: ph.id === "33" ? "extern" : undefined });
     let last = ph.id;
     if (PHASE_MILESTONES[ph.id]) {
-      rows.push({ key: `m${ph.id}`, label: PHASE_MILESTONES[ph.id], group: ph.label, weeks: 0, milestone: true, phaseId: ph.id, after: [ph.id] });
+      const m = PHASE_MILESTONES[ph.id];
+      rows.push({ key: `m${ph.id}`, label: m.label, group: ph.label, weeks: 0, milestone: true, phaseId: ph.id, after: [ph.id], marker: m.marker });
       last = `m${ph.id}`;
     }
     if (ph.id !== "51" || !list.some(p => p.id === "41")) prev = last;
@@ -316,7 +367,8 @@ const CONSTRUCTION_ROWS: TemplateRow[] = [
   { key: "285", label: "Malerarbeiten", group: "Ausbau", weeks: 4, bkp: "285", after: ["281"] },
   { key: "287", label: "Baureinigung", group: "Ausbau", weeks: 1, bkp: "287", after: ["273", "285"] },
   { key: "4", label: "Umgebung", group: "Umgebung", weeks: 6, bkp: "4", after: ["224"] },
-  { key: "abnahme", label: "Bauabnahme", group: "Abschluss", weeks: 0, milestone: true, after: ["287", "4"] },
+  { key: "bs", label: "Bausitzung (alle 2 Wochen)", group: "Bausitzungen", weeks: 37, variant: "serie", marker: "sitzung", after: ["1"] },
+  { key: "abnahme", label: "Bauabnahme", group: "Abschluss", weeks: 0, milestone: true, after: ["287", "4"], marker: "abnahme" },
 ];
 
 /** Bauprogramm-Vorlage ab `start` (übliche BKP-Abfolge eines Neubaus). */

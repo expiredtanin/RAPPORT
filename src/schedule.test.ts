@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import {
   addDays, formatDuration, constructionTemplate, criticalPath, dayNum, dependencyConflicts, durationDays, groupSpans,
   phaseProgress, planningTemplate, scheduleOf, shiftSuccessors, wouldCreateCycle, baselineDelta, overlapDays, blockedDays,
+  markerOf, glyphOf, seriesDates, breaksOf,
 } from "./schedule";
 import { SIA_PHASES } from "./constants";
 import type { ScheduleItem, TimeEntry } from "./types";
@@ -95,7 +96,9 @@ describe("Vorlagen", () => {
     const by = (label: string) => items.find(i => i.label === label)!;
     expect(items.every(i => i.track === "planung")).toBe(true);
     expect(by("Vorprojekt")).toMatchObject({ start: "2026-01-05", end: "2026-03-01", phaseId: "31" }); // 8 Wochen
-    expect(by("Baueingabe").kind).toBe("milestone");
+    expect(by("Baueingabe")).toMatchObject({ kind: "milestone", marker: "abgabe" });
+    expect(by("Baubewilligung").marker).toBe("entscheid");
+    expect(by("Bewilligungsverfahren").variant).toBe("extern");
     expect(dayNum(by("Bauprojekt").start)).toBe(dayNum(by("Vorprojekt").end) + 1);
     expect(by("Ausführungsprojekt").start).toBe(by("Ausschreibung").start);
     expect(by("Ausführung").start).toBe(by("Vergabe / Baubeginn").start);
@@ -106,15 +109,17 @@ describe("Vorlagen", () => {
     const items = constructionTemplate("2026-04-06", idGen());
     expect(items.every(i => i.track === "bau")).toBe(true);
     expect(dependencyConflicts(items)).toEqual([]);
-    expect(groupSpans(items).map(g => g.group)).toEqual(["Vorbereitung", "Rohbau", "Installationen", "Ausbau", "Umgebung", "Abschluss"]);
+    expect(groupSpans(items).map(g => g.group)).toEqual(["Vorbereitung", "Rohbau", "Installationen", "Ausbau", "Umgebung", "Bausitzungen", "Abschluss"]);
+    expect(items.find(i => i.variant === "serie")).toMatchObject({ marker: "sitzung", label: "Bausitzung (alle 2 Wochen)" });
+    expect(items.find(i => i.label === "Bauabnahme")!.marker).toBe("abnahme");
     expect(items.find(i => i.bkp === "211")!.start).toBe("2026-04-20");
   });
 });
 
 describe("scheduleOf, Soll/Ist, Vergleich", () => {
   it("macht aus fehlenden Daten ein leeres Programm", () => {
-    expect(scheduleOf(undefined)).toEqual({ items: [], baselines: {} });
-    expect(scheduleOf({ schedule: null })).toEqual({ items: [], baselines: {} });
+    expect(scheduleOf(undefined)).toEqual({ items: [], baselines: {}, breaks: [] });
+    expect(scheduleOf({ schedule: null })).toEqual({ items: [], baselines: {}, breaks: [] });
   });
 
   it("phaseProgress: Zeitanteil bis heute und Stunden gegen Phasenbudget", () => {
@@ -144,3 +149,30 @@ describe("Auslastung", () => {
     expect(overlapDays([])).toBe(0);
   });
 });
+
+describe("Symbole, Terminserien, Unterbrüche", () => {
+  it("markerOf/glyphOf: Standard Meilenstein, Serie Sitzung, Balken ohne Zeichen", () => {
+    expect(markerOf({ kind: "milestone" })).toBe("meilenstein");
+    expect(markerOf({ kind: "milestone", marker: "abgabe" })).toBe("abgabe");
+    expect(markerOf({ kind: "task", variant: "serie" })).toBe("sitzung");
+    expect(glyphOf({ kind: "milestone", marker: "abnahme" })).toBe("★");
+    expect(glyphOf({ kind: "task", variant: "serie" })).toBe("●");
+    expect(glyphOf({ kind: "task" })).toBe("");
+  });
+
+  it("seriesDates: alle n Tage ab Beginn bis Ende", () => {
+    expect(seriesDates({ start: "2026-01-05", end: "2026-02-05", repeatDays: 14 })).toEqual(["2026-01-05", "2026-01-19", "2026-02-02"]);
+    expect(seriesDates({ start: "2026-01-05", end: "2026-01-20" })).toEqual(["2026-01-05", "2026-01-19"]);
+  });
+
+  it("breaksOf: ohne Programm gilt für beide", () => {
+    const s = { items: [], breaks: [
+      { id: "a", label: "Bauferien", start: "2026-07-13", end: "2026-07-31", track: "bau" as const },
+      { id: "b", label: "Betriebsferien", start: "2026-12-24", end: "2027-01-03" },
+    ] };
+    expect(breaksOf(s, "bau").map(b => b.id)).toEqual(["a", "b"]);
+    expect(breaksOf(s, "planung").map(b => b.id)).toEqual(["b"]);
+    expect(scheduleOf({ schedule: { items: [] } }).breaks).toEqual([]);
+  });
+});
+

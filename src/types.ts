@@ -198,11 +198,29 @@ export interface ScheduleDependency {
   auto?: boolean;
 }
 
-/** Eine Zeile im Terminprogramm: Aufgabe (Balken) oder Meilenstein (Raute, Start = Ende). */
+/**
+ * Symbol eines Termins (Meilenstein-Zeile), siehe `SCHEDULE_MARKERS` in schedule.ts:
+ * ◆ meilenstein · ▼ abgabe · ◇ entscheid · ● sitzung · ■ lieferung · ★ abnahme · ▲ vertrag.
+ */
+export type ScheduleMarker = "meilenstein" | "abgabe" | "entscheid" | "sitzung" | "lieferung" | "abnahme" | "vertrag";
+
+/**
+ * Darstellung eines Balkens: leer = eigene Leistung, «extern» = durch Dritte (Behörde, Bauherr; nur umrandet),
+ * «reserve» = Reserve/Puffer (schraffiert), «serie» = wiederkehrender Termin (Symbol alle `repeatDays` Tage).
+ */
+export type ScheduleVariant = "extern" | "reserve" | "serie";
+
+/** Eine Zeile im Terminprogramm: Aufgabe (Balken) oder Meilenstein/Termin (Symbol, Start = Ende). */
 export interface ScheduleItem {
   id: Id;
   label: string;
   kind: "task" | "milestone";
+  /** Termin: Symbol (fehlt = Meilenstein ◆); Terminserie: Symbol der einzelnen Termine (fehlt = Sitzung ●) */
+  marker?: ScheduleMarker;
+  /** Balken: Darstellung (fehlt = eigene Leistung) */
+  variant?: ScheduleVariant;
+  /** Terminserie: Abstand der Termine in Tagen (Standard 14) */
+  repeatDays?: number;
   track: ScheduleTrack;
   /** Gruppe für die Darstellung, z.B. «31 Vorprojekt» oder «Rohbau»; leer = ohne Gruppe */
   group?: string;
@@ -230,10 +248,22 @@ export interface ScheduleBaseline {
   items: { id: Id; start: DateStr; end: DateStr }[];
 }
 
+/** Unterbruch im Programm (Bauferien, Betriebsferien): schraffiert über alle Zeilen, verschiebt nichts. */
+export interface ScheduleBreak {
+  id: Id;
+  label: string;
+  start: DateStr;
+  end: DateStr;
+  /** nur in diesem Programm; fehlt = in Planung und Bau */
+  track?: ScheduleTrack;
+}
+
 /** Terminprogramm eines Projekts (beide Programme in einer Liste, getrennt über `track`). */
 export interface ProjectSchedule {
   items: ScheduleItem[];
   baselines?: Partial<Record<ScheduleTrack, ScheduleBaseline>>;
+  /** Bauferien/Unterbrüche */
+  breaks?: ScheduleBreak[];
 }
 
 export interface Project {

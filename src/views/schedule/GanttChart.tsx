@@ -8,14 +8,89 @@
 // Ohne `onChange` nur Anzeige (Druck, Büroübersicht). Nachfolger rücken nicht hier nach, sondern in
 // der aufrufenden Ansicht über `shiftSuccessors` (schedule.ts). Hover-Stile: `.gantt-*` in global.css.
 
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { addDays, dayNum, groupSpans, numToDate, durationDays, formatDuration } from "../../schedule";
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import {
+  addDays, dayNum, groupSpans, numToDate, durationDays, formatDuration, glyphOf, markerOf, seriesDates,
+  SCHEDULE_MARKERS, SCHEDULE_VARIANTS,
+} from "../../schedule";
 import { getWeekNumber } from "../../utils";
-import type { DateStr, Id, ScheduleItem } from "../../types";
+import type { DateStr, Id, ScheduleItem, ScheduleMarker } from "../../types";
+
+/**
+ * Umriss eines Termin-Symbols um (cx, cy) mit Radius s (SCHEDULE_MARKERS): ◆ Meilenstein, ▼ Abgabe,
+ * ◇ Entscheid (hohl), ● Sitzung, ■ Lieferung, ★ Abnahme, ▲ Vertragstermin.
+ */
+function markerPath(m: ScheduleMarker, cx: number, cy: number, s: number): string {
+  switch (m) {
+    case "abgabe": return `M${cx - s},${cy - s * 0.75} L${cx + s},${cy - s * 0.75} L${cx},${cy + s * 0.95} Z`;
+    case "vertrag": return `M${cx - s},${cy + s * 0.75} L${cx + s},${cy + s * 0.75} L${cx},${cy - s * 0.95} Z`;
+    case "sitzung": { const r = s * 0.8; return `M${cx - r},${cy} a${r},${r} 0 1,0 ${2 * r},0 a${r},${r} 0 1,0 ${-2 * r},0 Z`; }
+    case "lieferung": { const h = s * 0.75; return `M${cx - h},${cy - h} H${cx + h} V${cy + h} H${cx - h} Z`; }
+    case "abnahme": {
+      const pts: string[] = [];
+      for (let k = 0; k < 10; k++) {
+        const r = k % 2 ? s * 0.45 : s * 1.05, a = -Math.PI / 2 + (k * Math.PI) / 5;
+        pts.push(`${(cx + r * Math.cos(a)).toFixed(2)},${(cy + r * Math.sin(a)).toFixed(2)}`);
+      }
+      return `M${pts.join(" L")} Z`;
+    }
+    default: return `M${cx},${cy - s} L${cx + s},${cy} L${cx},${cy + s} L${cx - s},${cy} Z`; // meilenstein, entscheid
+  }
+}
+
+/** Termin-Symbol als SVG-Pfad (Entscheid hohl). */
+function Marker({ m, cx, cy, s, color, stroke, strokeWidth }: { m: ScheduleMarker; cx: number; cy: number; s: number; color: string; stroke?: string; strokeWidth?: number }) {
+  const hollow = m === "entscheid";
+  return <path d={markerPath(m, cx, cy, s)} fill={hollow ? "var(--surface)" : color} stroke={hollow ? color : stroke || "var(--surface)"}
+    strokeWidth={hollow ? Math.max(1.8, strokeWidth || 0) : strokeWidth ?? 1} strokeLinejoin="round" />;
+}
+
+/**
+ * Legende der im Programm vorkommenden Zeichen (Termin-Symbole, Balkenarten, Unterbrüche, Hervorhebungen).
+ * Zeigt nur, was in `items` vorkommt; für Editor und Druck.
+ */
+export function ScheduleLegend({ items, breaks = 0, critical = false, baseline = false, compact = false }: {
+  items: ScheduleItem[];
+  /** Anzahl Unterbrüche (> 0 → Eintrag «Bauferien/Unterbruch») */
+  breaks?: number;
+  critical?: boolean;
+  baseline?: boolean;
+  compact?: boolean;
+}) {
+  const markers = SCHEDULE_MARKERS.filter(m => items.some(it => (it.kind === "milestone" || it.variant === "serie") && markerOf(it) === m.id));
+  const variants = SCHEDULE_VARIANTS.filter(v => items.some(it => it.kind === "task" && (it.variant || "") === v.id));
+  const entry = (key: string, icon: ReactNode, label: string, title?: string) => (
+    <span key={key} title={title} style={{ display: "inline-flex", alignItems: "center", gap: 5, whiteSpace: "nowrap" }}>
+      <svg width={22} height={14} style={{ flexShrink: 0 }}>{icon}</svg>{label}
+    </span>
+  );
+  const barIcon = (v: string) => v === "serie"
+    ? <><line x1={1} x2={21} y1={7} y2={7} stroke="var(--text4)" /><Marker m="sitzung" cx={5} cy={7} s={3.5} color="var(--text)" /><Marker m="sitzung" cx={16} cy={7} s={3.5} color="var(--text)" /></>
+    : <rect x={1} y={3} width={20} height={8} rx={2} fill={v === "reserve" ? "url(#gantt-legend-hatch)" : "var(--accent)"} fillOpacity={v === "extern" ? 0.06 : v === "reserve" ? 1 : 0.38}
+      stroke={v === "extern" ? "var(--accent)" : v === "reserve" ? "var(--text4)" : "none"} strokeWidth={1.3} />;
+  return (
+    <div style={{ display: "flex", flexWrap: "wrap", gap: compact ? "4px 14px" : "6px 18px", fontSize: compact ? 9 : 11, color: "var(--text3)", alignItems: "center" }}>
+      <svg width={0} height={0} style={{ position: "absolute" }}>
+        <defs>
+          <pattern id="gantt-legend-hatch" width={5} height={5} patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+            <line x1={0} y1={0} x2={0} y2={5} stroke="var(--text4)" strokeWidth={1.6} />
+          </pattern>
+        </defs>
+      </svg>
+      {markers.map(m => entry(m.id, <Marker m={m.id} cx={11} cy={7} s={5.5} color="var(--text)" />, m.label, m.hint))}
+      {variants.map(v => entry(`v-${v.id}`, barIcon(v.id), v.label, v.hint))}
+      {breaks > 0 && entry("breaks", <rect x={1} y={1} width={20} height={12} fill="url(#gantt-legend-hatch)" opacity={0.7} />, "Bauferien / Unterbruch")}
+      {critical && entry("crit", <rect x={1} y={3} width={20} height={8} rx={2} fill="var(--negative)" fillOpacity={0.3} stroke="var(--negative)" />, "kritischer Weg")}
+      {baseline && entry("base", <rect x={1} y={9} width={20} height={3} rx={1.5} fill="var(--text4)" />, "eingefrorener Stand")}
+      {entry("today", <line x1={11} x2={11} y1={0} y2={14} stroke="var(--negative)" strokeWidth={1.5} />, "heute")}
+    </div>
+  );
+}
 
 const MONTHS = ["Jan", "Feb", "Mär", "Apr", "Mai", "Jun", "Jul", "Aug", "Sep", "Okt", "Nov", "Dez"];
 
-const ROW_H = 28;
+/** Standard-Zeilenhöhe; im Druck kleiner (`rowHeight`), damit das Programm auf eine Seite passt. */
+const DEFAULT_ROW_H = 28;
 const HEADER_H = 40;
 /** Mindestbreite der Trefferfläche eines Balkens in px (kurze Balken bei kleinem Zoom). */
 const MIN_HIT = 10;
@@ -34,8 +109,8 @@ type Row = { type: "group"; group: string; start: DateStr; end: DateStr; count: 
 
 export function GanttChart({
   items, dayWidth, fit = false, labelWidth = 300, labelTitle = "Aufgabe", from, to, today, holidays = [], critical,
-  baseline, conflicts = [], selectedId, onSelect, onOpen, onChange, onLink, canLink, renderMeta, describe, barColor,
-  snapDays = 1, collapsible = true,
+  baseline, conflicts = [], breaks = [], selectedId, onSelect, onOpen, onChange, onLink, canLink, renderMeta, describe, barColor,
+  snapDays = 1, collapsible = true, rowHeight,
 }: {
   items: ScheduleItem[];
   /** Breite eines Tages in px (ohne `fit`) */
@@ -58,6 +133,8 @@ export function GanttChart({
   baseline?: { items: { id: Id; start: DateStr; end: DateStr }[] };
   /** verletzte Abhängigkeiten (gestrichelt rot) */
   conflicts?: { fromId: Id; toId: Id }[];
+  /** Bauferien/Unterbrüche: schraffiert über alle Zeilen */
+  breaks?: { id: Id; label: string; start: DateStr; end: DateStr }[];
   selectedId?: Id | null;
   onSelect?: (id: Id) => void;
   /** Doppelklick: Element öffnen (Bearbeiten) */
@@ -77,11 +154,18 @@ export function GanttChart({
   /** Raster beim Ziehen in Tagen (7 = ganze Wochen); Alt-Taste = tageweise */
   snapDays?: number;
   collapsible?: boolean;
+  /** Zeilenhöhe in px (Standard 28, Druck kleiner) */
+  rowHeight?: number;
 }) {
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [drag, setDrag] = useState<Drag | null>(null);
   const [hoverRow, setHoverRow] = useState<number | null>(null);
   const [boxWidth, setBoxWidth] = useState(0);
+  const ROW_H = rowHeight ?? DEFAULT_ROW_H;
+  /** Abstand Balken ↔ Zeilenrand und Symbolgrösse wachsen mit der Zeilenhöhe */
+  const BAR_PAD = Math.round(ROW_H * 0.21);
+  const SYM = Math.min(7, ROW_H * 0.26);
+  const hatchId = `gantt-hatch-${useId().replace(/[^a-zA-Z0-9]/g, "")}`;
   const dragRef = useRef<Drag | null>(null);
   const svgRef = useRef<SVGSVGElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -266,7 +350,11 @@ export function GanttChart({
   /** Tooltip eines Elements. */
   const tip = (it: ScheduleItem) => [
     it.label,
-    it.kind === "milestone" ? fmtLong(it.start) : `${fmtLong(it.start)} – ${fmtLong(it.end)} (${formatDuration(durationDays(it))})`,
+    it.kind === "milestone" ? `${SCHEDULE_MARKERS.find(m => m.id === markerOf(it))!.label}: ${fmtLong(it.start)}`
+      : `${fmtLong(it.start)} – ${fmtLong(it.end)} (${formatDuration(durationDays(it))})`,
+    it.kind === "task" && it.variant ? (it.variant === "serie"
+      ? `Terminserie: ${SCHEDULE_MARKERS.find(m => m.id === markerOf(it))!.label} alle ${formatDuration(it.repeatDays || 14)} (${seriesDates(it).length} Termine)`
+      : SCHEDULE_VARIANTS.find(v => v.id === it.variant)!.label) : undefined,
     describe?.(it),
   ].filter(Boolean).join("\n");
 
@@ -287,7 +375,7 @@ export function GanttChart({
         {rows.map((r, i) => r.type === "group" ? (
           <div key={`g-${r.group}`} onClick={() => collapsible && toggle(r.group)} title={`${r.group}\n${fmtLong(r.start)} – ${fmtLong(r.end)}`}
             onPointerEnter={() => setHoverRow(i)}
-            style={{ height: ROW_H, display: "flex", alignItems: "center", gap: 6, padding: "0 10px", background: "var(--surface2)", borderBottom: "1px solid var(--border)", fontSize: 11, fontWeight: 600, color: "var(--text3)", cursor: collapsible ? "pointer" : "default" }}>
+            style={{ height: ROW_H, display: "flex", alignItems: "center", gap: 6, padding: "0 10px", background: "var(--surface2)", borderBottom: "1px solid var(--border)", fontSize: ROW_H < 22 ? 10 : 11, fontWeight: 600, color: "var(--text3)", cursor: collapsible ? "pointer" : "default" }}>
             {collapsible && <span style={{ fontSize: 9, width: 8 }}>{collapsed.has(r.group) ? "▸" : "▾"}</span>}
             <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>{r.group}</span>
             <span style={{ fontWeight: 400, color: "var(--text4)", fontSize: 10 }}>{collapsed.has(r.group) ? `${r.count} ausgeblendet` : `${fmtShort(r.start)}–${fmtShort(r.end)}`}</span>
@@ -295,12 +383,12 @@ export function GanttChart({
         ) : (
           <div key={r.item.id} data-item={r.item.id} title={tip(r.item)}
             onClick={() => onSelect?.(r.item.id)} onDoubleClick={() => onOpen?.(r.item.id)} onPointerEnter={() => setHoverRow(i)}
-            style={{ height: ROW_H, display: "flex", alignItems: "center", gap: 6, padding: "0 10px 0 22px", borderBottom: "1px solid var(--border2, var(--border))", fontSize: 12,
+            style={{ height: ROW_H, display: "flex", alignItems: "center", gap: 6, padding: "0 10px 0 22px", borderBottom: "1px solid var(--border2, var(--border))", fontSize: ROW_H < 22 ? 10.5 : 12,
               background: r.item.id === selectedId ? "var(--surface3)" : linkTargetRow === i ? (linkOk ? "var(--positive-bg)" : "var(--negative-bg)") : hoverRow === i ? "var(--surface2)" : "transparent",
               boxShadow: r.item.id === selectedId ? "inset 3px 0 0 var(--accent)" : undefined,
               cursor: onSelect ? "pointer" : "default" }}>
             <span style={{ color: r.item.kind === "milestone" ? "var(--text3)" : "var(--text)", fontStyle: r.item.kind === "milestone" ? "italic" : "normal", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>
-              {r.item.kind === "milestone" ? "◆ " : ""}{r.item.bkp ? <span style={{ color: "var(--text4)" }}>{r.item.bkp} </span> : null}{r.item.label}
+              {glyphOf(r.item) ? <span style={{ fontStyle: "normal", color: "var(--text3)", marginRight: 4 }}>{glyphOf(r.item)}</span> : null}{r.item.bkp ? <span style={{ color: "var(--text4)" }}>{r.item.bkp} </span> : null}{r.item.label}
             </span>
             {renderMeta?.(r.item)}
           </div>
@@ -313,6 +401,9 @@ export function GanttChart({
         <svg ref={svgRef} width={width} height={Math.max(height, HEADER_H + ROW_H)} style={{ display: "block", fontFamily: "'Inter', sans-serif" }}
           aria-label="Terminprogramm">
           <defs>
+            <pattern id={hatchId} width={6} height={6} patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+              <line x1={0} y1={0} x2={0} y2={6} stroke="var(--text4)" strokeWidth={1.6} />
+            </pattern>
             {(["normal", "critical", "conflict", "active"] as const).map(k => (
               <marker key={k} id={`arrow-${k}`} viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto">
                 <path d="M0,0 L8,4 L0,8 z" fill={k === "normal" ? "var(--text4)" : k === "active" ? "var(--text)" : "var(--negative)"} />
@@ -346,6 +437,21 @@ export function GanttChart({
                 onPointerEnter={() => setHoverRow(i)}
                 onClick={() => r.type === "item" && onSelect?.(r.item.id)}
                 onDoubleClick={() => r.type === "item" && onOpen?.(r.item.id)} />
+            );
+          })}
+          {breaks.map(b => {
+            const bx = x(b.start), bw = Math.max(dw, x(b.end) + dw - bx);
+            if (bx + bw < 0 || bx > width) return null;
+            return (
+              <g key={`brk-${b.id}`} pointerEvents="none">
+                <rect x={bx} y={HEADER_H} width={bw} height={height - HEADER_H} fill={`url(#${hatchId})`} opacity={0.35} />
+                <rect x={bx} y={HEADER_H} width={bw} height={height - HEADER_H} fill="none" stroke="var(--text4)" strokeOpacity={0.5} strokeDasharray="3 3" />
+                {/* Bezeichnung waagrecht, wenn sie passt, sonst senkrecht am linken Rand */}
+                {bw > b.label.length * 5.4 + 8
+                  ? <text x={bx + 4} y={HEADER_H + 11} fontSize={9} fill="var(--text3)" fontWeight={600}>{b.label}</text>
+                  : bw >= 9 && <text x={bx + bw / 2 + 3} y={HEADER_H + 6} fontSize={9} fill="var(--text3)" fontWeight={600} transform={`rotate(90 ${bx + bw / 2 + 3} ${HEADER_H + 6})`}>{b.label}</text>}
+                <title>{`${b.label}: ${fmtLong(b.start)} – ${fmtLong(b.end)}`}</title>
+              </g>
             );
           })}
           {shade.map(s => <rect key={`${s.kind}-${s.x}`} x={s.x} y={HEADER_H} width={s.w} height={height - HEADER_H} fill={s.kind === "holiday" ? "var(--warning-bg)" : "var(--surface2)"} opacity={s.kind === "holiday" ? 0.9 : 0.6} pointerEvents="none" />)}
@@ -391,15 +497,15 @@ export function GanttChart({
             const color = isCrit ? "var(--negative)" : barColor?.(it) || "var(--accent)";
             const cls = `gantt-item${sel ? " gantt-selected" : ""}`;
             if (it.kind === "milestone") {
-              const cx = x(it.start), cy = y + ROW_H / 2, s = 7;
+              const cx = x(it.start), cy = y + ROW_H / 2, s = SYM;
               return (
                 <g key={it.id} data-item={it.id} className={cls} style={{ cursor: onChange ? (dragging ? "grabbing" : "grab") : "pointer" }}
                   onPointerDown={e => startDrag(e, it.id, "move")} onDoubleClick={() => onOpen?.(it.id)} onPointerEnter={() => setHoverRow(i)}>
                   <title>{tip(it)}</title>
                   {base && <path d={`M${x(base.start)},${cy - 4} l4,4 l-4,4 l-4,-4 z`} fill="var(--text4)" opacity={0.5} />}
                   <rect x={cx - 10} y={y + 2} width={20} height={ROW_H - 4} fill="transparent" />
-                  <path d={`M${cx},${cy - s} L${cx + s},${cy} L${cx},${cy + s} L${cx - s},${cy} Z`} fill={isCrit ? "var(--negative)" : "var(--text)"}
-                    stroke={sel ? "var(--accent)" : "var(--surface)"} strokeWidth={sel ? 2.5 : 1} />
+                  {sel && <circle cx={cx} cy={cy} r={s + 4} fill="none" stroke="var(--accent)" strokeWidth={2} />}
+                  <Marker m={markerOf(it)} cx={cx} cy={cy} s={s} color={isCrit ? "var(--negative)" : "var(--text)"} />
                   {onLink && <circle className="gantt-knob" cx={cx + s + 6} cy={cy} r={4} fill="var(--surface)" stroke="var(--text3)" strokeWidth={1.2} style={{ cursor: "crosshair" }}
                     onPointerDown={e => startDrag(e, it.id, "link")}><title>Ziehen: Pfeil zu einer Folgeaufgabe</title></circle>}
                   <text x={cx + s + (onLink ? 14 : 5)} y={cy + 3.5} fontSize={10} fill="var(--text3)" pointerEvents="none">{dragging ? fmtLong(it.start) : fmtShort(it.start)}</text>
@@ -407,17 +513,32 @@ export function GanttChart({
               );
             }
             const bx = x(it.start), bw = Math.max(dw, x(it.end) + dw - bx);
-            const by = y + 6, bh = ROW_H - 12;
+            const by = y + BAR_PAD, bh = ROW_H - 2 * BAR_PAD;
             const prog = Math.max(0, Math.min(100, it.progress || 0));
             const hitX = bw < MIN_HIT ? bx - (MIN_HIT - bw) / 2 : bx, hitW = Math.max(bw, MIN_HIT);
-            const label = dragging ? `${fmtShort(it.start)} – ${fmtShort(it.end)} · ${formatDuration(durationDays(it))}` : formatDuration(durationDays(it));
+            const label = dragging ? `${fmtShort(it.start)} – ${fmtShort(it.end)} · ${formatDuration(durationDays(it))}`
+              : it.variant === "serie" ? `${seriesDates(it).length} Termine` : formatDuration(durationDays(it));
             return (
               <g key={it.id} data-item={it.id} className={cls} onDoubleClick={() => onOpen?.(it.id)} onPointerEnter={() => setHoverRow(i)}>
                 <title>{tip(it)}</title>
                 {base && <rect x={x(base.start)} y={y + ROW_H - 5} width={Math.max(dw, x(base.end) + dw - x(base.start))} height={3} rx={1.5} fill="var(--text4)" opacity={0.55} pointerEvents="none" />}
-                <rect x={bx} y={by} width={bw} height={bh} rx={3} fill={color} fillOpacity={isCrit ? 0.28 : 0.38} pointerEvents="none"
-                  stroke={sel ? "var(--text)" : isCrit ? "var(--negative)" : "none"} strokeWidth={sel ? 1.8 : isCrit ? 1.2 : 0} />
-                {prog > 0 && <rect x={bx} y={by} width={bw * prog / 100} height={bh} rx={3} fill={color} opacity={0.85} pointerEvents="none" />}
+                {it.variant === "serie" ? (
+                  // Terminserie: dünne Linie über den Zeitraum, Symbol an jedem Termin
+                  <g pointerEvents="none">
+                    <line x1={bx} x2={bx + bw} y1={y + ROW_H / 2} y2={y + ROW_H / 2} stroke={sel ? "var(--text)" : isCrit ? "var(--negative)" : "var(--text4)"} strokeWidth={sel ? 1.6 : 1} />
+                    {seriesDates(it).map(d => (
+                      <Marker key={d} m={markerOf(it)} cx={x(d) + dw / 2} cy={y + ROW_H / 2} s={dw * 7 >= 20 ? 4.5 : 3.2} color={isCrit ? "var(--negative)" : "var(--text)"} />
+                    ))}
+                  </g>
+                ) : <>
+                  <rect x={bx} y={by} width={bw} height={bh} rx={3} pointerEvents="none"
+                    fill={it.variant === "reserve" ? `url(#${hatchId})` : color}
+                    fillOpacity={it.variant === "extern" ? 0.06 : it.variant === "reserve" ? 1 : isCrit ? 0.28 : 0.38}
+                    stroke={sel ? "var(--text)" : isCrit ? "var(--negative)" : it.variant === "extern" ? color : it.variant === "reserve" ? "var(--text4)" : "none"}
+                    strokeWidth={sel ? 1.8 : isCrit || it.variant ? 1.3 : 0}
+                    strokeDasharray={it.variant === "reserve" && !sel ? "3 2" : undefined} />
+                  {prog > 0 && <rect x={bx} y={by} width={bw * prog / 100} height={bh} rx={3} fill={color} opacity={0.85} pointerEvents="none" />}
+                </>}
                 <rect x={hitX} y={by - 2} width={hitW} height={bh + 4} fill="transparent" style={{ cursor: onChange ? (dragging ? "grabbing" : "grab") : "pointer" }}
                   onPointerDown={e => startDrag(e, it.id, "move")} />
                 {onChange && bw >= 14 && <>

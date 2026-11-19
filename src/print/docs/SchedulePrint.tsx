@@ -1,23 +1,28 @@
 // Druckvorlage Terminprogramm (`schedule`): Planungsterminprogramm oder Bauprogramm eines Projekts
 // auf A3 quer — Kopf mit Absender und Projekt, Zeitstrahl über die ganze Breite, darunter die Meilensteine.
 
-import { GanttChart } from "../../views/schedule/GanttChart";
-import { TRACK_LABELS, addDays, dayNum, scheduleRange } from "../../schedule";
+import { GanttChart, ScheduleLegend } from "../../views/schedule/GanttChart";
+import { TRACK_LABELS, addDays, dayNum, glyphOf, scheduleRange } from "../../schedule";
 import { formatSenderAddress, localISODate } from "../../utils";
 import { StudioLogo } from "../../components/UI";
-import type { AppData, Project, ScheduleBaseline, ScheduleItem, ScheduleTrack, Settings } from "../../types";
+import type { AppData, Project, ScheduleBaseline, ScheduleBreak, ScheduleItem, ScheduleTrack, Settings } from "../../types";
 import { HEADING, type Content } from "./shared";
 
 /** Nutzbare Breite in px bei 420 mm Blatt und 20 mm Rand je Seite (96 dpi). */
 const PRINT_WIDTH_PX = (420 - 40) * 3.78;
 const LABEL_WIDTH = 270;
+/** Höhe für den Zeitstrahl auf A3 quer (297 mm − Ränder − Kopf − Fuss mit Legende), in px. */
+const PRINT_CHART_HEIGHT_PX = (297 - 40) * 3.78 - 330;
+
+/** Anzahl Zeilen im Zeitstrahl: Elemente plus Gruppenköpfe. */
+const rowCount = (items: ScheduleItem[]) => items.length + new Set(items.map(it => it.group).filter(Boolean)).size;
 
 const fmt = (d: string) => `${d.slice(8, 10)}.${d.slice(5, 7)}.${d.slice(0, 4)}`;
 
 export function SchedulePrint({ content, settings }: { content: Content; settings: Settings }) {
-  const { project, track, items, baseline, critical, holidays, data } = content as unknown as {
+  const { project, track, items, baseline, critical, holidays, breaks = [], data } = content as unknown as {
     project: Project; track: ScheduleTrack; items: ScheduleItem[]; baseline?: ScheduleBaseline;
-    critical: string[]; holidays: string[]; data: AppData;
+    critical: string[]; holidays: string[]; breaks?: ScheduleBreak[]; data: AppData;
   };
   const range = scheduleRange(items);
   // Ganzer Zeitraum auf die Blattbreite (Montag davor bis eine Woche danach)
@@ -48,7 +53,9 @@ export function SchedulePrint({ content, settings }: { content: Content; setting
       <GanttChart
         items={items} dayWidth={dayWidth} labelWidth={LABEL_WIDTH} from={from} to={addDays(from, days - 1)}
         today={localISODate()} holidays={holidays} critical={critical.length ? new Set(critical) : undefined}
-        baseline={baseline} collapsible={false}
+        baseline={baseline} breaks={breaks} collapsible={false}
+        // Zeilenhöhe so, dass das Programm auf eine Seite passt (15–24 px); darunter wird umbrochen
+        rowHeight={Math.max(15, Math.min(24, Math.floor((PRINT_CHART_HEIGHT_PX - 40) / rowCount(items))))}
         renderMeta={it => {
           const emp = employees.find(e => e.id === it.assigneeId);
           const firm = (data.persons || []).find(p => p.id === it.contractorId);
@@ -59,15 +66,16 @@ export function SchedulePrint({ content, settings }: { content: Content; setting
       <div style={{ display: "flex", gap: 30, marginTop: 14, fontSize: 9, color: "#666", alignItems: "flex-start" }}>
         {milestones.length > 0 && (
           <div>
-            <div style={{ letterSpacing: "0.12em", marginBottom: 4 }}>MEILENSTEINE</div>
-            <div style={{ display: "grid", gridTemplateColumns: "auto auto", columnGap: 14 }}>
-              {milestones.map(m => <span key={m.id} style={{ display: "contents" }}><span>{fmt(m.start)}</span><span>{m.label}</span></span>)}
+            <div style={{ letterSpacing: "0.12em", marginBottom: 4 }}>TERMINE</div>
+            <div style={{ display: "grid", gridTemplateColumns: "auto auto auto", columnGap: 10 }}>
+              {milestones.map(m => <span key={m.id} style={{ display: "contents" }}><span>{glyphOf(m)}</span><span>{fmt(m.start)}</span><span>{m.label}</span></span>)}
             </div>
           </div>
         )}
-        <div style={{ marginLeft: "auto", lineHeight: 1.7 }}>
-          <div>Rote Linie = heute{critical.length ? " · rot umrandet = kritischer Weg" : ""}{baseline ? " · grauer Strich = eingefrorener Stand" : ""}</div>
-          <div>Pfeile = «beginnt nach» · KW nach ISO 8601 · Feiertage hinterlegt</div>
+        <div style={{ marginLeft: "auto", lineHeight: 1.7, maxWidth: "60%" }}>
+          <div style={{ letterSpacing: "0.12em", marginBottom: 4 }}>LEGENDE</div>
+          <ScheduleLegend items={items} breaks={breaks.length} critical={critical.length > 0} baseline={!!baseline} compact />
+          <div style={{ marginTop: 4 }}>Pfeile = «beginnt nach» · KW nach ISO 8601 · Feiertage hinterlegt</div>
         </div>
       </div>
     </>

@@ -15,12 +15,13 @@ import { generateId, localISODate } from "../../utils";
 import {
   addDays, baselineDelta, constructionTemplate, criticalPath, dayNum, dependencyConflicts, durationDays, formatDuration,
   holidayDates, moveItem, phaseProgress, planningTemplate, scheduleOf, scheduleRange, shiftSuccessors, trackItems, wouldCreateCycle,
+  breaksOf, glyphOf, markerOf, seriesDates, SCHEDULE_MARKERS, SCHEDULE_VARIANTS,
 } from "../../schedule";
 import { Modal, FormField, DateInput } from "../../components/UI";
 import { useConfirm } from "../../hooks/useConfirm";
-import { GanttChart } from "./GanttChart";
+import { GanttChart, ScheduleLegend } from "./GanttChart";
 import { ZOOM_LEVELS } from "./zoom";
-import type { Id, Project, ProjectSchedule, ScheduleItem, ScheduleTrack, ViewProps } from "../../types";
+import type { Id, Project, ProjectSchedule, ScheduleBreak, ScheduleItem, ScheduleMarker, ScheduleTrack, ScheduleVariant, ViewProps } from "../../types";
 
 const fmtDate = (d: string) => `${d.slice(8, 10)}.${d.slice(5, 7)}.${d.slice(0, 4)}`;
 const initials = (name = "") => name.split(/\s+/).filter(Boolean).map(w => w[0]).join("").slice(0, 3).toUpperCase();
@@ -52,11 +53,13 @@ export function ScheduleEditor({ project, data, update, setPrintContent, canEdit
   const [editing, setEditing] = useState<{ item: ScheduleItem; isNew: boolean; afterId?: Id } | null>(null);
   const [history, setHistory] = useState<ProjectSchedule[]>([]);
   const [templateStart, setTemplateStart] = useState("");
+  const [breaksOpen, setBreaksOpen] = useState(false);
   const cardRef = useRef<HTMLDivElement>(null);
   const { askConfirm, ConfirmModalEl } = useConfirm();
 
   const items = trackItems(schedule, track);
   const baseline = schedule.baselines?.[track];
+  const trackBreaks = breaksOf(schedule, track);
   const crit = useMemo(() => criticalPath(items), [items]);
   const conflicts = useMemo(() => dependencyConflicts(items), [items]);
   const range = scheduleRange(items);
@@ -105,7 +108,7 @@ export function ScheduleEditor({ project, data, update, setPrintContent, canEdit
   };
   const saveEditing = (it: ScheduleItem) => {
     if (!editing) return;
-    const item = { ...it, label: it.label.trim() || (it.kind === "milestone" ? "Meilenstein" : "Aufgabe") };
+    const item = { ...it, label: it.label.trim() || (it.kind === "milestone" ? SCHEDULE_MARKERS.find(m => m.id === markerOf(it))!.label : it.variant === "serie" ? "Sitzung" : "Aufgabe") };
     if (editing.isNew) {
       const idx = editing.afterId ? items.findIndex(x => x.id === editing.afterId) + 1 : items.length;
       saveTrack([...items.slice(0, idx), item, ...items.slice(idx)]);
@@ -259,7 +262,7 @@ export function ScheduleEditor({ project, data, update, setPrintContent, canEdit
           )}
           <button className="btn btn-ghost" style={smallBtn}
             title="Druckt die aktuelle Ansicht (inkl. kritischem Weg und Vergleich, falls eingeschaltet) auf A3 quer"
-            onClick={() => setPrintContent({ type: "schedule", project, track, items, baseline: showBaseline ? baseline : undefined, critical: showCritical ? [...crit.critical] : [], holidays, data })}>
+            onClick={() => setPrintContent({ type: "schedule", project, track, items, baseline: showBaseline ? baseline : undefined, critical: showCritical ? [...crit.critical] : [], holidays, breaks: trackBreaks, data })}>
             PDF
           </button>
         </>}
@@ -296,7 +299,8 @@ export function ScheduleEditor({ project, data, update, setPrintContent, canEdit
             {canEdit && <>
               <button className="btn btn-ghost" style={smallBtn} onClick={undo} disabled={!history.length} title="Letzte Änderung rückgängig (⌘Z / Ctrl+Z)">↶ Rückgängig</button>
               <button className="btn btn-ghost" style={smallBtn} onClick={() => addItem("task")} title={selected ? `Neue Aufgabe nach «${selected.label}»` : "Neue Aufgabe am Ende"}>+ Aufgabe</button>
-              <button className="btn btn-ghost" style={smallBtn} onClick={() => addItem("milestone")}>+ Meilenstein</button>
+              <button className="btn btn-ghost" style={smallBtn} onClick={() => addItem("milestone")} title="Meilenstein, Abgabe, Entscheid, Sitzung, Lieferung, Abnahme oder Vertragstermin">+ Termin</button>
+              <button className="btn btn-ghost" style={smallBtn} onClick={() => setBreaksOpen(true)} title="Bauferien und Betriebsferien eintragen">Unterbrüche{trackBreaks.length ? ` (${trackBreaks.length})` : ""}</button>
               <button className="btn btn-ghost" style={smallBtn} onClick={freezeBaseline}
                 title="Heutige Termine als Soll festhalten; «Vergleich» zeigt danach, was sich verschoben hat">{baseline ? "Stand neu einfrieren" : "Stand einfrieren"}</button>
             </>}
@@ -309,7 +313,7 @@ export function ScheduleEditor({ project, data, update, setPrintContent, canEdit
             {selected ? <>
               <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
                 title={`${selected.label} · ${selected.kind === "milestone" ? fmtDate(selected.start) : `${fmtDate(selected.start)} – ${fmtDate(selected.end)}`}`}>
-                <strong style={{ fontWeight: 600 }}>{selected.kind === "milestone" ? "◆ " : ""}{selected.label}</strong>
+                <strong style={{ fontWeight: 600 }}>{glyphOf(selected) ? `${glyphOf(selected)} ` : ""}{selected.label}</strong>
                 <span style={{ color: "var(--text3)", marginLeft: 10 }}>
                   {selected.kind === "milestone" ? fmtDate(selected.start) : `${fmtDate(selected.start)} – ${fmtDate(selected.end)} · ${formatDuration(durationDays(selected))}`}
                 </span>
@@ -337,7 +341,7 @@ export function ScheduleEditor({ project, data, update, setPrintContent, canEdit
           )}
 
           <GanttChart
-            items={items} dayWidth={zoomLevel.dayWidth} fit={zoom === "alles"} today={today} holidays={holidays}
+            items={items} dayWidth={zoomLevel.dayWidth} fit={zoom === "alles"} today={today} holidays={holidays} breaks={trackBreaks}
             critical={showCritical ? crit.critical : undefined}
             baseline={showBaseline ? baseline : undefined}
             conflicts={conflicts} selectedId={selectedId}
@@ -350,14 +354,23 @@ export function ScheduleEditor({ project, data, update, setPrintContent, canEdit
             renderMeta={meta}
             describe={describe}
           />
-          {canEdit && (
-            <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 8 }}>
-              <button className="btn btn-ghost" style={{ ...smallBtn, color: "var(--text4)", border: "none", boxShadow: "none" }} onClick={clearTrack}>
+          <div style={{ display: "flex", gap: 12, alignItems: "flex-start", marginTop: 10 }}>
+            <div style={{ flex: 1 }}>
+              <ScheduleLegend items={items} breaks={trackBreaks.length} critical={showCritical} baseline={showBaseline && !!baseline} />
+            </div>
+            {canEdit && (
+              <button className="btn btn-ghost" style={{ ...smallBtn, color: "var(--text4)", border: "none", boxShadow: "none", flexShrink: 0 }} onClick={clearTrack}>
                 {track === "planung" ? "Planungsterminprogramm" : "Bauprogramm"} löschen
               </button>
-            </div>
-          )}
+            )}
+          </div>
         </div>
+      )}
+
+      {breaksOpen && (
+        <BreaksDialog breaks={schedule.breaks || []} track={track} range={range}
+          onClose={() => setBreaksOpen(false)}
+          onSave={breaks => { save({ ...schedule, breaks }); setBreaksOpen(false); }} />
       )}
 
       {editing && (
@@ -399,34 +412,67 @@ function ItemDialog({ item, isNew, items, track, data, onClose, onSave, onDelete
   const withMe = isNew ? [...items, f] : items.map(x => x.id === f.id ? f : x);
   const candidates = others.filter(o => !deps.some(d => d.fromId === o.id) && !wouldCreateCycle(withMe, o.id, f.id));
   const successors = others.filter(o => (o.deps || []).some(d => d.fromId === item.id));
-  const kindLabel = f.kind === "milestone" ? "Meilenstein" : "Aufgabe";
+  const art: "task" | "milestone" | "serie" = f.kind === "milestone" ? "milestone" : f.variant === "serie" ? "serie" : "task";
+  const kindLabel = art === "milestone" ? "Termin" : art === "serie" ? "Terminserie" : "Aufgabe";
+  const setArt = (a: typeof art) => {
+    const longEnd = dayNum(f.end) > dayNum(f.start) ? f.end : addDays(f.start, a === "serie" ? 8 * 7 - 1 : 13);
+    if (a === "milestone") setF({ ...f, kind: "milestone", variant: undefined, repeatDays: undefined, end: f.start, marker: f.marker || "meilenstein" });
+    else if (a === "serie") setF({ ...f, kind: "task", variant: "serie", end: longEnd, marker: f.marker || "sitzung", repeatDays: f.repeatDays || 14 });
+    else setF({ ...f, kind: "task", variant: f.variant === "serie" ? undefined : f.variant, marker: undefined, repeatDays: undefined, end: longEnd });
+  };
   return (
-    <Modal title={isNew ? `Neue${f.kind === "milestone" ? "r" : ""} ${kindLabel}` : `${kindLabel} bearbeiten`} onClose={onClose} onSave={() => onSave(f)} saveLabel={isNew ? "Hinzufügen" : "Speichern"} wide>
+    <Modal title={isNew ? `Neue${art === "milestone" ? "r" : ""} ${kindLabel}` : `${kindLabel} bearbeiten`} onClose={onClose} onSave={() => onSave(f)} saveLabel={isNew ? "Hinzufügen" : "Speichern"} wide>
       <div className="form-row">
         <FormField label="Bezeichnung" style={{ flex: 3 }}>
           <input value={f.label} onChange={e => setF({ ...f, label: e.target.value })} autoFocus
-            placeholder={f.kind === "milestone" ? "z.B. Baueingabe, Aufrichte" : track === "bau" ? "z.B. Baumeisterarbeiten" : "z.B. Vorprojekt"}
+            placeholder={art === "milestone" ? "z.B. Baueingabe, Bauherrenentscheid, Aufrichte" : art === "serie" ? "z.B. Bausitzung, Planungssitzung" : track === "bau" ? "z.B. Baumeisterarbeiten" : "z.B. Vorprojekt"}
             onKeyDown={e => { if (e.key === "Enter") onSave(f); }} />
         </FormField>
         <FormField label="Art">
-          <select value={f.kind} onChange={e => {
-            const kind = e.target.value as ScheduleItem["kind"];
-            setF({ ...f, kind, end: kind === "milestone" ? f.start : dayNum(f.end) > dayNum(f.start) ? f.end : addDays(f.start, 13) });
-          }}>
+          <select value={art} onChange={e => setArt(e.target.value as typeof art)}>
             <option value="task">Aufgabe (Balken)</option>
-            <option value="milestone">Meilenstein (Termin)</option>
+            <option value="milestone">Termin (Symbol)</option>
+            <option value="serie">Terminserie (wiederkehrend)</option>
           </select>
         </FormField>
       </div>
+      {/* Symbol bzw. Darstellung */}
+      <div style={{ marginBottom: 14 }}>
+        <div style={{ fontSize: 10, letterSpacing: "0.08em", color: "var(--text4)", marginBottom: 6 }}>{art === "task" ? "DARSTELLUNG" : "SYMBOL"}</div>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          {art === "task"
+            ? SCHEDULE_VARIANTS.filter(v => v.id !== "serie").map(v => (
+              <ChoiceChip key={v.id || "normal"} on={(f.variant || "") === v.id} title={v.hint}
+                onClick={() => setF({ ...f, variant: (v.id || undefined) as ScheduleVariant | undefined })}
+                icon={<span style={{ width: 22, height: 9, borderRadius: 2, display: "inline-block",
+                  background: v.id === "reserve" ? "repeating-linear-gradient(45deg, var(--text4) 0 1.5px, transparent 1.5px 4px)" : v.id === "extern" ? "transparent" : "color-mix(in srgb, var(--accent) 45%, transparent)",
+                  border: v.id === "extern" ? "1.3px solid var(--accent)" : v.id === "reserve" ? "1px dashed var(--text4)" : "none" }} />}
+                label={v.label} />
+            ))
+            : SCHEDULE_MARKERS.map(m => (
+              <ChoiceChip key={m.id} on={markerOf(f) === m.id} title={m.hint} onClick={() => setF({ ...f, marker: m.id as ScheduleMarker })}
+                icon={<span style={{ fontSize: 13, width: 14, textAlign: "center" }}>{m.glyph}</span>} label={m.label} />
+            ))}
+        </div>
+        <div style={{ fontSize: 11, color: "var(--text4)", marginTop: 5 }}>
+          {art === "task" ? SCHEDULE_VARIANTS.find(v => v.id === (f.variant || ""))!.hint : SCHEDULE_MARKERS.find(m => m.id === markerOf(f))!.hint}
+        </div>
+      </div>
       <div className="form-row">
-        <FormField label={f.kind === "milestone" ? "Datum" : "Beginn"}>
+        <FormField label={art === "milestone" ? "Datum" : art === "serie" ? "Erster Termin" : "Beginn"}>
           <DateInput value={f.start} onChange={e => setStart(e.target.value)} />
         </FormField>
         {f.kind === "task" && <>
-          <FormField label="Ende">
+          <FormField label={art === "serie" ? "Bis" : "Ende"}>
             <DateInput value={f.end} onChange={e => e.target.value && dayNum(e.target.value) >= dayNum(f.start) && setF({ ...f, end: e.target.value })} />
           </FormField>
-          <FormField label={`Dauer · ${formatDuration(days)}`}>
+          {art === "serie" ? (
+            <FormField label={`Intervall · ${seriesDates(f).length} Termine`}>
+              <select value={f.repeatDays || 14} onChange={e => setF({ ...f, repeatDays: Number(e.target.value) })}>
+                {[[7, "wöchentlich"], [14, "alle 2 Wochen"], [21, "alle 3 Wochen"], [28, "alle 4 Wochen"]].map(([d, l]) => <option key={d} value={d}>{l}</option>)}
+              </select>
+            </FormField>
+          ) : <FormField label={`Dauer · ${formatDuration(days)}`}>
             <div style={{ display: "flex", gap: 6 }}>
               <input type="number" min={0} step={1} value={Math.floor(days / 7)} title="Wochen" style={{ width: "50%" }}
                 onChange={e => setDays(Math.max(0, Number(e.target.value) || 0) * 7 + (days % 7))} />
@@ -434,7 +480,7 @@ function ItemDialog({ item, isNew, items, track, data, onClose, onSave, onDelete
                 onChange={e => setDays(Math.floor(days / 7) * 7 + Math.max(0, Math.min(6, Number(e.target.value) || 0)))} />
             </div>
             <div style={{ fontSize: 10, color: "var(--text4)", marginTop: 3 }}>Wochen · Tage (Kalendertage)</div>
-          </FormField>
+          </FormField>}
         </>}
       </div>
       <div className="form-row">
@@ -454,7 +500,7 @@ function ItemDialog({ item, isNew, items, track, data, onClose, onSave, onDelete
             <input value={f.bkp || ""} onChange={e => setF({ ...f, bkp: e.target.value.trim() || undefined })} placeholder="z.B. 211" />
           </FormField>
         )}
-        {f.kind === "task" && (
+        {art === "task" && (
           <FormField label="Fortschritt">
             <select value={f.progress || 0} onChange={e => setF({ ...f, progress: Number(e.target.value) })}>
               {[0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100].map(p => <option key={p} value={p}>{p === 0 ? "nicht begonnen" : p === 100 ? "erledigt (100 %)" : `${p} %`}</option>)}
@@ -533,6 +579,74 @@ function ItemDialog({ item, isNew, items, track, data, onClose, onSave, onDelete
           <button className="btn btn-danger" style={{ fontSize: 11 }} onClick={onDelete}>Löschen</button>
         </div>
       )}
+    </Modal>
+  );
+}
+
+/** Auswahlknopf mit Symbol (Dialog: Symbol bzw. Darstellung). */
+function ChoiceChip({ on, title, onClick, icon, label }: { on: boolean; title?: string; onClick: () => void; icon: React.ReactNode; label: string }) {
+  return (
+    <button type="button" title={title} onClick={onClick} aria-pressed={on}
+      style={{ display: "flex", alignItems: "center", gap: 6, padding: "5px 10px", borderRadius: 16, cursor: "pointer", fontFamily: "inherit", fontSize: 12,
+        border: `1.5px solid ${on ? "var(--text)" : "var(--border)"}`, background: on ? "var(--surface3)" : "var(--surface)", color: "var(--text)" }}>
+      {icon}{label}
+    </button>
+  );
+}
+
+/** Dialog «Unterbrüche»: Bauferien/Betriebsferien des Programms, mit Vorschlägen für Sommer und Weihnachten. */
+function BreaksDialog({ breaks, track, range, onClose, onSave }: {
+  breaks: ScheduleBreak[];
+  track: ScheduleTrack;
+  range: { start: string; end: string } | null;
+  onClose: () => void;
+  onSave: (breaks: ScheduleBreak[]) => void;
+}) {
+  const [list, setList] = useState<ScheduleBreak[]>(breaks);
+  const set = (id: string, patch: Partial<ScheduleBreak>) => setList(l => l.map(b => b.id === id ? { ...b, ...patch } : b));
+  const years: number[] = [];
+  const y0 = Number((range?.start || localISODate()).slice(0, 4)), y1 = Number((range?.end || localISODate()).slice(0, 4));
+  for (let y = y0 - 1; y <= y1 && years.length < 5; y++) years.push(y); // Vorjahr: Weihnachten reicht ins Programm
+  /** Bauferien Sommer: ab Montag der KW 29 drei Wochen (üblich im Bauhauptgewerbe, bitte prüfen). */
+  const summer = (y: number): ScheduleBreak => {
+    const jan4 = new Date(Date.UTC(y, 0, 4));
+    const mondayKw1 = new Date(jan4.getTime() - ((jan4.getUTCDay() + 6) % 7) * 86400000);
+    const start = new Date(mondayKw1.getTime() + 28 * 7 * 86400000).toISOString().slice(0, 10);
+    return { id: generateId(), label: `Bauferien ${y}`, start, end: addDays(start, 20), track: track === "bau" ? "bau" : undefined };
+  };
+  const christmas = (y: number): ScheduleBreak => ({ id: generateId(), label: `Weihnachten ${y}/${String(y + 1).slice(2)}`, start: `${y}-12-24`, end: `${y + 1}-01-02` });
+  // Vorschläge nur, wenn sie das Programm überschneiden und noch nicht eingetragen sind
+  const offer = (b: ScheduleBreak) => !list.some(x => x.start === b.start && x.end === b.end)
+    && (!range || (b.end >= range.start && b.start <= range.end));
+  return (
+    <Modal title="Unterbrüche" onClose={onClose} onSave={() => onSave(list.filter(b => b.start && b.end && b.end >= b.start))} wide>
+      <div style={{ fontSize: 12, color: "var(--text3)", lineHeight: 1.6, marginBottom: 14 }}>
+        Bauferien und Betriebsferien erscheinen schraffiert über alle Zeilen. Sie verschieben keine Termine — Dauern bitte selbst anpassen.
+      </div>
+      {list.length === 0 && <div style={{ fontSize: 12, color: "var(--text4)", marginBottom: 10 }}>Noch keine Unterbrüche.</div>}
+      {list.map(b => (
+        <div key={b.id} style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr 1fr 1fr auto", gap: 8, alignItems: "center", marginBottom: 8 }}>
+          <input value={b.label} onChange={e => set(b.id, { label: e.target.value })} placeholder="z.B. Bauferien" />
+          <DateInput value={b.start} onChange={e => set(b.id, { start: e.target.value })} />
+          <DateInput value={b.end} onChange={e => set(b.id, { end: e.target.value })} />
+          <select value={b.track || ""} onChange={e => set(b.id, { track: (e.target.value || undefined) as ScheduleTrack | undefined })} style={{ fontSize: 12 }}>
+            <option value="">Planung und Bau</option>
+            <option value="planung">nur Planung</option>
+            <option value="bau">nur Bau</option>
+          </select>
+          <button className="btn btn-ghost" style={{ padding: "2px 8px", fontSize: 11 }} onClick={() => setList(l => l.filter(x => x.id !== b.id))} title="Entfernen">✕</button>
+        </div>
+      ))}
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 10 }}>
+        <button className="btn btn-ghost" style={{ fontSize: 11 }} onClick={() => setList(l => [...l, { id: generateId(), label: "Unterbruch", start: range?.start || localISODate(), end: addDays(range?.start || localISODate(), 13) }])}>+ Unterbruch</button>
+        {years.map(y => {
+          const s = summer(y), c = christmas(y);
+          return [
+            offer(s) && <button key={`s${y}`} className="btn btn-ghost" style={{ fontSize: 11 }} onClick={() => setList(l => [...l, s])} title="ab Montag KW 29, drei Wochen — bitte mit dem Baumeister abgleichen">+ Bauferien {y}</button>,
+            offer(c) && <button key={`c${y}`} className="btn btn-ghost" style={{ fontSize: 11 }} onClick={() => setList(l => [...l, c])}>+ Weihnachten {y}/{String(y + 1).slice(2)}</button>,
+          ];
+        })}
+      </div>
     </Modal>
   );
 }
