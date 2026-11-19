@@ -25,7 +25,7 @@
 // A4-Seiten, damit auch Folgeseiten oben und unten Rand haben. Neue Dokumente: Farben
 // über die Variablen, Titel mit `...HEADING`, Absender in `className="doc-sender"`.
 
-import React, { useEffect, useLayoutEffect, useMemo, useRef, useCallback } from "react";
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useCallback, useState } from "react";
 import { buildPdfName } from "../utils";
 import { buildDocCss, buildFontFaces, resolveDocDesign, type ResolvedDocDesign } from "./docDesign";
 import { paginate, PAGE_HEIGHT_MM } from "./paginate";
@@ -34,6 +34,8 @@ import type { Content } from "./docs/shared";
 import { InvoicePrint, QRBillPrint } from "./docs/InvoicePrint";
 import { QuotePrint } from "./docs/QuotePrint";
 import { SchedulePrint } from "./docs/SchedulePrint";
+import { ScheduleFormatBar } from "./docs/ScheduleFormatBar";
+import { DEFAULT_SCHEDULE_PRINT, PX_PER_MM, schedulePrintLayout, type SchedulePrintOptions } from "./docs/scheduleLayout";
 import { VertragPrint } from "./docs/ContractPrint";
 import { LieferscheinPrint } from "./docs/DeliveryNotePrint";
 import { ProtokollPrint } from "./docs/ProtocolPrint";
@@ -69,10 +71,17 @@ export function PrintView({ content, onClose, settings, assets }: { content: Con
   const docCss = useMemo(() => buildDocCss(design), [design]);
   const fontFaces = useMemo(() => buildFontFaces(assets), [assets]);
   const isQrOnly = content.type === "qrbill";
-  // Terminprogramm: A3 quer (gleiche Seitenhöhe 297 mm wie A4 hoch, daher gleiche Paginierung); ohne Briefpapier
+  // Terminprogramm: ein Blatt in wählbarer Grösse (A4–A0 quer oder nach Bedarf, scheduleLayout.ts), ohne
+  // Seitenumbruch und ohne Briefpapier
   const wide = content.type === "schedule";
-  const pageW = wide ? 420 : 210;
-  const paged = !isQrOnly;
+  const [schedOpts, setSchedOpts] = useState<SchedulePrintOptions>(DEFAULT_SCHEDULE_PRINT);
+  const [measuredH, setMeasuredH] = useState(297);
+  const sched = wide ? schedulePrintLayout(content.items || [], schedOpts, {
+    top: settings?.pageMarginTop ?? 20, right: settings?.pageMarginRight ?? 20, bottom: settings?.pageMarginBottom ?? 20, left: settings?.pageMarginLeft ?? 20,
+  }) : null;
+  const pageW = sched ? sched.pageW : 210;
+  const pageH = sched ? (sched.pageH ?? measuredH) : 297;
+  const paged = !isQrOnly && !sched;
   const sheetRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const followRef = useRef<HTMLDivElement>(null);
@@ -96,6 +105,13 @@ export function PrintView({ content, onClose, settings, assets }: { content: Con
   }, [paged, mBottom, design.followTop, design.followBottom]);
 
   useLayoutEffect(() => { runPagination(); }, [runPagination, content, settings, assets]);
+  // Terminprogramm «nach Bedarf»: Blatthöhe = Inhalt (gemessen), damit @page genau passt
+  const autoHeight = !!sched && sched.pageH === null;
+  useLayoutEffect(() => {
+    if (!autoHeight || !sheetRef.current) return;
+    const mm = Math.ceil(sheetRef.current.scrollHeight / PX_PER_MM) + 2;
+    if (Math.abs(mm - measuredH) > 1) setMeasuredH(mm);
+  }, [autoHeight, measuredH, schedOpts, content]);
   useEffect(() => {
     const body = contentRef.current;
     if (!paged || !body) return;
@@ -146,7 +162,8 @@ export function PrintView({ content, onClose, settings, assets }: { content: Con
       <style>{`
         :root { color-scheme: light; }
         .print-page, .print-page * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-        @page { size: ${isQrOnly ? "210mm 105mm" : wide ? "420mm 297mm" : "A4"}; margin: 0; }
+        @page { size: ${isQrOnly ? "210mm 105mm" : sched ? `${pageW}mm ${pageH}mm` : "A4"}; margin: 0; }
+        ${sched ? `@media print { .print-page { height: ${pageH}mm !important; overflow: hidden !important; box-sizing: border-box !important; } }` : ""}
         .print-page, .print-page * { text-align: left; }
         .print-page .align-right, .print-page .align-right * { text-align: right; }
         .print-page.hide-sender .doc-sender { visibility: hidden; }
@@ -179,9 +196,12 @@ export function PrintView({ content, onClose, settings, assets }: { content: Con
       {docCss.imports && <style>{docCss.imports}</style>}
       {fontFaces && <style>{fontFaces}</style>}
       <style>{docCss.css}</style>
-      <div className="no-print" style={{ width: `${pageW}mm`, margin: "0 auto 14px", display: "flex", gap: 10 }}>
+      <div className="no-print" style={{ width: `${Math.min(pageW, 420)}mm`, maxWidth: "calc(100vw - 32px)", margin: "0 auto 14px", display: "flex", flexDirection: "column", gap: 10 }}>
+        <div style={{ display: "flex", gap: 10 }}>
         <button onClick={onClose} style={{ padding: "9px 18px", background: "#2a2a22", color: "#fff", border: "none", borderRadius: 4, cursor: "pointer", fontFamily: "DM Mono, monospace", fontSize: 13 }}>← Zurück</button>
         <button onClick={triggerPrint} style={{ padding: "9px 18px", background: "#252520", color: "#f0ede8", border: "none", borderRadius: 4, cursor: "pointer", fontFamily: "DM Mono, monospace", fontSize: 13, fontWeight: 500 }}>Drucken / PDF</button>
+        </div>
+        {sched && <ScheduleFormatBar opts={schedOpts} setOpts={setSchedOpts} layout={sched} pageH={pageH} />}
       </div>
 
       <div ref={sheetRef} className={sheetClass(design, paged)} data-doc={content.type} style={{
@@ -190,7 +210,8 @@ export function PrintView({ content, onClose, settings, assets }: { content: Con
         margin: "0 auto",
         background: "#fff",
         padding: isQrOnly ? 0 : `${mTop}mm ${mRight}mm ${mBottom}mm ${mLeft}mm`,
-        minHeight: "auto",
+        minHeight: sched?.pageH ? `${sched.pageH}mm` : "auto",
+        boxSizing: sched ? "border-box" : undefined,
         boxShadow: "0 4px 20px rgba(0,0,0,0.1)",
         fontFamily: "var(--doc-font-body)",
         fontSize: 11,
@@ -221,7 +242,7 @@ export function PrintView({ content, onClose, settings, assets }: { content: Con
           {content.type === "studioBudget" && <StudioBudgetPrint snapshot={content.snapshot} settings={settings} />}
           {content.type === "protokoll" && <ProtokollPrint protokoll={content.protokoll} data={content.data} settings={settings} />}
           {content.type === "mitarbeiterOverview" && <MitarbeiterOverviewPrint employees={content.employees} settings={settings} />}
-          {content.type === "schedule" && <SchedulePrint content={content} settings={settings} />}
+          {content.type === "schedule" && <SchedulePrint content={content} settings={settings} layout={sched!} />}
           {content.type === "timeReport" && <TimeReportPrint employee={content.employee} entries={content.entries} month={content.month} data={content.data} settings={settings} />}
         </div>
       </div>

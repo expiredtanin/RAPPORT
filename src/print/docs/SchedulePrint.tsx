@@ -1,34 +1,24 @@
-// Druckvorlage Terminprogramm (`schedule`): Planungsterminprogramm oder Bauprogramm eines Projekts
-// auf A3 quer — Kopf mit Absender und Projekt, Zeitstrahl über die ganze Breite, darunter die Meilensteine.
+// Druckvorlage Terminprogramm (`schedule`): Planungsterminprogramm oder Bauprogramm eines Projekts auf
+// einem Blatt — Kopf mit Absender und Projekt, Zeitstrahl über die ganze Breite, darunter Termine und Legende.
+// Blattgrösse, Massstab und Zeitraum kommen aus `layout` (scheduleLayout.ts, gewählt in PrintView).
 
 import { GanttChart, ScheduleLegend } from "../../views/schedule/GanttChart";
-import { TRACK_LABELS, addDays, dayNum, glyphOf, scheduleRange } from "../../schedule";
+import { TRACK_LABELS, glyphOf } from "../../schedule";
 import { formatSenderAddress, localISODate } from "../../utils";
 import { StudioLogo } from "../../components/UI";
 import type { AppData, Project, ScheduleBaseline, ScheduleBreak, ScheduleItem, ScheduleTrack, Settings } from "../../types";
 import { HEADING, type Content } from "./shared";
-
-/** Nutzbare Breite in px bei 420 mm Blatt und 20 mm Rand je Seite (96 dpi). */
-const PRINT_WIDTH_PX = (420 - 40) * 3.78;
-const LABEL_WIDTH = 270;
-/** Höhe für den Zeitstrahl auf A3 quer (297 mm − Ränder − Kopf − Fuss mit Legende), in px. */
-const PRINT_CHART_HEIGHT_PX = (297 - 40) * 3.78 - 330;
-
-/** Anzahl Zeilen im Zeitstrahl: Elemente plus Gruppenköpfe. */
-const rowCount = (items: ScheduleItem[]) => items.length + new Set(items.map(it => it.group).filter(Boolean)).size;
+import { PRINT_LABEL_WIDTH, SCHEDULE_SCALES, type SchedulePrintLayout } from "./scheduleLayout";
 
 const fmt = (d: string) => `${d.slice(8, 10)}.${d.slice(5, 7)}.${d.slice(0, 4)}`;
 
-export function SchedulePrint({ content, settings }: { content: Content; settings: Settings }) {
-  const { project, track, items, baseline, critical, holidays, breaks = [], data } = content as unknown as {
+export function SchedulePrint({ content, settings, layout }: { content: Content; settings: Settings; layout: SchedulePrintLayout }) {
+  const { project, track, baseline, critical, holidays, breaks = [], data } = content as unknown as {
     project: Project; track: ScheduleTrack; items: ScheduleItem[]; baseline?: ScheduleBaseline;
     critical: string[]; holidays: string[]; breaks?: ScheduleBreak[]; data: AppData;
   };
-  const range = scheduleRange(items);
-  // Ganzer Zeitraum auf die Blattbreite (Montag davor bis eine Woche danach)
-  const from = range ? range.start : localISODate();
-  const days = range ? dayNum(range.end) - dayNum(range.start) + 15 : 60;
-  const dayWidth = (PRINT_WIDTH_PX - LABEL_WIDTH - 2) / days;
+  const { items, from, to, dayWidth, rowHeight } = layout;
+  const scale = layout.pageH === null ? SCHEDULE_SCALES.find(s => Math.abs(s.mmPerDay - dayWidth * 25.4 / 96) < 0.01)?.label : undefined;
   const client = (data.persons || []).find(p => p.id === project.clientId);
   const employees = data.employees || [];
   const milestones = items.filter(it => it.kind === "milestone").sort((a, b) => a.start.localeCompare(b.start));
@@ -48,14 +38,15 @@ export function SchedulePrint({ content, settings }: { content: Content; setting
       <div style={{ marginBottom: 14, paddingBottom: 10, borderBottom: "2px solid var(--doc-accent)", display: "flex", alignItems: "baseline", gap: 18 }}>
         <div className="doc-heading" style={{ ...HEADING, fontSize: 22, fontWeight: 400 }}>{project.number ? `${project.number} ` : ""}{project.name}</div>
         {client && <div style={{ fontSize: 11, color: "#666" }}>{client.name}</div>}
-        {range && <div style={{ fontSize: 11, color: "#666", marginLeft: "auto" }}>{fmt(range.start)} – {fmt(range.end)}</div>}
+        <div style={{ fontSize: 11, color: "#666", marginLeft: "auto", textAlign: "right" }} className="align-right">
+          {layout.cropped ? "Ausschnitt " : ""}{fmt(from)} – {fmt(to)}{scale ? ` · Massstab ${scale}` : ""}
+        </div>
       </div>
       <GanttChart
-        items={items} dayWidth={dayWidth} labelWidth={LABEL_WIDTH} from={from} to={addDays(from, days - 1)}
+        items={items} dayWidth={dayWidth} labelWidth={PRINT_LABEL_WIDTH} from={from} to={to}
         today={localISODate()} holidays={holidays} critical={critical.length ? new Set(critical) : undefined}
         baseline={baseline} breaks={breaks} collapsible={false}
-        // Zeilenhöhe so, dass das Programm auf eine Seite passt (15–24 px); darunter wird umbrochen
-        rowHeight={Math.max(15, Math.min(24, Math.floor((PRINT_CHART_HEIGHT_PX - 40) / rowCount(items))))}
+        rowHeight={rowHeight}
         renderMeta={it => {
           const emp = employees.find(e => e.id === it.assigneeId);
           const firm = (data.persons || []).find(p => p.id === it.contractorId);

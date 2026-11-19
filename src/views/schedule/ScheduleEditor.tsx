@@ -261,7 +261,7 @@ export function ScheduleEditor({ project, data, update, setPrintContent, canEdit
             </label>
           )}
           <button className="btn btn-ghost" style={smallBtn}
-            title="Druckt die aktuelle Ansicht (inkl. kritischem Weg und Vergleich, falls eingeschaltet) auf A3 quer"
+            title="Druckt die aktuelle Ansicht (inkl. kritischem Weg und Vergleich, falls eingeschaltet); Papier A4–A0 quer oder nach Bedarf (Plotter), Zeitraum wählbar"
             onClick={() => setPrintContent({ type: "schedule", project, track, items, baseline: showBaseline ? baseline : undefined, critical: showCritical ? [...crit.critical] : [], holidays, breaks: trackBreaks, data })}>
             PDF
           </button>
