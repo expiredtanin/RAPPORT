@@ -16,7 +16,8 @@
 
 import { getFeiertageForYear } from "./utils";
 import type {
-  DateStr, Feiertag, Id, Project, ProjectSchedule, ScheduleBreak, ScheduleItem, ScheduleMarker, ScheduleTrack, ScheduleVariant, TimeEntry,
+  DateStr, Employee, Feiertag, Id, Project, ProjectSchedule, Protocol, ProtocolEntry, ProtocolTraktandum, ScheduleBaseline, ScheduleBreak,
+  ScheduleItem, ScheduleMarker, ScheduleSource, ScheduleTrack, ScheduleVariant, TimeEntry,
 } from "./types";
 
 const DAY = 86400000;
@@ -96,7 +97,8 @@ export function moveItem(it: ScheduleItem, days: number): ScheduleItem {
 /** Leeres Terminprogramm; `null`/alte Daten werden zu einer gültigen Form. */
 export function scheduleOf(project: Pick<Project, "schedule"> | undefined): ProjectSchedule {
   const s = project?.schedule;
-  return { items: Array.isArray(s?.items) ? s!.items : [], baselines: s?.baselines || {}, breaks: Array.isArray(s?.breaks) ? s!.breaks : [] };
+  return { items: Array.isArray(s?.items) ? s!.items : [], baselines: s?.baselines || {}, breaks: Array.isArray(s?.breaks) ? s!.breaks : [],
+    dismissed: Array.isArray(s?.dismissed) ? s!.dismissed : [] };
 }
 
 /** Elemente eines Programms (Planung oder Bau) in gespeicherter Reihenfolge. */
@@ -394,4 +396,178 @@ export function blockedDays(tasks: { start: DateStr; end: DateStr }[], blocked: 
   const hit = new Set<number>();
   for (const t of tasks) for (let d = dayNum(t.start); d <= dayNum(t.end); d++) if (off.has(d)) hit.add(d);
   return hit.size;
+}
+
+// ─── Protokolle ↔ Terminprogramm ──────────────────────────────────────────────
+//
+// Aus den Protokollen eines Projekts werden Vorschläge: offene Aufgaben mit Frist (▼), Beschlüsse mit
+// Datum (◇) und «nächste Sitzung» (●). Übernommene Einträge tragen `source`; ein Folgeprotokoll kopiert
+// offene Aufgaben mit neuer Id, darum wird eine Stelle über Art + Text wiedererkannt und das neueste
+// Protokoll ist massgebend (Status «erledigt», `linkedEntry`).
+
+/** HTML (Rich-Text) → einzeiliger Text. */
+export function plainText(html: string | undefined): string {
+  return (html || "").replace(/<br\s*\/?>/gi, " ").replace(/<[^>]+>/g, " ").replace(/&nbsp;/g, " ").replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/\s+/g, " ").trim();
+}
+
+/** Schlüssel zum Wiedererkennen einer Protokollstelle: Art + Text (klein, ohne Satzzeichen). */
+export const entryKey = (type: string, text: string | undefined): string =>
+  `${type}:${plainText(text).toLowerCase().replace(/[^\p{L}\p{N} ]+/gu, "").replace(/\s+/g, " ").trim()}`;
+
+/** Montag der ISO-Kalenderwoche `kw` im Jahr `year`. */
+export function isoWeekMonday(year: number, kw: number): DateStr {
+  const jan4 = Date.UTC(year, 0, 4);
+  const dow = (new Date(jan4).getUTCDay() + 6) % 7;
+  return numToDate(Math.round(jan4 / DAY) - dow + (kw - 1) * 7);
+}
+
+/** Frist einer Protokoll-Aufgabe: Datum oder Freitag der KW; null = keine Frist. */
+export function entryDue(e: Pick<ProtocolEntry, "dueDateType" | "dueDate" | "dueKW" | "dueYear">, fallbackYear: number): DateStr | null {
+  if ((e.dueDateType || "kw") === "datum") return e.dueDate ? e.dueDate.slice(0, 10) : null;
+  const kw = Number(e.dueKW);
+  if (!kw || kw < 1 || kw > 53) return null;
+  return addDays(isoWeekMonday(Number(e.dueYear) || fallbackYear, kw), 4);
+}
+
+/** Vorschlag aus einem Protokoll. */
+export interface ProtocolSuggestion {
+  /** stabil: «Art:Text» bzw. «sitzung:Datum» — für Ausblenden und Doppelte */
+  key: string;
+  kind: ScheduleSource["kind"];
+  date: DateStr;
+  label: string;
+  /** Verantwortliche/r laut Protokoll (Freitext/Kürzel) und passende/r Mitarbeitende/r */
+  responsible?: string;
+  assigneeId?: Id;
+  protocol: Pick<Protocol, "id" | "nummer" | "title" | "date" | "type">;
+  traktandum?: string;
+  entryId?: Id;
+  /** Vorschlag fürs Bauprogramm (Baubesprechung), sonst Planung */
+  track: ScheduleTrack;
+}
+
+/** Protokolle eines Projekts, neueste zuletzt. */
+const projectProtocols = (protocols: Protocol[], projectId: Id) =>
+  (protocols || []).filter(p => p.projectId === projectId).sort((a, b) => (a.date || "").localeCompare(b.date || ""));
+
+/** Mitarbeitende/r zu einem Verantwortlichen-Text (Name, Vorname oder Kürzel). */
+function matchEmployee(responsible: string | undefined, employees: Pick<Employee, "id" | "name">[]): Id | undefined {
+  const r = (responsible || "").trim().toLowerCase();
+  if (!r) return undefined;
+  const initials = (n: string) => n.split(/\s+/).filter(Boolean).map(w => w[0]).join("").toLowerCase();
+  return employees.find(e => e.name.toLowerCase() === r || initials(e.name) === r.replace(/[^a-zäöü]/g, "")
+    || e.name.toLowerCase().split(/\s+/).includes(r))?.id;
+}
+
+/**
+ * Vorschläge aus den Protokollen eines Projekts, die noch nicht im Terminprogramm stehen und nicht
+ * ausgeblendet sind: offene Aufgaben mit Frist, Beschlüsse mit Datum, nächste Sitzung (ab heute).
+ * Gleiche Stellen aus Folgeprotokollen erscheinen einmal (neuestes Protokoll).
+ */
+export function protocolSuggestions(
+  project: Pick<Project, "id" | "schedule">, protocols: Protocol[], employees: Pick<Employee, "id" | "name">[], today: DateStr,
+): ProtocolSuggestion[] {
+  const schedule = scheduleOf(project);
+  const taken = new Set<string>(schedule.dismissed || []);
+  for (const it of schedule.items) if (it.source) taken.add(it.source.kind === "sitzung" ? `sitzung:${it.start}` : it.source.text || "");
+  const byKey = new Map<string, ProtocolSuggestion>();
+  for (const p of projectProtocols(protocols, project.id)) {
+    const track: ScheduleTrack = /bau/i.test(p.type || "") && !/bauherr/i.test(p.type || "") ? "bau" : "planung";
+    const proto = { id: p.id, nummer: p.nummer, title: p.title, date: p.date, type: p.type };
+    const year = Number((p.date || today).slice(0, 4));
+    for (const t of p.traktanden || []) for (const e of t.items || []) {
+      if (e.type !== "aufgabe" && e.type !== "beschluss") continue;
+      const key = entryKey(e.type, e.text);
+      const label = plainText(e.text);
+      if (!label) continue;
+      if (e.type === "aufgabe") {
+        const due = entryDue(e, year);
+        // neuere Kopie ersetzt ältere (auch wenn sie inzwischen erledigt ist)
+        if (!due || e.status === "erledigt") { byKey.delete(key); continue; }
+        byKey.set(key, { key, kind: "aufgabe", date: due, label, responsible: e.responsible, assigneeId: matchEmployee(e.responsible, employees),
+          protocol: proto, traktandum: t.title, entryId: e.id, track });
+      } else if (e.date) {
+        byKey.set(key, { key, kind: "beschluss", date: e.date.slice(0, 10), label, protocol: proto, traktandum: t.title, entryId: e.id, track });
+      }
+    }
+    if (p.nextDate && p.nextDate >= today) {
+      const key = `sitzung:${p.nextDate.slice(0, 10)}`;
+      byKey.set(key, { key, kind: "sitzung", date: p.nextDate.slice(0, 10), label: `${p.type || "Sitzung"}`, protocol: proto, track });
+    }
+  }
+  return [...byKey.values()].filter(s => !taken.has(s.key)).sort((a, b) => a.date.localeCompare(b.date));
+}
+
+/** Übernimmt einen Vorschlag als Termin (Gruppe «Aus Protokollen»). */
+export function suggestionToItem(s: ProtocolSuggestion, track: ScheduleTrack, id: Id): ScheduleItem {
+  const marker: ScheduleMarker = s.kind === "aufgabe" ? "abgabe" : s.kind === "beschluss" ? "entscheid" : "sitzung";
+  const label = s.label.length > 70 ? `${s.label.slice(0, 68)}…` : s.label;
+  return {
+    id, label, kind: "milestone", marker, track, group: "Aus Protokollen", start: s.date, end: s.date,
+    assigneeId: s.assigneeId || null, deps: [],
+    note: [`Aus Protokoll ${s.protocol.nummer || s.protocol.title || ""} vom ${s.protocol.date || ""}`.trim(), s.traktandum ? `Traktandum: ${s.traktandum}` : "", s.responsible ? `Verantwortlich laut Protokoll: ${s.responsible}` : ""].filter(Boolean).join("\n"),
+    source: { protocolId: s.protocol.id, entryId: s.entryId, kind: s.kind, text: s.kind === "sitzung" ? undefined : s.key },
+  };
+}
+
+/**
+ * Massgebende Protokollstelle eines übernommenen Eintrags: die gleiche Stelle (Art + Text) im neuesten
+ * Protokoll des Projekts, sonst die ursprüngliche. null = Protokoll/Stelle gelöscht.
+ */
+export function linkedEntry(source: ScheduleSource | undefined, protocols: Protocol[], projectId: Id):
+  { protocol: Protocol; traktandum: ProtocolTraktandum; entry: ProtocolEntry } | null {
+  if (!source || source.kind === "sitzung") return null;
+  let found: { protocol: Protocol; traktandum: ProtocolTraktandum; entry: ProtocolEntry } | null = null;
+  for (const p of projectProtocols(protocols, projectId)) for (const t of p.traktanden || []) for (const e of t.items || []) {
+    if (e.id === source.entryId || (source.text && entryKey(e.type, e.text) === source.text)) found = { protocol: p, traktandum: t, entry: e };
+  }
+  return found;
+}
+
+/** true, wenn ein Eintrag erledigt ist: Protokoll-Aufgabe «erledigt» oder Fortschritt 100 %. */
+export function isDone(it: ScheduleItem, protocols: Protocol[], projectId: Id): boolean {
+  if (it.source?.kind === "aufgabe") {
+    const l = linkedEntry(it.source, protocols, projectId);
+    if (l) return l.entry.status === "erledigt";
+  }
+  return (it.progress || 0) >= 100;
+}
+
+/** Setzt den Status einer Protokoll-Aufgabe (massgebende Stelle) und gibt die neue Protokoll-Liste zurück. */
+export function setLinkedStatus(protocols: Protocol[], projectId: Id, source: ScheduleSource, done: boolean): Protocol[] {
+  const l = linkedEntry(source, protocols, projectId);
+  if (!l) return protocols;
+  return protocols.map(p => p.id !== l.protocol.id ? p : {
+    ...p, traktanden: p.traktanden.map(t => t.id !== l.traktandum.id ? t : {
+      ...t, items: t.items.map(e => e.id !== l.entry.id ? e : { ...e, status: done ? "erledigt" : "offen" }),
+    }),
+  });
+}
+
+/** Termine und Balken, die im Zeitraum [from, from + days) beginnen, enden oder laufen (für «Termine einfügen»). */
+export function upcomingItems(items: ScheduleItem[], from: DateStr, days: number): ScheduleItem[] {
+  const to = addDays(from, days - 1);
+  return items.filter(it => it.end >= from && it.start <= to).sort((a, b) => a.start.localeCompare(b.start));
+}
+
+/** Verschiebungen gegenüber dem eingefrorenen Stand (Ende, in Tagen), grösste zuerst. */
+export function baselineChanges(items: ScheduleItem[], baseline: ScheduleBaseline | undefined): { item: ScheduleItem; days: number }[] {
+  if (!baseline) return [];
+  return items.map(item => ({ item, days: baselineDelta(item, baseline) }))
+    .filter((x): x is { item: ScheduleItem; days: number } => x.days !== null && x.days !== 0)
+    .sort((a, b) => Math.abs(b.days) - Math.abs(a.days));
+}
+
+/**
+ * Sitzungen einer Terminserie mit den Protokollen abgleichen: zu jedem Termin das Protokoll desselben
+ * Projekts in ±3 Tagen («gehalten»), sonst «kommend» (ab heute) bzw. «ohne Protokoll».
+ */
+export function seriesSessions(it: ScheduleItem, protocols: Protocol[], projectId: Id, today: DateStr):
+  { date: DateStr; state: "gehalten" | "kommend" | "ohne"; protocol?: Protocol }[] {
+  const ps = projectProtocols(protocols, projectId).filter(p => p.date);
+  return seriesDates(it).map(date => {
+    const protocol = ps.find(p => Math.abs(dayNum(p.date) - dayNum(date)) <= 3);
+    return { date, protocol, state: protocol ? "gehalten" : date >= today ? "kommend" : "ohne" };
+  });
 }

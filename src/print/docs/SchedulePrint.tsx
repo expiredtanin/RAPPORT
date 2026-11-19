@@ -3,7 +3,7 @@
 // Blattgrösse, Massstab und Zeitraum kommen aus `layout` (scheduleLayout.ts, gewählt in PrintView).
 
 import { GanttChart, ScheduleLegend } from "../../views/schedule/GanttChart";
-import { TRACK_LABELS, glyphOf } from "../../schedule";
+import { TRACK_LABELS, glyphOf, isDone, seriesSessions } from "../../schedule";
 import { formatSenderAddress, localISODate } from "../../utils";
 import { StudioLogo } from "../../components/UI";
 import type { AppData, Project, ScheduleBaseline, ScheduleBreak, ScheduleItem, ScheduleTrack, Settings } from "../../types";
@@ -47,6 +47,8 @@ export function SchedulePrint({ content, settings, layout }: { content: Content;
         today={localISODate()} holidays={holidays} critical={critical.length ? new Set(critical) : undefined}
         baseline={baseline} breaks={breaks} collapsible={false}
         rowHeight={rowHeight}
+        isDone={it => isDone(it, data.protocols || [], project.id)}
+        sessions={it => seriesSessions(it, data.protocols || [], project.id, localISODate())}
         renderMeta={it => {
           const emp = employees.find(e => e.id === it.assigneeId);
           const firm = (data.persons || []).find(p => p.id === it.contractorId);

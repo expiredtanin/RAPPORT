@@ -16,6 +16,7 @@ import {
   addDays, baselineDelta, constructionTemplate, criticalPath, dayNum, dependencyConflicts, durationDays, formatDuration,
   holidayDates, moveItem, phaseProgress, planningTemplate, scheduleOf, scheduleRange, shiftSuccessors, trackItems, wouldCreateCycle,
   breaksOf, glyphOf, markerOf, seriesDates, SCHEDULE_MARKERS, SCHEDULE_VARIANTS,
+  isDone, linkedEntry, protocolSuggestions, seriesSessions, setLinkedStatus, suggestionToItem, type ProtocolSuggestion,
 } from "../../schedule";
 import { Modal, FormField, DateInput } from "../../components/UI";
 import { useConfirm } from "../../hooks/useConfirm";
@@ -86,6 +87,28 @@ export function ScheduleEditor({ project, data, update, setPrintContent, canEdit
     save({ ...schedule, items: [...schedule.items.filter(it => it.track !== track), ...trackList] });
   };
   const replaceItem = (it: ScheduleItem) => saveTrack(items.map(x => x.id === it.id ? it : x));
+  const protocols = data.protocols || [];
+  // Vorschläge aus den Protokollen; «nächste Sitzung» entfällt, wenn eine Terminserie den Tag schon abdeckt
+  const seriesAll = schedule.items.filter(it => it.variant === "serie");
+  const suggestions = protocolSuggestions(project, protocols, data.employees || [], today).filter(s =>
+    s.kind !== "sitzung" || !seriesAll.some(se => seriesDates(se).some(d => Math.abs(dayNum(d) - dayNum(s.date)) <= 3)));
+  const [suggestOpen, setSuggestOpen] = useState(true);
+  const takeSuggestions = (list: ProtocolSuggestion[]) => {
+    saveTrack([...items, ...list.map(s => suggestionToItem(s, track, generateId()))]);
+  };
+  const dismissSuggestion = (s: ProtocolSuggestion) => save({ ...schedule, dismissed: [...(schedule.dismissed || []), s.key] });
+  const openProtocol = (id: Id) => {
+    window.__openProtokoll = id;
+    window.dispatchEvent(new CustomEvent("openProtokoll", { detail: { id } }));
+  };
+  /** Erledigt setzen: übernommene Protokoll-Aufgabe im Protokoll, sonst Fortschritt 100 % */
+  const setDone = (it: ScheduleItem, done: boolean) => {
+    if (it.source?.kind === "aufgabe" && linkedEntry(it.source, protocols, project.id)) {
+      update("protocols", prev => setLinkedStatus(prev || [], project.id, it.source!, done));
+    } else {
+      replaceItem({ ...it, progress: done ? 100 : 0 });
+    }
+  };
 
   const canLink = (fromId: Id, toId: Id) =>
     !wouldCreateCycle(items, fromId, toId) && !(items.find(it => it.id === toId)?.deps || []).some(d => d.fromId === fromId);
@@ -268,6 +291,10 @@ export function ScheduleEditor({ project, data, update, setPrintContent, canEdit
         </>}
       </div>
 
+      {canEdit && suggestions.length > 0 && (
+        <SuggestionsPanel suggestions={suggestions} track={track} open={suggestOpen} setOpen={setSuggestOpen}
+          onTake={s => takeSuggestions([s])} onTakeAll={() => takeSuggestions(suggestions)} onDismiss={dismissSuggestion} onOpenProtocol={openProtocol} />
+      )}
       {items.length === 0 ? (
         <div style={{ padding: "30px 20px", display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center" }}>
           <div style={{ fontSize: 14, color: "var(--text)", marginBottom: 6 }}>
@@ -320,6 +347,12 @@ export function ScheduleEditor({ project, data, update, setPrintContent, canEdit
                 {selFloat !== undefined && <span style={{ marginLeft: 10, color: selFloat <= 0 ? "var(--negative)" : "var(--text4)" }}>{selFloat <= 0 ? "kritisch" : `Puffer ${formatDuration(selFloat)}`}</span>}
               </span>
               {canEdit && <>
+                {selected.kind === "milestone" && (() => {
+                  const done = isDone(selected, protocols, project.id);
+                  return <button className="btn btn-ghost" style={{ ...smallBtn, flexShrink: 0, color: done ? "var(--text3)" : "var(--positive)" }}
+                    title={selected.source?.kind === "aufgabe" ? "wird auch im Protokoll gesetzt" : undefined}
+                    onClick={() => setDone(selected, !done)}>{done ? "Wieder offen" : "✓ Erledigt"}</button>;
+                })()}
                 <button className="btn btn-ghost" style={{ ...smallBtn, flexShrink: 0 }} onClick={() => setEditing({ item: selected, isNew: false })}>Bearbeiten</button>
                 <button className="btn btn-ghost" style={{ ...smallBtn, flexShrink: 0 }} onClick={() => addItem("task")}>+ Folgeaufgabe</button>
                 <button className="btn btn-ghost" style={{ ...smallBtn, flexShrink: 0, color: "var(--negative)" }} onClick={() => removeItem(selected)}>Löschen</button>
@@ -353,6 +386,9 @@ export function ScheduleEditor({ project, data, update, setPrintContent, canEdit
             snapDays={zoom === "tag" ? 1 : 7}
             renderMeta={meta}
             describe={describe}
+            isDone={it => isDone(it, protocols, project.id)}
+            sessions={it => seriesSessions(it, protocols, project.id, today)}
+            onOpenProtocol={openProtocol}
           />
           <div style={{ display: "flex", gap: 12, alignItems: "flex-start", marginTop: 10 }}>
             <div style={{ flex: 1 }}>
@@ -375,7 +411,9 @@ export function ScheduleEditor({ project, data, update, setPrintContent, canEdit
 
       {editing && (
         <ItemDialog
-          item={editing.item} isNew={editing.isNew} items={items} track={track} data={data}
+          item={editing.item} isNew={editing.isNew} items={items} track={track} data={data} projectId={project.id}
+          onOpenProtocol={id => { setEditing(null); openProtocol(id); }}
+          onSetLinkedDone={(src, done) => update("protocols", prev => setLinkedStatus(prev || [], project.id, src, done))}
           onClose={() => setEditing(null)}
           onSave={saveEditing}
           onDelete={() => removeItem(editing.item)}
@@ -387,8 +425,12 @@ export function ScheduleEditor({ project, data, update, setPrintContent, canEdit
 }
 
 /** Dialog «Eintrag bearbeiten»: Stammdaten, Termine, Zuständigkeit, Vorgänger und Nachfolger. */
-function ItemDialog({ item, isNew, items, track, data, onClose, onSave, onDelete, onMove }: {
+function ItemDialog({ item, isNew, items, track, data, projectId, onClose, onSave, onDelete, onMove, onOpenProtocol, onSetLinkedDone }: {
   item: ScheduleItem;
+  projectId: Id;
+  onOpenProtocol: (id: Id) => void;
+  /** Status der übernommenen Protokoll-Aufgabe setzen (sofort, im Protokoll) */
+  onSetLinkedDone: (source: NonNullable<ScheduleItem["source"]>, done: boolean) => void;
   isNew: boolean;
   items: ScheduleItem[];
   track: ScheduleTrack;
@@ -522,6 +564,29 @@ function ItemDialog({ item, isNew, items, track, data, onClose, onSave, onDelete
           </select>
         </FormField>
       </div>
+      {/* Herkunft aus einem Protokoll und erledigt */}
+      {(() => {
+        const linked = f.source ? linkedEntry(f.source, data.protocols || [], projectId) : null;
+        const proto = f.source ? (data.protocols || []).find(p => p.id === (linked?.protocol.id || f.source!.protocolId)) : undefined;
+        const done = linked ? linked.entry.status === "erledigt" : (f.progress || 0) >= 100;
+        if (art !== "milestone" && !f.source) return null;
+        return (
+          <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", padding: "8px 12px", marginBottom: 12, borderRadius: 6, background: "var(--surface2)", fontSize: 12 }}>
+            <label style={{ display: "flex", gap: 6, alignItems: "center", cursor: "pointer" }}
+              title={linked ? "wird sofort auch im Protokoll gesetzt" : undefined}>
+              <input type="checkbox" checked={done} style={{ width: "auto" }}
+                onChange={e => linked ? onSetLinkedDone(f.source!, e.target.checked) : setF({ ...f, progress: e.target.checked ? 100 : 0 })} />
+              erledigt{linked ? " (auch im Protokoll)" : ""}
+            </label>
+            {f.source && (proto ? <>
+              <span style={{ color: "var(--text3)", marginLeft: "auto" }}>
+                Aus Protokoll {proto.nummer || proto.title} vom {fmtDate(proto.date)}{linked && linked.protocol.id !== f.source.protocolId ? " (neueste Fassung)" : ""}
+              </span>
+              <button type="button" className="btn btn-ghost" style={{ fontSize: 11, padding: "3px 10px" }} onClick={() => onOpenProtocol(proto.id)}>Protokoll öffnen</button>
+            </> : <span style={{ color: "var(--text4)", marginLeft: "auto" }}>Ursprüngliches Protokoll gelöscht</span>)}
+          </div>
+        );
+      })()}
       <FormField label="Notiz">
         <textarea value={f.note || ""} onChange={e => setF({ ...f, note: e.target.value })} rows={2} placeholder="erscheint im Tooltip" />
       </FormField>
@@ -650,3 +715,57 @@ function BreaksDialog({ breaks, track, range, onClose, onSave }: {
     </Modal>
   );
 }
+
+/** Vorschläge aus den Protokollen des Projekts: übernehmen (als Termin ins aktuelle Programm) oder ausblenden. */
+function SuggestionsPanel({ suggestions, track, open, setOpen, onTake, onTakeAll, onDismiss, onOpenProtocol }: {
+  suggestions: ProtocolSuggestion[];
+  track: ScheduleTrack;
+  open: boolean;
+  setOpen: (o: boolean) => void;
+  onTake: (s: ProtocolSuggestion) => void;
+  onTakeAll: () => void;
+  onDismiss: (s: ProtocolSuggestion) => void;
+  onOpenProtocol: (id: Id) => void;
+}) {
+  const kindInfo: Record<ProtocolSuggestion["kind"], { glyph: string; label: string }> = {
+    aufgabe: { glyph: "▼", label: "Frist" }, beschluss: { glyph: "◇", label: "Beschluss" }, sitzung: { glyph: "●", label: "Sitzung" },
+  };
+  return (
+    <div style={{ margin: "12px 16px 0", border: "1px solid var(--border)", borderRadius: 6, background: "var(--info-bg)" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", cursor: "pointer" }} onClick={() => setOpen(!open)}>
+        <span className="msr" style={{ fontSize: 17, color: "var(--info)" }}>description</span>
+        <span style={{ fontSize: 12, fontWeight: 600, color: "var(--info)" }}>
+          {suggestions.length} {suggestions.length === 1 ? "Vorschlag" : "Vorschläge"} aus Protokollen
+        </span>
+        <span style={{ fontSize: 11, color: "var(--text4)" }}>Fristen, Beschlüsse und nächste Sitzungen dieses Projekts</span>
+        <div style={{ flex: 1 }} />
+        {open && suggestions.length > 1 && (
+          <button className="btn btn-ghost" style={{ fontSize: 11, padding: "3px 10px" }} onClick={e => { e.stopPropagation(); onTakeAll(); }}>Alle übernehmen</button>
+        )}
+        <span style={{ fontSize: 11, color: "var(--text4)" }}>{open ? "▾" : "▸"}</span>
+      </div>
+      {open && (
+        <div style={{ borderTop: "1px solid var(--border)", maxHeight: 260, overflowY: "auto", background: "var(--surface)" }}>
+          {suggestions.map(s => (
+            <div key={s.key} style={{ display: "flex", gap: 10, alignItems: "center", padding: "6px 12px", borderBottom: "1px solid var(--border2, var(--border))", fontSize: 12 }}>
+              <span title={kindInfo[s.kind].label} style={{ width: 14, textAlign: "center" }}>{kindInfo[s.kind].glyph}</span>
+              <span style={{ width: 78, color: "var(--text3)" }}>{fmtDate(s.date)}</span>
+              <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={s.label}>
+                <span style={{ color: "var(--text4)" }}>{kindInfo[s.kind].label}: </span>{s.label}
+              </span>
+              {s.responsible && <span style={{ color: "var(--text4)", fontSize: 11 }}>{s.responsible}</span>}
+              <button type="button" onClick={() => onOpenProtocol(s.protocol.id)} title="Protokoll öffnen"
+                style={{ border: "none", background: "none", color: "var(--info)", fontSize: 11, cursor: "pointer", padding: 0, fontFamily: "inherit", whiteSpace: "nowrap" }}>
+                {s.protocol.nummer || s.protocol.title || fmtDate(s.protocol.date)}{s.traktandum ? ` · ${s.traktandum}` : ""}
+              </button>
+              {s.track !== track && <span style={{ fontSize: 10, color: "var(--text4)" }} title="Herkunft: Baubesprechung bzw. Planungssitzung">eher {s.track === "bau" ? "Bau" : "Planung"}</span>}
+              <button className="btn btn-ghost" style={{ fontSize: 11, padding: "3px 10px" }} onClick={() => onTake(s)}>Übernehmen</button>
+              <button className="btn btn-ghost" style={{ fontSize: 11, padding: "3px 8px" }} onClick={() => onDismiss(s)} title="Nicht mehr vorschlagen">✕</button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+

@@ -240,6 +240,18 @@ export interface ScheduleItem {
   progress?: number;
   note?: string;
   deps?: ScheduleDependency[];
+  /** übernommen aus einem Protokoll (Aufgabe, Beschluss oder nächste Sitzung), siehe schedule.ts `protocolSuggestions` */
+  source?: ScheduleSource;
+}
+
+/** Herkunft eines Eintrags aus einem Protokoll. `text` hält Art+Text der Stelle, damit Kopien in Folgeprotokollen gefunden werden. */
+export interface ScheduleSource {
+  protocolId: Id;
+  /** Eintrag im Protokoll; fehlt bei «nächste Sitzung» */
+  entryId?: Id;
+  kind: "aufgabe" | "beschluss" | "sitzung";
+  /** normalisierter Text der Stelle (Erkennung in Folgeprotokollen) */
+  text?: string;
 }
 
 /** Eingefrorener Stand eines Terminprogramms zum Vergleich (Soll) mit dem aktuellen Stand. */
@@ -264,6 +276,8 @@ export interface ProjectSchedule {
   baselines?: Partial<Record<ScheduleTrack, ScheduleBaseline>>;
   /** Bauferien/Unterbrüche */
   breaks?: ScheduleBreak[];
+  /** ausgeblendete Vorschläge aus Protokollen (Schlüssel aus `protocolSuggestions`) */
+  dismissed?: string[];
 }
 
 export interface Project {

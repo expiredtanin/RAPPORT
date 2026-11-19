@@ -22,6 +22,7 @@ import { PROTOKOLL_TYPES } from "../constants";
 import { generateId, formatDate, htmlToText, initialsOf, participantKuerzel, responsibleLabel, protocolApproval, nextProtoSeq, applyProtoNumberFormat, localISODate } from "../utils";
 import { Header, Modal, FormField, RichEditor, DateInput, ShareButton, SortTh } from "../components/UI";
 import { useConfirm } from "../hooks/useConfirm";
+import { baselineChanges, glyphOf, scheduleOf, TRACK_LABELS, trackItems, upcomingItems } from "../schedule";
 import type { AppData, Protocol, ProtocolApproval, ProtocolEntry, ProtocolParticipant, ProtocolTraktandum, ViewProps } from "../types";
 
 /** Auswahl im Dialog «Folgesitzung erstellen»: pro Traktandum, welche Einträge übernommen werden. */
@@ -424,6 +425,32 @@ function ProtokollDetail({ protokoll, data, onBack, onSave, onDelete, setPrintCo
     setP(prev => ({ ...prev, traktanden: [...(prev.traktanden || []), { id: generateId(), nr: String(maxNr + 1), title: "", items: [] }] }));
   };
 
+  /**
+   * Terminprogramm des Projekts als Traktandum «Terminprogramm»: Termine der nächsten 4 Wochen ab Sitzungsdatum
+   * und, falls ein Stand eingefroren ist, die Verschiebungen dagegen (schedule.ts).
+   */
+  const projectSchedule = scheduleOf((data.projects || []).find(x => x.id === p.projectId));
+  const insertSchedule = () => {
+    const from = p.date || localISODate();
+    const esc = (t: string) => t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    const fmt = (d: string) => `${d.slice(8, 10)}.${d.slice(5, 7)}.`;
+    const entries: ProtocolEntry[] = upcomingItems(projectSchedule.items, from, 28).map(it => ({
+      id: generateId(), type: "info",
+      text: esc(`${glyphOf(it) || "▬"} ${it.kind === "milestone" ? fmt(it.start) : `${fmt(it.start)} – ${fmt(it.end)}`} ${it.label}${projectSchedule.items.some(o => o.track !== it.track) ? ` (${it.track === "bau" ? "Bau" : "Planung"})` : ""}`),
+    }));
+    if (!entries.length) entries.push({ id: generateId(), type: "info", text: "Keine Termine in den nächsten 4 Wochen." });
+    for (const t of ["planung", "bau"] as const) {
+      const base = projectSchedule.baselines?.[t];
+      const ch = baselineChanges(trackItems(projectSchedule, t), base).slice(0, 8);
+      if (base && ch.length) entries.push({
+        id: generateId(), type: "info",
+        text: esc(`${TRACK_LABELS[t]}: Verschiebungen gegenüber Stand vom ${formatDate(base.savedAt.slice(0, 10))}: ${ch.map(c => `${c.item.label} ${c.days > 0 ? "+" : ""}${c.days} T`).join(", ")}`),
+      });
+    }
+    const maxNr = Math.max(0, ...(p.traktanden || []).map(t => parseInt(t.nr) || 0));
+    setP(prev => ({ ...prev, traktanden: [...(prev.traktanden || []), { id: generateId(), nr: String(maxNr + 1), title: "Terminprogramm", items: entries }] }));
+  };
+
   const setTraktandum = (id: string, changes: Partial<ProtocolTraktandum>) =>
     setP(prev => ({ ...prev, traktanden: (prev.traktanden || []).map(t => t.id === id ? { ...t, ...changes } : t) }));
 
@@ -690,7 +717,15 @@ function ProtokollDetail({ protokoll, data, onBack, onSave, onDelete, setPrintCo
               );
             })}
 
-            <button className="btn btn-ghost" onClick={addTraktandum}>+ Traktandum hinzufügen</button>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <button className="btn btn-ghost" onClick={addTraktandum}>+ Traktandum hinzufügen</button>
+              {projectSchedule.items.length > 0 && (
+                <button className="btn btn-ghost" onClick={insertSchedule}
+                  title="Termine der nächsten 4 Wochen ab Sitzungsdatum aus dem Terminprogramm, dazu Verschiebungen gegenüber dem eingefrorenen Stand">
+                  + Termine aus Terminprogramm
+                </button>
+              )}
+            </div>
           </div>
         </div>
 

@@ -5,9 +5,10 @@ import {
   addDays, formatDuration, constructionTemplate, criticalPath, dayNum, dependencyConflicts, durationDays, groupSpans,
   phaseProgress, planningTemplate, scheduleOf, shiftSuccessors, wouldCreateCycle, baselineDelta, overlapDays, blockedDays,
   markerOf, glyphOf, seriesDates, breaksOf,
+  entryDue, isoWeekMonday, protocolSuggestions, suggestionToItem, linkedEntry, isDone, setLinkedStatus, seriesSessions, upcomingItems, baselineChanges,
 } from "./schedule";
 import { SIA_PHASES } from "./constants";
-import type { ScheduleItem, TimeEntry } from "./types";
+import type { Protocol, ScheduleItem, TimeEntry } from "./types";
 
 const task = (id: string, start: string, end: string, deps: ScheduleItem["deps"] = []): ScheduleItem =>
   ({ id, label: id, kind: "task", track: "planung", start, end, deps });
@@ -118,8 +119,8 @@ describe("Vorlagen", () => {
 
 describe("scheduleOf, Soll/Ist, Vergleich", () => {
   it("macht aus fehlenden Daten ein leeres Programm", () => {
-    expect(scheduleOf(undefined)).toEqual({ items: [], baselines: {}, breaks: [] });
-    expect(scheduleOf({ schedule: null })).toEqual({ items: [], baselines: {}, breaks: [] });
+    expect(scheduleOf(undefined)).toEqual({ items: [], baselines: {}, breaks: [], dismissed: [] });
+    expect(scheduleOf({ schedule: null })).toEqual({ items: [], baselines: {}, breaks: [], dismissed: [] });
   });
 
   it("phaseProgress: Zeitanteil bis heute und Stunden gegen Phasenbudget", () => {
@@ -173,6 +174,68 @@ describe("Symbole, Terminserien, Unterbrüche", () => {
     expect(breaksOf(s, "bau").map(b => b.id)).toEqual(["a", "b"]);
     expect(breaksOf(s, "planung").map(b => b.id)).toEqual(["b"]);
     expect(scheduleOf({ schedule: { items: [] } }).breaks).toEqual([]);
+  });
+});
+
+describe("Protokolle ↔ Terminprogramm", () => {
+  const proto = (id: string, date: string, items: Protocol["traktanden"][number]["items"], extra: Partial<Protocol> = {}): Protocol =>
+    ({ id, title: "", type: "Baubesprechung", date, projectId: "p", nummer: id, participants: [], traktanden: [{ id: `t-${id}`, nr: "1", title: "Termine", items }], ...extra }) as Protocol;
+  const emp = [{ id: "e1", name: "Julian Roth" }, { id: "e2", name: "Laura Meier" }];
+
+  it("isoWeekMonday/entryDue: KW → Freitag, Datum direkt, ohne Frist null", () => {
+    expect(isoWeekMonday(2027, 1)).toBe("2027-01-04");
+    expect(isoWeekMonday(2026, 53)).toBe("2026-12-28");
+    expect(entryDue({ dueDateType: "kw", dueKW: 12, dueYear: 2027 }, 2026)).toBe("2027-03-26");
+    expect(entryDue({ dueDateType: "datum", dueDate: "2027-02-01" }, 2026)).toBe("2027-02-01");
+    expect(entryDue({ dueDateType: "kw", dueKW: "" }, 2026)).toBeNull();
+  });
+
+  it("Vorschläge: offene Aufgaben mit Frist, Beschlüsse, nächste Sitzung; Folgeprotokoll-Kopien nur einmal", () => {
+    const a = { id: "a1", type: "aufgabe", text: "<p>Muster Klinker bestellen</p>", responsible: "JR", dueDateType: "kw", dueKW: 2, dueYear: 2027, status: "offen" };
+    const protocols = [
+      proto("P1", "2026-12-01", [a, { id: "b1", type: "beschluss", text: "Variante B", date: "2026-12-01" }, { id: "i1", type: "info", text: "Rohbau im Plan" }], { nextDate: "2026-12-15" }),
+      // Folgeprotokoll: gleiche Aufgabe kopiert (neue Id), Frist verschoben
+      proto("P2", "2026-12-15", [{ ...a, id: "a2", dueKW: 4 }], { nextDate: "2027-01-12" }),
+      proto("X", "2026-12-15", [a], { projectId: "anderes" }),
+    ];
+    const s = protocolSuggestions({ id: "p" }, protocols, emp, "2026-12-10");
+    expect(s.map(x => `${x.kind}:${x.date}`)).toEqual(["beschluss:2026-12-01", "sitzung:2026-12-15", "aufgabe:2027-01-29", "sitzung:2027-01-12"].sort((p, q) => p.slice(-10).localeCompare(q.slice(-10))));
+    const auf = s.find(x => x.kind === "aufgabe")!;
+    expect(auf).toMatchObject({ label: "Muster Klinker bestellen", assigneeId: "e1", entryId: "a2", track: "bau" });
+    // Übernommen → kein Vorschlag mehr; ausgeblendet ebenso
+    const item = suggestionToItem(auf, "bau", "n1");
+    expect(item).toMatchObject({ kind: "milestone", marker: "abgabe", start: "2027-01-29", group: "Aus Protokollen", assigneeId: "e1" });
+    const rest = protocolSuggestions({ id: "p", schedule: { items: [item], dismissed: ["sitzung:2026-12-15"] } }, protocols, emp, "2026-12-10");
+    expect(rest.map(x => x.kind).sort()).toEqual(["beschluss", "sitzung"]);
+    // Erledigte Aufgabe im neuesten Protokoll → kein Vorschlag
+    const done = [...protocols.slice(0, 2), proto("P3", "2027-01-12", [{ ...a, id: "a3", status: "erledigt" }])];
+    expect(protocolSuggestions({ id: "p" }, done, emp, "2026-12-10").some(x => x.kind === "aufgabe")).toBe(false);
+  });
+
+  it("Status: massgebend ist die Stelle im neuesten Protokoll, Setzen schreibt dorthin", () => {
+    const a = { id: "a1", type: "aufgabe", text: "Muster bestellen", dueDateType: "datum", dueDate: "2027-01-10", status: "offen" };
+    const protocols = [proto("P1", "2026-12-01", [a]), proto("P2", "2026-12-15", [{ ...a, id: "a2" }])];
+    const item = suggestionToItem(protocolSuggestions({ id: "p" }, protocols, emp, "2026-12-01")[0], "bau", "n1");
+    expect(linkedEntry(item.source, protocols, "p")!.protocol.id).toBe("P2");
+    expect(isDone(item, protocols, "p")).toBe(false);
+    const next = setLinkedStatus(protocols, "p", item.source!, true);
+    expect(next[1].traktanden[0].items[0].status).toBe("erledigt");
+    expect(next[0]).toBe(protocols[0]);
+    expect(isDone(item, next, "p")).toBe(true);
+  });
+
+  it("seriesSessions: Protokoll in ±3 Tagen = gehalten, sonst kommend/ohne", () => {
+    const serie = { start: "2026-12-01", end: "2026-12-29", repeatDays: 14 } as ScheduleItem;
+    const r = seriesSessions(serie, [proto("P1", "2026-12-02", [])], "p", "2026-12-20");
+    expect(r.map(x => x.state)).toEqual(["gehalten", "ohne", "kommend"]);
+    expect(r[0].protocol!.id).toBe("P1");
+  });
+
+  it("upcomingItems und baselineChanges", () => {
+    const items = [task("a", "2026-12-01", "2026-12-20"), task("b", "2027-02-01", "2027-02-10"), ms("m", "2026-12-24")];
+    expect(upcomingItems(items, "2026-12-15", 28).map(i => i.id)).toEqual(["a", "m"]);
+    const ch = baselineChanges(items, { savedAt: "", items: [{ id: "a", start: "2026-12-01", end: "2026-12-10" }, { id: "m", start: "2026-12-24", end: "2026-12-24" }] });
+    expect(ch.map(c => [c.item.id, c.days])).toEqual([["a", 10]]);
   });
 });
 

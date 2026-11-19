@@ -39,8 +39,8 @@ function markerPath(m: ScheduleMarker, cx: number, cy: number, s: number): strin
 }
 
 /** Termin-Symbol als SVG-Pfad (Entscheid hohl). */
-function Marker({ m, cx, cy, s, color, stroke, strokeWidth }: { m: ScheduleMarker; cx: number; cy: number; s: number; color: string; stroke?: string; strokeWidth?: number }) {
-  const hollow = m === "entscheid";
+function Marker({ m, cx, cy, s, color, stroke, strokeWidth, open }: { m: ScheduleMarker; cx: number; cy: number; s: number; color: string; stroke?: string; strokeWidth?: number; open?: boolean }) {
+  const hollow = m === "entscheid" || open;
   return <path d={markerPath(m, cx, cy, s)} fill={hollow ? "var(--surface)" : color} stroke={hollow ? color : stroke || "var(--surface)"}
     strokeWidth={hollow ? Math.max(1.8, strokeWidth || 0) : strokeWidth ?? 1} strokeLinejoin="round" />;
 }
@@ -113,7 +113,7 @@ type Row = { type: "group"; group: string; start: DateStr; end: DateStr; count: 
 export function GanttChart({
   items, dayWidth, fit = false, labelWidth = 300, labelTitle = "Aufgabe", from, to, today, holidays = [], critical,
   baseline, conflicts = [], breaks = [], selectedId, onSelect, onOpen, onChange, onLink, canLink, renderMeta, describe, barColor,
-  snapDays = 1, collapsible = true, rowHeight,
+  snapDays = 1, collapsible = true, rowHeight, isDone, sessions, onOpenProtocol,
 }: {
   items: ScheduleItem[];
   /** Breite eines Tages in px (ohne `fit`) */
@@ -159,6 +159,12 @@ export function GanttChart({
   collapsible?: boolean;
   /** Zeilenhöhe in px (Standard 28, Druck kleiner) */
   rowHeight?: number;
+  /** erledigt (z.B. Protokoll-Aufgabe erledigt): Termin abgeschwächt mit ✓ */
+  isDone?: (item: ScheduleItem) => boolean;
+  /** Terminserie: Sitzungen mit Protokoll-Abgleich (gehalten = gefüllt + klickbar, kommend = hohl, ohne = blass) */
+  sessions?: (item: ScheduleItem) => { date: DateStr; state: "gehalten" | "kommend" | "ohne"; protocol?: { id: Id; nummer?: string; date: DateStr } }[];
+  /** Klick auf eine gehaltene Sitzung: Protokoll öffnen */
+  onOpenProtocol?: (protocolId: Id) => void;
 }) {
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [drag, setDrag] = useState<Drag | null>(null);
@@ -395,7 +401,8 @@ export function GanttChart({
               boxShadow: r.item.id === selectedId ? "inset 3px 0 0 var(--accent)" : undefined,
               cursor: onSelect ? "pointer" : "default" }}>
             <span style={{ color: r.item.kind === "milestone" ? "var(--text3)" : "var(--text)", fontStyle: r.item.kind === "milestone" ? "italic" : "normal", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>
-              {glyphOf(r.item) ? <span style={{ fontStyle: "normal", color: "var(--text3)", marginRight: 4 }}>{glyphOf(r.item)}</span> : null}{r.item.bkp ? <span style={{ color: "var(--text4)" }}>{r.item.bkp} </span> : null}{r.item.label}
+              {isDone?.(r.item) ? <span style={{ fontStyle: "normal", color: "var(--positive)", marginRight: 4 }} title="erledigt">✓</span>
+                : glyphOf(r.item) ? <span style={{ fontStyle: "normal", color: "var(--text3)", marginRight: 4 }}>{glyphOf(r.item)}</span> : null}{r.item.bkp ? <span style={{ color: "var(--text4)" }}>{r.item.bkp} </span> : null}{r.item.label}
             </span>
             {renderMeta?.(r.item)}
           </div>
@@ -524,7 +531,7 @@ export function GanttChart({
             if (it.kind === "milestone") {
               const cx = x(it.start), cy = y + ROW_H / 2, s = SYM;
               return (
-                <g key={it.id} data-item={it.id} className={cls} style={{ cursor: onChange ? (dragging ? "grabbing" : "grab") : "pointer" }}
+                <g key={it.id} data-item={it.id} className={cls} opacity={isDone?.(it) ? 0.45 : 1} style={{ cursor: onChange ? (dragging ? "grabbing" : "grab") : "pointer" }}
                   onPointerDown={e => startDrag(e, it.id, "move")} onDoubleClick={() => onOpen?.(it.id)} onPointerEnter={() => setHoverRow(i)}>
                   <title>{tip(it)}</title>
                   {base && <path d={`M${x(base.start)},${cy - 4} l4,4 l-4,4 l-4,-4 z`} fill="var(--text4)" opacity={0.5} />}
@@ -533,7 +540,7 @@ export function GanttChart({
                   <Marker m={markerOf(it)} cx={cx} cy={cy} s={s} color={isCrit ? "var(--negative)" : "var(--text)"} />
                   {onLink && <circle className="gantt-knob" cx={cx + s + 6} cy={cy} r={4} fill="var(--surface)" stroke="var(--text3)" strokeWidth={1.2} style={{ cursor: "crosshair" }}
                     onPointerDown={e => startDrag(e, it.id, "link")}><title>Ziehen: Pfeil zu einer Folgeaufgabe</title></circle>}
-                  <text x={cx + s + (onLink ? 14 : 5)} y={cy + 3.5} fontSize={10} fill="var(--text3)" pointerEvents="none">{dragging ? fmtLong(it.start) : fmtShort(it.start)}</text>
+                  <text x={cx + s + (onLink ? 14 : 5)} y={cy + 3.5} fontSize={10} fill="var(--text3)" pointerEvents="none">{isDone?.(it) ? "✓ " : ""}{dragging ? fmtLong(it.start) : fmtShort(it.start)}</text>
                 </g>
               );
             }
@@ -551,8 +558,11 @@ export function GanttChart({
                   // Terminserie: dünne Linie über den Zeitraum, Symbol an jedem Termin
                   <g pointerEvents="none">
                     <line x1={bx} x2={bx + bw} y1={y + ROW_H / 2} y2={y + ROW_H / 2} stroke={sel ? "var(--text)" : isCrit ? "var(--negative)" : "var(--text4)"} strokeWidth={sel ? 1.6 : 1} />
-                    {seriesDates(it).map(d => (
-                      <Marker key={d} m={markerOf(it)} cx={x(d) + dw / 2} cy={y + ROW_H / 2} s={dw * 7 >= 20 ? 4.5 : 3.2} color={isCrit ? "var(--negative)" : "var(--text)"} />
+                    {(sessions ? sessions(it) : seriesDates(it).map(date => ({ date, state: undefined, protocol: undefined }))).map(ses => (
+                      <g key={ses.date} opacity={ses.state === "ohne" ? 0.35 : 1}>
+                        <Marker m={markerOf(it)} cx={x(ses.date) + dw / 2} cy={y + ROW_H / 2} s={dw * 7 >= 20 ? 4.5 : 3.2}
+                          color={isCrit ? "var(--negative)" : "var(--text)"} open={ses.state === "kommend"} strokeWidth={ses.state === "kommend" ? 1.4 : undefined} />
+                      </g>
                     ))}
                   </g>
                 ) : <>
@@ -566,6 +576,13 @@ export function GanttChart({
                 </>}
                 <rect x={hitX} y={by - 2} width={hitW} height={bh + 4} fill="transparent" style={{ cursor: onChange ? (dragging ? "grabbing" : "grab") : "pointer" }}
                   onPointerDown={e => startDrag(e, it.id, "move")} />
+                {/* Gehaltene Sitzungen öffnen ihr Protokoll (über der Trefferfläche zum Ziehen) */}
+                {it.variant === "serie" && sessions && onOpenProtocol && sessions(it).filter(ses => ses.protocol).map(ses => (
+                  <circle key={`p-${ses.date}`} cx={x(ses.date) + dw / 2} cy={y + ROW_H / 2} r={7} fill="transparent" style={{ cursor: "pointer" }}
+                    onPointerDown={e => { e.stopPropagation(); onOpenProtocol(ses.protocol!.id); }}>
+                    <title>{`Protokoll ${ses.protocol!.nummer || ""} vom ${fmtLong(ses.protocol!.date)} öffnen`}</title>
+                  </circle>
+                ))}
                 {onChange && bw >= 14 && <>
                   <rect className="gantt-handle" x={bx} y={by + 2} width={3} height={bh - 4} rx={1.5} fill="var(--text)" pointerEvents="none" />
                   <rect className="gantt-handle" x={bx + bw - 3} y={by + 2} width={3} height={bh - 4} rx={1.5} fill="var(--text)" pointerEvents="none" />
