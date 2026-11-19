@@ -240,7 +240,7 @@ function Expenses({ data, update, standalone }: Pick<ViewProps, "data" | "update
                           <div style={{ flex: 1, fontSize: 13, padding: "4px 0" }}>{cat}</div>
                         )}
                         <button className="btn btn-ghost" style={{ padding: "3px 8px", fontSize: 11 }} onClick={() => { setExpCatEdit(cat); setExpCatEditIdx(idx); }}><span className="msr" style={{ fontSize: 16 }}>edit</span></button>
-                        <button className="btn btn-danger" style={{ padding: "3px 8px", fontSize: 11, opacity: inUse ? 0.35 : 1 }}
+                        <button className="btn-icon danger" aria-label="Entfernen" style={{ opacity: inUse ? 0.35 : 1 }}
                           onClick={() => { if (!inUse) update("settings", { ...data.settings, expenseCategories: expCats.filter((_, i) => i !== idx) }); }}
                           title={inUse ? "In Verwendung" : "Löschen"}><span className="msr" style={{ fontSize: 16 }}>close</span></button>
                       </div>

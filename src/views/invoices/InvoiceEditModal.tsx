@@ -3,7 +3,8 @@
 import type React from "react";
 import { formatCHF, formatHours } from "../../utils";
 import { Modal, FormField, DateInput } from "../../components/UI";
-import type { AppData, InvoiceItem, ModalState, Person, TimeEntry } from "../../types";
+import LivePreview from "../../components/LivePreview";
+import type { AppData, Invoice, InvoiceItem, ModalState, Person, TimeEntry } from "../../types";
 import { calcLineTotal, calcTotal } from "./invoiceHelpers";
 import type { InvoiceForm } from "./invoiceHelpers";
 import { TimeEntriesPicker } from "./TimeEntriesPicker";
@@ -29,7 +30,9 @@ export function InvoiceEditModal({ modal, setModal, form, setForm, data, clients
   const { sub, globalDisc, subAfterDisc, tax, total } = calcTotal(form.items, form.mwst, form.mwstRate ?? data.settings.mwstRate, form.discountType, form.discountValue);
 
   return (
-    <Modal title={modal.id ? "Rechnung bearbeiten" : "Neue Rechnung"} onClose={() => setModal(null)} onSave={() => save()} wide>
+    <Modal title={modal.id ? "Rechnung bearbeiten" : "Neue Rechnung"} onClose={() => setModal(null)} onSave={() => save()} wide
+      footerStart={<span className="num" style={{ fontSize: 13, color: "var(--text3)" }}>Total <b style={{ color: "var(--text)", fontSize: 15 }}>{formatCHF(total)}</b></span>}
+      preview={<LivePreview settings={data.settings} assets={data.docAssets} content={{ type: "invoice", inv: { ...form, sub, globalDisc, subAfterDisc, tax, total, mwstRate: form.mwstRate ?? data.settings.mwstRate } as Invoice, client: clients.find(c => c.id === form.clientId) }} />}>
       <div className="form-row">
         <FormField label="Nr."><input value={form.number} onChange={e => setForm({ ...form, number: e.target.value })} /></FormField>
         <FormField label="Datum"><DateInput value={form.date} onChange={e => setForm({ ...form, date: e.target.value })} /></FormField>

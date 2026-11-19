@@ -104,7 +104,7 @@ export function CalendarTab({ data, update }: Pick<ViewProps, "data" | "update">
                     <td style={{ textAlign: "right", fontSize: 12, color: (f.stundenDelta ?? 0) < 0 ? "var(--warning)" : "var(--text5)" }}>{f.stundenDelta === 0 || f.stundenDelta === null ? "ganztag" : `${f.stundenDelta}h`}</td>
                     <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
                       <button className="btn btn-ghost" style={{ padding: "3px 8px", fontSize: 11, marginRight: 4 }} onClick={() => { setFtForm({ ...f }); setKalModal("ft"); }}><span className="msr" style={{ fontSize: 16 }}>edit</span></button>
-                      <button className="btn btn-danger" style={{ padding: "3px 8px", fontSize: 11 }} onClick={() => delFt(f.id as string)}><span className="msr" style={{ fontSize: 16 }}>close</span></button>
+                      <button className="btn-icon danger" title="Entfernen" aria-label="Entfernen" onClick={() => delFt(f.id as string)}><span className="msr" style={{ fontSize: 16 }}>close</span></button>
                     </td>
                   </tr>
                 ))}
@@ -176,7 +176,7 @@ export function CalendarTab({ data, update }: Pick<ViewProps, "data" | "update">
                     </td>
                     <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
                       <button className="btn btn-ghost" style={{ padding: "3px 8px", fontSize: 11, marginRight: 4 }} onClick={() => { setAbsenzTypeForm(t); setKalModal("absenztype"); }}><span className="msr" style={{ fontSize: 16 }}>edit</span></button>
-                      <button className="btn btn-danger" style={{ padding: "3px 8px", fontSize: 11, opacity: inUse ? 0.35 : 1 }} onClick={() => delAbsenzType(t.id)} title={inUse ? "In Verwendung" : "Löschen"}><span className="msr" style={{ fontSize: 16 }}>close</span></button>
+                      <button className="btn-icon danger" aria-label="Entfernen" style={{ opacity: inUse ? 0.35 : 1 }} onClick={() => delAbsenzType(t.id)} title={inUse ? "In Verwendung" : "Löschen"}><span className="msr" style={{ fontSize: 16 }}>close</span></button>
                     </td>
                   </tr>
                 );

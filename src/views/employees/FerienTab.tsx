@@ -132,7 +132,7 @@ export default function FerienTab({ data, update, askConfirm, employees, absence
                         <td>{statusBadge}</td>
                         <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
                           {(!f.status || f.status === "approved") && <button className="btn btn-ghost" style={{ padding: "2px 7px", fontSize: 11, marginRight: 4 }} onClick={() => { setFerienForm(f); setModal("ferien"); }}><span className="msr" style={{ fontSize: 16 }}>edit</span></button>}
-                          <button className="btn btn-danger" style={{ padding: "2px 7px", fontSize: 11 }} onClick={() => delFerien(f.id)}><span className="msr" style={{ fontSize: 16 }}>close</span></button>
+                          <button className="btn-icon danger" title="Entfernen" aria-label="Entfernen" onClick={() => delFerien(f.id)}><span className="msr" style={{ fontSize: 16 }}>close</span></button>
                         </td>
                       </tr>
                     );
@@ -169,7 +169,7 @@ export default function FerienTab({ data, update, askConfirm, employees, absence
                       <td style={{ color: "var(--text4)" }}>{a.note || "—"}</td>
                       <td>{statusBadge}</td>
                       <td style={{ textAlign: "right" }}>
-                        <button className="btn btn-danger" style={{ padding: "2px 7px", fontSize: 11 }} onClick={() => delAbs(a.id)}><span className="msr" style={{ fontSize: 16 }}>close</span></button>
+                        <button className="btn-icon danger" title="Entfernen" aria-label="Entfernen" onClick={() => delAbs(a.id)}><span className="msr" style={{ fontSize: 16 }}>close</span></button>
                       </td>
                     </tr>
                   );

@@ -152,7 +152,7 @@ export default function DocDesignSettings({ s, setField, data, update }: {
         {asset ? "Ersetzen" : "Hochladen"}
         <input type="file" accept={LETTERHEAD_ACCEPT} disabled={busy} style={{ display: "none" }} onChange={e => { uploadLetterhead(e.target.files, kind); e.target.value = ""; }} />
       </label>
-      {asset && <button className="btn btn-danger" style={{ padding: "6px 10px", fontSize: 11, height: 30 }} onClick={() => removeAsset(asset)}><span className="msr" style={{ fontSize: 16 }}>close</span></button>}
+      {asset && <button className="btn-icon danger" title="Entfernen" aria-label="Entfernen" onClick={() => removeAsset(asset)}><span className="msr" style={{ fontSize: 16 }}>close</span></button>}
     </div>
   );
 

@@ -50,10 +50,10 @@ export function FerienModals({ data, selectedEmp, employees, ferienUebersicht, s
                         {isEditPending ? (
                           <>
                             <div style={{ fontSize: 11, color: "var(--text5)", textDecoration: "line-through" }}>{formatDate(f.originalData?.dateFrom)} – {formatDate(f.originalData?.dateTo)}</div>
-                            <div style={{ fontSize: 13, color: "#222" }}>{formatDate(f.dateFrom)} – {formatDate(f.dateTo)} <span style={{ fontSize: 10, color: "var(--warning)", fontWeight: 600 }}>neu</span></div>
+                            <div style={{ fontSize: 13, color: "var(--text)" }}>{formatDate(f.dateFrom)} – {formatDate(f.dateTo)} <span style={{ fontSize: 10, color: "var(--warning)", fontWeight: 600 }}>neu</span></div>
                           </>
                         ) : (
-                          <div style={{ fontSize: 13, color: "#222" }}>{formatDate(f.dateFrom)} – {formatDate(f.dateTo)}</div>
+                          <div style={{ fontSize: 13, color: "var(--text)" }}>{formatDate(f.dateFrom)} – {formatDate(f.dateTo)}</div>
                         )}
                         {f.note && <div style={{ fontSize: 11, color: "var(--text5)", marginTop: 2 }}>{f.note}</div>}
                       </div>

@@ -12,6 +12,8 @@ import { EmptyState, Header } from "../components/UI";
 import { GanttChart } from "./schedule/GanttChart";
 import { ZOOM_LEVELS } from "./schedule/zoom";
 import type { ScheduleItem, ScheduleTrack, ViewProps } from "../types";
+import { requestProjectTab } from "../today";
+
 
 type Mode = "projekte" | "mitarbeitende";
 
@@ -93,10 +95,12 @@ export default function Schedules({ data, setView, onSelectProject }: Pick<ViewP
   const open = (id: string) => {
     const pid = projectOf.get(id);
     if (!pid) return;
+    requestProjectTab("termine");
     onSelectProject(pid);
     setView("projects");
   };
-  const openProject = (pid: string) => { onSelectProject(pid); setView("projects"); };
+  // Projekt direkt im Reiter «Termine» öffnen (ProjectDetail liest den Hinweis einmal)
+  const openProject = (pid: string) => { requestProjectTab("termine"); onSelectProject(pid); setView("projects"); };
   const toggleTrack = (t: ScheduleTrack) => setTracks(prev => prev.includes(t) ? (prev.length > 1 ? prev.filter(x => x !== t) : prev) : [...prev, t]);
 
   return (

@@ -28,6 +28,13 @@ import { SettingsModal } from "./project-detail/SettingsModal";
 import { BudgetModal } from "./project-detail/BudgetModal";
 import { ScheduleEditor } from "./schedule/ScheduleEditor";
 
+declare global {
+  interface Window {
+    /** Einmaliger Hinweis von anderen Ansichten: Reiter, mit dem der Projekt-Arbeitsraum öffnet. */
+    __projectTab?: string | null;
+  }
+}
+
 export default
 function ProjectDetail({ data, update, saveAll, projectId, onBack, onSelect, run, setPrintContent, userPermissions, currentUser }: Pick<ViewProps, "data" | "update" | "saveAll" | "setPrintContent" | "modal" | "setModal" | "currentUser" | "userPermissions"> & {
   projectId: string;
@@ -45,7 +52,8 @@ function ProjectDetail({ data, update, saveAll, projectId, onBack, onSelect, run
   const canSeeMitarbeiter = isAdmin || userPermissions.includes("mitarbeiter");
   const project = data.projects.find(p => p.id === projectId);
   const emptySettingsForm: ProjectForm = { number: "", name: "", clientId: "", category: "Direktauftrag", billingType: "stundensatz", hourlyRate: data.settings.defaultHourlyRate, budget: 0, status: "aktiv", description: "", startDate: "", enabledPhases: [], budgetHours: 0, linkedQuotes: [], positions: [], customPhases: [], internalMembers: [] };
-  const [tab, setTab] = useState("ueberblick");
+  // Startreiter: einmaliger Hinweis anderer Ansichten (z.B. Terminplanung → «Termine»), sonst Überblick
+  const [tab, setTab] = useState(() => { const t = window.__projectTab || "ueberblick"; window.__projectTab = null; return t; });
   const [budgetModal, setBudgetModal] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [budgetChartView, setBudgetChartView] = useState("einzeln");

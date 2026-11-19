@@ -84,7 +84,7 @@ export function BudgetModal({ data, projectId, budgetForm, setBudgetForm, addLin
                 <select value={lq.role} onChange={e => changeLinkedRole(lq.quoteId, e.target.value)} style={{ fontSize: 11, height: 26, padding: "0 6px" }}>
                   {ROLES.map(r => <option key={r}>{r}</option>)}
                 </select>
-                <button className="btn btn-danger" style={{ padding: "0 6px", height: 24, fontSize: 10 }} onClick={() => removeLinkedQuote(lq.quoteId)}><span className="msr" style={{ fontSize: 16 }}>close</span></button>
+                <button className="btn-icon danger" title="Entfernen" aria-label="Entfernen" onClick={() => removeLinkedQuote(lq.quoteId)}><span className="msr" style={{ fontSize: 16 }}>close</span></button>
               </div>
             </div>
             <div style={{ padding: "10px 14px", background: "var(--surface)" }}>

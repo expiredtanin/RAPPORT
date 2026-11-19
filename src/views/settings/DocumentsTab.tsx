@@ -119,7 +119,7 @@ export function DocumentsTab({ s, setField }: DraftProps) {
                 }} placeholder="Sitzungstyp" style={{ flex: 1, fontSize: 12 }} />
                 <input value={kuerzel} onChange={e => setField({ protokollTypeAbbreviations: { ...protoAbbr, [typName]: e.target.value.toUpperCase().slice(0, 4) } })}
                   placeholder="BS" style={{ width: 52, textAlign: "center", fontWeight: 600, fontSize: 12, fontFamily: "monospace" }} maxLength={4} />
-                <button className="btn btn-danger" style={{ padding: "0 7px", height: 30, fontSize: 11 }} onClick={() => setField({ protokollTypeAbbreviations: Object.fromEntries(Object.entries(protoAbbr).filter(([k]) => k !== typName)) })}><span className="msr" style={{ fontSize: 16 }}>close</span></button>
+                <button className="btn-icon danger" title="Entfernen" aria-label="Entfernen" onClick={() => setField({ protokollTypeAbbreviations: Object.fromEntries(Object.entries(protoAbbr).filter(([k]) => k !== typName)) })}><span className="msr" style={{ fontSize: 16 }}>close</span></button>
               </div>
             ))}
           </div>

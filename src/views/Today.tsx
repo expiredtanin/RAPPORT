@@ -39,7 +39,9 @@ export default function Today({ data, currentUser, userPermissions, run, onOpenP
   const employees = data.employees || [];
   const linkedEmp = employees.find(e => e.id === (currentUser as CurrentUser | null)?.employeeId) || null;
   const [timer, setTimerState] = useState<RunningTimer | null>(readTimer);
-  const [pickedEmpId, setPickedEmpId] = useState<string>(() => timer?.employeeId || "");
+  // Ohne verknüpfte Person: zuletzt gewählte Person dieses Geräts (gleicher Schlüssel wie die Zeiterfassung)
+  const [pickedEmpId, setPickedEmpIdState] = useState<string>(() => { if (timer?.employeeId) return timer.employeeId; try { return localStorage.getItem("rapport_time_employee") || ""; } catch { return ""; } });
+  const setPickedEmpId = (id: string) => { setPickedEmpIdState(id); try { if (id) localStorage.setItem("rapport_time_employee", id); } catch { /* privater Modus */ } };
   const me: Employee | null = linkedEmp || employees.find(e => e.id === pickedEmpId) || null;
   const [now, setNow] = useState(() => new Date());
   const [form, setForm] = useState({ projectId: "", phaseId: "", description: "" });

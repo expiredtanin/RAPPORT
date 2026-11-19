@@ -31,7 +31,7 @@ export function StudioTab({ s, setField, data }: DraftProps & { data: AppData })
                   setField({ logo });
                 }} />
               </label>
-              {s.logo && <button className="btn btn-danger" style={{ padding: "6px 10px", fontSize: 11 }} onClick={() => setField({ logo: null })}><span className="msr" style={{ fontSize: 16 }}>close</span></button>}
+              {s.logo && <button className="btn-icon danger" title="Entfernen" aria-label="Entfernen" onClick={() => setField({ logo: null })}><span className="msr" style={{ fontSize: 16 }}>close</span></button>}
             </div>
           </div>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
@@ -87,7 +87,7 @@ export function StudioTab({ s, setField, data }: DraftProps & { data: AppData })
           {(s.expenseCategories || []).map((cat, i) => (
             <div key={i} style={{ display: "flex", gap: 6, marginBottom: 6, alignItems: "center" }}>
               <input value={cat} onChange={e => setField({ expenseCategories: (s.expenseCategories || []).map((c, j) => j === i ? e.target.value : c) })} style={{ flex: 1, fontSize: 12 }} />
-              <button className="btn btn-danger" style={{ padding: "0 7px", height: 30, fontSize: 11 }} onClick={() => setField({ expenseCategories: (s.expenseCategories || []).filter((_, j) => j !== i) })}><span className="msr" style={{ fontSize: 16 }}>close</span></button>
+              <button className="btn-icon danger" title="Entfernen" aria-label="Entfernen" onClick={() => setField({ expenseCategories: (s.expenseCategories || []).filter((_, j) => j !== i) })}><span className="msr" style={{ fontSize: 16 }}>close</span></button>
             </div>
           ))}
           <button className="btn btn-ghost" style={{ marginTop: 4, fontSize: 11 }} onClick={() => setField({ expenseCategories: [...(s.expenseCategories || []), ""] })}>+ Kategorie</button>
@@ -99,7 +99,7 @@ export function StudioTab({ s, setField, data }: DraftProps & { data: AppData })
           {(s.internalExpenseCategories || []).map((cat, i) => (
             <div key={i} style={{ display: "flex", gap: 6, marginBottom: 6, alignItems: "center" }}>
               <input value={cat} onChange={e => setField({ internalExpenseCategories: (s.internalExpenseCategories || []).map((c, j) => j === i ? e.target.value : c) })} style={{ flex: 1, fontSize: 12 }} />
-              <button className="btn btn-danger" style={{ padding: "0 7px", height: 30, fontSize: 11 }} onClick={() => setField({ internalExpenseCategories: (s.internalExpenseCategories || []).filter((_, j) => j !== i) })}><span className="msr" style={{ fontSize: 16 }}>close</span></button>
+              <button className="btn-icon danger" title="Entfernen" aria-label="Entfernen" onClick={() => setField({ internalExpenseCategories: (s.internalExpenseCategories || []).filter((_, j) => j !== i) })}><span className="msr" style={{ fontSize: 16 }}>close</span></button>
             </div>
           ))}
           <button className="btn btn-ghost" style={{ marginTop: 4, fontSize: 11 }} onClick={() => setField({ internalExpenseCategories: [...(s.internalExpenseCategories || []), ""] })}>+ Kategorie</button>
@@ -111,7 +111,7 @@ export function StudioTab({ s, setField, data }: DraftProps & { data: AppData })
           {(s.leadSources || DEFAULT_LEAD_SOURCES).map((src, i) => (
             <div key={i} style={{ display: "flex", gap: 6, marginBottom: 6, alignItems: "center" }}>
               <input value={src} onChange={e => setField({ leadSources: (s.leadSources || DEFAULT_LEAD_SOURCES).map((c, j) => j === i ? e.target.value : c) })} style={{ flex: 1, fontSize: 12 }} />
-              <button className="btn btn-danger" style={{ padding: "0 7px", height: 30, fontSize: 11 }} onClick={() => setField({ leadSources: (s.leadSources || DEFAULT_LEAD_SOURCES).filter((_, j) => j !== i) })}><span className="msr" style={{ fontSize: 16 }}>close</span></button>
+              <button className="btn-icon danger" title="Entfernen" aria-label="Entfernen" onClick={() => setField({ leadSources: (s.leadSources || DEFAULT_LEAD_SOURCES).filter((_, j) => j !== i) })}><span className="msr" style={{ fontSize: 16 }}>close</span></button>
             </div>
           ))}
           <button className="btn btn-ghost" style={{ marginTop: 4, fontSize: 11 }} onClick={() => setField({ leadSources: [...(s.leadSources || DEFAULT_LEAD_SOURCES), ""] })}>+ Herkunft</button>

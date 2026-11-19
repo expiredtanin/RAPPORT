@@ -382,7 +382,7 @@ function StudioBudget({ data, update, setPrintContent }: Pick<ViewProps, "data" 
                         options={[{ label: "PDF", onClick: () => setPrintContent({ type: "studioBudget", snapshot: v, settings: data.settings }) }]} />
                       <button className="btn btn-ghost" style={{ fontSize: 11, padding: "4px 8px", marginRight: 4 }}
                         onClick={() => loadVersion(v)}>Laden</button>
-                      <button className="btn btn-danger" style={{ fontSize: 11, padding: "4px 8px" }}
+                      <button className="btn-icon danger" title="Entfernen" aria-label="Entfernen"
                         onClick={() => deleteVersion(v.id)}><span className="msr" style={{ fontSize: 16 }}>close</span></button>
                     </td>
                   </tr>

@@ -27,6 +27,7 @@ import React, { useState, useEffect } from "react";
 import { generateId, localISODate } from "../utils";
 import { Header } from "../components/UI";
 import { changeWithUndo } from "../undo";
+import { showToast } from "../toast";
 import { MahnModal } from "../components/MahnModal";
 import type { Invoice, InvoiceItem, TimeEntry, ViewProps } from "../types";
 import { AkontoPlanModal } from "./invoices/AkontoPlanModal";
@@ -111,7 +112,7 @@ function Invoices({ data, update, saveAll, modal, setModal, setPrintContent }: P
 
   const save = (statusOverride?: string) => {
     if (!form.clientId) {
-      alert("Bitte einen Kunden auswählen.");
+      showToast("Bitte einen Kunden auswählen.");
       return;
     }
     const { sub, globalDisc, subAfterDisc, tax, total } = calcTotal(form.items, form.mwst, form.mwstRate ?? data.settings.mwstRate, form.discountType, form.discountValue);

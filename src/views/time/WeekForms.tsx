@@ -28,16 +28,16 @@ export function WeekForms({ data, update, weekSelectStart, setWeekSelectStart, w
   return (
     <>
       {weekSelectStart && !weekForm && (
-        <div style={{ borderTop: "1px solid var(--border2)", padding: "8px 16px 8px 56px", fontSize: 11, color: "var(--text4)", background: "var(--surface2)", display: "flex", alignItems: "center", gap: 8 }}>
-          <span style={{ color: "var(--accent)", fontWeight: 600 }}>{slotToTime(weekSelectStart.slotIdx)}</span>
+        <div className="zeit-pick">
+          <b>{slotToTime(weekSelectStart.slotIdx)}</b>
           <span>ausgewählt — Endzeit anklicken</span>
-          <button className="btn btn-ghost" onClick={() => setWeekSelectStart(null)} style={{ marginLeft: "auto", fontSize: 11, padding: "2px 8px" }}>Abbrechen</button>
+          <button className="btn btn-quiet btn-sm" onClick={() => setWeekSelectStart(null)} style={{ marginLeft: "auto" }}>Abbrechen</button>
         </div>
       )}
 
       {weekForm && (() => {
         const isAbsMode = weekForm.mode === "absenz";
-        const accentColor = isAbsMode ? (absenzTypes.find(t => t.id === weekForm.absType)?.color || "#6b5a8a") : "var(--accent)";
+        const accentColor = isAbsMode ? (absenzTypes.find(t => t.id === weekForm.absType)?.color || "var(--text3)") : "var(--accent)";
         const proj = data.projects.find(p => p.id === weekForm.projectId);
         const enabledPhases = (proj?.enabledPhases||[]).map(id => SIA_PHASES.find(ph => ph.id === id)).filter((ph): ph is (typeof SIA_PHASES)[number] => !!ph);
         const customPhases = proj?.customPhases || [];
@@ -62,21 +62,21 @@ export function WeekForms({ data, update, weekSelectStart, setWeekSelectStart, w
               {isAbsMode ? (
                 <>
                   <div style={{ flex: "1 1 180px" }}>
-                    <div style={{ fontSize: 10, color: "var(--text5)", marginBottom: 3, letterSpacing: "0.06em" }}>TYP</div>
+                    <div style={{ fontSize: 10.5, color: "var(--text4)", marginBottom: 3, letterSpacing: "0.06em", fontWeight: 600 }}>TYP</div>
                     <select value={weekForm.absType || ""} onChange={e => setWeekForm({ ...weekForm, absType: e.target.value })} style={{ height: 34, fontSize: 12, width: "100%" }} autoFocus>
                       <option value="">— wählen —</option>
                       {absenzTypes.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
                     </select>
                   </div>
                   <div style={{ flex: "2 1 180px" }}>
-                    <div style={{ fontSize: 10, color: "var(--text5)", marginBottom: 3, letterSpacing: "0.06em" }}>NOTIZ</div>
+                    <div style={{ fontSize: 10.5, color: "var(--text4)", marginBottom: 3, letterSpacing: "0.06em", fontWeight: 600 }}>NOTIZ</div>
                     <input value={weekForm.absNote || ""} onChange={e => setWeekForm({ ...weekForm, absNote: e.target.value })} placeholder="Notiz…" style={{ height: 34, fontSize: 12, width: "100%", boxSizing: "border-box" }} onKeyDown={e => e.key === "Enter" && saveWeekEntry()} />
                   </div>
                 </>
               ) : (
                 <>
                   <div style={{ flex: "1 1 150px" }}>
-                    <div style={{ fontSize: 10, color: "var(--text5)", marginBottom: 3, letterSpacing: "0.06em" }}>PROJEKT</div>
+                    <div style={{ fontSize: 10.5, color: "var(--text4)", marginBottom: 3, letterSpacing: "0.06em", fontWeight: 600 }}>PROJEKT</div>
                     <select value={weekForm.projectId} onChange={e => { const proj = data.projects.find(p => p.id === e.target.value); const { phaseId, positionId } = getFirstPhaseForProject(proj); setWeekForm({...weekForm, projectId:e.target.value, phaseId, positionId: positionId || ""}); }} style={{ height: 34, fontSize: 12, width: "100%" }} autoFocus>
                       <option value="">— wählen —</option>
                       {data.projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
@@ -84,7 +84,7 @@ export function WeekForms({ data, update, weekSelectStart, setWeekSelectStart, w
                   </div>
                   {hasPhase && (
                     <div style={{ flex: "1 1 120px" }}>
-                      <div style={{ fontSize: 10, color: !combinedVal ? "var(--warning)" : "var(--text5)", marginBottom: 3, letterSpacing: "0.06em" }}>PHASE *</div>
+                      <div style={{ fontSize: 10.5, color: !combinedVal ? "var(--warning)" : "var(--text4)", marginBottom: 3, letterSpacing: "0.06em", fontWeight: 600 }}>PHASE *</div>
                       <select value={combinedVal} onChange={e => onPhaseChange(e.target.value)} style={{ height: 34, fontSize: 12, width: "100%", borderColor: !combinedVal ? "var(--warning)" : undefined }}>
                         <option value="">— wählen —</option>
                         {customPhases.map(cp => <option key={cp.id} value={cp.id}>{cp.label}</option>)}
@@ -94,7 +94,7 @@ export function WeekForms({ data, update, weekSelectStart, setWeekSelectStart, w
                     </div>
                   )}
                   <div style={{ flex: "2 1 180px" }}>
-                    <div style={{ fontSize: 10, color: "var(--text5)", marginBottom: 3, letterSpacing: "0.06em" }}>TÄTIGKEIT</div>
+                    <div style={{ fontSize: 10.5, color: "var(--text4)", marginBottom: 3, letterSpacing: "0.06em", fontWeight: 600 }}>TÄTIGKEIT</div>
                     <input value={weekForm.description} onChange={e => setWeekForm({...weekForm, description:e.target.value})} placeholder="Beschreibung…" style={{ height: 34, fontSize: 12, width: "100%", boxSizing: "border-box" }} onKeyDown={e => e.key === "Enter" && saveWeekEntry()} />
                   </div>
                 </>
@@ -113,7 +113,7 @@ export function WeekForms({ data, update, weekSelectStart, setWeekSelectStart, w
           const a = (data.absences||[]).find(x => x.id === weekEditForm.entryId);
           if (!a) return null;
           const t = absenzTypes.find(x => x.id === a.type);
-          const accentColor = t?.color || "#6b5a8a";
+          const accentColor = t?.color || "var(--text3)";
           const [shE,smE]=(a.startTime as string).split(":").map(Number); const [ehE,emE]=(a.endTime as string).split(":").map(Number);
           const durE = (ehE*60+emE)-(shE*60+smE);
           return (
@@ -123,14 +123,14 @@ export function WeekForms({ data, update, weekSelectStart, setWeekSelectStart, w
               </div>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-end" }}>
                 <div style={{ flex: "1 1 180px" }}>
-                  <div style={{ fontSize: 10, color: "var(--text5)", marginBottom: 3, letterSpacing: "0.06em" }}>TYP</div>
+                  <div style={{ fontSize: 10.5, color: "var(--text4)", marginBottom: 3, letterSpacing: "0.06em", fontWeight: 600 }}>TYP</div>
                   <select value={a.type || ""} onChange={ev => update("absences", (data.absences||[]).map(x => x.id === a.id ? {...x, type: ev.target.value} : x))} style={{ height: 34, fontSize: 12, width: "100%" }} autoFocus>
                     <option value="">— wählen —</option>
                     {absenzTypes.map(at => <option key={at.id} value={at.id}>{at.label}</option>)}
                   </select>
                 </div>
                 <div style={{ flex: "2 1 180px" }}>
-                  <div style={{ fontSize: 10, color: "var(--text5)", marginBottom: 3, letterSpacing: "0.06em" }}>NOTIZ</div>
+                  <div style={{ fontSize: 10.5, color: "var(--text4)", marginBottom: 3, letterSpacing: "0.06em", fontWeight: 600 }}>NOTIZ</div>
                   <input value={a.note || ""} onChange={ev => update("absences", (data.absences||[]).map(x => x.id === a.id ? {...x, note: ev.target.value} : x))} placeholder="Notiz…" style={{ height: 34, fontSize: 12, width: "100%", boxSizing: "border-box" }} />
                 </div>
                 <div style={{ display: "flex", gap: 6 }}>
@@ -158,11 +158,11 @@ export function WeekForms({ data, update, weekSelectStart, setWeekSelectStart, w
             <div style={{ borderTop: `2px solid ${bgE}`, padding: "12px 16px", background: "var(--surface2)" }}>
               <div style={{ fontSize: 10, color: bgE, fontWeight: 600, letterSpacing: "0.1em", marginBottom: 10, display: "flex", alignItems: "center", gap: 8 }}>
                 <span>{new Date(e.date).toLocaleDateString("de-CH", { weekday: "long", day: "numeric", month: "long" }).toUpperCase()} · {e.startTime} – {e.endTime} · {(durE/60).toFixed(1)}h</span>
-                {isInvoiced && <span style={{ fontSize: 9, color: "var(--warning)", fontWeight: 400 }}>verrechnet</span>}
+                {isInvoiced && <span style={{ fontSize: 11, color: "var(--warning)", fontWeight: 500, letterSpacing: 0 }}>verrechnet</span>}
               </div>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-end" }}>
                 <div style={{ flex: "1 1 150px" }}>
-                  <div style={{ fontSize: 10, color: "var(--text5)", marginBottom: 3, letterSpacing: "0.06em" }}>PROJEKT</div>
+                  <div style={{ fontSize: 10.5, color: "var(--text4)", marginBottom: 3, letterSpacing: "0.06em", fontWeight: 600 }}>PROJEKT</div>
                   <select disabled={disabledE} value={e.projectId} onChange={ev => updateEntry(e.id, { projectId: ev.target.value, phaseId: "", positionId: "" })} style={{ height: 34, fontSize: 12, width: "100%" }} autoFocus>
                     <option value="">—</option>
                     {data.projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
@@ -170,7 +170,7 @@ export function WeekForms({ data, update, weekSelectStart, setWeekSelectStart, w
                 </div>
                 {hasPhaseE && (
                   <div style={{ flex: "1 1 120px" }}>
-                    <div style={{ fontSize: 10, color: "var(--text5)", marginBottom: 3, letterSpacing: "0.06em" }}>PHASE</div>
+                    <div style={{ fontSize: 10.5, color: "var(--text4)", marginBottom: 3, letterSpacing: "0.06em", fontWeight: 600 }}>PHASE</div>
                     <select disabled={disabledE} value={combinedValE} onChange={ev => onPhaseChangeE(ev.target.value)} style={{ height: 34, fontSize: 12, width: "100%" }}>
                       <option value="">—</option>
                       {customPhasesE.map(cp => <option key={cp.id} value={cp.id}>{cp.label}</option>)}
@@ -180,7 +180,7 @@ export function WeekForms({ data, update, weekSelectStart, setWeekSelectStart, w
                   </div>
                 )}
                 <div style={{ flex: "2 1 180px" }}>
-                  <div style={{ fontSize: 10, color: "var(--text5)", marginBottom: 3, letterSpacing: "0.06em" }}>TÄTIGKEIT</div>
+                  <div style={{ fontSize: 10.5, color: "var(--text4)", marginBottom: 3, letterSpacing: "0.06em", fontWeight: 600 }}>TÄTIGKEIT</div>
                   <input disabled={disabledE} value={e.description || ""} onChange={ev => updateEntry(e.id, { description: ev.target.value })} placeholder="Beschreibung…" style={{ height: 34, fontSize: 12, width: "100%", boxSizing: "border-box" }} />
                 </div>
                 <div style={{ display: "flex", gap: 6 }}>

@@ -53,7 +53,7 @@ export function TimeEntriesPicker({ form, setForm, data, openEntriesForProject, 
       <div style={{ background: "var(--surface2)", borderRadius: 6, border: "1px solid var(--border2)", maxHeight: 280, overflowY: "auto" }}>
         <table style={{ fontSize: 12 }}>
           <thead>
-            <tr style={{ background: "#f0ebe3" }}>
+            <tr style={{ background: "var(--surface3)" }}>
               <th style={{ width: 36, padding: "6px 8px" }}>
                 <input type="checkbox" checked={allSelected} onChange={toggleAll} style={{ width: "auto", cursor: "pointer" }} />
               </th>

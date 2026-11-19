@@ -125,41 +125,59 @@ export interface ModalProps {
   hideSave?: boolean;
   hideFooter?: boolean;
   children?: ReactNode;
-  /** breiterer Dialog (740px) */
+  /** breiterer Dialog (760px) */
   wide?: boolean;
-  /** Inhalt darf überstehen (z.B. Kalender-Popup) */
+  /** Inhalt darf überstehen (z.B. Kalender-Popup); der Inhalt scrollt dann nicht separat */
   overflow?: boolean;
   /** als Schublade von rechts statt mittig (Formulare zu Listeneinträgen: die Liste bleibt sichtbar) */
   drawer?: boolean;
+  /** Live-Vorschau rechts neben dem Formular (z.B. PDF einer Rechnung); ein-/ausblendbar */
+  preview?: ReactNode;
+  /** links im Fuss, z.B. Summe oder Hinweis */
+  footerStart?: ReactNode;
 }
 
 /**
- * Dialog mit Abbrechen/Speichern-Footer. Klick auf den Hintergrund oder Escape schliesst ihn (Escape für alle
- * `.modal-overlay` zentral in App.tsx, immer nur der oberste). Enter in einem einzeiligen Feld oder ⌘↩ speichert.
+ * Dialog mit festem Kopf (Titel, Schliessen) und Fuss (Abbrechen/Speichern); nur der Inhalt scrollt.
+ * Klick auf den Hintergrund oder Escape schliesst ihn (Escape für alle `.modal-overlay` zentral in App.tsx,
+ * immer nur der oberste). Enter in einem einzeiligen Feld oder ⌘↩ speichert. Mit `preview` wird der Dialog
+ * zum Editor mit Vorschau rechts (ab 1200 px Fensterbreite sichtbar, sonst per Knopf «Vorschau»).
  */
-export function Modal({ title, onClose, onSave, saveLabel, hideSave, hideFooter, children, wide, overflow, drawer }: ModalProps) {
+export function Modal({ title, onClose, onSave, saveLabel, hideSave, hideFooter, children, wide, overflow, drawer, preview, footerStart }: ModalProps) {
+  const [showPreview, setShowPreview] = useState(() => typeof window === "undefined" || window.innerWidth >= 1200);
   const onKeyDown = (e: React.KeyboardEvent) => {
     if (e.key !== "Enter" || !onSave || hideSave || hideFooter || e.nativeEvent.isComposing) return;
     const t = e.target as HTMLElement;
     const singleLine = t.tagName === "INPUT" && !["checkbox", "radio", "button", "submit", "file"].includes((t as HTMLInputElement).type);
     if (e.metaKey || e.ctrlKey || (singleLine && !e.shiftKey)) { e.preventDefault(); onSave(); }
   };
+  const withPreview = !!preview && showPreview;
+  const cls = ["modal", "modal-x", drawer && "drawer", wide && "wide", withPreview && "has-preview", overflow && "allow-overflow"].filter(Boolean).join(" ");
   return (
     <div className={`modal-overlay${drawer ? " drawer-overlay" : ""}`} onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className={`modal${drawer ? " drawer" : ""}`} role="dialog" aria-modal="true" onKeyDown={onKeyDown} style={{ ...(wide ? { maxWidth: drawer ? 720 : 740 } : {}), ...(overflow ? { overflow: "visible" } : {}) }}>
-        {title && (
-          <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, marginBottom: 22 }}>
-            <h2 style={{ fontFamily: "var(--font-ui)", fontWeight: 600, fontSize: 21, letterSpacing: "-0.02em" }}>{title}</h2>
-            {drawer && <button className="btn-icon" onClick={onClose} aria-label="Schliessen" title="Schliessen (esc)"><span className="msr">close</span></button>}
+      <div className={cls} role="dialog" aria-modal="true" onKeyDown={onKeyDown}>
+        <div className="modal-main">
+          <div className="modal-head">
+            {title ? <h2>{title}</h2> : <span />}
+            <div style={{ display: "flex", gap: 4, alignItems: "center", flexShrink: 0 }}>
+              {preview && (
+                <button className={`btn btn-quiet btn-sm${showPreview ? " on" : ""}`} onClick={() => setShowPreview(v => !v)} title="Vorschau ein-/ausblenden">
+                  <span className="msr" style={{ fontSize: 17 }}>{showPreview ? "visibility_off" : "visibility"}</span>Vorschau
+                </button>
+              )}
+              <button className="btn-icon" onClick={onClose} aria-label="Schliessen" title="Schliessen (esc)"><span className="msr">close</span></button>
+            </div>
           </div>
-        )}
-        <div className={drawer ? "drawer-body" : undefined}>{children}</div>
-        {!hideFooter && (
-          <div className={drawer ? "drawer-foot" : undefined} style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 24, paddingTop: 20, borderTop: "1px solid var(--border2)" }}>
-            <button className="btn btn-ghost" onClick={onClose}>Abbrechen</button>
-            {!hideSave && <button className="btn btn-primary" onClick={onSave}>{saveLabel || "Speichern"}</button>}
-          </div>
-        )}
+          <div className="modal-body">{children}</div>
+          {!hideFooter && (
+            <div className="modal-foot">
+              <div style={{ flex: 1, minWidth: 0 }}>{footerStart}</div>
+              <button className="btn btn-ghost" onClick={onClose}>Abbrechen</button>
+              {!hideSave && <button className="btn btn-primary" onClick={onSave}>{saveLabel || "Speichern"}</button>}
+            </div>
+          )}
+        </div>
+        {withPreview && <aside className="modal-preview" aria-label="Vorschau">{preview}</aside>}
       </div>
     </div>
   );

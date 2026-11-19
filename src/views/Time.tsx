@@ -18,9 +18,10 @@
 // Feiertage kommen aus `data.feiertage` (jährlich wiederkehrende werden aufs Jahr
 // aufgelöst); der Tag vor einem Feiertag zählt 1 h weniger Soll (`resolveFTs`).
 
-import React, { useState, useRef, useEffect } from "react";
-import { generateId, localISODate } from "../utils";
+import { useState, useRef, useEffect } from "react";
+import { generateId, localISODate, getKW } from "../utils";
 import { Header, NavArrows, CalendarPopup, ShareButton } from "../components/UI";
+import { readTimer, TIMER_KEY, type RunningTimer } from "../today";
 import { useCalendarNav } from "../hooks/useCalendarNav";
 import { ReceiptViewer } from "../components/ReceiptViewer";
 import type { Absence, TimeEntry, ViewProps } from "../types";
@@ -40,6 +41,12 @@ import { FerienModals } from "./time/FerienModals";
 import { MonthCalendar } from "./time/MonthCalendar";
 import { SaldoCards } from "./time/SaldoCards";
 
+/** Pro Gerät gemerkte Person der Zeiterfassung (nur für Logins, die die Person wechseln dürfen; ARCHITECTURE §4). */
+const EMP_KEY = "rapport_time_employee";
+
+/** Initialen einer Person für den Avatar («Julian Roth» → «JR»). */
+const initials = (name?: string) => (name || "").split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join("").toUpperCase() || "?";
+
 export default
 function Time({ data, update, currentUser, userPermissions, setPrintContent }: Pick<ViewProps, "data" | "update" | "currentUser" | "userPermissions" | "setPrintContent">) {
   const myEmployeeId = currentUser?.employeeId || null;
@@ -47,8 +54,34 @@ function Time({ data, update, currentUser, userPermissions, setPrintContent }: P
   // nicht aus dem Fehlen einer employeeId-Verknüpfung ableiten, sonst sehen frisch
   // eingeladene, noch nicht verknüpfte Nutzer versehentlich alle Zeiteinträge.
   const isAdmin = userPermissions === null;
+  const canSwitchEmployee = isAdmin || (userPermissions || []).includes("mitarbeiter");
   const [currentDate, setCurrentDate] = useState(localISODate());
-  const [selectedEmpId, setSelectedEmpId] = useState(() => myEmployeeId || "");
+  // Wer die Person wechseln darf, bekommt die zuletzt auf diesem Gerät gewählte; alle anderen immer sich selbst
+  const [selectedEmpId, setSelectedEmpIdState] = useState(() => {
+    if (canSwitchEmployee) {
+      try {
+        const stored = localStorage.getItem(EMP_KEY);
+        if (stored && (data.employees || []).some(e => e.id === stored)) return stored;
+      } catch { /* privater Modus */ }
+    }
+    return myEmployeeId || "";
+  });
+  const setSelectedEmpId = (id: string) => {
+    setSelectedEmpIdState(id);
+    if (!canSwitchEmployee) return;
+    try { if (id) localStorage.setItem(EMP_KEY, id); else localStorage.removeItem(EMP_KEY); } catch { /* privater Modus */ }
+  };
+  // Uhrzeit (Jetzt-Linie) und Stoppuhr dieses Geräts: alle 30 s und bei Änderung in einem anderen Fenster nachführen
+  const [now, setNow] = useState(() => new Date());
+  const [timer, setTimer] = useState<RunningTimer | null>(() => readTimer());
+  useEffect(() => {
+    const tick = () => { setNow(new Date()); setTimer(readTimer()); };
+    const id = window.setInterval(tick, 30000);
+    const onStorage = (ev: StorageEvent) => { if (!ev.key || ev.key === TIMER_KEY) tick(); };
+    window.addEventListener("storage", onStorage);
+    window.addEventListener("focus", tick);
+    return () => { window.clearInterval(id); window.removeEventListener("storage", onStorage); window.removeEventListener("focus", tick); };
+  }, []);
   const [viewMode, setViewMode] = useState<string>(() => (typeof window !== "undefined" && window.innerWidth < 700 ? "tag" : "woche"));
   const [weekSelectStart, setWeekSelectStart] = useState<SlotPoint | null>(null);
   const [weekHover, setWeekHover] = useState<SlotPoint | null>(null);
@@ -129,10 +162,16 @@ function Time({ data, update, currentUser, userPermissions, setPrintContent }: P
   // sonst wird Neujahr/Berchtoldstag in der Jahreswechsel-Woche fälschlich nicht als
   // Feiertag erkannt (repeatsYearly-Einträge matchen nur im aufgelösten Jahr).
   const weekFTs = [...new Set(weekDays.map(ds => new Date(ds).getFullYear()))].flatMap(y => resolveFTs(data, y));
+  // «16.–22. November 2026», über Monats- bzw. Jahresgrenzen ausgeschrieben
   const weekLabel = (() => {
-    const from = new Date(weekDays[0]); const to = new Date(weekDays[6]);
-    return `${from.toLocaleDateString("de-CH", { day: "numeric", month: "short" })} – ${to.toLocaleDateString("de-CH", { day: "numeric", month: "short", year: "numeric" })}`;
+    const from = new Date(`${weekDays[0]}T12:00:00`); const to = new Date(`${weekDays[6]}T12:00:00`);
+    const sameYear = from.getFullYear() === to.getFullYear();
+    if (sameYear && from.getMonth() === to.getMonth()) return `${from.getDate()}.–${to.toLocaleDateString("de-CH", { day: "numeric", month: "long", year: "numeric" })}`;
+    return `${from.toLocaleDateString("de-CH", sameYear ? { day: "numeric", month: "long" } : { day: "numeric", month: "long", year: "numeric" })} – ${to.toLocaleDateString("de-CH", { day: "numeric", month: "long", year: "numeric" })}`;
   })();
+  const isThisWeek = weekDays.includes(todayStr);
+  // Stoppuhr nur zeigen, wenn sie der angezeigten Person gehört
+  const shownTimer = timer && selectedEmpId && timer.employeeId === selectedEmpId ? timer : null;
   const changeWeek = (delta: number) => {
     const d = new Date(`${currentDate}T00:00:00Z`); d.setUTCDate(d.getUTCDate() + delta * 7);
     setCurrentDate(d.toISOString().slice(0, 10)); setWeekForm(null); setWeekSelectStart(null); setWeekEditForm(null);
@@ -179,7 +218,7 @@ function Time({ data, update, currentUser, userPermissions, setPrintContent }: P
 
   useEffect(() => {
     if (viewMode === "woche" && weekGridRef.current) {
-      weekGridRef.current.scrollTop = (7 - SLOT_START_H) * 4 * SLOT_H;
+      weekGridRef.current.scrollTop = (7 - SLOT_START_H) * 4 * SLOT_H - SLOT_H; // 07:00 knapp unter dem Tageskopf
     }
   }, [viewMode]);
 
@@ -197,22 +236,72 @@ function Time({ data, update, currentUser, userPermissions, setPrintContent }: P
     );
   }
 
+  const resetWeekSel = () => { setWeekSelectStart(null); setWeekForm(null); setWeekEditForm(null); };
+  const shownEmpName = selectedEmp?.name || (canSwitchEmployee ? "" : employees.find(e => e.id === myEmployeeId)?.name || "");
+
+  // Personenwahl im Kopf: Avatar mit Auswahl (wer wechseln darf) bzw. nur der eigene Name
+  const personSwitch = employees.length > 0 && (canSwitchEmployee ? (
+    <label className="zeit-person" title="Person wählen">
+      <span className="zeit-avatar" aria-hidden="true">{selectedEmp ? initials(selectedEmp.name) : <span className="msr" style={{ fontSize: 16 }}>group</span>}</span>
+      <select value={selectedEmpId} onChange={e => setSelectedEmpId(e.target.value)} aria-label="Person">
+        {isAdmin && <option value="">Alle Personen</option>}
+        {employees.map(e => <option key={e.id} value={e.id}>{e.name}{(e.pensum || 100) !== 100 ? ` · ${e.pensum} %` : ""}</option>)}
+      </select>
+    </label>
+  ) : (
+    <span className="zeit-person" title="Eigene Zeiterfassung">
+      <span className="zeit-avatar" aria-hidden="true">{initials(shownEmpName)}</span>
+      <span className="zeit-person-name">{shownEmpName || "—"}</span>
+    </span>
+  ));
+
   return (
     <div>
-      <Header title="Zeiterfassung" action={selectedEmp ? (
-        <div style={{ display: "flex", gap: 8 }}>
-          <ShareButton options={[{ label: "PDF Stunden", onClick: () => setPrintContent({ type: "timeReport", employee: selectedEmp, entries: (data.timeEntries || []).filter(e => e.employeeId === selectedEmpId), month: currentDate.slice(0, 7), data, settings: data.settings }) }]} />
-          <button className="btn btn-ghost" onClick={() => setFerienUebersicht(true)}>Übersicht ↗</button>
-          <button className="btn btn-primary" onClick={openFerienAntrag}>Ferien beantragen</button>
+      <Header title="Zeiterfassung" action={
+        <div className="zeit-actions">
+          {personSwitch}
+          {selectedEmp && (
+            <>
+              <ShareButton options={[{ label: "PDF Stunden", onClick: () => setPrintContent({ type: "timeReport", employee: selectedEmp, entries: (data.timeEntries || []).filter(e => e.employeeId === selectedEmpId), month: currentDate.slice(0, 7), data, settings: data.settings }) }]} />
+              <button className="btn btn-ghost" onClick={() => setFerienUebersicht(true)}>Ferienübersicht</button>
+              <button className="btn btn-primary" onClick={openFerienAntrag}>Ferien beantragen</button>
+            </>
+          )}
         </div>
-      ) : null} />
+      } />
 
+      {/* Werkzeugleiste: blättern, heute, Zeitraum (öffnet Kalender), Tag/Woche */}
+      <div className="zeit-toolbar">
+        <NavArrows onPrev={() => viewMode === "tag" ? changeDate(-1) : changeWeek(-1)} onNext={() => viewMode === "tag" ? changeDate(1) : changeWeek(1)} />
+        <button className="btn btn-ghost" style={{ height: 32 }} onClick={() => { goToday(); resetWeekSel(); }} disabled={viewMode === "tag" ? isToday : isThisWeek && currentDate === todayStr}>Heute</button>
+        <div ref={navCalRef} className="zeit-range-wrap">
+          <button className="zeit-range" onClick={() => setNavCalOpen(o => !o)} title="Datum wählen">
+            {viewMode === "tag"
+              ? <span>{`${weekdayLabel}, ${new Date(`${currentDate}T12:00:00`).toLocaleDateString("de-CH", { day: "numeric", month: "long", year: "numeric" })}`}</span>
+              : <span>{weekLabel}</span>}
+            <span className="zeit-kw">{getKW(viewMode === "tag" ? currentDate : weekDays[0])}</span>
+          </button>
+          {navCalOpen && (
+            <CalendarPopup
+              value={currentDate}
+              onChange={ds => { setCurrentDate(ds); setNavCalOpen(false); resetWeekSel(); }}
+              onClose={() => setNavCalOpen(false)}
+              showClear={false}
+            />
+          )}
+        </div>
+        <div className="zeit-seg" role="tablist" aria-label="Ansicht">
+          {[["tag", "Tag"], ["woche", "Woche"]].map(([mode, label]) => (
+            <button key={mode} role="tab" aria-selected={viewMode === mode} className={viewMode === mode ? "on" : ""}
+              onClick={() => { setViewMode(mode); resetWeekSel(); }}>{label}</button>
+          ))}
+        </div>
+      </div>
 
-      <div className="responsive-grid-2" style={{ display: "grid", gridTemplateColumns: "1fr 320px", gap: 20, alignItems: "start" }}>
-        {/* Tages-Erfassung */}
-        <div style={{ position: "relative" }}>
+      <div className="zeit-layout">
+        <div className="zeit-main">
           {!selectedEmpId && isAdmin && (
-            <div style={{ position: "absolute", inset: 0, background: "color-mix(in srgb, var(--bg) 82%, transparent)", zIndex: 10, borderRadius: "var(--r-card)", display: "flex", alignItems: "flex-start", justifyContent: "center", paddingTop: 120, backdropFilter: "blur(2px)" }}>
+            <div style={{ position: "absolute", inset: 0, background: "color-mix(in srgb, var(--bg) 82%, transparent)", zIndex: 30, borderRadius: "var(--r-card)", display: "flex", alignItems: "flex-start", justifyContent: "center", paddingTop: 120, backdropFilter: "blur(2px)" }}>
               <div className="card" style={{ textAlign: "center", maxWidth: 420, boxShadow: "var(--shadow-pop)" }}>
                 {employees.length === 0 ? (
                   <>
@@ -233,41 +322,6 @@ function Time({ data, update, currentUser, userPermissions, setPrintContent }: P
               </div>
             </div>
           )}
-          <div className="card" style={{ marginBottom: 16, display: "flex", alignItems: "center", gap: 8, padding: "12px 16px" }}>
-            <NavArrows onPrev={() => viewMode === "tag" ? changeDate(-1) : changeWeek(-1)} onNext={() => viewMode === "tag" ? changeDate(1) : changeWeek(1)} />
-            <div ref={navCalRef} style={{ flex: 1, textAlign: "center", position: "relative" }}>
-              {viewMode === "tag" ? (
-                <div onClick={() => setNavCalOpen(o => !o)} style={{ cursor: "pointer", display: "inline-block" }} title="Datum wählen">
-                  <div style={{ fontFamily: "var(--font-ui)", fontSize: 18, fontWeight: 400 }}>
-                    {`${weekdayLabel}, ${new Date(currentDate).toLocaleDateString("de-CH", { day: "numeric", month: "long" })}`}
-                  </div>
-                </div>
-              ) : (
-                <div style={{ fontFamily: "var(--font-ui)", fontSize: 18, fontWeight: 400 }}>{weekLabel}</div>
-              )}
-              {navCalOpen && (
-                <CalendarPopup
-                  value={currentDate}
-                  onChange={ds => { setCurrentDate(ds); setNavCalOpen(false); }}
-                  onClose={() => setNavCalOpen(false)}
-                  showClear={false}
-                />
-              )}
-            </div>
-            {!isToday && <button className="btn btn-ghost" onClick={goToday} style={{ fontSize: 11 }}>Heute</button>}
-            <div style={{ display: "flex", border: "1px solid var(--border2)", borderRadius: 20, overflow: "hidden", marginLeft: 4 }}>
-              {[["tag", "Tag"], ["woche", "Woche"]].map(([mode, label], i) => (
-                <React.Fragment key={mode}>
-                  {i > 0 && <div style={{ width: 1, background: "var(--border2)", alignSelf: "stretch" }} />}
-                  <button onClick={() => { setViewMode(mode); setWeekSelectStart(null); setWeekForm(null); setWeekEditForm(null); }} style={{
-                    fontSize: 11, padding: "0 12px", height: 30, border: "none", cursor: "pointer", fontFamily: "inherit",
-                    background: viewMode === mode ? "var(--text)" : "transparent",
-                    color: viewMode === mode ? "var(--bg)" : "var(--text3)", transition: "all 0.15s",
-                  }}>{label}</button>
-                </React.Fragment>
-              ))}
-            </div>
-          </div>
 
           {viewMode === "tag" ? (
             <DayView
@@ -277,15 +331,17 @@ function Time({ data, update, currentUser, userPermissions, setPrintContent }: P
               dayExpenses={dayExpenses} updateExp={updateExp} delExp={delExp} addExp={addExp}
               setReceiptView={setReceiptView} setUploadingExpId={setUploadingExpId}
               expReceiptInputRef={expReceiptInputRef} handleExpReceiptUpload={handleExpReceiptUpload}
+              liveTimer={shownTimer && currentDate === todayStr && localISODate(new Date(shownTimer.start)) === todayStr ? shownTimer : null} now={now}
             />
           ) : (
             /* WOCHENANSICHT */
-            <div className="card" style={{ padding: 0, overflow: "hidden" }}>
+            <div className="card zeit-week">
               {resizing && <style>{`* { cursor: ${resizing.edge === "move" ? "grabbing" : "ns-resize"} !important; user-select: none !important; }`}</style>}
               <WeekGrid
                 data={data} weekDays={weekDays} weekFTs={weekFTs} todayStr={todayStr} currentDate={currentDate}
                 selectedEmp={selectedEmp} selectedEmpId={selectedEmpId} weekSelectStart={weekSelectStart} weekHover={weekHover}
-                weekForm={weekForm} resizing={resizing} resizingRef={resizingRef} weekGridRef={weekGridRef} absenzTypes={absenzTypes}
+                weekForm={weekForm} selectedEntryId={weekEditForm?.entryId || null} resizing={resizing} resizingRef={resizingRef} weekGridRef={weekGridRef} absenzTypes={absenzTypes}
+                timer={shownTimer} now={now}
                 setWeekHover={setWeekHover} setCurrentDate={setCurrentDate} setViewMode={setViewMode} setContextMenu={setContextMenu}
                 handleSlotClick={handleSlotClick} isMonthClosed={isMonthClosed} syncResizing={syncResizing}
               />
@@ -305,37 +361,14 @@ function Time({ data, update, currentUser, userPermissions, setPrintContent }: P
           saveAntrag={saveAntrag} editFerien={editFerien} cancelFerienEdit={cancelFerienEdit} deleteFerien={deleteFerien}
         />
 
-        <div>
-          {employees.length > 0 && (
-            <div className="card" style={{ marginBottom: 12, padding: "10px 14px" }}>
-              <div style={{ fontSize: 10, letterSpacing: "0.08em", color: "var(--text4)", marginBottom: 6 }}>MITARBEITER</div>
-              {(() => {
-                const canSwitchEmployee = isAdmin || (userPermissions || []).includes("mitarbeiter");
-                if (canSwitchEmployee) {
-                  return (
-                    <select value={selectedEmpId} onChange={e => setSelectedEmpId(e.target.value)} style={{ width: "100%", fontSize: 13 }}>
-                      {isAdmin && <option value="">— Alle / Kein Filter —</option>}
-                      {employees.map(e => <option key={e.id} value={e.id}>{e.name} · {e.pensum||100}%</option>)}
-                    </select>
-                  );
-                }
-                return (
-                  <div style={{ fontSize: 13, fontWeight: 500, color: "var(--text)" }}>
-                    {employees.find(e => e.id === myEmployeeId)?.name || "—"}
-                  </div>
-                );
-              })()}
-            </div>
-          )}
+        <aside className="zeit-side">
           <MonthCalendar
             currentDate={currentDate} setCurrentDate={setCurrentDate} monthLabel={monthLabel}
             monthCells={monthCells} monthTotalMins={monthTotalMins} selectedEmp={selectedEmp}
+            weekDays={viewMode === "woche" ? weekDays : []}
           />
-
           <SaldoCards selectedEmp={selectedEmp} currentDate={currentDate} totalSaldo={totalSaldo} monthSaldo={monthSaldo} ferienSaldo={ferienSaldo} />
-
-
-        </div>
+        </aside>
       </div>
 
       <ReceiptViewer expense={receiptView} onClose={() => setReceiptView(null)} />
@@ -343,12 +376,9 @@ function Time({ data, update, currentUser, userPermissions, setPrintContent }: P
       {contextMenu && (
         <>
           <div style={{ position: "fixed", inset: 0, zIndex: 999 }} onClick={() => setContextMenu(null)} onContextMenu={ev => { ev.preventDefault(); setContextMenu(null); }} />
-          <div style={{ position: "fixed", top: contextMenu.y, left: contextMenu.x, zIndex: 1000, background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 6, boxShadow: "0 4px 16px rgba(0,0,0,0.12)", minWidth: 180, padding: "4px 0" }}>
-            <button style={{ display: "block", width: "100%", textAlign: "left", padding: "8px 14px", fontSize: 12, background: "none", border: "none", cursor: "pointer", fontFamily: "inherit", color: "var(--text)" }}
-              onMouseEnter={ev => ev.currentTarget.style.background = "var(--surface2)"}
-              onMouseLeave={ev => ev.currentTarget.style.background = "none"}
-              onClick={() => { duplicateToNextDay(contextMenu.entry); setContextMenu(null); }}>
-              Auf morgen kopieren
+          <div className="zeit-ctx" style={{ top: contextMenu.y, left: contextMenu.x }}>
+            <button onClick={() => { duplicateToNextDay(contextMenu.entry); setContextMenu(null); }}>
+              <span className="msr" style={{ fontSize: 17, color: "var(--text4)" }}>content_copy</span>Auf morgen kopieren
             </button>
           </div>
         </>
@@ -356,4 +386,3 @@ function Time({ data, update, currentUser, userPermissions, setPrintContent }: P
     </div>
   );
 }
-

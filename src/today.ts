@@ -202,3 +202,8 @@ export function phaseStrip(project: Pick<Project, "enabledPhases" | "status">, e
   const cur = Math.max(0, enabled.findIndex(p => p.id === latest?.phaseId));
   return enabled.map((p, i) => ({ id: p.id, label: p.label, state: i < cur ? "done" : i === cur ? "current" : "open" }));
 }
+
+/** Merkt den Reiter, mit dem der Projekt-Arbeitsraum beim nächsten Öffnen startet (einmalig, `window.__projectTab`). */
+export function requestProjectTab(tab: string): void {
+  if (typeof window !== "undefined") window.__projectTab = tab;
+}

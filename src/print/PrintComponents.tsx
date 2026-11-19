@@ -29,7 +29,7 @@ import React, { useEffect, useLayoutEffect, useMemo, useRef, useCallback, useSta
 import { buildPdfName } from "../utils";
 import { buildDocCss, buildFontFaces, resolveDocDesign, type ResolvedDocDesign } from "./docDesign";
 import { paginate, PAGE_HEIGHT_MM } from "./paginate";
-import type { AppData, DocAsset, Invoice, Person, Protocol, Settings } from "../types";
+import type { AppData, DocAsset, Invoice, Person, Protocol, Quote, Settings } from "../types";
 import type { Content } from "./docs/shared";
 import { InvoicePrint, QRBillPrint } from "./docs/InvoicePrint";
 import { QuotePrint } from "./docs/QuotePrint";
@@ -288,17 +288,34 @@ const PREVIEW_PROTOCOL = {
  * Vorschau der ersten Seite (und bei Briefpapier einer Folgeseite) mit dem aktuellen Design,
  * für Einstellungen → Erscheinungsbild. Skaliert auf `width` px; eigenes CSS wirkt nur innerhalb der Vorschau.
  */
-export function DocPreview({ settings, assets, sample, width }: { settings: Settings; assets?: DocAsset[]; sample: "invoice" | "letter" | "protokoll"; width: number }) {
+export function DocPreview({ settings, assets, sample, width, content }: {
+  settings: Settings; assets?: DocAsset[]; sample?: "invoice" | "letter" | "protokoll"; width: number;
+  /** echtes Dokument statt Beispiel (Live-Vorschau im Rechnungs-/Offerten-Dialog); Höhe dann nach Inhalt */
+  content?: { type: "invoice"; inv: Invoice; client: Person | undefined | null } | { type: "quote"; quote: Quote; client: Person | undefined | null };
+}) {
   const design = useMemo(() => resolveDocDesign(settings, assets), [settings, assets]);
   const docCss = useMemo(() => buildDocCss(design, ".doc-preview"), [design]);
   const fontFaces = useMemo(() => buildFontFaces(assets), [assets]);
   const scale = width / (210 * 96 / 25.4);
   const mTop = settings.pageMarginTop ?? 20, mBottom = settings.pageMarginBottom ?? 20, mLeft = settings.pageMarginLeft ?? 20, mRight = settings.pageMarginRight ?? 20;
   const sheet: React.CSSProperties = { position: "relative", width: "210mm", height: "297mm", overflow: "hidden", background: "#fff", fontSize: 11, lineHeight: 1.6, color: "var(--doc-ink)", fontFamily: "var(--doc-font-body)", textAlign: "left" };
+  // Live-Vorschau: Blatt wächst mit dem Inhalt (gemessen), Rahmen skaliert mit
+  const sheetRef = useRef<HTMLDivElement>(null);
+  const [sheetH, setSheetH] = useState(0);
+  useLayoutEffect(() => {
+    if (!content || !sheetRef.current) return;
+    const el = sheetRef.current;
+    const measure = () => setSheetH(el.scrollHeight);
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [content]);
+  const a4px = 297 * 96 / 25.4;
   const frame = (children: React.ReactNode, label: string) => (
     <div>
-      <div style={{ fontSize: 11, color: "var(--text4)", marginBottom: 4 }}>{label}</div>
-      <div style={{ width, height: width * 297 / 210, overflow: "hidden", boxShadow: "0 2px 10px rgba(0,0,0,0.15)", border: "1px solid var(--border2)" }}>
+      {label && <div style={{ fontSize: 11, color: "var(--text4)", marginBottom: 4 }}>{label}</div>}
+      <div style={{ width, height: (content ? Math.max(a4px, sheetH) : a4px) * scale, overflow: "hidden", boxShadow: "0 2px 10px rgba(0,0,0,0.15)", border: "1px solid var(--border2)", background: "#fff" }}>
         <div style={{ transform: `scale(${scale})`, transformOrigin: "0 0" }}>{children}</div>
       </div>
     </div>
@@ -315,18 +332,20 @@ export function DocPreview({ settings, assets, sample, width }: { settings: Sett
       <style>{`.doc-preview .print-page.hide-sender .doc-sender { visibility: hidden; } .doc-preview .print-page * { text-align: left; } .doc-preview .print-page .align-right, .doc-preview .print-page .align-right * { text-align: right; }`}</style>
       <style>{docCss.css}</style>
       {frame(
-        <div className={sheetClass(design, false)} data-doc={sample} style={{ ...sheet, padding: `${mTop}mm ${mRight}mm ${mBottom}mm ${mLeft}mm` }}>
+        <div ref={sheetRef} className={sheetClass(design, false)} data-doc={content ? content.type : sample} style={{ ...sheet, ...(content ? { height: "auto", minHeight: "297mm" } : {}), padding: `${mTop}mm ${mRight}mm ${mBottom}mm ${mLeft}mm` }}>
           <LetterheadLayers design={design} />
           <div className="doc-content" style={{ position: "relative", zIndex: 1 }}>
-            {sample === "invoice" && <InvoicePrint inv={PREVIEW_INVOICE} client={PREVIEW_CLIENT} settings={settings} />}
+            {content?.type === "invoice" && <InvoicePrint inv={content.inv} client={content.client} settings={settings} />}
+            {content?.type === "quote" && <QuotePrint quote={content.quote} client={content.client} settings={settings} />}
+            {!content && sample === "invoice" && <InvoicePrint inv={PREVIEW_INVOICE} client={PREVIEW_CLIENT} settings={settings} />}
             {sample === "letter" && <LetterPrint client={PREVIEW_CLIENT} subject="Neubau Wohnhaus Seefeld — Baubesprechung" body={PREVIEW_LETTER} settings={settings} />}
             {sample === "protokoll" && <ProtokollPrint protokoll={PREVIEW_PROTOCOL} data={{ projects: [] } as unknown as AppData} settings={settings} />}
           </div>
-          {design.letterheadFirst && guide(`${297 - mBottom}mm`, `Rand unten ${mBottom} mm`)}
+          {design.letterheadFirst && !content && guide(`${297 - mBottom}mm`, `Rand unten ${mBottom} mm`)}
         </div>,
-        "Seite 1"
+        content ? "" : "Seite 1"
       )}
-      {design.letterheadFollow && frame(
+      {design.letterheadFollow && !content && frame(
         <div className={sheetClass(design, false)} data-doc={sample} style={{ ...sheet, padding: `${design.followTop}mm ${mRight}mm 0 ${mLeft}mm` }}>
           <div style={{ position: "absolute", inset: 0, background: `url("${design.letterheadFollow}") 0 0 / 210mm 297mm no-repeat`, zIndex: 0 }} />
           {guide(`${design.followTop}mm`, `Rand oben ${design.followTop} mm`)}

@@ -176,7 +176,7 @@ export function ProjectEditForm({ form, setForm, data }: {
                       <select value={lq.role} onChange={e => changeRole(lq.quoteId, e.target.value)} style={{ fontSize: 11, height: 26, padding: "0 6px" }}>
                         {ROLES.map(r => <option key={r}>{r}</option>)}
                       </select>
-                      <button className="btn btn-danger" style={{ padding: "0 6px", height: 24, fontSize: 10 }} onClick={() => removeQuote(lq.quoteId)}><span className="msr" style={{ fontSize: 16 }}>close</span></button>
+                      <button className="btn-icon danger" title="Entfernen" aria-label="Entfernen" onClick={() => removeQuote(lq.quoteId)}><span className="msr" style={{ fontSize: 16 }}>close</span></button>
                     </div>
                   </div>
                   <div style={{ padding: "10px 12px", background: "var(--surface)" }}>

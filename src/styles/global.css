@@ -357,12 +357,34 @@ td.row-actions > * { vertical-align: middle; }
 .section-tabs.show { display: flex; }
 @media (max-width: 1100px) { .section-tabs { display: flex; } }
 
-/* ── Seitenschublade (Modal mit `drawer`) ──────────────────────────────────── */
+/* ── Dialoge (UI.tsx Modal: .modal-x mit Kopf, scrollendem Inhalt, Fuss; Schublade; Vorschau) ── */
+.modal.modal-x { padding: 0; display: flex; overflow: hidden; max-height: min(90vh, 980px); }
+.modal.modal-x.wide { max-width: 760px; }
+.modal-main { flex: 1; min-width: 0; display: flex; flex-direction: column; max-height: inherit; }
+.modal-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 20px 20px 14px 28px; }
+.modal-head h2 { font-family: var(--font-ui); font-weight: 650; font-size: 20px; letter-spacing: -0.02em; line-height: 1.25; }
+.modal-body { flex: 1; min-height: 0; overflow-y: auto; padding: 6px 28px 12px; }
+.modal-foot { display: flex; gap: 10px; align-items: center; justify-content: flex-end; padding: 14px 28px 18px; border-top: 1px solid var(--border2); background: var(--surface); }
+.modal.allow-overflow, .modal.allow-overflow .modal-body { overflow: visible; }
+.modal.allow-overflow { max-height: none; }
+.btn-quiet.on { color: var(--text); }
+/* Abschnitte in Dialogen: Kicker-Titel mit Linie (statt einzelner Grossbuchstaben-Labels) */
+.modal-body .section-label, .modal-body .section-divider { margin-top: 18px; }
+/* Editor mit Vorschau */
+.modal.modal-x.has-preview { max-width: min(1320px, 96vw); width: 96vw; }
+.modal.has-preview .modal-main { flex: 0 1 760px; }
+.modal-preview { flex: 1; min-width: 0; background: var(--surface2); border-left: 1px solid var(--border2); overflow-y: auto; padding: 22px; display: flex; justify-content: center; }
+/* Schublade */
 .drawer-overlay { justify-content: flex-end; align-items: stretch; padding: 10px; }
-.modal.drawer { max-width: 520px; max-height: none; height: 100%; border-radius: var(--r-pop); display: flex; flex-direction: column; overflow: hidden; animation: slide-in 0.2s cubic-bezier(.2,.8,.3,1); padding: 24px 28px 0; }
-.drawer-body { flex: 1; overflow-y: auto; margin: 0 -28px; padding: 2px 28px 8px; }
-.modal.drawer .drawer-foot { margin: 0 -28px !important; padding: 14px 28px 16px !important; background: var(--surface); }
-@media (max-width: 768px) { .drawer-overlay { padding: 0; } .modal.drawer { border-radius: 0; max-width: none !important; margin: 0; } }
+.modal.modal-x.drawer { max-width: 520px; max-height: none; height: 100%; animation: slide-in 0.2s cubic-bezier(.2,.8,.3,1); }
+.modal.modal-x.drawer.wide { max-width: 720px; }
+@media (max-width: 768px) {
+  .drawer-overlay { padding: 0; }
+  .modal.modal-x.drawer { border-radius: 0; max-width: none !important; margin: 0; }
+  .modal.modal-x { padding: 0 !important; margin: 0; max-height: 100%; }
+  .modal-head { padding: 16px 12px 10px 18px; } .modal-body { padding: 4px 18px 10px; } .modal-foot { padding: 12px 18px 14px; }
+  .modal-preview { display: none; }
+}
 
 /* ── Seitenleiste: Gruppen (NavItem.group) ─────────────────────────────────── */
 .side-group { font-size: 11.5px; color: var(--side-muted); padding: 16px 10px 5px; font-weight: 500; }
@@ -519,3 +541,234 @@ button.today-row:hover { background: var(--surface3); }
 /* Dialoge liegen über der mobilen Kopfzeile */
 .mobile-header { z-index: 90; }
 @media (max-width: 560px) { .form-row { flex-direction: column !important; } }
+.btn-icon.danger:hover:not(:disabled) { color: var(--negative); background: var(--negative-bg); }
+/* Ältere, selbstgebaute Dialoge (ohne Modal-Komponente) im gleichen Stil */
+.modal:not(.modal-x) > h2:first-child, .modal:not(.modal-x) > div:first-child > h2:first-child { font-weight: 650 !important; font-size: 20px !important; letter-spacing: -0.02em; }
+/* Dokument-Vorschau (DocPreview) ist Papier: immer helle Werte, App-Tabellenstile wirken dort nicht */
+.doc-preview { --text: #1a1a18; --text2: #44423e; --text3: #66625b; --text4: #85817a; --text5: #a9a59d; --surface: #ffffff; --surface2: #f6f3ee; --surface3: #efebe4; --border: #dcd7cf; --border2: #e7e2db; color-scheme: light; }
+.doc-preview td { color: inherit; }
+.doc-preview tr:hover td { background: transparent; }
+
+/* ── Zeiterfassung (views/Time.tsx, views/time/*): Klassen zeit-* ───────────── */
+/* Zeiterfassung (views/Time.tsx und views/time/*): Werkzeugleiste, Personenwahl, Wochenraster, Einträge,
+ * Monats-Heatmap, Saldo-Karte und Tagesliste. Gestaltung wie «Heute» (Swiss Editorial): feine Linien,
+ * Farbe nur mit Bedeutung (Akzent = heute/läuft, orange = unter Soll, grün = Ferien/positiv), nur Variablen
+ * aus global.css; einzige Ausnahme sind die Projekt-/Absenzfarben, die als --pc-solid/--pc-tint
+ * hereinkommen (projectColor.ts bzw. Absenztyp). Alle Klassen beginnen mit «zeit-». */
+
+/* ── Kopf: Personenwahl und Aktionen ─────────────────────────────────────── */
+.zeit-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.zeit-person { display: inline-flex; align-items: center; gap: 2px; height: 36px; padding: 0 2px 0 4px; border: 1px solid var(--border3); border-radius: 999px; background: var(--surface); transition: border-color 0.15s; max-width: 260px; }
+.zeit-person:hover { border-color: var(--text4); }
+.zeit-person:focus-within { border-color: var(--accent); }
+.zeit-avatar { width: 26px; height: 26px; border-radius: 50%; flex-shrink: 0; background: var(--surface3); color: var(--text2); font-size: 11px; font-weight: 650; display: inline-flex; align-items: center; justify-content: center; letter-spacing: 0; text-align: center !important; }
+.zeit-person select { border: none; background-color: transparent; height: 34px; width: auto; min-width: 0; padding: 0 28px 0 6px; font-weight: 550; font-size: 13px; color: var(--text); box-shadow: none !important; }
+.zeit-person-name { font-size: 13px; font-weight: 550; padding: 0 12px 0 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* ── Werkzeugleiste ───────────────────────────────────────────────────────── */
+.zeit-toolbar { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; }
+.zeit-range-wrap { position: relative; min-width: 0; }
+.zeit-range { display: inline-flex; align-items: baseline; gap: 8px; background: none; border: none; padding: 4px 8px; border-radius: 8px; color: var(--text); font-size: 17px; font-weight: 600; letter-spacing: -0.015em; white-space: nowrap; transition: background 0.15s; }
+.zeit-range:hover { background: var(--surface3); }
+.zeit-range .zeit-kw { color: var(--text4); font-weight: 500; font-size: 14px; letter-spacing: 0; }
+.zeit-seg { margin-left: auto; display: inline-flex; padding: 3px; gap: 2px; border-radius: var(--r-ctl); background: var(--surface3); flex-shrink: 0; }
+.zeit-seg button { height: 28px; padding: 0 14px; border-radius: 7px; background: transparent; font-size: 12.5px; font-weight: 550; color: var(--text3); transition: background 0.15s, color 0.15s; }
+.zeit-seg button:hover { color: var(--text); }
+.zeit-seg button.on { background: var(--surface); color: var(--text); box-shadow: var(--shadow-card), 0 0 0 1px var(--border2); }
+
+/* ── Seitenaufbau ─────────────────────────────────────────────────────────── */
+.zeit-layout { display: grid; grid-template-columns: minmax(0, 1fr) 292px; gap: 20px; align-items: start; }
+.zeit-main { position: relative; min-width: 0; }
+.zeit-side { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.zeit-side > .card { padding: 18px 18px 16px; margin: 0; }
+@media (max-width: 1100px) {
+  .zeit-layout { grid-template-columns: minmax(0, 1fr); }
+  .zeit-side { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: start; }
+}
+@media (max-width: 700px) {
+  .zeit-side { grid-template-columns: minmax(0, 1fr); }
+  .zeit-toolbar { gap: 8px; }
+  .zeit-range-wrap { order: 3; flex: 1 1 100%; }
+  .zeit-range { font-size: 16px; padding-left: 0; }
+}
+.zeit-k { font-size: 11px; letter-spacing: 0.07em; text-transform: uppercase; color: var(--text4); font-weight: 600; display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.zeit-k > span, .zeit-k > button { letter-spacing: 0; text-transform: none; font-weight: 500; }
+
+/* ── Wochenraster ─────────────────────────────────────────────────────────── */
+.zeit-week.card { padding: 0; overflow: hidden; }
+.zeit-scroll { isolation: isolate; overflow-y: auto; max-height: calc(100vh - 190px); min-height: 320px; }
+.zeit-gutter { width: 48px; flex-shrink: 0; position: relative; }
+.zeit-head { display: flex; position: sticky; top: 0; z-index: 20; background: var(--surface); border-bottom: 1px solid var(--border2); transform: translateZ(0); }
+.zeit-dh { flex: 1 1 0; min-width: 0; padding: 10px 8px 9px; border-left: 1px solid var(--border2); cursor: pointer; position: relative; transition: background 0.12s; }
+.zeit-dh:hover { background: var(--surface2); }
+.zeit-dh.is-today { background: color-mix(in srgb, var(--accent) 5%, var(--surface)); box-shadow: inset 0 2px 0 var(--accent); }
+.zeit-dh.zeit-we, .zeit-col.zeit-we { flex-grow: 0.6; }
+.zeit-dh-top { display: flex; align-items: baseline; gap: 5px; white-space: nowrap; }
+.zeit-dh-wd { font-size: 11.5px; color: var(--text4); font-weight: 500; }
+.zeit-dh-d { font-size: 15px; font-weight: 600; color: var(--text); letter-spacing: -0.01em; }
+.zeit-dh.is-today .zeit-dh-wd, .zeit-dh.is-today .zeit-dh-d { color: var(--accent); }
+.zeit-dh.sel:not(.is-today) .zeit-dh-d { text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 4px; text-decoration-color: var(--text4); }
+.zeit-dh.quiet .zeit-dh-d { color: var(--text4); font-weight: 500; }
+.zeit-dh.off .zeit-dh-d, .zeit-dh.off .zeit-dh-wd { color: var(--text5); }
+.zeit-dh-meta { margin-top: 5px; min-height: 19px; display: flex; flex-direction: column; gap: 4px; font-size: 11px; color: var(--text4); white-space: nowrap; overflow: hidden; }
+.zeit-dh-ist b { color: var(--text2); font-weight: 600; }
+.zeit-dh.under .zeit-dh-ist, .zeit-dh.under .zeit-dh-ist b { color: var(--warning); }
+.zeit-bar { display: block; height: 3px; border-radius: 2px; background: var(--surface3); overflow: hidden; }
+.zeit-bar i { display: block; height: 100%; border-radius: 2px; background: var(--text4); }
+.zeit-dh.under .zeit-bar i { background: var(--warning); }
+.zeit-dh.is-today .zeit-bar i { background: var(--accent); }
+.zeit-tag { display: inline-block; align-self: flex-start; max-width: 100%; overflow: hidden; text-overflow: ellipsis; font-size: 10.5px; font-weight: 550; padding: 1px 7px; border-radius: 999px; background: var(--surface3); color: var(--text3); }
+.zeit-tag.ferien { background: var(--positive-bg); color: var(--positive); }
+.zeit-tag.planned { background: var(--info-bg); color: var(--info); }
+.zeit-tag.pending { background: var(--warning-bg); color: var(--warning); }
+
+.zeit-body { display: flex; }
+.zeit-hours { pointer-events: none; }
+.zeit-hl { position: absolute; right: 8px; transform: translateY(-50%); font-size: 10.5px; color: var(--text4); font-variant-numeric: tabular-nums; line-height: 1; }
+.zeit-hl.off { color: var(--text5); }
+.zeit-col {
+  flex: 1 1 0; min-width: 0; position: relative; border-left: 1px solid var(--border2); background-color: var(--surface);
+  /* Stundenlinien (48 px = 4 Slots à 12 px) und feinere Halbstunden */
+  background-image: linear-gradient(var(--border2) 1px, transparent 1px), linear-gradient(color-mix(in srgb, var(--border2) 45%, transparent) 1px, transparent 1px);
+  background-size: 100% 48px, 100% 24px;
+}
+.zeit-col.is-today { background-color: color-mix(in srgb, var(--accent) 3.5%, var(--surface)); }
+.zeit-col.quiet { background-color: color-mix(in srgb, var(--surface2) 65%, var(--surface)); }
+.zeit-col.blocked { background-color: var(--surface2); }
+.zeit-slot { position: relative; cursor: crosshair; }
+.zeit-slot.off { background: color-mix(in srgb, var(--text) 2.2%, transparent); }
+.zeit-col.blocked .zeit-slot { cursor: default; }
+.zeit-col:not(.blocked) .zeit-slot:hover { background: color-mix(in srgb, var(--accent) 9%, transparent); }
+.zeit-col:not(.blocked) .zeit-slot:hover::after { content: "+"; position: absolute; right: 5px; top: -2px; font-size: 13px; line-height: 14px; font-weight: 500; color: var(--accent); opacity: 0.8; }
+.zeit-slot.hov { background: color-mix(in srgb, var(--accent) 10%, transparent); }
+.zeit-slot.sel { background: color-mix(in srgb, var(--accent) 18%, transparent) !important; }
+
+/* Einträge und Absenzen: --pc-solid (Streifen) und --pc-tint (Fläche) kommen inline */
+.zeit-entry { position: absolute; left: 3px; right: 3px; box-sizing: border-box; border-radius: 6px; background-color: var(--pc-tint); box-shadow: inset 3px 0 0 var(--pc-solid); padding: 3px 6px 3px 9px; overflow: hidden; z-index: 2; color: var(--text); user-select: none; font-size: 11px; line-height: 14px; transition: box-shadow 0.12s; }
+.zeit-entry:hover { box-shadow: inset 3px 0 0 var(--pc-solid), 0 0 0 1px color-mix(in srgb, var(--pc-solid) 55%, transparent); }
+.zeit-entry.is-sel { box-shadow: inset 3px 0 0 var(--pc-solid), 0 0 0 1.5px var(--pc-solid); z-index: 3; }
+.zeit-entry.is-drag { z-index: 10; box-shadow: inset 3px 0 0 var(--pc-solid), 0 0 0 1.5px var(--pc-solid), var(--shadow-pop); }
+.zeit-entry.is-locked { opacity: 0.72; }
+.zeit-entry.is-abs { background-image: repeating-linear-gradient(135deg, transparent 0 6px, color-mix(in srgb, var(--pc-solid) 12%, transparent) 6px 12px); }
+.zeit-entry > div { pointer-events: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.zeit-e-name { font-size: 11.5px; font-weight: 600; letter-spacing: -0.005em; line-height: 15px; }
+.zeit-entry > .zeit-e-meta { display: flex; gap: 6px; justify-content: space-between; color: var(--text3); font-variant-numeric: tabular-nums; }
+.zeit-e-meta > span:first-child { overflow: hidden; text-overflow: ellipsis; }
+.zeit-e-meta > span + span { flex-shrink: 0; color: var(--text2); font-weight: 550; }
+.zeit-e-desc { color: var(--text4); }
+.zeit-entry > .zeit-grip, .zeit-entry > .zeit-move { pointer-events: auto; position: absolute; left: 0; right: 0; z-index: 1; }
+.zeit-grip { cursor: ns-resize; }
+.zeit-grip.top { top: 0; }
+.zeit-grip.bottom { bottom: 0; }
+.zeit-grip::after { content: ""; position: absolute; left: 50%; width: 16px; margin-left: -8px; height: 2px; border-radius: 1px; background: var(--pc-solid); opacity: 0; transition: opacity 0.12s; }
+.zeit-grip.top::after { top: 1px; }
+.zeit-grip.bottom::after { bottom: 1px; }
+.zeit-entry:hover .zeit-grip::after, .zeit-entry.is-drag .zeit-grip::after { opacity: 0.75; }
+.zeit-move { cursor: grab; }
+.zeit-entry.is-drag .zeit-move { cursor: grabbing; }
+
+/* Jetzt-Linie und laufende Stoppuhr */
+.zeit-now { position: absolute; left: 0; right: 0; height: 0; border-top: 1.5px solid var(--accent); z-index: 6; pointer-events: none; }
+.zeit-now::before { content: ""; position: absolute; left: -4px; top: -4.5px; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); }
+.zeit-live { position: absolute; left: 3px; right: 3px; box-sizing: border-box; border-radius: 6px; z-index: 4; padding: 3px 6px 3px 9px; overflow: hidden; font-size: 11px; line-height: 14px; color: var(--text); cursor: default;
+  background: color-mix(in srgb, var(--accent) 11%, var(--surface)); box-shadow: inset 3px 0 0 var(--accent), inset 0 0 0 1px color-mix(in srgb, var(--accent) 35%, transparent); }
+.zeit-live > div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.zeit-live-k { color: var(--accent); font-weight: 600; display: flex; align-items: center; gap: 5px; }
+.zeit-pulse { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); flex-shrink: 0; animation: zeit-pulse 1.6s ease-in-out infinite; }
+@keyframes zeit-pulse { 0%, 100% { opacity: 1; box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 45%, transparent); } 50% { opacity: 0.45; box-shadow: 0 0 0 4px transparent; } }
+
+/* Kontextmenü (Rechtsklick auf Eintrag) */
+.zeit-ctx { position: fixed; z-index: 1000; min-width: 180px; padding: 5px; background: var(--surface); border: 1px solid var(--border2); border-radius: 12px; box-shadow: var(--shadow-pop); }
+.zeit-ctx button { display: flex; align-items: center; gap: 8px; width: 100%; padding: 7px 10px; border-radius: 8px; background: none; font-size: 12.5px; color: var(--text); text-align: left; }
+.zeit-ctx button:hover { background: var(--surface2); }
+
+/* ── Monats-Heatmap ───────────────────────────────────────────────────────── */
+.zeit-mc-head { display: flex; align-items: center; justify-content: space-between; gap: 6px; margin-bottom: 10px; }
+.zeit-mc-title { font-size: 13.5px; font-weight: 600; letter-spacing: -0.01em; flex: 1; }
+.zeit-mc-head .btn-icon { width: 28px; height: 28px; }
+.zeit-mc-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); row-gap: 3px; }
+.zeit-mc-wd { font-size: 10.5px; color: var(--text5); text-align: center !important; padding-bottom: 4px; }
+.zeit-mc-cell { height: 32px; display: flex; align-items: center; justify-content: center; background: none; padding: 0; border: none; }
+.zeit-mc-cell.wk { background: var(--surface2); }
+.zeit-mc-cell.wk.first { border-radius: 8px 0 0 8px; }
+.zeit-mc-cell.wk.last { border-radius: 0 8px 8px 0; }
+.zeit-mc-day { position: relative; width: 28px; height: 28px; border-radius: 7px; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 500; color: var(--text2); font-variant-numeric: tabular-nums; text-align: center !important;
+  background: color-mix(in srgb, var(--accent) var(--heat, 0%), transparent); transition: box-shadow 0.12s; }
+.zeit-mc-cell:hover .zeit-mc-day { box-shadow: 0 0 0 1px var(--border3); }
+.zeit-mc-day.off { color: var(--text5); font-weight: 400; }
+.zeit-mc-day.ferien { background: var(--positive-bg); color: var(--positive); }
+.zeit-mc-day.pending { background: var(--warning-bg); color: var(--warning); }
+.zeit-mc-day.abs { background: var(--surface3); color: var(--text4); }
+.zeit-mc-day.miss::after { content: ""; position: absolute; bottom: 2px; left: 50%; width: 3px; height: 3px; margin-left: -1.5px; border-radius: 50%; background: var(--warning); }
+.zeit-mc-day.sel { box-shadow: 0 0 0 1.5px var(--text3); }
+.zeit-mc-day.is-today { box-shadow: 0 0 0 1.5px var(--accent); color: var(--text); font-weight: 650; }
+.zeit-mc-foot { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border2); display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: var(--text4); }
+.zeit-mc-foot b { color: var(--text); font-weight: 600; }
+.zeit-mc-legend { display: inline-flex; align-items: center; gap: 3px; font-size: 10.5px; color: var(--text5); }
+.zeit-mc-legend i { width: 9px; height: 9px; border-radius: 2px; background: color-mix(in srgb, var(--accent) var(--heat), transparent); }
+
+/* ── Saldo-Karte ──────────────────────────────────────────────────────────── */
+.zeit-saldo { display: grid; grid-template-columns: minmax(0, 1fr) auto auto auto; column-gap: 12px; align-items: baseline; font-size: 12.5px; margin-top: 10px; }
+.zeit-saldo > span { padding: 8px 0; border-top: 1px solid var(--border2); text-align: right !important; color: var(--text3); white-space: nowrap; }
+.zeit-saldo > span.l { text-align: left !important; color: var(--text2); font-weight: 500; overflow: hidden; text-overflow: ellipsis; }
+.zeit-saldo > span.h { border-top: none; padding: 0 0 5px; font-size: 11px; color: var(--text5); }
+.zeit-saldo > span.s { color: var(--text); font-weight: 650; }
+.zeit-saldo > span.s.pos { color: var(--positive); }
+.zeit-saldo > span.s.neg { color: var(--warning); }
+.zeit-hint { font-size: 11.5px; line-height: 1.45; color: var(--text4); padding: 0 0 8px; }
+.zeit-ferien { border-top: 1px solid var(--border2); padding-top: 12px; margin-top: 2px; }
+.zeit-ferien-row { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; font-size: 12.5px; color: var(--text2); font-weight: 500; }
+.zeit-ferien-row b { font-size: 15px; font-weight: 650; color: var(--text); }
+.zeit-ferien-row b.neg { color: var(--negative); }
+.zeit-ferien .zeit-bar { height: 4px; margin: 8px 0 7px; }
+.zeit-ferien .zeit-bar i { background: var(--positive); }
+.zeit-ferien-sub { font-size: 11.5px; color: var(--text4); line-height: 1.5; }
+
+/* ── Tagesansicht ─────────────────────────────────────────────────────────── */
+.zeit-day.card { padding: 18px 20px; }
+.zeit-day-sec + .zeit-day-sec { margin-top: 22px; }
+.zeit-day-sec > .zeit-k { margin-bottom: 10px; }
+.zeit-list { display: flex; flex-direction: column; gap: 6px; }
+.zeit-empty { font-size: 12.5px; color: var(--text4); padding: 10px 2px; }
+.zeit-drow { display: grid; gap: 6px; align-items: center; padding: 5px 6px 5px 5px; border-radius: 9px; background: var(--surface2); font-size: 12.5px; }
+.zeit-drow.entry { grid-template-columns: 4px 84px minmax(0, 1.3fr) minmax(0, 0.9fr) minmax(0, 1.6fr) 58px 62px 32px; grid-template-areas: "s t p ph d h m x"; }
+.zeit-drow.abs { grid-template-columns: 4px minmax(0, 0.9fr) minmax(0, 2fr) 58px 62px 32px; grid-template-areas: "s p d h m x"; }
+.zeit-drow.exp { grid-template-columns: 4px minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.6fr) 90px 32px 32px; grid-template-areas: "s p ph d h r x"; }
+.zeit-drow.live { grid-template-columns: 4px 84px minmax(0, 1fr) auto; background: color-mix(in srgb, var(--accent) 10%, var(--surface2)); padding-top: 9px; padding-bottom: 9px; }
+.zeit-drow.is-locked { opacity: 0.62; }
+.zeit-drow > .s { grid-area: s; align-self: stretch; border-radius: 2px; background: var(--pc-solid, var(--border3)); min-height: 24px; }
+.zeit-drow.live > .s { grid-area: auto; background: var(--accent); }
+.zeit-drow > .t { grid-area: t; color: var(--text4); font-size: 12px; font-variant-numeric: tabular-nums; padding-left: 4px; white-space: nowrap; }
+.zeit-drow.live > .t { grid-area: auto; }
+.zeit-drow > .p { grid-area: p; } .zeit-drow > .ph { grid-area: ph; } .zeit-drow > .d { grid-area: d; }
+.zeit-drow > .h { grid-area: h; } .zeit-drow > .m { grid-area: m; } .zeit-drow > .r { grid-area: r; } .zeit-drow > .x { grid-area: x; }
+.zeit-drow select, .zeit-drow input { height: 32px; font-size: 12.5px; padding-top: 0; padding-bottom: 0; padding-left: 8px; background-color: transparent; border-color: transparent; border-radius: 8px; }
+.zeit-drow select { padding-right: 24px; background-position: right 8px center; }
+.zeit-drow:hover select:not(:disabled), .zeit-drow:hover input:not(:disabled) { border-color: var(--border); background-color: var(--surface); }
+.zeit-drow select:focus, .zeit-drow input:focus { background-color: var(--surface); }
+.zeit-drow input[type=number] { font-variant-numeric: tabular-nums; }
+.zeit-drow select.need { border-color: color-mix(in srgb, var(--warning) 55%, transparent); }
+.zeit-drow select.pos { color: var(--pending); font-weight: 600; }
+.zeit-drow .btn-icon { width: 30px; height: 30px; color: var(--text4); }
+.zeit-drow .btn-icon:hover:not(:disabled) { color: var(--negative); background: var(--negative-bg); }
+.zeit-drow .btn-icon.rcpt:hover:not(:disabled) { color: var(--text); background: var(--surface3); }
+.zeit-drow .btn-icon .ok { color: var(--positive); }
+.zeit-day-foot { margin-top: 12px; display: flex; align-items: center; gap: 14px; flex-wrap: wrap; font-size: 12.5px; color: var(--text3); }
+.zeit-day-foot b { color: var(--text); font-weight: 600; }
+.zeit-day-foot .zeit-bar { flex: 1; min-width: 80px; height: 5px; }
+.zeit-day-foot .zeit-bar i { background: var(--text3); }
+.zeit-day-foot.under .zeit-bar i { background: var(--warning); }
+.zeit-diff.pos { color: var(--positive); font-weight: 600; }
+.zeit-diff.neg { color: var(--warning); font-weight: 600; }
+.zeit-day-more { margin-top: 18px; display: flex; gap: 6px; flex-wrap: wrap; }
+@media (max-width: 760px) {
+  .zeit-day.card { padding: 14px !important; }
+  .zeit-drow.entry { grid-template-columns: 4px minmax(0, 1fr) minmax(0, 1fr) 54px 58px 32px; grid-template-areas: "s p p p p x" "s ph ph h m ." "s d d d d ."; }
+  .zeit-drow.entry > .t { display: none; }
+  .zeit-drow.abs { grid-template-columns: 4px minmax(0, 1fr) 54px 58px 32px; grid-template-areas: "s p h m x" "s d d d ."; }
+  .zeit-drow.exp { grid-template-columns: 4px minmax(0, 1fr) minmax(0, 1fr) 32px 32px; grid-template-areas: "s p ph r x" "s d d h ."; }
+}
+
+/* Formulare unter dem Wochenraster */
+.zeit-pick { border-top: 1px solid var(--border2); padding: 9px 16px 9px 56px; font-size: 12px; color: var(--text4); background: var(--surface2); display: flex; align-items: center; gap: 8px; }
+.zeit-pick b { color: var(--accent); font-weight: 600; font-variant-numeric: tabular-nums; }

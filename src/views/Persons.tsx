@@ -263,7 +263,7 @@ function FirmaDetail({ firma, data, update, onBack, onEdit, onAddPerson, onEditP
                   </div>
                   <div style={{ display: "flex", gap: 4 }}>
                     <button className="btn btn-ghost" style={{ fontSize: 11, padding: "2px 7px" }} onClick={() => onEditPerson(firma.id, c.id)}><span className="msr" style={{ fontSize: 16 }}>edit</span></button>
-                    <button className="btn btn-danger" style={{ fontSize: 11, padding: "2px 6px" }} onClick={() => onDeletePerson(firma.id, c.id)}><span className="msr" style={{ fontSize: 16 }}>close</span></button>
+                    <button className="btn-icon danger" title="Entfernen" aria-label="Entfernen" onClick={() => onDeletePerson(firma.id, c.id)}><span className="msr" style={{ fontSize: 16 }}>close</span></button>
                   </div>
                 </div>
               </div>
@@ -561,7 +561,7 @@ export default function Persons({ data, update, modal, setModal }: Pick<ViewProp
                   <div style={{ display: "flex", gap: 4 }}>
                     <button type="button" className="btn btn-ghost" style={{ fontSize: 11, padding: "2px 8px" }}
                       onClick={() => { setFirmModal(null); openEditPerson(firmModal.id as string, c.id); }}><span className="msr" style={{ fontSize: 16 }}>edit</span></button>
-                    <button type="button" className="btn btn-danger" style={{ fontSize: 11, padding: "2px 6px" }}
+                    <button type="button" className="btn-icon danger" title="Entfernen" aria-label="Entfernen"
                       onClick={() => setFirmForm(f => ({ ...f, contacts: (f.contacts || []).filter(x => x.id !== c.id) }))}><span className="msr" style={{ fontSize: 16 }}>close</span></button>
                   </div>
                 </div>

@@ -24,6 +24,8 @@ import { SIA_PHASES, SIA_PHASE_WEIGHTS } from "../constants";
 import { calcSIAHours, calcManualHours, generateId, formatCHF, formatDate, formatHours, roundCHF, applyProjectNumberFormat, migrateLinkedQuotes, deriveQuoteBudget, localISODate } from "../utils";
 import { Header, Modal, FormField, StatusSelect, DateInput, SortTh, RowMenu } from "../components/UI";
 import { removeWithUndo } from "../undo";
+import LivePreview from "../components/LivePreview";
+import { showToast } from "../toast";
 import { EffortEstimatePanel } from "./quotes/EffortEstimatePanel";
 import type { ManualPhase, Project, Quote, SiaItem, ViewProps } from "../types";
 
@@ -198,21 +200,21 @@ function Quotes({ data, update, saveAll, modal, setModal, setPrintContent, setVi
   const total = roundCHF(subTotal + tax);
 
   const save = () => {
-    if (!form.clientId) { alert("Bitte einen Kunden auswählen."); return; }
+    if (!form.clientId) { showToast("Bitte einen Kunden auswählen."); return; }
     // Projektname oder verknüpftes Projekt
     if (!form.projectId && !form.projectName?.trim()) {
-      alert("Bitte einen Projektnamen eingeben oder ein Projekt verknüpfen."); return;
+      showToast("Bitte einen Projektnamen eingeben oder ein Projekt verknüpfen."); return;
     }
     // Mindestens eine Position
     if (form.mode === "free") {
       const hasItem = (form.freeItems || []).some(it => it.desc?.trim() || it.price > 0);
-      if (!hasItem) { alert("Bitte mindestens eine Position mit Beschreibung oder Betrag erfassen."); return; }
+      if (!hasItem) { showToast("Bitte mindestens eine Position mit Beschreibung oder Betrag erfassen."); return; }
     } else if (form.mode === "manual") {
       const hasPhase = (form.manualPhases || []).some(ph => ph.enabled && Object.values(ph.hoursByRole || {}).some(h => h > 0));
-      if (!hasPhase) { alert("Bitte mindestens eine Phase mit Stunden erfassen."); return; }
+      if (!hasPhase) { showToast("Bitte mindestens eine Phase mit Stunden erfassen."); return; }
     } else if (form.mode === "sia") {
       if (!form.sia?.baukosten || form.sia.baukosten <= 0) {
-        alert("Bitte Baukosten eingeben (SIA-Modus)."); return;
+        showToast("Bitte Baukosten eingeben (SIA-Modus)."); return;
       }
     }
     const q: Quote = { ...form, estimate: form.mode === "manual" ? form.estimate ?? null : null, sub: subTotal, totalHours, tax, total, mwstRate: taxRate, id: (modal?.id as string | undefined) || generateId(), createdAt: modal?.id ? form.createdAt : new Date().toISOString() };
@@ -542,7 +544,9 @@ function Quotes({ data, update, saveAll, modal, setModal, setPrintContent, setVi
         );
       })()}
       {modal?.type === "quote" && (
-        <Modal title={modal.id ? "Offerte bearbeiten" : "Neue Offerte"} onClose={() => setModal(null)} onSave={save} wide>
+        <Modal title={modal.id ? "Offerte bearbeiten" : "Neue Offerte"} onClose={() => setModal(null)} onSave={save} wide
+          footerStart={<span className="num" style={{ fontSize: 13, color: "var(--text3)" }}>Total <b style={{ color: "var(--text)", fontSize: 15 }}>{formatCHF(total)}</b></span>}
+          preview={<LivePreview settings={data.settings} assets={data.docAssets} content={{ type: "quote", quote: { ...form, estimate: form.mode === "manual" ? form.estimate ?? null : null, sub: subTotal, totalHours, tax, total, mwstRate: taxRate, id: (modal?.id as string | undefined) || "vorschau" } as Quote, client: clients.find(c => c.id === form.clientId) }} />}>
           <div className="form-row">
             <FormField label="Nr."><input value={form.number} onChange={e => setForm({...form, number: e.target.value})} /></FormField>
             <FormField label="Datum"><DateInput value={form.date} onChange={e => setForm({...form, date: e.target.value})} /></FormField>

@@ -73,7 +73,7 @@ export function PersonalSettings({ data, update, currentUser, uiZoom, setUiZoom,
                       <input type="file" accept="image/*" style={{ display: "none" }} onChange={uploadAvatar} />
                     </label>
                     {userRec?.avatar && (
-                      <button className="btn btn-danger" style={{ padding: "5px 10px", fontSize: 11 }}
+                      <button className="btn-icon danger" title="Entfernen" aria-label="Entfernen"
                         onClick={() => update("users", (data.users || []).map(u => u.id === currentUser.id ? { ...u, avatar: null } : u))}>
                         <span className="msr" style={{ fontSize: 16 }}>close</span>
                       </button>

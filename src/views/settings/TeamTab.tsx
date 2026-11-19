@@ -113,7 +113,7 @@ export function TeamTab({ s, setField, data, update, isAdmin }: DraftProps & Pic
                 <input value={r.label} onChange={e => setField({ roles: s.roles.map((x, i) => i === idx ? { ...x, label: e.target.value } : x) })} placeholder="Bezeichnung" style={{ flex: 1, fontSize: 12 }} />
                 <input type="number" value={r.rate} onChange={e => setField({ roles: s.roles.map((x, i) => i === idx ? { ...x, rate: +e.target.value } : x) })} style={{ width: 72, textAlign: "right", fontSize: 12 }} />
                 <span style={{ fontSize: 11, color: "var(--text4)" }}>CHF/h</span>
-                <button className="btn btn-danger" style={{ padding: "0 7px", height: 30, fontSize: 11 }} onClick={() => setField({ roles: s.roles.filter((_, i) => i !== idx) })}><span className="msr" style={{ fontSize: 16 }}>close</span></button>
+                <button className="btn-icon danger" title="Entfernen" aria-label="Entfernen" onClick={() => setField({ roles: s.roles.filter((_, i) => i !== idx) })}><span className="msr" style={{ fontSize: 16 }}>close</span></button>
               </div>
             ))}
           </div>
@@ -144,7 +144,7 @@ export function TeamTab({ s, setField, data, update, isAdmin }: DraftProps & Pic
                        <button className="btn btn-ghost" style={{ padding: "4px 10px", fontSize: 11 }} onClick={() => setEditingRoleId(null)}>Abbrechen</button></>
                     : <button className="btn btn-ghost" style={{ padding: "4px 10px", fontSize: 11 }} onClick={() => openEditRole(role)}><span className="msr" style={{ fontSize: 16 }}>edit</span></button>
                   }
-                  {role.id !== "r-admin" && <button className="btn btn-danger" style={{ padding: "4px 8px", fontSize: 11 }} onClick={() => deleteRole(role.id)}><span className="msr" style={{ fontSize: 16 }}>close</span></button>}
+                  {role.id !== "r-admin" && <button className="btn-icon danger" title="Entfernen" aria-label="Entfernen" onClick={() => deleteRole(role.id)}><span className="msr" style={{ fontSize: 16 }}>close</span></button>}
                 </div>
               </div>
 

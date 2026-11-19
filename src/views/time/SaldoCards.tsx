@@ -1,5 +1,7 @@
-// Zeiterfassung: Saldo-Karte (seit Eintritt, Monat, Ferien) des gewählten Mitarbeiters.
+// Zeiterfassung: Saldo-Karte des gewählten Mitarbeiters — eine Tabelle Ist/Soll/Saldo für Monat und
+// «seit Eintritt» (mit Hinweis bei unplausibel grossem Minus) und darunter der Ferienrest in Tagen.
 
+import { formatDays } from "../../utils";
 import type { Employee } from "../../types";
 import type { calcTotalSaldo, calcMonthSaldo, calcFerienSaldo } from "./timeUtils";
 
@@ -12,80 +14,73 @@ interface SaldoCardsProps {
   ferienSaldo: ReturnType<typeof calcFerienSaldo>;
 }
 
-/** Drei Blöcke: Saldo seit Eintritt, Monatssaldo, Ferien des laufenden Jahres. */
+/** «7.5 h» / «−70.3 h» / «10’283 h» mit typografischem Minus; `sign` setzt «+» vor positive Werte, `unit` = false lässt «h» weg. */
+const fh = (h: number, sign = false, unit = true) => {
+  // Ab 1000 h ohne Dezimale, damit die drei Spalten in die schmale Karte passen
+  const r = Math.abs(h) >= 1000 ? Math.round(h) : Math.round(h * 10) / 10;
+  const s = (Number.isInteger(r) ? String(Math.abs(r)) : Math.abs(r).toFixed(1)).replace(/\B(?=(\d{3})+(?!\d))/g, "’");
+  return `${r < 0 ? "−" : sign && r > 0 ? "+" : ""}${s}${unit ? " h" : ""}`;
+};
+
+/** Farbklasse eines Saldos: erst ab einer halben Stunde Abweichung farbig. */
+const saldoCls = (v: number) => v <= -0.5 ? " neg" : v >= 0.5 ? " pos" : "";
+
+/** Eine Karte: Monat und seit Eintritt (Ist/Soll/Saldo), darunter Ferien des Jahres in Tagen. */
 export function SaldoCards({ selectedEmp, currentDate, totalSaldo, monthSaldo, ferienSaldo }: SaldoCardsProps) {
+  if (!selectedEmp) return null;
   // Riesiges Minus bei kaum erfassten Stunden deutet eher auf fehlende ältere Einträge als auf echte Minusstunden
   const suspectSaldo = !!totalSaldo && Math.abs(totalSaldo.saldo) > 500 && totalSaldo.ist < totalSaldo.soll * 0.3;
+  const monthName = new Date(currentDate + "T12:00:00").toLocaleString("de-CH", { month: "long" });
+  const year = currentDate.slice(0, 4);
+  const ferienTotal = ferienSaldo ? ferienSaldo.anspruch + ferienSaldo.ubertrag : 0;
+  const ferienUsed = ferienSaldo ? ferienSaldo.bezogen + ferienSaldo.geplant : 0;
+  const days = (h: number) => formatDays(h, selectedEmp);
+
   return (
-    <>
-      {selectedEmp && (
-        <div className="card" style={{ marginTop: 12, padding: "14px 16px" }}>
-          <div style={{ paddingBottom: 8, marginBottom: 8, borderBottom: "1px solid var(--border2)" }}>
-            <div className="section-label" style={{ marginBottom: 4 }}>Saldo seit Eintritt</div>
-            {totalSaldo && [
-              { label: "Soll bis heute", value: `${totalSaldo.soll}h` },
-              { label: "IST", value: `${totalSaldo.ist}h` },
-            ].map(r => (
-              <div key={r.label} style={{ display: "flex", justifyContent: "space-between", padding: "1px 0", fontSize: 11, color: "var(--text3)" }}>
-                <span>{r.label}</span><span>{r.value}</span>
-              </div>
-            ))}
-            {totalSaldo && (
-              <div style={{ display: "flex", justifyContent: "space-between", marginTop: 4, paddingTop: 4, borderTop: "1px solid var(--border)", fontFamily: "var(--font-ui)", fontSize: 13 }}>
-                <span>Saldo</span>
-                <strong style={{ color: suspectSaldo ? "var(--text2)" : totalSaldo.saldo >= 0 ? "var(--positive)" : "var(--negative)" }}>
-                  {totalSaldo.saldo === 0 ? "0h" : `${totalSaldo.saldo > 0 ? "+" : ""}${totalSaldo.saldo}h`}
-                </strong>
-              </div>
-            )}
-            {suspectSaldo && (
-              <div style={{ marginTop: 4, fontSize: 11, color: "var(--text4)" }}>
-                Sehr grosser Minussaldo — fehlen ältere Einträge? Stichtag/Übertrag unter Mitarbeiter → Personen anpassen.
-              </div>
-            )}
+    <div className="card">
+      <div className="zeit-k">Saldo <span>in Stunden · Pensum {selectedEmp.pensum || 100} %</span></div>
+      <div className="zeit-saldo">
+        <span className="h l" />
+        <span className="h">Ist</span>
+        <span className="h">Soll</span>
+        <span className="h">Saldo</span>
+        {monthSaldo && (
+          <>
+            <span className="l" style={{ textTransform: "capitalize" }}>{monthName}</span>
+            <span className="num" title={monthSaldo.absenz > 0 ? `inkl. ${fh(monthSaldo.absenz)} Absenzen` : undefined}>{fh(monthSaldo.ist + monthSaldo.absenz, false, false)}</span>
+            <span className="num" title={`Soll bis heute; ganzer Monat ${fh(monthSaldo.sollTotal)}`}>{fh(monthSaldo.soll, false, false)}</span>
+            <span className={`num s${saldoCls(monthSaldo.saldo)}`}>{fh(monthSaldo.saldo, true, false)}</span>
+          </>
+        )}
+        {totalSaldo && (
+          <>
+            <span className="l" title={selectedEmp.eintrittsdatum ? `seit ${new Date(selectedEmp.eintrittsdatum + "T12:00:00").toLocaleDateString("de-CH")}` : undefined}>Seit Eintritt</span>
+            <span className="num" title={totalSaldo.absenz > 0 ? `inkl. ${fh(totalSaldo.absenz)} Absenzen` : undefined}>{fh(totalSaldo.ist + totalSaldo.absenz, false, false)}</span>
+            <span className="num">{fh(totalSaldo.soll, false, false)}</span>
+            <span className={`num s${suspectSaldo ? "" : saldoCls(totalSaldo.saldo)}`}>{fh(totalSaldo.saldo, true, false)}</span>
+          </>
+        )}
+      </div>
+      {suspectSaldo && (
+        <div className="zeit-hint">Sehr grosser Minussaldo — fehlen ältere Einträge? Stichtag/Übertrag unter Mitarbeiter → Personen anpassen.</div>
+      )}
+
+      {ferienSaldo && (
+        <div className="zeit-ferien">
+          <div className="zeit-ferien-row">
+            <span>Ferien {year}</span>
+            <span style={{ color: "var(--text4)", fontWeight: 400 }}>Rest <b className={`num${ferienSaldo.rest < 0 ? " neg" : ""}`} title={fh(ferienSaldo.rest)}>{days(ferienSaldo.rest)}</b></span>
           </div>
-          <div style={{ paddingBottom: 8, marginBottom: 8, borderBottom: "1px solid var(--border2)" }}>
-            <div className="section-label" style={{ marginBottom: 4 }}>Monatssaldo — {new Date(currentDate + "T12:00:00").toLocaleString("de-CH", { month: "long" })}</div>
-            {monthSaldo && [
-              { label: "Soll", value: `${monthSaldo.soll}h` },
-              { label: "IST", value: `${monthSaldo.ist}h` },
-            ].map(r => (
-              <div key={r.label} style={{ display: "flex", justifyContent: "space-between", padding: "1px 0", fontSize: 11, color: "var(--text3)" }}>
-                <span>{r.label}</span><span>{r.value}</span>
-              </div>
-            ))}
-            {monthSaldo && (
-              <div style={{ display: "flex", justifyContent: "space-between", marginTop: 4, paddingTop: 4, borderTop: "1px solid var(--border)", fontFamily: "var(--font-ui)", fontSize: 13 }}>
-                <span>Saldo</span>
-                <strong style={{ color: monthSaldo.saldo >= 0 ? "var(--positive)" : "var(--negative)" }}>
-                  {monthSaldo.saldo === 0 ? "0h" : `${monthSaldo.saldo > 0 ? "+" : ""}${monthSaldo.saldo}h`}
-                </strong>
-              </div>
-            )}
-          </div>
-          <div>
-            <div className="section-label" style={{ marginBottom: 4 }}>Ferien {new Date().getFullYear()}</div>
-            {ferienSaldo && [
-              { label: "Anspruch", value: `${ferienSaldo.anspruch}h`, show: true },
-              { label: "Übertrag", value: `${ferienSaldo.ubertrag}h`, show: ferienSaldo.ubertrag > 0 },
-              { label: "Bezogen", value: `${ferienSaldo.bezogen}h`, show: ferienSaldo.bezogen > 0 },
-              { label: "Geplant", value: `${ferienSaldo.geplant}h`, show: ferienSaldo.geplant > 0 },
-            ].filter(r => r.show).map(r => (
-              <div key={r.label} style={{ display: "flex", justifyContent: "space-between", padding: "1px 0", fontSize: 11, color: "var(--text3)" }}>
-                <span>{r.label}</span><span>{r.value}</span>
-              </div>
-            ))}
-            {ferienSaldo && (
-              <div style={{ display: "flex", justifyContent: "space-between", marginTop: 4, paddingTop: 4, borderTop: "1px solid var(--border)", fontFamily: "var(--font-ui)", fontSize: 13 }}>
-                <span>Rest</span>
-                <strong style={{ color: ferienSaldo.rest >= 0 ? "var(--positive)" : "var(--negative)" }}>
-                  {ferienSaldo.rest === 0 ? "0h" : `${ferienSaldo.rest > 0 ? "+" : ""}${ferienSaldo.rest}h`}
-                </strong>
-              </div>
-            )}
+          <span className="zeit-bar"><i style={{ width: `${ferienTotal > 0 ? Math.min(100, (ferienUsed / ferienTotal) * 100) : 0}%` }} /></span>
+          <div className="zeit-ferien-sub num">
+            {days(ferienSaldo.anspruch)} Anspruch
+            {ferienSaldo.ubertrag > 0 && ` · ${days(ferienSaldo.ubertrag)} Übertrag`}
+            {ferienSaldo.bezogen > 0 && ` · ${days(ferienSaldo.bezogen)} bezogen`}
+            {ferienSaldo.geplant > 0 && ` · ${days(ferienSaldo.geplant)} geplant`}
+            {ferienSaldo.beantragt > 0 && ` · ${days(ferienSaldo.beantragt)} beantragt`}
           </div>
         </div>
       )}
-    </>
+    </div>
   );
 }
