@@ -37,7 +37,7 @@ const S = {
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    fontFamily: "var(--font-ui)",
+    fontFamily: "var(--font-brand)",
     color: C.text,
     padding: "32px 16px",
   },

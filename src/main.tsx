@@ -1,11 +1,13 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
-// Schriften lokal mitgeliefert (offline, kein Aufruf an Google): App = Inter, Symbole = Material Symbols,
+// Schriften lokal mitgeliefert (offline, kein Aufruf an Google): App = Inter, Logo-Schriftzug = Archivo Black
+// (auf macOS Krungthep), Symbole = Material Symbols,
 // Dokumente/PDF zusätzlich Playfair Display (Titel) und DM Mono (Fliesstext).
 import '@fontsource-variable/inter/wght.css'
 import '@fontsource-variable/inter/wght-italic.css'
 import '@fontsource-variable/material-symbols-rounded/wght.css'
+import '@fontsource/archivo-black/400.css'
 import '@fontsource/playfair-display/400.css'
 import '@fontsource/playfair-display/400-italic.css'
 import '@fontsource/playfair-display/700.css'

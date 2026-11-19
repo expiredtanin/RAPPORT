@@ -94,7 +94,7 @@ export default function MigrationScreen({ data, onComplete }: {
       }}>
         {/* Header */}
         <div style={{ textAlign: "center", marginBottom: 28 }}>
-          <div style={{ fontFamily: "var(--font-ui)", fontSize: 30, color: "#1a1a18", letterSpacing: "-0.02em", lineHeight: 1 }}>
+          <div style={{ fontFamily: "var(--font-brand)", fontSize: 30, color: "#1a1a18", letterSpacing: "-0.02em", lineHeight: 1 }}>
             RAPPORT
           </div>
           <div style={{ fontSize: 9, color: "#b0aca4", letterSpacing: "0.2em", marginTop: 6, fontWeight: 500 }}>

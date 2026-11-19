@@ -12,6 +12,8 @@
 
 :root {
   --font-ui: 'Inter Variable', 'Inter', -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif;
+  /* Schriftzug «RAPPORT» (nur Logo): Krungthep (macOS), sonst die mitgelieferte Archivo Black */
+  --font-brand: Krungthep, 'Archivo Black', sans-serif;
   --r-ctl: 10px;      /* Eingaben, Knöpfe */
   --r-card: 14px;     /* Karten, Tabellen */
   --r-pop: 18px;      /* Dialoge, Schubladen, Palette */
@@ -166,9 +168,10 @@ label { font-size: 12px; color: var(--text3); font-weight: 500; }
 .side-head { padding: 26px 20px 20px; display: flex; align-items: flex-start; justify-content: space-between; flex-shrink: 0; }
 .sidebar.collapsed .side-head { padding: 26px 0 20px; justify-content: center; }
 .sidebar-logo-btn { background: none; border: none; padding: 0; cursor: pointer; text-align: left; min-width: 0; border-radius: 6px; }
-.side-wordmark { font-weight: 800; font-size: 22px; letter-spacing: -0.035em; line-height: 1; color: var(--side-strong); transition: opacity 0.15s; }
+.side-wordmark { font-family: var(--font-brand); font-weight: 400; font-size: 28px; letter-spacing: -0.02em; line-height: 0.95; color: var(--side-strong); transition: opacity 0.15s; }
+.sidebar.collapsed .side-wordmark, .mobile-header .side-wordmark { font-size: 22px; }
 .sidebar-logo-btn:hover .side-wordmark, .sidebar-logo-btn.side-wordmark:hover { opacity: 0.7; }
-.side-studio { font-size: 12px; color: var(--side-muted); margin-top: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 170px; }
+.side-studio { font-size: 12px; color: var(--side-muted); margin-top: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 170px; }
 .side-nav { flex: 1; padding: 4px 10px 12px; overflow-y: auto; min-height: 0; }
 .sidebar.collapsed .side-nav { padding: 4px 8px 12px; }
 .side-nav::-webkit-scrollbar-thumb { background: #3a3a34; }

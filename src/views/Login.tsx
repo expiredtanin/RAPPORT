@@ -257,7 +257,7 @@ export default function Login({ verifyLogin, settings, version, cloudUnreachable
         margin: "0 20px",
       }}>
         <div style={{ textAlign: "center", marginBottom: 36 }}>
-          <div style={{ fontFamily: "var(--font-ui)", fontSize: 36, color: "#1a1a18", letterSpacing: "-0.02em", lineHeight: 1 }}>
+          <div style={{ fontFamily: "var(--font-brand)", fontSize: 36, color: "#1a1a18", letterSpacing: "-0.02em", lineHeight: 1 }}>
             RAPPORT
           </div>
           <div style={{ fontSize: 9, color: "#b0aca4", letterSpacing: "0.2em", marginTop: 8, fontWeight: 500 }}>

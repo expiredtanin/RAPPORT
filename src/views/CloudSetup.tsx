@@ -24,7 +24,7 @@ const C = {
 const S = {
   wrap: { background: C.bg, minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "var(--font-ui)", color: C.text, padding: "32px 16px" },
   card: { width: "100%", maxWidth: 460, background: C.surface, borderRadius: 14, padding: "44px 40px", boxShadow: "0 2px 24px rgba(60,50,40,0.10)", border: `1px solid ${C.border}`, maxHeight: "92vh", overflowY: "auto" },
-  logo: { fontFamily: "var(--font-ui)", fontSize: 34, color: C.text, letterSpacing: "-0.02em", textAlign: "center", marginBottom: 4 },
+  logo: { fontFamily: "var(--font-brand)", fontSize: 34, color: C.text, letterSpacing: "-0.02em", textAlign: "center", marginBottom: 4 },
   sub: { textAlign: "center", fontSize: 10, color: C.text4, letterSpacing: "0.14em", marginBottom: 32 },
   progress: { display: "flex", gap: 6, justifyContent: "center", marginBottom: 32 },
   dot: (active: boolean, done: boolean): CSSProperties => ({ width: active ? 22 : 8, height: 8, borderRadius: 4, background: done ? C.text : active ? C.text : C.border, opacity: done ? 1 : active ? 1 : 0.4, transition: "all 0.3s" }),
