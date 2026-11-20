@@ -3,7 +3,7 @@
 // Der Backup-Export entfernt Klartext-Passwörter (Altbestand); Passwort-Hashes bleiben.
 
 import React, { useState, useEffect } from "react";
-import { storage, isCloudBackend, isFileBackend, fileStorage } from "../../storage/adapter";
+import { storage, isCloudBackend, isFileBackend, fileStorage, isServerMode } from "../../storage/adapter";
 import { canUseDataFolder, chooseDataFolder, folderHasData, writeDataToFolder, activateDataFolder, getDataDir } from "../../storage/data-folder";
 import type { PocketBaseAdapter } from "../../storage/pocketbase-adapter";
 import { localISODate } from "../../utils";
@@ -14,14 +14,21 @@ import { showToast } from "../../toast";
 import { FormField, Modal } from "../../components/UI";
 import { useConfirm } from "../../hooks/useConfirm";
 import { Section, type DraftProps } from "./shared";
-import type { ViewProps } from "../../types";
+import type { AppData, ViewProps } from "../../types";
+import { CloudMigration } from "./CloudMigration";
+import type { CloudMigratedNote } from "../../storage/cloud-migrate";
 
 /** Cloud-Methoden des Adapters; nur sinnvoll aufrufen, wenn `isCloudBackend` true ist. */
 const cloud = storage as unknown as PocketBaseAdapter;
 
 /** Speicherort, Backup und Studio-Verwaltung. */
-export function SystemTab({ s, setField, data, setView, isAdmin }: DraftProps & Pick<ViewProps, "data" | "setView"> & { isAdmin: boolean }) {
+export function SystemTab({ s, setField, data, setView, isAdmin, currentUser }: DraftProps & Pick<ViewProps, "data" | "setView"> & { isAdmin: boolean; currentUser?: ViewProps["currentUser"] }) {
   const [initModal, setInitModal] = useState(false);
+  // Umzug in die Cloud (lokal/Datenordner) bzw. Backup ins aktive Cloud-Büro (CloudMigration.tsx)
+  const [migration, setMigration] = useState<{ mode: "local" | "backup"; data: AppData } | null>(null);
+  const [migratedNote] = useState<CloudMigratedNote | null>(() => {
+    try { return JSON.parse(localStorage.getItem("rapport_cloud_migrated") || "null"); } catch { return null; }
+  });
   // Cloud-spezifisch: Studios, in denen der aktuelle User Mitglied ist (für Switcher + Sharing)
   const [myStudios, setMyStudios] = useState<{ id: string; name?: string; slug?: string; appRoleId?: string }[]>([]);
   const [newStudioModal, setNewStudioModal] = useState<{ name: string; slug?: string; shareFrom: Set<string> } | null>(null);
@@ -115,6 +122,11 @@ export function SystemTab({ s, setField, data, setView, isAdmin }: DraftProps & 
       // Fremde Dateien und Backups ohne Anmeldung nicht einspielen (siehe checkBackup)
       const problem = checkBackup(imported, !isCloudBackend);
       if (problem) { showToast(problem, { timeout: 10000 }); return; }
+      // Cloud: nicht über save() überschreiben, sondern wie ein Umzug (Leer-Prüfung, Fortschritt, Prüfung)
+      if (isCloudBackend) {
+        setMigration({ mode: "backup", data: applyMigrations(imported as Parameters<typeof applyMigrations>[0], defaultData) });
+        return;
+      }
       if (!await askConfirm("Aktuelle Daten wirklich überschreiben?", "Überschreiben")) return;
       try {
         // In aktuelle Form bringen, bevor der Adapter es zerlegt (Datenordner erwartet z.B. Listen)
@@ -130,6 +142,18 @@ export function SystemTab({ s, setField, data, setView, isAdmin }: DraftProps & 
   return (
     <>
       {ConfirmModalEl}
+      {migration && (
+        <CloudMigration
+          mode={migration.mode}
+          data={migration.data}
+          currentUser={currentUser ?? null}
+          resolveFiles={migration.mode === "local" && isFileBackend ? d => fileStorage.embedAttachments(d) : undefined}
+          onBackup={exportData}
+          onClose={() => setMigration(null)}
+          source={{ from: isFileBackend ? "file" : "local", dir: isFileBackend ? dataDir : null }}
+          cloudUserIds={migration.mode === "backup" ? (data.users || []).map(u => u.id) : []}
+        />
+      )}
       {initModal && (
         <div className="modal-overlay" onClick={() => setInitModal(false)}>
           <div className="modal" style={{ maxWidth: 440 }} onClick={e => e.stopPropagation()}>
@@ -182,6 +206,15 @@ export function SystemTab({ s, setField, data, setView, isAdmin }: DraftProps & 
               </>)}
             </Section>
           )}
+          {!isCloudBackend && !isServerMode && isAdmin && (
+            <Section title="CLOUD">
+              <div style={{ fontSize: 12, color: "var(--text4)", lineHeight: 1.7, marginBottom: 12 }}>
+                Alle Daten (inkl. Belege, Logo und Bilder) in ein Büro auf einem Rapport-Server übertragen, damit das ganze Team gleichzeitig arbeiten kann.
+                Vorher wird automatisch eine Sicherung gespeichert, danach wird geprüft, ob alles angekommen ist. Die bisherigen Daten bleiben unverändert erhalten.
+              </div>
+              <button className="btn btn-ghost" style={{ width: "100%" }} onClick={() => setMigration({ mode: "local", data })}>Daten in die Cloud übertragen…</button>
+            </Section>
+          )}
           {isCloudBackend && (
             <Section title="CLOUD-VERBINDUNG">
               <div style={{ fontSize: 12, color: "var(--text4)", marginBottom: 14, lineHeight: 1.7 }}>
@@ -195,6 +228,12 @@ export function SystemTab({ s, setField, data, setView, isAdmin }: DraftProps & 
                   <span>Studios des Accounts</span><strong style={{ color: "var(--text3)" }}>{myStudios.length}</strong>
                 </div>
               </div>
+              {migratedNote && (
+                <div style={{ fontSize: 12, color: "var(--text4)", lineHeight: 1.6, marginBottom: 12, padding: "8px 10px", background: "var(--surface2)", borderRadius: 6 }}>
+                  Am {migratedNote.at} in die Cloud übertragen (Büro «{migratedNote.studio}»). Der Stand von vorher liegt unverändert als Sicherung
+                  {migratedNote.from === "file" ? <> im Datenordner <code>{migratedNote.dir}</code></> : " im lokalen Speicher dieser App"} und in der damals heruntergeladenen Backup-Datei.
+                </div>
+              )}
               {isAdmin && (
                 <button
                   className="btn btn-ghost"
@@ -243,9 +282,9 @@ export function SystemTab({ s, setField, data, setView, isAdmin }: DraftProps & 
                 ↑ Stammdaten importieren (CSV/Excel)…
               </button>
             )}
-            {!isCloudBackend && (
-              <label className="btn btn-ghost" style={{ width: "100%", textAlign: "center", display: "block", marginBottom: 10 }}>
-                ↑ Backup importieren
+            {(!isCloudBackend || isAdmin) && (
+              <label className="btn btn-ghost" style={{ width: "100%", justifyContent: "center", display: "flex", marginBottom: 10, textTransform: "none", letterSpacing: "normal" }}>
+                {isCloudBackend ? "↑ Backup in dieses Büro übertragen…" : "↑ Backup importieren"}
                 <input type="file" accept=".json" onChange={importData} style={{ display: "none" }} />
               </label>
             )}

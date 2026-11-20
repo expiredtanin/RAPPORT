@@ -78,3 +78,32 @@ describe("PocketBaseAdapter._applyOpsSequential", () => {
     expect(coll.delete).not.toHaveBeenCalled();
   });
 });
+
+describe("PocketBaseAdapter: Rate-Limit für Anlagen («*:create» gilt auch im Batch)", () => {
+  const ops = (spec: string) => [...spec].map((t, i) => t === "c"
+    ? { type: "create" as const, body: { id: "n" + i } }
+    : { type: "update" as const, id: "u" + i, body: {} });
+
+  it("höchstens 20 Anlagen und 50 Operationen pro Batch", () => {
+    const chunks = PocketBaseAdapter._chunkOps(ops("c".repeat(45) + "u".repeat(60)));
+    expect(chunks.map(c => c.length)).toEqual([20, 20, 50, 15]);
+    expect(chunks.map(c => c.filter(o => o.type === "create").length)).toEqual([20, 20, 5, 0]);
+  });
+
+  it("wartet, bis Anlagen wieder ins Fenster passen", async () => {
+    vi.useFakeTimers();
+    try {
+      const a = new PocketBaseAdapter("http://test.invalid");
+      await a._reserveCreates(20);
+      let done = false;
+      const p = a._reserveCreates(5).then(() => { done = true; });
+      await vi.advanceTimersByTimeAsync(PocketBaseAdapter.CREATE_WINDOW_MS - 100);
+      expect(done).toBe(false);
+      await vi.advanceTimersByTimeAsync(200);
+      await p;
+      expect(done).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});

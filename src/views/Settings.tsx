@@ -100,7 +100,7 @@ export default function Settings({ data, update, currentUser, uiZoom, setUiZoom,
         {tab === "erscheinungsbild" && <DocDesignSettings s={s} setField={setField} data={data} update={update} />}
         {tab === "team" && <TeamTab s={s} setField={setField} data={data} update={update} isAdmin={isAdmin} />}
         {tab === "kalender" && <CalendarTab data={data} update={update} onSettingsSaved={c => setS(prev => ({ ...prev, ...c }))} />}
-        {tab === "system" && <SystemTab s={s} setField={setField} data={data} setView={setView} isAdmin={isAdmin} />}
+        {tab === "system" && <SystemTab s={s} setField={setField} data={data} setView={setView} isAdmin={isAdmin} currentUser={currentUser} />}
         {tab === "support" && <UpdatesSupport />}
       </>}
     </div>

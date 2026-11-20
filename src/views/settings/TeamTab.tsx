@@ -11,6 +11,7 @@ import { FormField, Modal } from "../../components/UI";
 import { useConfirm } from "../../hooks/useConfirm";
 import { Section, type DraftProps } from "./shared";
 import type { AppRole, ViewProps } from "../../types";
+import { readPendingInvites, writePendingInvites, type InviteCandidate } from "../../storage/cloud-migrate";
 
 /** Cloud-Methoden des Adapters; nur sinnvoll aufrufen, wenn `isCloudBackend` true ist. */
 const cloud = storage as unknown as PocketBaseAdapter;
@@ -50,7 +51,11 @@ const PERMISSION_GROUPS = [
 export function TeamTab({ s, setField, data, update, isAdmin }: DraftProps & Pick<ViewProps, "data" | "update"> & { isAdmin: boolean }) {
   const [editingRoleId, setEditingRoleId] = useState<string | null>(null);
   const [roleForm, setRoleForm] = useState<AppRole | null>(null);
-  const [inviteModal, setInviteModal] = useState<{ email: string; displayName: string; appRoleId: string; tempPassword: string } | null>(null);
+  const [inviteModal, setInviteModal] = useState<{ email: string; displayName: string; appRoleId: string; tempPassword: string; employeeId: string } | null>(null);
+  // Nach dem Umzug in die Cloud: lokale Benutzer, die noch ein Cloud-Konto brauchen (CloudMigration.tsx)
+  const [pendingInvites, setPendingInvites] = useState<InviteCandidate[]>(() => isCloudBackend ? readPendingInvites() : []);
+  const setPending = (list: InviteCandidate[]) => { writePendingInvites(list); setPendingInvites(list); };
+  const newTempPassword = () => Math.random().toString(36).slice(2, 10);
   const [inviteResult, setInviteResult] = useState<{ ok: boolean; error?: string; tempPassword?: string; email?: string } | null>(null);
   const { askConfirm, ConfirmModalEl } = useConfirm();
 
@@ -71,7 +76,7 @@ export function TeamTab({ s, setField, data, update, isAdmin }: DraftProps & Pic
             <div className="card">
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, paddingBottom: 8, borderBottom: "1px solid var(--border2)" }}>
                 <div style={{ fontSize: 10, letterSpacing: "0.12em", color: "var(--text5)", fontWeight: 600 }}>MITARBEITER (CLOUD)</div>
-                <button className="btn btn-ghost" style={{ padding: "3px 10px", fontSize: 11 }} onClick={() => setInviteModal({ email: "", displayName: "", appRoleId: "r-mitarbeiter", tempPassword: Math.random().toString(36).slice(2, 10) })}>+ Einladen</button>
+                <button className="btn btn-ghost" style={{ padding: "3px 10px", fontSize: 11 }} onClick={() => setInviteModal({ email: "", displayName: "", appRoleId: "r-mitarbeiter", tempPassword: newTempPassword(), employeeId: "" })}>+ Einladen</button>
               </div>
               <div style={{ fontSize: 11, color: "var(--text5)", marginBottom: 12 }}>
                 Personen mit Cloud-Zugang zu diesem Studio. Beim Einladen vergeben Sie ein temporäres Passwort, das Sie der Person separat mitteilen.
@@ -84,6 +89,24 @@ export function TeamTab({ s, setField, data, update, isAdmin }: DraftProps & Pic
                   </div>
                 </div>
               ))}
+              {pendingInvites.length > 0 && (
+                <div style={{ marginTop: 14 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                    <div style={{ fontSize: 10, letterSpacing: "0.12em", color: "var(--text5)", fontWeight: 600 }}>AUS DEM UMZUG NOCH EINZULADEN</div>
+                    <button className="btn btn-quiet btn-sm" onClick={() => setPending([])}>Liste ausblenden</button>
+                  </div>
+                  <div style={{ fontSize: 11, color: "var(--text5)", marginBottom: 6 }}>Lokale Benutzer lassen sich nicht übernehmen (Passwörter unbekannt). Einladen legt ein Cloud-Konto an und verknüpft es mit dem Mitarbeitenden.</div>
+                  {pendingInvites.map(i => (
+                    <div key={i.username} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 0", borderBottom: "1px solid var(--border2)", fontSize: 13 }}>
+                      <span>{i.name} <span style={{ fontSize: 10, color: "var(--text4)" }}>bisher «{i.username}»</span></span>
+                      <button className="btn btn-ghost" style={{ padding: "3px 10px", fontSize: 11 }}
+                        onClick={() => setInviteModal({ email: "", displayName: i.name, appRoleId: (data.appRoles || []).some(r => r.id === i.appRoleId) ? i.appRoleId : "r-mitarbeiter", tempPassword: newTempPassword(), employeeId: i.employeeId || "" })}>
+                        Einladen
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
           <div className="card">
@@ -226,6 +249,13 @@ export function TeamTab({ s, setField, data, update, isAdmin }: DraftProps & Pic
               ))}
             </select>
           </FormField>
+          <FormField label="MITARBEITER/IN VERKNÜPFEN">
+            <select value={inviteModal.employeeId} onChange={e => setInviteModal(m => ({ ...m!, employeeId: e.target.value }))}>
+              <option value="">— keine Verknüpfung —</option>
+              {(data.employees || []).filter(e => !e.appUserId || e.id === inviteModal.employeeId).map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
+            </select>
+            <div style={{ fontSize: 11, color: "var(--text5)", marginTop: 4 }}>Für eigene Zeiterfassung, Ferien und Spesen der Person.</div>
+          </FormField>
           <FormField label="TEMPORÄRES PASSWORT">
             <input
               type="text"
@@ -246,6 +276,11 @@ export function TeamTab({ s, setField, data, update, isAdmin }: DraftProps & Pic
                 const m = inviteModal;
                 const res = await cloud.inviteMember(m.email.trim(), m.tempPassword, m.displayName.trim(), m.appRoleId);
                 if (res?.ok) {
+                  if (m.employeeId && res.userId) {
+                    const userId = res.userId;
+                    update("employees", prev => prev.map(e => e.id === m.employeeId ? { ...e, appUserId: userId } : e));
+                  }
+                  if (pendingInvites.length) setPending(pendingInvites.filter(i => !(i.employeeId ? i.employeeId === m.employeeId : i.name === m.displayName.trim())));
                   setInviteResult({ ok: true, email: m.email.trim(), tempPassword: m.tempPassword });
                   setInviteModal(null);
                 } else {

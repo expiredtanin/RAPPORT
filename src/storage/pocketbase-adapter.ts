@@ -109,6 +109,17 @@ const CONFIG_MAP: [DataKey, string, EntityMapper, string][] = [
   ["dashboardTemplates", "dashboardTemplates", "dashboardTemplate", "templateId"],
 ];
 
+/**
+ * Alle Bereiche, die in der Cloud gespeichert werden, in Schreibreihenfolge (wie `_writeSnapshot`:
+ * Einstellungen, Kontakte und Mitarbeitende vor allem, was sie referenziert). Für den Umzug in die
+ * Cloud (cloud-migrate.ts); `users` fehlt bewusst (kommt aus den Mitgliedschaften).
+ */
+export const CLOUD_DATA_KEYS: DataKey[] = [
+  "settings", "persons", "employees",
+  ...ENTITY_MAP.map(([k]) => k).filter(k => k !== "persons" && k !== "employees"),
+  ...CONFIG_MAP.map(([k]) => k),
+];
+
 // Collection-Name -> data-Key, für den gezielten Realtime-Refresh (siehe
 // subscribeToChanges()/loadPartial()). studioSettings UND studioRoles bilden
 // gemeinsam den einen "settings"-Key ab (fromDB.studioSettings kombiniert
@@ -414,6 +425,32 @@ export class PocketBaseAdapter implements StorageAdapter {
     if (this._unsub) { this._unsub(); this._unsub = null; }
   }
 
+  /**
+   * Umzug in die Cloud (cloud-migrate.ts): schreibt genau diese Bereiche ins aktive Studio, egal ob sie
+   * sich seit dem letzten Speichern geändert haben. Anders als `save()` ist fehlende Berechtigung
+   * (403/404) hier ein Fehler — sonst fehlten Daten still. Ohne Abgleichsstand («Full Replace») wird
+   * gelöscht, was im Studio liegt und in `data` fehlt (z.B. die Vorgaben eines neuen Studios).
+   */
+  async writeAreas(data: AppData, keys: DataKey[]): Promise<void> {
+    if (!this._studioId) throw new Error("PocketBaseAdapter.writeAreas: studio_id nicht gesetzt.");
+    await this.whenIdle();
+    await this._writeSnapshot(data, new Set(keys));
+  }
+
+  /** Anzahl Zeilen eines Bereichs im aktiven Studio (`settings` = Studio-Einstellungen); für die Prüfung nach dem Umzug. */
+  async countArea(key: DataKey): Promise<number> {
+    const sid = this._studioId;
+    if (!sid) throw new Error("PocketBaseAdapter.countArea: studio_id nicht gesetzt.");
+    const coll = key === "settings" ? "studioSettings"
+      : ENTITY_MAP.find(([k]) => k === key)?.[1] ?? CONFIG_MAP.find(([k]) => k === key)?.[1];
+    if (!coll) throw new Error(`PocketBaseAdapter.countArea: «${String(key)}» wird nicht in der Cloud gespeichert.`);
+    const filter = key === "persons"
+      ? `studio = "${sid}" || personStudioLinks_via_person.studio ?= "${sid}"`
+      : `studio = "${sid}"`;
+    const res = await this.client.collection(coll).getList(1, 1, { filter, fields: "id" });
+    return res.totalItems;
+  }
+
   /** true, wenn das aktive Studio auf dem Server existiert. */
   async hasExistingData() {
     if (!this._studioId) return false;
@@ -592,7 +629,8 @@ export class PocketBaseAdapter implements StorageAdapter {
     return this._currentWrite;
   }
 
-  async _writeSnapshot(data: AppData): Promise<void> {
+  /** `only` gesetzt (Umzug, `writeAreas`): genau diese Bereiche schreiben, 403/404 nicht überspringen, `_lastData` nicht setzen. */
+  async _writeSnapshot(data: AppData, only?: Set<DataKey>): Promise<void> {
     const sid = this._studioId as Id; // save() hat vorher geprüft, dass es gesetzt ist
     const c = this.client;
     const prev = this._lastData;
@@ -603,7 +641,7 @@ export class PocketBaseAdapter implements StorageAdapter {
     // überhaupt ein getFullList()-Roundtrip dafür losgeschickt wird. Ohne
     // vorherigen Snapshot (erster Save nach Login/Konstruktion) gilt alles als
     // geändert — identisch zum bisherigen Verhalten.
-    const changed = (key: DataKey) => !prev || data[key] !== prev[key];
+    const changed = (key: DataKey) => only ? only.has(key) : !prev || data[key] !== prev[key];
 
     // Manche Collections sind serverseitig an eine appRoles-Berechtigung gebunden
     // (pb/pb_hooks/permissions.pb.js) — ein Mitarbeiter ohne z.B. "invoices"
@@ -621,7 +659,7 @@ export class PocketBaseAdapter implements StorageAdapter {
       try {
         await fn();
       } catch (err) {
-        if (pbError(err).status !== 403 && pbError(err).status !== 404) throw err;
+        if (only || (pbError(err).status !== 403 && pbError(err).status !== 404)) throw err;
         console.warn(`PocketBaseAdapter._writeSnapshot: keine Berechtigung für "${label}", übersprungen.`);
       }
     };
@@ -641,7 +679,7 @@ export class PocketBaseAdapter implements StorageAdapter {
       });
     }
 
-    if (data.settings?.roles && (!prev || data.settings.roles !== prev.settings?.roles)) {
+    if (data.settings?.roles && (only ? only.has("settings") : !prev || data.settings.roles !== prev.settings?.roles)) {
       await skip403("studioRoles", () => this._syncTable("studioRoles", sid, toDB.studioRoles(data.settings.roles, sid), "roleId"));
     }
 
@@ -668,7 +706,7 @@ export class PocketBaseAdapter implements StorageAdapter {
     // markieren — wirft einer der obigen skip403()-Blöcke einen echten (nicht
     // 403/404-)Fehler, bricht die Funktion vorher ab und der nächste Save
     // vergleicht wieder gegen den alten Snapshot (alle Collections erneut "changed").
-    this._lastData = data;
+    if (!only) this._lastData = data;
   }
 
   /**
@@ -720,6 +758,46 @@ export class PocketBaseAdapter implements StorageAdapter {
   static BATCH_GAP_MS = 350;
   static BATCH_RETRY_MS = 1100;
   _lastBatchAt = 0;
+  // Rate-Limit «*:create» (20 pro 5 s pro IP) gilt auch für jede Anlage INNERHALB eines Batches:
+  // ein Batch mit mehr als 20 Anlagen scheiterte immer an der 21. (ganzer Batch zurückgerollt, danach
+  // einzeln → 429). Deshalb höchstens CREATE_LIMIT Anlagen pro Batch und ein gleitendes Fenster über
+  // alle Anlagen dieses Adapters (Batch, einzeln, Uploads). Betrifft Umzug/Import vieler Datensätze;
+  // andere Geräte hinter derselben IP zählen mit, dafür bleibt die Wiederholung bei 429.
+  static CREATE_LIMIT = 20;
+  static CREATE_WINDOW_MS = 5300;
+  _createTimes: number[] = [];
+
+  /** Wartet, bis `n` Anlagen ins Fenster passen (`n` ≤ CREATE_LIMIT), und vermerkt sie. */
+  async _reserveCreates(n: number): Promise<void> {
+    if (n <= 0) return;
+    const { CREATE_LIMIT, CREATE_WINDOW_MS } = PocketBaseAdapter;
+    for (;;) {
+      const now = Date.now();
+      this._createTimes = this._createTimes.filter(t => now - t < CREATE_WINDOW_MS);
+      if (this._createTimes.length + n <= CREATE_LIMIT) break;
+      const wait = CREATE_WINDOW_MS - (now - this._createTimes[this._createTimes.length + n - CREATE_LIMIT - 1]);
+      await new Promise(r => setTimeout(r, Math.max(wait, 10)));
+    }
+    const now = Date.now();
+    for (let i = 0; i < n; i++) this._createTimes.push(now);
+  }
+
+  /** Teilt Operationen in Batches: höchstens BATCH_SIZE Operationen, davon höchstens CREATE_LIMIT Anlagen. */
+  static _chunkOps(ops: Op[]): Op[][] {
+    const chunks: Op[][] = [];
+    let cur: Op[] = [];
+    let creates = 0;
+    for (const op of ops) {
+      const isCreate = op.type === "create";
+      if (cur.length >= PocketBaseAdapter.BATCH_SIZE || (isCreate && creates >= PocketBaseAdapter.CREATE_LIMIT)) {
+        chunks.push(cur); cur = []; creates = 0;
+      }
+      cur.push(op);
+      if (isCreate) creates++;
+    }
+    if (cur.length) chunks.push(cur);
+    return chunks;
+  }
 
   async _applyOps(table: string, allOps: Op[]): Promise<void> {
     const c = this.client.collection(table);
@@ -732,8 +810,7 @@ export class PocketBaseAdapter implements StorageAdapter {
       if (prepared.multipart) uploads.push({ op, prepared });
       else ops.push({ ...op, body: prepared.body });
     }
-    for (let i = 0; i < ops.length; i += PocketBaseAdapter.BATCH_SIZE) {
-      const chunk = ops.slice(i, i + PocketBaseAdapter.BATCH_SIZE);
+    for (const chunk of PocketBaseAdapter._chunkOps(ops)) {
       // Eine einzelne Operation braucht keinen Batch (häufigster Fall: eine Zeile geändert)
       if (this._batchSupported === false || chunk.length === 1) {
         await this._applyOpsSequential(c, chunk);
@@ -765,6 +842,7 @@ export class PocketBaseAdapter implements StorageAdapter {
     const c = this.client.collection(table);
     for (let attempt = 0; ; attempt++) {
       try {
+        if (op.type === "create") await this._reserveCreates(1);
         const rec = op.type === "update" ? await c.update(op.id, prepared.body) : await c.create(prepared.body);
         if (prepared.upload) this._files.remember(table, rec, prepared.upload);
         return;
@@ -786,6 +864,7 @@ export class PocketBaseAdapter implements StorageAdapter {
   async _applyOpsBatched(table: string, chunk: Op[]): Promise<void> {
     const wait = this._lastBatchAt + PocketBaseAdapter.BATCH_GAP_MS - Date.now();
     if (wait > 0) await new Promise(r => setTimeout(r, wait));
+    await this._reserveCreates(chunk.filter(op => op.type === "create").length);
     this._lastBatchAt = Date.now();
     const batch = this.client.createBatch();
     for (const op of chunk) {
@@ -803,7 +882,7 @@ export class PocketBaseAdapter implements StorageAdapter {
   async _applyOpsSequential(c: ReturnType<PocketBase["collection"]>, chunk: Op[]): Promise<void> {
     for (const op of chunk) {
       try {
-        if (op.type === "create") await c.create(op.body);
+        if (op.type === "create") { await this._reserveCreates(1); await c.create(op.body); }
         else if (op.type === "update") await c.update(op.id, op.body);
         else await c.delete(op.id);
       } catch (err) {
