@@ -421,7 +421,27 @@ export interface Invoice {
   qrReference?: string;
   /** Zahlungserinnerungen/Mahnungen in der Reihenfolge ihres Versands */
   reminders?: InvoiceReminder[];
+  /**
+   * Abrechnungsblock einer Akonto-/Teilrechnung (Honorar, bisher gestellt, diese Rechnung, Rest), beim
+   * Speichern und beim Wechsel aus dem Entwurf festgehalten, damit ein Nachdruck dieselben Zahlen zeigt
+   * (`invoiceBillingSummary`, views/invoices/invoiceHelpers.ts). Fehlt bei anderen Rechnungsarten.
+   */
+  billingSummary?: InvoiceBillingSummary | null;
   createdAt?: Timestamp;
+}
+
+/** Stand der Honorarabrechnung auf einer Akonto-/Teilrechnung; alle Beträge netto exkl. MWST, auf Rappen. */
+export interface InvoiceBillingSummary {
+  /** Honorar total: Pauschalhonorar des Projekts oder Netto der Offerte (`quoteNumber`) */
+  fee: number;
+  quoteNumber?: string;
+  /** frühere gestellte Rechnungen desselben Projekts bzw. derselben Offerte (ohne Entwürfe, ohne diese) */
+  prior: number;
+  priorNumbers: string[];
+  /** diese Rechnung, netto nach Rabatt */
+  thisNet: number;
+  /** offen nach dieser Rechnung = fee − prior − thisNet (negativ = über dem Honorar) */
+  rest: number;
 }
 
 /** Teilleistung einer SIA-Phase; `r` = Faktor (Standard 1), `pct` = Anteil in %. */

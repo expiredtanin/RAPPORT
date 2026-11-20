@@ -35,3 +35,32 @@ describe("InvoicePrint Summenblock", () => {
     expect(row(html, "Netto")).toMatch(/9.000\.00/);
   });
 });
+
+describe("InvoicePrint Abrechnungsblock", () => {
+  // Limmatfeld: Honorar 185'550.50, bisher 123'391.08 (66.5 %), diese 37'110.10 (20.0 %), Rest 25'049.32 (13.5 %)
+  const summary = { fee: 185_550.5, prior: 123_391.08, priorNumbers: ["2026-003", "2026-007"], thisNet: 37_110.1, rest: 25_049.32 };
+
+  it("zeigt Honorar, bisher (mit Nummern), diese Rechnung und Rest mit Anteilen", () => {
+    const html = renderToStaticMarkup(<InvoicePrint inv={{ ...discounted(), invoiceKind: "akonto", billingSummary: summary }} client={undefined} settings={settings} />).replace(/\u00a0/g, " ");
+    expect(html).toContain("STAND DER ABRECHNUNG");
+    expect(html).toContain("Bisher in Rechnung gestellt (2026-003, 2026-007)");
+    expect(html).toMatch(/185.550\.50/);
+    expect(html).toMatch(/123.391\.08.*66\.5 %/);
+    expect(html).toMatch(/Diese Rechnung.*37.110\.10.*20\.0 %/);
+    expect(html).toMatch(/Rest nach dieser Rechnung.*25.049\.32.*13\.5 %/);
+  });
+
+  it("ohne Block nichts davon", () => {
+    const html = renderToStaticMarkup(<InvoicePrint inv={discounted()} client={undefined} settings={settings} />);
+    expect(html).not.toContain("STAND DER ABRECHNUNG");
+  });
+});
+
+describe("InvoicePrint Abrechnungsblock über dem Honorar", () => {
+  it("zeigt den Überschuss positiv mit eigener Beschriftung (10'000 − 8'000 − 3'000 = −1'000)", () => {
+    const s = { fee: 10_000, prior: 8_000, priorNumbers: ["1"], thisNet: 3_000, rest: -1_000 };
+    const html = renderToStaticMarkup(<InvoicePrint inv={{ ...discounted(), billingSummary: s }} client={undefined} settings={settings} />).replace(/\u00a0/g, " ");
+    expect(html).toMatch(/Über dem Honorar nach dieser Rechnung.*1.000\.00.*10\.0 %/);
+    expect(html).not.toMatch(/CHF\s?-/);
+  });
+});

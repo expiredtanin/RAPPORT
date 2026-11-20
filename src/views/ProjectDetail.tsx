@@ -23,6 +23,7 @@ import { EmployeeCard } from "./project-detail/EmployeeCard";
 import { TimeEntriesCard } from "./project-detail/TimeEntriesCard";
 import { QuotesCard } from "./project-detail/QuotesCard";
 import { InvoicesCard } from "./project-detail/InvoicesCard";
+import { withPrintSummary } from "./invoices/invoiceHelpers";
 import { ProtocolsCard } from "./project-detail/ProtocolsCard";
 import { SettingsModal } from "./project-detail/SettingsModal";
 import { BudgetModal } from "./project-detail/BudgetModal";
@@ -298,7 +299,7 @@ function ProjectDetail({ data, update, saveAll, projectId, onBack, onSelect, run
             {canSeeQuotes && <BudgetCard project={project} data={data} entries={entries} positions={positions} projectInvoices={projectInvoices} budget={budget} totalHours={totalHours} budgetPct={budgetPct} budgetColor={budgetColor} canSeeInvoices={canSeeInvoices} budgetChartView={budgetChartView} setBudgetChartView={setBudgetChartView} onOpenBudget={openBudget} />}
             {canSeeQuotes && <QuotesCard data={data} projectId={projectId} client={client} setPrintContent={setPrintContent} />}
             {canSeeInvoices && projectInvoices.length > 0 && (
-              <InvoicesCard projectInvoices={projectInvoices} client={client} setPrintContent={setPrintContent} showOffen={showOffen} paidTotal={paidTotal} openTotal={openTotal} />
+              <InvoicesCard projectInvoices={projectInvoices} client={client} setPrintContent={c => setPrintContent(withPrintSummary(c, data))} showOffen={showOffen} paidTotal={paidTotal} openTotal={openTotal} />
             )}
           </div>
         )}

@@ -5,7 +5,7 @@ import { useState, useEffect } from "react";
 import { formatCHF, formatDate, formatIban, formatSenderAddress, invoiceNet, lineAmount, paymentReference } from "../../utils";
 import { StudioLogo } from "../../components/UI";
 import type { Data } from "swissqrbill/types";
-import type { Invoice, Settings } from "../../types";
+import type { Invoice, InvoiceBillingSummary, Settings } from "../../types";
 import { HEADING, type Client } from "./shared";
 import { buildQrBillData } from "./qrBillData";
 
@@ -91,6 +91,8 @@ export function InvoicePrint({ inv, client, settings }: { inv: Invoice; client: 
         </div>
       </div>
 
+      {inv.billingSummary && <BillingSummaryBlock s={inv.billingSummary} />}
+
       {inv.notes && <div style={{ marginBottom: 40, fontSize: 10, color: "#555", lineHeight: 1.7 }}>{inv.notes}</div>}
 
       <div style={{ marginTop: 60, paddingTop: 20, borderTop: "1px solid #ddd", fontSize: 9, color: "#888", display: "flex", justifyContent: "space-between" }}>
@@ -105,6 +107,40 @@ export function InvoicePrint({ inv, client, settings }: { inv: Invoice; client: 
         </div>
       </div>
     </>
+  );
+}
+
+/**
+ * Abrechnungsblock einer Akonto-/Teilrechnung: Honorar total, bisher in Rechnung gestellt, diese Rechnung,
+ * Rest nach dieser Rechnung (netto exkl. MWST, mit Anteil am Honorar). Werte aus `inv.billingSummary`
+ * (beim Speichern festgehalten, im Entwurf aktuell berechnet — invoiceHelpers.ts `invoiceForPrint`).
+ */
+function BillingSummaryBlock({ s }: { s: InvoiceBillingSummary }) {
+  const pct = (x: number) => `${(s.fee > 0 ? x / s.fee * 100 : 0).toFixed(1)} %`;
+  const nums = s.priorNumbers.length > 0 && s.priorNumbers.length <= 4 ? ` (${s.priorNumbers.join(", ")})` : s.priorNumbers.length > 4 ? ` (${s.priorNumbers.length} Rechnungen)` : "";
+  const rows: { label: string; amt: number; strong?: boolean }[] = [
+    { label: s.quoteNumber ? `Honorar total gemäss Offerte ${s.quoteNumber}` : "Honorar total", amt: s.fee },
+    { label: `Bisher in Rechnung gestellt${nums}`, amt: s.prior },
+    { label: "Diese Rechnung", amt: s.thisNet },
+    // über dem Honorar: Betrag positiv mit eigener Beschriftung statt «CHF-…»
+    s.rest < 0 ? { label: "Über dem Honorar nach dieser Rechnung", amt: -s.rest, strong: true } : { label: "Rest nach dieser Rechnung", amt: s.rest, strong: true },
+  ];
+  const cell = { padding: "3px 0", whiteSpace: "nowrap" } as const;
+  return (
+    <div className="billing-summary" style={{ marginBottom: 40, fontSize: 10 }}>
+      <div style={{ fontSize: 9, letterSpacing: "0.12em", color: "#888", marginBottom: 4 }}>STAND DER ABRECHNUNG (NETTO, EXKL. MWST)</div>
+      <table style={{ width: "100%", borderCollapse: "collapse", borderTop: "1px solid #ddd" }}>
+        <tbody>
+          {rows.map((r, i) => (
+            <tr key={i} style={r.strong ? { borderTop: "1px solid var(--doc-ink)", fontWeight: 600 } : { borderBottom: i < rows.length - 2 ? "1px solid #eee" : undefined }}>
+              <td style={{ ...cell, whiteSpace: "normal", color: r.strong ? undefined : "#555" }}>{r.label}</td>
+              <td className="align-right" style={{ ...cell, textAlign: "right", width: 110 }}>{formatCHF(r.amt)}</td>
+              <td className="align-right" style={{ ...cell, textAlign: "right", width: 64, paddingLeft: 12, color: r.strong ? undefined : "#888" }}>{pct(r.amt)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }
 

@@ -1,8 +1,9 @@
 // Reine Hilfen der Rechnungsansicht (views/invoices/): Formular-Typen, Summenberechnung, Rechnungsnummern
 // und die Erzeugung der Akonto-Plan-Rechnungen. Keine React-Abhängigkeiten.
 
-import { deriveQuoteBudget, generateId, lineAmount, localISODate, migrateLinkedQuotes, roundCHF } from "../../utils";
-import type { AppData, Invoice, InvoiceItem, Project, Quote, Role, TimeEntry } from "../../types";
+import { SIA_PHASES } from "../../constants";
+import { deriveQuoteBudget, generateId, invoiceNet, invoicesForQuote, lineAmount, localISODate, migrateLinkedQuotes, projectFee, roundCHF } from "../../utils";
+import type { AppData, Invoice, InvoiceBillingSummary, InvoiceItem, PrintContent, Project, Quote, Role, TimeEntry } from "../../types";
 
 /**
  * Formularstand einer Rechnung: Id und Summen kommen erst beim Speichern dazu; die Positionsliste ist immer
@@ -13,8 +14,13 @@ export type InvoiceForm = Partial<Invoice> & Pick<Invoice, "items"> & { hoursFro
 
 /** Zustand des Dialogs «Neue Rechnung» (Quelle: Projekt oder Offerte, Art der Rechnung). */
 export type NewInvoiceState = { tab: string; projectId?: string; quoteId?: string; mode: string; pct: number; amt: number; phaseId?: string; [key: string]: unknown };
-/** Zustand des Akonto-Planers. */
-export type AkontoPlan = { projectId: string; clientId: string; totalAmt: number; mode: "interval" | "manual"; intervalMonths: number; count: number; startDate: string; manualRows: { id: string; date: string; amt: number }[] };
+/**
+ * Zustand des Akonto-Planers. `phase`: eine Rate je SIA-Phase (Leistungsstand); `phaseDates` = von Hand
+ * gesetzte Daten je Phase, `phaseSkip` = abgewählte Phasen.
+ */
+export type AkontoPlan = { projectId: string; clientId: string; totalAmt: number; mode: "interval" | "manual" | "phase"; intervalMonths: number; count: number; startDate: string; manualRows: AkontoPlanRow[]; phaseDates?: Record<string, string>; phaseSkip?: string[] };
+/** Eine Rate des Akonto-Plans; `desc` = Positionstext (Phasen-Raten), sonst «Akontorechnung – Projekt». */
+export type AkontoPlanRow = { id: string; date: string; amt: number; desc?: string };
 /** Zeiteintrags-Auswahl einer Rechnung (verrechnete Minuten je Eintrag). */
 export type EntrySelections = NonNullable<Invoice["entrySelections"]>;
 
@@ -93,9 +99,14 @@ export const AKONTO_MAX_RATES = 24;
 /**
  * Raten des Akonto-Plans: gleichmässig aus Intervall/Anzahl berechnet (Anzahl auf 1–24 begrenzt, der Betrag
  * wird durch die tatsächliche Anzahl geteilt, die letzte Rate gleicht die Rappen aus, damit die Raten genau
- * den Planbetrag ergeben) oder die manuell erfassten Zeilen.
+ * den Planbetrag ergeben), je SIA-Phase (`akontoPhasePlan`, braucht `data`) oder die manuell erfassten Zeilen.
  */
-export const akontoPlanRows = (ap: AkontoPlan) => {
+export const akontoPlanRows = (ap: AkontoPlan, data?: Pick<AppData, "projects" | "quotes" | "invoices" | "settings">): AkontoPlanRow[] => {
+  if (ap.mode === "phase") {
+    const proj = data?.projects.find(p => p.id === ap.projectId);
+    if (!data || !proj) return [];
+    return akontoPhaseRowsToPlan(akontoPhasePlan(proj, data.quotes || [], data.settings.roles, data.invoices || [], ap).rows, proj.name);
+  }
   if (ap.mode === "interval") {
     const start = ap.startDate || defaultStartDate();
     const count = Math.max(1, Math.min(Math.floor(ap.count) || 1, AKONTO_MAX_RATES));
@@ -146,13 +157,14 @@ export const projectBillingStatus = (invoices: Invoice[], projectId: string, fee
 };
 
 /** Baut aus den Raten des Akonto-Plans die Entwurfs-Rechnungen (Akonto, 30 Tage Zahlungsfrist). */
-export const buildAkontoInvoices = (rows: { id: string; date: string; amt: number }[], ap: AkontoPlan, data: AppData, invoices: Invoice[]) => {
+export const buildAkontoInvoices = (rows: AkontoPlanRow[], ap: AkontoPlan, data: AppData, invoices: Invoice[]) => {
   const proj = data.projects.find(p => p.id === ap.projectId);
   const numbers = generateSequentialNumbers(invoices, data.settings.invoiceNumberFormat, rows.map(r => r.date));
   return rows.map((row, i) => {
     const due = new Date(`${row.date}T00:00:00Z`); due.setUTCDate(due.getUTCDate() + 30);
+    const desc = row.desc || `Akontorechnung – ${proj?.name || ""}`;
     const { sub, tax, total, subAfterDisc, globalDisc } = calcTotal(
-      [{ id: generateId(), desc: `Akontorechnung – ${proj?.name || ""}`, qty: 1, price: row.amt, discount: 0 }],
+      [{ id: generateId(), desc, qty: 1, price: row.amt, discount: 0 }],
       true, data.settings.mwstRate, "none", 0
     );
     return {
@@ -160,7 +172,7 @@ export const buildAkontoInvoices = (rows: { id: string; date: string; amt: numbe
       dueDate: due.toISOString().slice(0, 10),
       clientId: ap.clientId || proj?.clientId || "",
       projectId: ap.projectId, invoiceKind: "akonto",
-      items: [{ id: generateId(), desc: `Akontorechnung – ${proj?.name || ""}`, qty: 1, price: row.amt, discount: 0 }],
+      items: [{ id: generateId(), desc, qty: 1, price: row.amt, discount: 0 }],
       mwst: true, mwstRate: data.settings.mwstRate,
       notes: "Zahlbar innert 30 Tagen netto.",
       status: "entwurf", discountType: "none", discountValue: 0,
@@ -210,7 +222,7 @@ export const applyEntryHours = (form: InvoiceForm, project: Pick<Project, "name"
 };
 
 /** Rechnungen einer Offerte — liegt in utils.ts (auch vom Budget genutzt), hier weiter exportiert. */
-export { invoicesForQuote } from "../../utils";
+export { invoicesForQuote };
 
 /**
  * Betrag einer Teil-/Akontorechnung «Nach SIA-Phase»: der offerierte Phasenbetrag aus den verknüpften
@@ -222,3 +234,125 @@ export const phaseInvoiceAmount = (project: Project, phaseId: string, quotes: Qu
   const ph = (project.phasesBudget || []).find(p => p.id === phaseId);
   return roundCHF((ph?.hours || 0) * (project.hourlyRate || 0));
 };
+
+// ─── Abrechnungsblock (Akonto-/Teilrechnung) ────────────────────────────────
+
+/** Reihenfolge zweier Rechnungen: nach Datum, bei gleichem Datum nach Nummer (numerisch). */
+const compareInvoiceOrder = (a: Pick<Invoice, "date" | "number">, b: Pick<Invoice, "date" | "number">) =>
+  (a.date || "").localeCompare(b.date || "") || (a.number || "").localeCompare(b.number || "", undefined, { numeric: true });
+
+/**
+ * Abrechnungsblock einer Akonto- oder Teilrechnung (Schweizer Praxis): Honorar total, bisher in Rechnung
+ * gestellt, diese Rechnung und Rest nach dieser Rechnung, alles netto exkl. MWST.
+ *
+ * - Mit Offerte (`quoteId`): Honorar = Netto der Offerte (`Quote.sub`), Rechnungen = `invoicesForQuote`.
+ * - Sonst mit Projekt: Honorar = `projectFee`, Rechnungen = alle des Projekts.
+ * - «Bisher» = gestellte Rechnungen (ohne Entwürfe, ohne diese) mit früherem Datum bzw. bei gleichem Datum
+ *   kleinerer Nummer — spätere Rechnungen ändern den Block einer älteren also nicht.
+ *
+ * `null` für andere Rechnungsarten (Schlussrechnungen ziehen die Akonti schon als Positionen ab), ohne
+ * Projekt/Offerte oder ohne Honorar.
+ */
+export const invoiceBillingSummary = (
+  inv: Pick<Invoice, "number" | "date" | "projectId" | "quoteId" | "invoiceKind" | "sub" | "globalDisc"> & { id?: string },
+  data: { projects?: Project[]; quotes?: Quote[]; invoices?: Invoice[] },
+): InvoiceBillingSummary | null => {
+  if (inv.invoiceKind !== "akonto" && inv.invoiceKind !== "teilrechnung") return null;
+  const invoices = data.invoices || [];
+  const projects = data.projects || [];
+  const q = inv.quoteId ? (data.quotes || []).find(x => x.id === inv.quoteId) : undefined;
+  let fee = 0;
+  let scope: Invoice[] = [];
+  if (q) {
+    fee = roundCHF(q.sub || 0);
+    scope = invoicesForQuote(q, invoices, projects);
+  } else if (inv.projectId) {
+    const proj = projects.find(p => p.id === inv.projectId);
+    if (!proj) return null;
+    fee = roundCHF(projectFee(proj));
+    scope = invoices.filter(i => i.projectId === proj.id);
+  }
+  if (!(fee > 0)) return null;
+  const prior = scope
+    .filter(i => i.id !== inv.id && i.status !== "entwurf" && compareInvoiceOrder(i, inv) < 0)
+    .sort(compareInvoiceOrder);
+  const priorNet = roundCHF(prior.reduce((s, i) => s + invoiceNet(i), 0));
+  const thisNet = invoiceNet(inv);
+  return {
+    fee, ...(q ? { quoteNumber: q.number } : {}),
+    prior: priorNet, priorNumbers: prior.map(i => i.number).filter(Boolean),
+    thisNet, rest: roundCHF(fee - priorNet - thisNet),
+  };
+};
+
+/**
+ * Rechnung für Druck/PDF: Entwürfe (und ältere Rechnungen ohne festgehaltenen Block) zeigen den aktuell
+ * berechneten Abrechnungsblock, gestellte Rechnungen den beim Speichern/Versand festgehaltenen.
+ */
+export const invoiceForPrint = (inv: Invoice, data: { projects?: Project[]; quotes?: Quote[]; invoices?: Invoice[] }): Invoice =>
+  inv.status !== "entwurf" && inv.billingSummary ? inv : { ...inv, billingSummary: invoiceBillingSummary(inv, data) };
+
+/** Druckauftrag mit Rechnung (`inv`): Abrechnungsblock wie in `invoiceForPrint` ergänzen; andere unverändert. */
+export const withPrintSummary = (content: PrintContent, data: { projects?: Project[]; quotes?: Quote[]; invoices?: Invoice[] }): PrintContent =>
+  content && content.inv ? { ...content, inv: invoiceForPrint(content.inv as Invoice, data) } : content;
+
+/**
+ * Rechnung beim Wechsel aus dem Entwurf (versendet, bezahlt …): Abrechnungsblock jetzt festhalten. Schon
+ * gestellte Rechnungen behalten ihren Block.
+ */
+export const freezeOnStatus = (inv: Invoice, status: string, data: { projects?: Project[]; quotes?: Quote[]; invoices?: Invoice[] }): Invoice =>
+  inv.status === "entwurf" && status !== "entwurf" ? { ...inv, status, billingSummary: invoiceBillingSummary(inv, data) } : { ...inv, status };
+
+// ─── Akonto-Plan nach SIA-Phasen ────────────────────────────────────────────
+
+/** Eine Phase im Akonto-Plan nach Leistungsstand. */
+export type AkontoPhaseRow = {
+  id: string; label: string;
+  /** Anteil der Phase am Honorar */
+  share: number;
+  /** davon schon durch gestellte Rechnungen gedeckt */
+  credited: number;
+  /** noch zu planen = share − credited */
+  amt: number;
+  date: string;
+  included: boolean;
+};
+
+/**
+ * Raten des Akonto-Plans nach SIA-Phasen: je Phase mit budgetierten Stunden (`phasesBudget`, Reihenfolge
+ * nach SIA) der Anteil am Honorar — Phasenbetrag (`phaseInvoiceAmount`) im Verhältnis zur Summe aller
+ * Phasenbeträge, umgelegt auf `projectFee` (ohne Honorar die Phasenbeträge selbst); die letzte Phase gleicht
+ * die Rappen aus. Bisher gestellte Rechnungen (ohne Entwürfe) werden den Phasen in ihrer Reihenfolge
+ * angerechnet (Leistungsstand), damit nichts doppelt geplant wird. Datum: von Hand gesetzt (`phaseDates`)
+ * oder ab `startDate` im Abstand `intervalMonths` je offene Phase.
+ */
+export const akontoPhasePlan = (
+  proj: Project, quotes: Quote[], roles: Role[] | undefined, invoices: Invoice[],
+  ap: Pick<AkontoPlan, "startDate" | "intervalMonths" | "phaseDates" | "phaseSkip">,
+) => {
+  const order = (id: string) => { const k = SIA_PHASES.findIndex(p => p.id === id); return k < 0 ? 999 : k; };
+  const phases = (proj.phasesBudget || []).filter(p => p.hours > 0).slice().sort((a, b) => order(a.id) - order(b.id));
+  const raw = phases.map(ph => Math.max(0, phaseInvoiceAmount(proj, ph.id, quotes, roles)));
+  const sumRaw = raw.reduce((s, x) => s + x, 0);
+  const fee = projectFee(proj) > 0 ? roundCHF(projectFee(proj)) : roundCHF(sumRaw);
+  const billed = billedNetForProject(invoices, proj.id);
+  if (!(sumRaw > 0) || !(fee > 0)) return { fee, billed, rows: [] as AkontoPhaseRow[] };
+  let given = 0, cum = 0, open = 0;
+  const rows = phases.map((ph, k) => {
+    const share = k === phases.length - 1 ? roundCHF(fee - given) : roundCHF(fee * raw[k] / sumRaw);
+    given = roundCHF(given + share);
+    const credited = roundCHF(Math.min(share, Math.max(0, billed - cum)));
+    cum = roundCHF(cum + share);
+    const amt = roundCHF(share - credited);
+    const included = amt > 0 && !(ap.phaseSkip || []).includes(ph.id);
+    const label = SIA_PHASES.find(p => p.id === ph.id)?.label || (proj.customPhases || []).find(p => p.id === ph.id)?.label || ph.id;
+    const date = ap.phaseDates?.[ph.id] || addMonthsClamped(ap.startDate || defaultStartDate(), open * (ap.intervalMonths || 1));
+    if (amt > 0) open++;
+    return { id: ph.id, label, share, credited, amt, date, included };
+  });
+  return { fee, billed, rows };
+};
+
+/** Zu erstellende Raten aus dem Phasenplan: nur gewählte Phasen mit offenem Betrag, Text mit der Phase. */
+export const akontoPhaseRowsToPlan = (rows: AkontoPhaseRow[], projectName: string): AkontoPlanRow[] =>
+  rows.filter(r => r.included).map(r => ({ id: r.id, date: r.date, amt: r.amt, desc: `Akontorechnung ${r.label} – ${projectName}` }));

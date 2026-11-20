@@ -6,7 +6,7 @@ import { formatCHF } from "../../utils";
 import { Modal } from "../../components/UI";
 import LivePreview from "../../components/LivePreview";
 import type { AppData, Invoice, TimeEntry } from "../../types";
-import { calcTotal, defaultInvoiceMode, nextInvoiceNumber } from "./invoiceHelpers";
+import { calcTotal, defaultInvoiceMode, invoiceBillingSummary, nextInvoiceNumber } from "./invoiceHelpers";
 import type { NewInvoiceState } from "./invoiceHelpers";
 import { buildNewInvoiceForm } from "./newInvoiceForm";
 import { NewInvoiceProjectPane } from "./NewInvoiceProjectPane";
@@ -44,8 +44,10 @@ export function NewInvoiceModal({ ni, setNi, data, invoices, openEntriesForProje
   const needsPhase = ni.tab === "projekt" && (ni.mode === "phase" || ni.mode === "akonto-phase") && !ni.phaseId;
   const canConfirm = ni.tab === "frei" || (ni.tab === "projekt" && !!ni.projectId && !needsPhase) || (ni.tab === "offerte" && !!ni.quoteId);
 
+  // Abrechnungsblock (Akonto/Teilrechnung) wie im Editor und im Druck
+  const withSummary = (inv: Invoice): Invoice => ({ ...inv, billingSummary: invoiceBillingSummary(inv, { ...data, invoices }) });
   const previewPane = previewForm && preview
-    ? <LivePreview settings={data.settings} assets={data.docAssets} content={{ type: "invoice", inv: { ...previewForm, ...preview, mwstRate: previewRate } as Invoice, client: (data.persons || []).find(c => c.id === previewForm.clientId) }} />
+    ? <LivePreview settings={data.settings} assets={data.docAssets} content={{ type: "invoice", inv: withSummary({ ...previewForm, ...preview, mwstRate: previewRate } as Invoice), client: (data.persons || []).find(c => c.id === previewForm.clientId) }} />
     : <PreviewHint text={ni.tab === "frei" ? "Leeres Formular — Positionen und Vorschau im nächsten Schritt." : ni.tab === "offerte" ? "Offerte wählen — hier erscheint die Rechnung, wie sie gedruckt wird." : "Projekt wählen — hier erscheint die Rechnung, wie sie gedruckt wird."} />;
 
   // Summen im Fuss (wie im Editor): auch bei ausgeblendeter Vorschau sichtbar, ohne die Zahlen des PDFs zu doppeln

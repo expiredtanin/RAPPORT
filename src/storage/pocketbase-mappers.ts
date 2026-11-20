@@ -286,6 +286,7 @@ export const fromDB = {
       entrySelections: row.entrySelections || {},
       qrReference: row.qrReference || "",
       reminders: row.reminders || [],
+      billingSummary: row.billingSummary || null,
       // Wie bei quote: einmal berechnet (calcTotal in Invoices.jsx), dann nur
       // noch angezeigt — muss mit persistiert werden, sonst CHF 0.00 nach Reload.
       sub: row.sub ?? 0, tax: row.tax ?? 0, total: row.total ?? 0,
@@ -657,6 +658,7 @@ export const toDB = {
       discountType: i.discountType || "none", discountValue: i.discountValue || 0, discountLabel: i.discountLabel,
       entrySelections: i.entrySelections || {}, qrReference: i.qrReference,
       reminders: i.reminders || [],
+      billingSummary: i.billingSummary || null,
       sub: i.sub || 0, tax: i.tax || 0, total: i.total || 0,
       subAfterDisc: i.subAfterDisc || 0, globalDisc: i.globalDisc || 0,
     };

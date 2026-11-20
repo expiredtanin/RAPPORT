@@ -32,7 +32,7 @@ import { Header } from "../components/UI";
 import { changeWithUndo } from "../undo";
 import { showToast } from "../toast";
 import { MahnModal } from "../components/MahnModal";
-import type { Invoice, InvoiceItem, TimeEntry, ViewProps } from "../types";
+import type { Invoice, InvoiceItem, PrintContent, TimeEntry, ViewProps } from "../types";
 import { AkontoPlanModal } from "./invoices/AkontoPlanModal";
 import { InvoiceEditModal } from "./invoices/InvoiceEditModal";
 import { InvoiceFilterBars } from "./invoices/InvoiceFilterBars";
@@ -40,7 +40,7 @@ import { InvoiceKpiCards } from "./invoices/InvoiceKpiCards";
 import { InvoiceSendModal } from "./invoices/InvoiceSendModal";
 import { InvoiceTable } from "./invoices/InvoiceTable";
 import { NewInvoiceModal } from "./invoices/NewInvoiceModal";
-import { akontoPlanRows, applyEntryHours, buildAkontoInvoices, calcTotal, defaultInvoiceMode, defaultStartDate, entrySelectionsForEdit, isInvoiceNumberTaken, nextInvoiceNumber, selectAllEntries, selectedEntrySelections } from "./invoices/invoiceHelpers";
+import { akontoPlanRows, applyEntryHours, buildAkontoInvoices, calcTotal, defaultInvoiceMode, defaultStartDate, entrySelectionsForEdit, freezeOnStatus, invoiceBillingSummary, isInvoiceNumberTaken, nextInvoiceNumber, selectAllEntries, selectedEntrySelections, withPrintSummary } from "./invoices/invoiceHelpers";
 import type { AkontoPlan, EntrySelections, InvoiceForm, NewInvoiceState } from "./invoices/invoiceHelpers";
 import { filterAndSortInvoices, groupInvoices, summarizeUnbilled } from "./invoices/invoiceList";
 import { buildNewInvoiceForm } from "./invoices/newInvoiceForm";
@@ -96,7 +96,7 @@ function Invoices({ data, update, saveAll, modal, setModal, setPrintContent }: P
   const [akontoModal, setAkontoModal] = useState(false);
   const [ap, setAp] = useState<AkontoPlan>(emptyAp);
 
-  const apRows = akontoPlanRows(ap);
+  const apRows = akontoPlanRows(ap, data);
 
   const createAkontoInvoices = () => {
     const rows = apRows.filter(r => r.date && r.amt > 0);
@@ -130,8 +130,12 @@ function Invoices({ data, update, saveAll, modal, setModal, setPrintContent }: P
     // Verrechnete Minuten je Zeiteintrag bleiben an der Rechnung (entrySelections), damit beim Bearbeiten
     // gekürzte Einträge nicht still wieder auf die vollen Minuten springen.
     const { hoursFromEntries: _hoursFromEntries, ...formFields } = form;
-    const inv = { ...formFields, number: (form.number || "").trim(), id: invoiceId, sub, globalDisc, subAfterDisc, tax, total, mwstRate: form.mwstRate ?? data.settings.mwstRate, status,
+    // Rabatt 0 = kein Rabatt (die Zeile im Editor bleibt dann beim nächsten Öffnen zu)
+    const noDisc = !((form.discountValue || 0) > 0) ? { discountType: "none", discountValue: 0 } : {};
+    const inv = { ...formFields, ...noDisc, number: (form.number || "").trim(), id: invoiceId, sub, globalDisc, subAfterDisc, tax, total, mwstRate: form.mwstRate ?? data.settings.mwstRate, status,
       entrySelections: selectedEntrySelections(form.entrySelections) } as Invoice;
+    // Abrechnungsblock (Akonto/Teilrechnung) mit jedem Speichern festhalten — ein Nachdruck zeigt dieselben Zahlen
+    inv.billingSummary = invoiceBillingSummary(inv, data);
 
     const selectedIds = Object.entries(form.entrySelections || {})
       .filter(([_, sel]) => sel.selected)
@@ -189,10 +193,13 @@ function Invoices({ data, update, saveAll, modal, setModal, setPrintContent }: P
     }));
   };
   // `paidDate` füttert die Zahlungsmoral-Auswertung (crm.ts): beim ersten Wechsel auf «bezahlt» heute setzen, bei Rückstufung entfernen.
+  // Beim Wechsel aus dem Entwurf wird der Abrechnungsblock festgehalten (freezeOnStatus).
   const setStatus = (id: string, status: string) => update("invoices", invoices.map(i => {
     if (i.id !== id) return i;
-    return { ...i, status, paidDate: status === "bezahlt" ? (i.paidDate || localISODate()) : undefined };
+    return { ...freezeOnStatus(i, status, data), paidDate: status === "bezahlt" ? (i.paidDate || localISODate()) : undefined };
   }));
+  // PDF einer Rechnung: mit dem Abrechnungsblock (Entwurf aktuell, sonst festgehalten)
+  const printWithSummary = (content: PrintContent) => setPrintContent(withPrintSummary(content, data));
 
   const addItem = () => setForm({ ...form, items: [...form.items, { id: generateId(), desc: "", qty: 1, price: 0, discount: 0 }] });
   const removeItem = (idx: number) => setForm({ ...form, items: form.items.filter((_, i) => i !== idx) });
@@ -283,7 +290,7 @@ function Invoices({ data, update, saveAll, modal, setModal, setPrintContent }: P
         filtered={filtered} filteredTotal={filteredTotal} filteredOpen={filteredOpen} />
 
       <InvoiceTable filtered={filtered} groupedInvoices={groupedInvoices} groupBy={groupBy} sort={sort} toggleSort={toggleSort} invoiceCount={invoices.length}
-        clients={clients} openMahnung={openMahnung} setStatus={setStatus} openEdit={openEdit} del={del} setPrintContent={setPrintContent} />
+        clients={clients} openMahnung={openMahnung} setStatus={setStatus} openEdit={openEdit} del={del} setPrintContent={printWithSummary} />
 
       {mahnModal && (
         <MahnModal
@@ -315,7 +322,7 @@ function Invoices({ data, update, saveAll, modal, setModal, setPrintContent }: P
       )}
 
       {sendModal && (
-        <InvoiceSendModal invoice={sendModal} invoices={invoices} clients={clients} update={update} setPrintContent={setPrintContent} onClose={() => setSendModal(null)} />
+        <InvoiceSendModal invoice={sendModal} invoices={invoices} clients={clients} update={update} setPrintContent={printWithSummary} freeze={(i, status) => freezeOnStatus(i, status, data)} onClose={() => setSendModal(null)} />
       )}
     </div>
   );

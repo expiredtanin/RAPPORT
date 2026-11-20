@@ -571,6 +571,8 @@ export const demoData = {
       budget: SIA_SUB, budgetHours: 1197, status: "aktiv",
       description: "Energetische Fassadensanierung und Erneuerung der Fenster, bewohnter Betrieb.",
       startDate: dateAt(-76), enabledPhases: ["31", "32", "33", "41", "51", "52", "53"],
+      // Phasenbudget wie die SIA-Offerte (Akonto-Plan «Nach SIA-Phasen», Phasenkontrolle)
+      phasesBudget: Object.entries(LIM_BUDGETS).map(([id, hours]) => ({ id, hours })),
       linkedQuotes: [{ quoteId: Q_LIM, role: "Hauptofferte" }],
       positions: [], customPhases: [],
       projectContacts: [{ contactId: CL_ING, role: "Tragwerksplaner" }],
