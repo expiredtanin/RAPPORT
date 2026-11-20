@@ -31,7 +31,12 @@ export type WorkData = Pick<AppData, "feiertage" | "ferienEntries" | "absences" 
 /** Felder eines Mitarbeiters, die die Rechnung braucht. */
 export type WorkEmployee = Pick<Employee, "id"> & Partial<Pick<Employee, "pensum" | "wochenstunden" | "ferienWochen" | "eintrittsdatum" | "austrittsdatum" | "geburtsdatum" | "ferienUebertragVorjahr" | "pensumVerlauf" | "saldoStichtag" | "saldoUebertragStunden">>;
 
-const r1 = (n: number) => Math.round(n * 10) / 10;
+/**
+ * Stunden auf eine Dezimale (x.x5 auf). Die Tagessolls (z.B. 42 × 90 % ÷ 5 = 7.56) sind binär nicht exakt; eine
+ * Summe von genau 3.75 h liegt als 3.7499999… vor und zeigte sonst 3.7 statt 3.8 — der Zuschlag 1e-7 hebt das auf.
+ */
+export const roundHours = (n: number): number => Math.round(n * 10 + 1e-7) / 10;
+const r1 = roundHours;
 
 // ── Datum ────────────────────────────────────────────────────────────────────
 

@@ -2,7 +2,7 @@
 // Monats-/Total-/Feriensaldo) sowie die Monatskacheln. Alles ohne React; die Daten kommen als `data` hinein.
 
 import { localISODate } from "../../utils";
-import { activeVacationRange, createWorktime, isFullHoliday, monthEnd, monthStart, resolveHolidays, weekday } from "../../worktime";
+import { activeVacationRange, createWorktime, isFullHoliday, monthEnd, monthStart, resolveHolidays, roundHours, weekday } from "../../worktime";
 import type { AppData, Employee, Feiertag, Project, TimeEntry } from "../../types";
 
 /** Auswahlstart im Wochenraster (Tag und Slot des ersten Klicks). */
@@ -58,7 +58,7 @@ export const calcMonthSaldo = (data: AppData, emp: Employee | null, viewDate2: D
   const yr = viewDate2.getFullYear(), mo = viewDate2.getMonth();
   const p = wt.month(emp, yr, mo);
   const whole = wt.month(emp, yr, mo, monthEnd(yr, mo));
-  const r = (n: number) => Math.round(n * 10) / 10;
+  const r = roundHours;
   return { soll: r(p.soll), sollTotal: r(whole.soll), ist: r(p.ist), absenz: r(p.absenz), saldo: r(p.saldo), saldoTotal: r(p.ist + p.absenz - whole.soll) };
 };
 
@@ -66,7 +66,7 @@ export const calcMonthSaldo = (data: AppData, emp: Employee | null, viewDate2: D
 export const calcTotalSaldo = (data: AppData, emp: Employee | null) => {
   if (!emp) return null;
   const o = createWorktime(data, localISODate()).overtime(emp);
-  const r = (n: number) => Math.round(n * 10) / 10;
+  const r = roundHours;
   return { soll: r(o.soll), ist: r(o.ist), absenz: r(o.absenz), paidOut: r(o.paidOut), uebertrag: r(o.uebertrag), saldo: r(o.balance) };
 };
 

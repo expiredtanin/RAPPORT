@@ -1263,6 +1263,10 @@ export interface LohnVorperioden {
   bruttoBisher: number;
   /** Σ ALV-/UVG-pflichtiger Lohn der früheren Monate */
   alvBasisBisher: number;
+  /** Σ Monatslohn (`brutto`) der früheren Monate mit 13. Monatslohn (für den Rappenausgleich im Dezember) */
+  dreizehnterBasisBisher?: number;
+  /** Σ bereits ausbezahlter 13. Monatslohn der früheren Monate */
+  dreizehnterBisher?: number;
 }
 
 /**
@@ -1298,9 +1302,14 @@ export function calcLohn(
   const brutto = r2(bruttoBase * pensumFactor * anteil);
   if (anteil > 0 && anteil < 1) hinweise.push(`Monatslohn anteilig (${Math.round(anteil * 1000) / 10} % des Monats, Ein-/Austritt)`);
   // 13. Monatslohn: 1/12 pro Monat; der Dezember gleicht die Rappen-Rundung der Vormonate aus,
-  // damit übers Jahr genau ein Monatslohn herauskommt (11 × 1'208.33 + 1'208.37 = 14'500.00)
+  // damit übers Jahr genau 1/12 der Monatslöhne herauskommt (11 × 1'208.33 + 1'208.37 = 14'500.00).
+  // Mit Vorperioden (Lohnlauf, Budget) auf Basis der tatsächlichen Monatslöhne, damit es auch nach einem
+  // Pensumwechsel aufgeht; ohne Vorperioden wie bei elf gleichen Vormonaten.
+  const dzBasis = vorperioden?.dreizehnterBasisBisher, dzBisher = vorperioden?.dreizehnterBisher;
   const dreizehnter = !emp.dreizehnterLohn ? 0
-    : monat?.endsWith("-12") ? r2(brutto - 11 * r2(brutto / 12)) : r2(brutto / 12);
+    : !monat?.endsWith("-12") ? r2(brutto / 12)
+    : dzBasis !== undefined && dzBisher !== undefined ? r2(r2((dzBasis + brutto) / 12) - dzBisher)
+    : r2(brutto - 11 * r2(brutto / 12));
   const bonusBetrag = r2(bonus || 0);
   const bruttoTotal = r2(brutto + dreizehnter + bonusBetrag); // Bonus ist AHV-pflichtig
 

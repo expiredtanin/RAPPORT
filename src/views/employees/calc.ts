@@ -2,7 +2,7 @@
 // `createEmployeeCalc(data)` bindet die Rechenfunktionen (Regeln in worktime.ts) an den aktuellen Datenstand.
 
 import { localISODate } from "../../utils";
-import { createWorktime, monthEnd, monthStart, resolveHolidays } from "../../worktime";
+import { createWorktime, monthEnd, monthStart, resolveHolidays, roundHours } from "../../worktime";
 import type { Employee, ViewProps } from "../../types";
 
 /** Monatsnamen (Januar … Dezember), Index = Monat 0–11. */
@@ -15,7 +15,7 @@ export const MONTHS = ["Januar","Februar","März","April","Mai","Juni","Juli","A
 export function createEmployeeCalc(data: ViewProps["data"]) {
   const today = localISODate();
   const wt = createWorktime(data, today);
-  const r = (n: number) => Math.round(n * 10) / 10;
+  const r = roundHours;
 
   /** Monat (0-basiert): Soll bis heute ohne Ferienabzug, Ist, Absenzen, Ferien und Saldo; `notStarted` vor Eintritt bzw. Saldo-Stichtag oder nach Austritt. */
   const calcEmpMonth = (emp: Employee, year: number, month: number) => {

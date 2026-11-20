@@ -246,7 +246,7 @@ const FEIERTAGE = [Y - 1, Y, Y + 1].flatMap(y => {
   ].map(([label, date, stundenDelta], i) => ({ id: `ft-${y}-${i}`, label, date, stundenDelta, repeatsYearly: false }));
 });
 const FERIEN = [
-  [E_JULIAN, `${Y}-02-16`, `${Y}-02-20`, "approved"], [E_JULIAN, `${Y}-07-20`, `${Y}-08-07`, "approved"], [E_JULIAN, `${Y}-12-21`, `${Y}-12-31`, "approved"],
+  [E_JULIAN, `${Y}-02-16`, `${Y}-02-20`, "approved"], [E_JULIAN, `${Y}-07-20`, `${Y}-07-31`, "approved"], [E_JULIAN, `${Y}-12-21`, `${Y}-12-31`, "approved"],
   [E_LAURA, `${Y}-04-07`, `${Y}-04-17`, "approved"], [E_LAURA, `${Y}-07-13`, `${Y}-07-24`, "approved"], [E_LAURA, `${Y}-10-12`, `${Y}-10-16`, "approved"],
   [E_NINA, `${Y}-05-18`, `${Y}-05-22`, "approved"], [E_NINA, `${Y}-08-10`, `${Y}-08-21`, "approved"],
   [E_MARC, `${Y}-03-02`, `${Y}-03-06`, "approved"], [E_MARC, `${Y}-08-03`, `${Y}-08-21`, "approved"], [E_MARC, `${Y}-12-28`, `${Y}-12-31`, "pending"],
@@ -730,10 +730,10 @@ export const demoData = {
     { id: E_LAURA, pensumVerlauf: PENSUM_VERLAUF[E_LAURA], saldoStichtag: `${MONDAY.getFullYear()}-01-01`, saldoUebertragStunden: -6, name: "Laura Meier", role: "Architektin", pensum: 100, monatslohn: 7600, wochenstunden: 41, ferienWochen: 5, personalNr: "102", geburtsdatum: "1984-09-03", eintrittsdatum: dateAt(-380), ferienUebertragVorjahr: {} },
     { id: E_NINA, pensumVerlauf: PENSUM_VERLAUF[E_NINA], saldoStichtag: `${MONDAY.getFullYear()}-01-01`, saldoUebertragStunden: 3.5, name: "Nina Baumgartner", role: "Praktikantin", pensum: 80, monatslohn: 3800, wochenstunden: 41, ferienWochen: 5, personalNr: "103", geburtsdatum: "2000-02-11", eintrittsdatum: dateAt(-58), ferienUebertragVorjahr: {} },
     // Saldo-Übertrag per 1.1.: Überstunden aus der Zeit vor RAPPORT (frühere Jahre sind nicht erfasst)
-    // Sonderfälle für Buchhaltung/Löhne (Nachrechnung in scripts/demo-check): Partner über dem ALV-Höchstlohn
+    // Sonderfälle für Buchhaltung/Löhne (unabhängig nachgerechnet, siehe ARCHITECTURE.md «Nachrechnung»): Partner über dem ALV-Höchstlohn
     // mit 13. Monatslohn und PK laut Ausweis, Rentner mit Freibetrag, Austritt im laufenden Monat mit Familienzulagen
     { id: E_MARC, pensumVerlauf: PENSUM_VERLAUF[E_MARC], saldoStichtag: `${MONDAY.getFullYear()}-01-01`, saldoUebertragStunden: 42, name: "Marc Amrein", role: "Partner", pensum: 100, monatslohn: 14500, dreizehnterLohn: true, pkBeitragAN: 1180, pkBeitragAG: 1420, wochenstunden: 42, ferienWochen: 5, personalNr: "100", geburtsdatum: "1968-05-30", eintrittsdatum: "2010-01-01", ferienUebertragVorjahr: {} },
-    { id: E_PETER, saldoStichtag: STICHTAG[E_PETER], saldoUebertragStunden: -4.5, name: "Peter Keller", role: "Kostenplaner", pensum: 40, monatslohn: 9000, wochenstunden: 42, ferienWochen: 5, personalNr: "104", geburtsdatum: "1958-03-12", eintrittsdatum: "2024-01-01", ferienUebertragVorjahr: {} },
+    { id: E_PETER, saldoStichtag: STICHTAG[E_PETER], saldoUebertragStunden: -4.5, name: "Peter Keller", role: "Kostenplaner", pensum: 40, monatslohn: 9000, wochenstunden: 42, ferienWochen: 5, personalNr: "104", geburtsdatum: "1958-03-12", eintrittsdatum: "2024-01-01", ferienUebertragVorjahr: { [Y]: 30 } /* Ferienguthaben per Stichtag 1.6. */ },
     { id: E_SARA, pensumVerlauf: PENSUM_VERLAUF[E_SARA], saldoStichtag: `${MONDAY.getFullYear()}-01-01`, saldoUebertragStunden: 8, name: "Sara Weber", role: "Architektin", pensum: 90, monatslohn: 8400, familienzulagen: 215, wochenstunden: 42, ferienWochen: 5, personalNr: "105", geburtsdatum: "1991-06-02", eintrittsdatum: "2023-04-01", austrittsdatum: `${new Date().getFullYear()}-11-15`, ferienUebertragVorjahr: {} },
   ],
   feiertage: FEIERTAGE, absences: ABSENZEN, ferienEntries: FERIEN, absenzTypes: [],

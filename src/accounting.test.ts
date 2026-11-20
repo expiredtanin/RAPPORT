@@ -68,7 +68,7 @@ describe("calcLohn — Schweizer Lohnabrechnung", () => {
       employeeId: "e1", monat: `2026-${String(i + 1).padStart(2, "0")}`, bruttoTotal: 12000, alvBasis: 12000,
     })) as LohnEntry[];
     const vor = lohnVorperioden(entries, "e1", "2026-12");
-    expect(vor).toEqual({ bruttoBisher: 132000, alvBasisBisher: 132000 });
+    expect(vor).toMatchObject({ bruttoBisher: 132000, alvBasisBisher: 132000 });
     const r = calcLohn(emp({ monatslohn: 12000 }), "2026-12", [], 20000, vor);
     expect(r.bruttoTotal).toBe(32000);
     expect(r.alvBasis).toBe(16200); // 148'200 − 132'000
@@ -131,9 +131,32 @@ describe("calcLohn — Schweizer Lohnabrechnung", () => {
     expect(lohnPersonalaufwand(r)).toBe(8580 + 75 + 23.85 + 7.5 + 37.5);
   });
 
+  it("13. Monatslohn nach Pensumwechsel: Dezember gleicht auf 1/12 der Monatslöhne aus", () => {
+    // 3 × 14'500 (100 %) + 9 × 13'050 (90 %) = 160'950 → 13. Lohn 13'412.50 (vorher 13'412.49)
+    const e = emp({ monatslohn: 14500, dreizehnterLohn: true, pensumVerlauf: [{ ab: "2026-04-01", pensum: 90 }] });
+    const done: LohnEntry[] = [];
+    for (let m = 1; m <= 12; m++) {
+      const monat = `2026-${String(m).padStart(2, "0")}`;
+      done.push({ ...calcLohn(e, monat, [], 0, lohnVorperioden(done, "e1", monat)), id: monat, employeeId: "e1", monat });
+    }
+    expect(done[11].dreizehnter).toBe(1087.51);
+    expect(Math.round(done.reduce((s, l) => s + l.dreizehnter, 0) * 100) / 100).toBe(13412.5);
+    // ohne Vorperioden wie bisher (elf gleiche Vormonate)
+    expect(calcLohn(e, "2026-12").dreizehnter).toBe(1087.5);
+  });
+
+  it("13. Monatslohn erst ab Juli vereinbart: Dezember zahlt nichts nach", () => {
+    const vor = lohnVorperioden([
+      { employeeId: "e1", monat: "2026-06", brutto: 6000, dreizehnter: 0, bruttoTotal: 6000 },
+      ...[7, 8, 9, 10, 11].map(m => ({ employeeId: "e1", monat: `2026-${String(m).padStart(2, "0")}`, brutto: 6000, dreizehnter: 500, bruttoTotal: 6500 })),
+    ] as LohnEntry[], "e1", "2026-12");
+    expect(vor).toMatchObject({ dreizehnterBasisBisher: 30000, dreizehnterBisher: 2500 });
+    expect(calcLohn(emp({ monatslohn: 6000, dreizehnterLohn: true }), "2026-12", [], 0, vor).dreizehnter).toBe(500);
+  });
+
   it("Abrechnungen vor 26.11 ohne alvBasis zählen voll", () => {
     const vor = lohnVorperioden([{ employeeId: "e1", monat: "2026-01", bruttoTotal: 7500 } as LohnEntry, { employeeId: "e1", monat: "2025-12", bruttoTotal: 7500 } as LohnEntry, { employeeId: "e2", monat: "2026-01", bruttoTotal: 9000 } as LohnEntry], "e1", "2026-02");
-    expect(vor).toEqual({ bruttoBisher: 7500, alvBasisBisher: 7500 });
+    expect(vor).toMatchObject({ bruttoBisher: 7500, alvBasisBisher: 7500 });
   });
 });
 

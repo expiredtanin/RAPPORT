@@ -165,14 +165,17 @@ export function lohnPersonalaufwand(l: LohnAGFelder & Pick<LohnResult, "bruttoTo
  * Frühere Abrechnungen desselben Mitarbeiters im selben Jahr vor `monat` (für den kumulierten
  * ALV-/UVG-Höchstlohn in `calcLohn`). Ältere Abrechnungen ohne `alvBasis` zählen voll.
  */
-export function lohnVorperioden(lohnEntries: Pick<LohnEntry, "employeeId" | "monat" | "bruttoTotal" | "alvBasis">[], employeeId: string, monat: string): LohnVorperioden {
+export function lohnVorperioden(lohnEntries: Pick<LohnEntry, "employeeId" | "monat" | "bruttoTotal" | "alvBasis" | "brutto" | "dreizehnter">[], employeeId: string, monat: string): LohnVorperioden {
   const year = monat.slice(0, 4);
   return lohnEntries
     .filter(l => l.employeeId === employeeId && l.monat.startsWith(year) && l.monat < monat)
     .reduce((s, l) => ({
       bruttoBisher: s.bruttoBisher + (l.bruttoTotal || 0),
       alvBasisBisher: s.alvBasisBisher + (l.alvBasis ?? l.bruttoTotal ?? 0),
-    }), { bruttoBisher: 0, alvBasisBisher: 0 });
+      // nur Monate mit 13. Monatslohn (wurde er erst im Lauf des Jahres vereinbart, kein Nachzahlen im Dezember)
+      dreizehnterBasisBisher: s.dreizehnterBasisBisher + ((l.dreizehnter || 0) > 0 ? l.brutto || 0 : 0),
+      dreizehnterBisher: s.dreizehnterBisher + (l.dreizehnter || 0),
+    }), { bruttoBisher: 0, alvBasisBisher: 0, dreizehnterBasisBisher: 0, dreizehnterBisher: 0 });
 }
 
 /**

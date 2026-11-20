@@ -2,7 +2,7 @@
 // Ostern 2024–2030, Monats-Soll 2026 mit der Zürcher Vorlage, Ferienanteile nach Kalendertagen; bewegliche
 // kantonale Feiertage (Fronleichnam, Genfer Bettag, Bettagsmontag, Näfelser Fahrt) mit dateutil/datetime.
 import { describe, expect, it } from "vitest";
-import { bettagsmontag, createWorktime, easterSunday, employedShareOfYear, genferBettag, KANTONE, naefelserFahrt, overtimeHourlyRate, replaceHolidayTemplate, resolveHolidays, swissHolidayTemplate, vacationWeeks, type WorkData } from "./worktime";
+import { bettagsmontag, createWorktime, easterSunday, employedShareOfYear, genferBettag, KANTONE, naefelserFahrt, overtimeHourlyRate, replaceHolidayTemplate, resolveHolidays, roundHours, swissHolidayTemplate, vacationWeeks, type WorkData } from "./worktime";
 import type { Absence, Feiertag, FerienEntry, OvertimeClosing, TimeEntry } from "./types";
 
 const template = (): Feiertag[] => swissHolidayTemplate([], 2024, 2030).map((f, i) => ({ ...f, id: `f${i}` }));
@@ -58,6 +58,16 @@ describe("Soll", () => {
   it("Pensum 0/leer gilt wie überall in der App als 100 %", () => {
     const wt = createWorktime(data(), "2026-12-31");
     expect(wt.sollBruttoForDay({ id: "z", pensum: 0, wochenstunden: 40 }, "2026-03-03")).toBe(8);
+  });
+});
+
+describe("Rundung der Stunden", () => {
+  it("3.75 h aus Tagessolls 7.56 (42 h × 90 %) zeigt 3.8, nicht 3.7", () => {
+    // Demobüro Marc, Februar 2026: Saldo 3.749999999999943 (Gleitkomma) statt 3.75
+    expect(roundHours(3.749999999999943)).toBe(3.8);
+    expect(roundHours(3.74)).toBe(3.7);
+    expect(roundHours(-1.25)).toBe(-1.2);   // wie Math.round: .5 Richtung +∞
+    expect(roundHours(0)).toBe(0);
   });
 });
 
