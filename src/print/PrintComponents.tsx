@@ -93,6 +93,8 @@ export function PrintView({ content, onClose, settings, assets }: { content: Con
   const contentRef = useRef<HTMLDivElement>(null);
   const followRef = useRef<HTMLDivElement>(null);
   const lastHeight = useRef(-1);
+  /** Seitenzahl nach dem Umbruch — für die Abstände zwischen den Seiten am Bildschirm */
+  const [pageCount, setPageCount] = useState(1);
 
   const mTop = settings?.pageMarginTop ?? 20;
   const mBottom = settings?.pageMarginBottom ?? 20;
@@ -107,6 +109,7 @@ export function PrintView({ content, onClose, settings, assets }: { content: Con
     sheet.style.minHeight = "";
     const { pages, qrPage } = paginate(sheet, body, { firstBottom: mBottom, followTop: design.followTop, followBottom: design.followBottom });
     sheet.style.minHeight = `calc(${pages * PAGE_HEIGHT_MM}mm - 2px)`;
+    setPageCount(pages);
     if (followRef.current) followRef.current.style.height = `${Math.max(0, (qrPage ?? pages) - 1) * PAGE_HEIGHT_MM}mm`;
     lastHeight.current = body.offsetHeight;
   }, [paged, mBottom, design.followTop, design.followBottom]);
@@ -175,8 +178,7 @@ export function PrintView({ content, onClose, settings, assets }: { content: Con
         .print-page .align-right, .print-page .align-right * { text-align: right; }
         .print-page.hide-sender .doc-sender { visibility: hidden; }
         .print-page.paged { padding-bottom: 0 !important; }
-        .doc-page-guides { position: absolute; inset: 0; z-index: 2; pointer-events: none;
-          background: repeating-linear-gradient(to bottom, transparent 0, transparent calc(297mm - 1px), rgba(0,0,0,0.28) calc(297mm - 1px), rgba(0,0,0,0.28) 297mm); }
+        .doc-sheet-gap { position: absolute; left: -40px; right: -40px; height: 8mm; margin-top: -4mm; z-index: 4; pointer-events: none; background: #d6d2cc; }
         .qr-bill-wrapper {
           display: flex;
           justify-content: center;
@@ -226,7 +228,12 @@ export function PrintView({ content, onClose, settings, assets }: { content: Con
         color: "var(--doc-ink)"
       }}>
         {!isQrOnly && !wide && <LetterheadLayers design={design} followRef={followRef} />}
-        {paged && <div className="doc-page-guides no-print" />}
+        {/* Am Bildschirm: zwischen den Seiten ein Zwischenraum in der Hintergrundfarbe, damit die Seiten wie
+            einzelne Blätter wirken. Liegt im Randbereich (unten/oben je mindestens der Seitenrand), der Druck
+            schneidet ohnehin alle 297 mm; im Druck ausgeblendet. */}
+        {paged && Array.from({ length: Math.max(0, pageCount - 1) }, (_, k) => (
+          <div key={k} className="doc-sheet-gap no-print" style={{ top: `${(k + 1) * PAGE_HEIGHT_MM}mm` }} />
+        ))}
         <div ref={contentRef} className="doc-content" style={{ position: "relative", zIndex: 1 }}>
           {content.type === "invoice" && <InvoicePrint inv={content.inv} client={content.client} settings={settings} />}
           {content.type === "invoice+qr" && (
@@ -295,6 +302,9 @@ const PREVIEW_PROTOCOL = {
  * Vorschau der ersten Seite (und bei Briefpapier einer Folgeseite) mit dem aktuellen Design,
  * für Einstellungen → Erscheinungsbild. Skaliert auf `width` px; eigenes CSS wirkt nur innerhalb der Vorschau.
  */
+/** Abstand zwischen zwei Seiten in der Live-Vorschau (Bildschirm-Pixel, nach der Skalierung). */
+const PAGE_GAP_PX = 14;
+
 export function DocPreview({ settings, assets, sample, width, content }: {
   settings: Settings; assets?: DocAsset[]; sample?: "invoice" | "letter" | "protokoll"; width: number;
   /** echtes Dokument statt Beispiel (Live-Vorschau im Rechnungs-/Offerten-Dialog); Höhe dann nach Inhalt */
@@ -324,27 +334,38 @@ export function DocPreview({ settings, assets, sample, width, content }: {
       if (!body) return;
       const { pages: n } = paginate(sheetEl, body, { firstBottom: mBottom, followTop: design.followTop, followBottom: design.followBottom });
       sheetEl.style.height = `${n * PAGE_HEIGHT_MM}mm`;
-      for (let k = 1; k < n; k++) {
-        const band = document.createElement("div");
-        band.className = "doc-page-gap";
-        band.style.top = `${k * PAGE_HEIGHT_MM}mm`;
-        band.textContent = `Seite ${k + 1}`;
-        sheetEl.appendChild(band);
-      }
+      // Jede Seite als eigenes Blatt: Fenster von 297 mm auf das umbrochene Blatt, dazwischen Abstand
+      const blaetter = Array.from({ length: n }, (_, k) => {
+        const page = document.createElement("div");
+        page.className = "doc-preview-page";
+        page.style.marginBottom = k < n - 1 ? `${PAGE_GAP_PX / scale}px` : "0";
+        const copy = k === 0 ? sheetEl : sheetEl.cloneNode(true) as HTMLElement;
+        copy.style.marginTop = `-${k * PAGE_HEIGHT_MM}mm`;
+        page.appendChild(copy);
+        return page;
+      });
+      host.replaceChildren(...blaetter);
       setPages(n);
     };
     layout();
     let alive = true;
     document.fonts?.ready.then(() => { if (alive) layout(); });
     return () => { alive = false; };
-  }, [content, settings, assets, design, mBottom]);
+  }, [content, settings, assets, design, mBottom, scale]);
   const a4px = 297 * 96 / 25.4;
   const frame = (children: React.ReactNode, label: string) => (
     <div>
       {label && <div style={{ fontSize: 11, color: "var(--text4)", marginBottom: 4 }}>{label}</div>}
-      <div style={{ width, height: (content ? pages * a4px : a4px) * scale, overflow: "hidden", boxShadow: "0 2px 10px rgba(0,0,0,0.15)", border: "1px solid var(--border2)", background: "#fff" }}>
-        <div style={{ transform: `scale(${scale})`, transformOrigin: "0 0" }}>{content ? <div ref={hostRef} /> : children}</div>
-      </div>
+      {content ? (
+        // Live-Vorschau: Seiten als einzelne Blätter mit Abstand (Schatten je Blatt in .doc-preview-page)
+        <div style={{ width, height: pages * a4px * scale + (pages - 1) * PAGE_GAP_PX, overflow: "visible" }}>
+          <div style={{ transform: `scale(${scale})`, transformOrigin: "0 0" }}><div ref={hostRef} /></div>
+        </div>
+      ) : (
+        <div style={{ width, height: a4px * scale, overflow: "hidden", boxShadow: "0 2px 10px rgba(0,0,0,0.15)", border: "1px solid var(--border2)", background: "#fff" }}>
+          <div style={{ transform: `scale(${scale})`, transformOrigin: "0 0" }}>{children}</div>
+        </div>
+      )}
     </div>
   );
   const guide = (top: string, label: string): React.ReactNode => (

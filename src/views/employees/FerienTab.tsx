@@ -85,8 +85,11 @@ export default function FerienTab({ data, update, askConfirm, employees, absence
                       <td style={{ padding: "7px 8px" }}>{formatDate(f.dateTo)}</td>
                       <td style={{ padding: "7px 8px", color: "var(--text4)" }}>{f.originalData ? `Änderung (bisher ${formatDate(f.originalData.dateFrom)}–${formatDate(f.originalData.dateTo)})${f.note ? " · " + f.note : ""}` : f.note || "—"}</td>
                       <td style={{ padding: "7px 0", textAlign: "right", whiteSpace: "nowrap" }}>
-                        <button className="btn btn-primary" style={{ padding: "3px 10px", fontSize: 11, marginRight: 6, background: "var(--positive)" }} onClick={() => approveFerien(f.id)}>✓ Genehmigen</button>
-                        <button className="btn btn-danger" style={{ padding: "3px 10px", fontSize: 11 }} onClick={() => rejectFerien(f.id)}><span className="msr" style={{ fontSize: 16 }}>close</span> Ablehnen</button>
+                        {/* Beide Knöpfe gleich gebaut (Symbol + Text, gleiche Höhe), nebeneinander bündig */}
+                        <div style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>
+                          <button className="btn btn-primary btn-sm" style={{ background: "var(--positive)", borderColor: "var(--positive)" }} onClick={() => approveFerien(f.id)}><span className="msr" style={{ fontSize: 16 }}>check</span>Genehmigen</button>
+                          <button className="btn btn-danger btn-sm" onClick={() => rejectFerien(f.id)}><span className="msr" style={{ fontSize: 16 }}>close</span>Ablehnen</button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -102,8 +105,11 @@ export default function FerienTab({ data, update, askConfirm, employees, absence
                       <td style={{ padding: "7px 8px" }}>{formatDate(a.dateTo || a.date)}</td>
                       <td style={{ padding: "7px 8px", color: "var(--text4)" }}>{a.note || "—"}</td>
                       <td style={{ padding: "7px 0", textAlign: "right", whiteSpace: "nowrap" }}>
-                        <button className="btn btn-primary" style={{ padding: "3px 10px", fontSize: 11, marginRight: 6, background: "var(--positive)" }} onClick={() => approveAbs(a.id)}>✓ Genehmigen</button>
-                        <button className="btn btn-danger" style={{ padding: "3px 10px", fontSize: 11 }} onClick={() => rejectAbs(a.id)}><span className="msr" style={{ fontSize: 16 }}>close</span> Ablehnen</button>
+                        {/* Beide Knöpfe gleich gebaut (Symbol + Text, gleiche Höhe), nebeneinander bündig */}
+                        <div style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>
+                          <button className="btn btn-primary btn-sm" style={{ background: "var(--positive)", borderColor: "var(--positive)" }} onClick={() => approveAbs(a.id)}><span className="msr" style={{ fontSize: 16 }}>check</span>Genehmigen</button>
+                          <button className="btn btn-danger btn-sm" onClick={() => rejectAbs(a.id)}><span className="msr" style={{ fontSize: 16 }}>close</span>Ablehnen</button>
+                        </div>
                       </td>
                     </tr>
                   );
