@@ -24,6 +24,7 @@
 // SQL-Ebene korrekt gegen die Spalte prüft.
 //
 // Fail-closed: jede nicht auflösbare Rolle/Mitgliedschaft/Studio-Zuordnung => keine Rechte.
+// Belege (Dateifelder) sind beim Herunterladen ebenso an die Rolle gebunden (onFileDownloadRequest, Dateiende).
 //
 // WICHTIG: jede Hook-Callback-Funktion läuft bei Ausführung isoliert vom Datei-Top-Level
 // (gleiches JSVM-Verhalten wie in studios.pb.js/invite.pb.js dokumentiert — jeder Verweis auf
@@ -328,3 +329,50 @@ onRealtimeSubscribeRequest((e) => {
   });
   e.next();
 });
+
+// Datei-Downloads (/api/files/...) laufen ebenfalls NICHT über die Record-Request-Hooks. Die
+// Dateifelder sind `protected` (Migration 1787820000_file_fields.js): PocketBase prüft dort nur die
+// viewRule der Collection (Studio-Mitgliedschaft) mit dem Nutzer des Datei-Tokens. Für Belege
+// (expenses, internalExpenses) gilt zusätzlich wie beim Lesen der Datensätze die Rolle — sonst könnte
+// ein Mitglied ohne Spesen-Berechtigung einen Beleg laden, dessen Dateinamen es kennt.
+// Nutzer = Nutzer des Datei-Tokens aus requestInfo().query, also derselbe, gegen den PocketBase die
+// viewRule prüft. e.auth ist bei Downloads mit `?token=` leer (PocketBase 0.39, empirisch geprüft),
+// e.request ist in diesem Hook in der JSVM nicht verfügbar. Ohne auflösbaren Nutzer/Rolle: 404 wie
+// bei einer fremden Datei.
+onFileDownloadRequest((e) => {
+  const GATE = { expenses: "expenses", internalExpenses: "internal-expenses" };
+  const permId = GATE[e.collection.name];
+  if (permId && !e.hasSuperuserAuth()) {
+    let authId = "";
+    try {
+      const info = e.requestInfo();
+      const token = (info.query && info.query.token) || "";
+      const rec = token ? e.app.findAuthRecordByToken(token, "file") : null;
+      authId = rec ? rec.id : "";
+    } catch {
+      authId = "";
+    }
+    const studioId = e.record.get("studio");
+    let allowed = false;
+    if (authId && studioId) {
+      try {
+        const member = e.app.findFirstRecordByFilter(
+          "studioMembers", "studio = {:sid} && user = {:uid} && active = true",
+          { sid: studioId, uid: authId },
+        );
+        const roleId = member.get("appRoleId");
+        if (roleId) {
+          e.app.findFirstRecordByFilter(
+            "appRoles", "studio = {:sid} && roleId = {:rid} && (permissions = null || permissions ~ {:pq})",
+            { sid: studioId, rid: roleId, pq: "\"" + permId + "\"" },
+          );
+          allowed = true;
+        }
+      } catch {
+        allowed = false;
+      }
+    }
+    if (!allowed) throw new NotFoundError("Datei nicht gefunden.");
+  }
+  e.next();
+}, "expenses", "internalExpenses");

@@ -24,6 +24,12 @@
 //   overtimeClosing.empId              ↔  employee
 //   expense.lohnEntryId                ↔  lohnEntry
 //   *.createdAt                        ↔  created (von PocketBase gesetzt)
+//   expense/internalExpense.receiptData ↔  receiptFile (Dateifeld)
+//   settings.logo                      ↔  logoFile (Dateifeld)
+//   blogPost.image                     ↔  imageFile (Dateifeld)
+//   docAsset.data                      ↔  file (Dateifeld)
+//   Dateifelder: fromDB liefert einen Verweis «rapport-pb:<Collection>/<id>/<Datei>», toDB gibt den
+//   App-Wert (Verweis, data:-URL oder leer) weiter; Upload/Download macht pocketbase-files.ts.
 //
 // Regeln für alle Mapper:
 //   - fromDB macht fehlende Werte zu sicheren Defaults ("" / [] / null), weil
@@ -39,6 +45,7 @@
 
 import type { RecordModel } from "pocketbase";
 import { EXPENSE_CATEGORIES, INTERNAL_EXPENSE_CATEGORIES } from "../constants";
+import { pbFileRef } from "./pocketbase-files";
 import type {
   AbsenzType, Absence, AppRole, BlogPost, ContactCategory, DashboardTemplate, ProtocolApproval, DeliveryNote, DocAsset, Employee,
   Expense, Feiertag, FerienEntry, Id, InternalExpense, Invoice, LetterTemplate, LohnEntry,
@@ -90,10 +97,10 @@ export const fromDB = {
       // schreibt ausschliesslich diesen Namen. "protokollTypeAbbr" bleibt der
       // PocketBase-Feldname.
       protokollTypeAbbreviations: row.protokollTypeAbbr || {},
-      // JS-Property heisst "logo" (nicht "logoUrl") — UI.jsx/Settings.jsx
-      // lesen/schreiben ausschliesslich settings.logo (Base64-Data-URL,
-      // kein echter Upload — gleiches Muster wie expense.receiptData).
-      logo: row.logo || "",
+      // JS-Property heisst "logo" — Views/Druck lesen settings.logo. In PocketBase ein
+      // Dateifeld (logoFile); hier wird daraus ein Verweis «rapport-pb:…», den der Adapter
+      // beim Laden zur data:-URL macht (pocketbase-files.ts).
+      logo: pbFileRef("studioSettings", row.id, row.logoFile),
       roles: (roles || []).map(r => ({ id: r.roleId, label: r.label, rate: r.rate, sort: r.sort })),
     };
   },
@@ -313,10 +320,10 @@ export const fromDB = {
       mwstRate: row.mwstRate ?? null,
       inclMwst: row.inclMwst !== false,
       status: row.status || "offen",
-      // JS-Property heisst "receiptData" (Base64-Data-URL, kein echter
-      // PocketBase-File-Upload) — Expenses.jsx/Time.jsx lesen/schreiben
-      // ausschliesslich "e.receiptData".
-      receiptData: row.receiptData || "",
+      // JS-Property heisst "receiptData": Verweis «rapport-pb:…» auf das Dateifeld
+      // receiptFile (Beleg wird erst beim Anzeigen geladen, hooks/useAttachment.ts)
+      // oder eine frisch hochgeladene data:-URL (siehe pocketbase-files.ts).
+      receiptData: pbFileRef("expenses", row.id, row.receiptFile),
       receiptName: row.receiptName || "",
       lohnEntryId: row.lohnEntry || null,
     };
@@ -334,9 +341,8 @@ export const fromDB = {
       recurring: !!row.recurring,
       recurringInterval: row.recurringInterval || "",
       recurringUntil: row.recurringUntil ? row.recurringUntil.slice(0, 10) : null,
-      // Wie expense.receiptData: Base64-Data-URL, kein echter PocketBase-File-
-      // Upload — InternalExpenses.jsx liest/schreibt ausschliesslich diese Namen.
-      receiptData: row.receiptData || "",
+      // Wie expense.receiptData: Verweis auf das Dateifeld receiptFile.
+      receiptData: pbFileRef("internalExpenses", row.id, row.receiptFile),
       receiptName: row.receiptName || "",
     };
   },
@@ -459,13 +465,13 @@ export const fromDB = {
       pinned: !!row.pinned,
       status: row.status || "published",
       poll: row.poll || null,
-      image: row.image || "",
+      image: pbFileRef("blogPosts", row.id, row.imageFile), // Dateifeld, beim Laden zur data:-URL
       eventDate: row.eventDate ? row.eventDate.slice(0, 10) : "",
       createdAt: row.created,
     };
   },
 
-  // Dokument-Design: Schrift oder Briefpapier als Data-URL (wie settings.logo, kein echter Upload).
+  // Dokument-Design: Schrift oder Briefpapier im Dateifeld `file` (beim Laden zur data:-URL, wie settings.logo).
   docAsset(row: Row) {
     return {
       id: row.id,
@@ -474,7 +480,7 @@ export const fromDB = {
       family: row.family || undefined,
       weight: row.weight || undefined,
       style: (row.style || undefined) as "normal" | "italic" | undefined,
-      data: row.data || "",
+      data: pbFileRef("docAssets", row.id, row.file),
     };
   },
 
@@ -512,7 +518,7 @@ export const toDB = {
       lastProjectYear: rest.lastProjectYear,
       studioBudget: rest.studioBudget || {},
       studioBudgetVersions: rest.studioBudgetVersions || [],
-      logo: rest.logo || "",
+      logoFile: rest.logo || "", // data:-URL, Verweis oder leer — Upload macht der Adapter (pocketbase-files.ts)
       formats: {
         projectNumberFormat: rest.projectNumberFormat, invoiceNumberFormat: rest.invoiceNumberFormat,
         quoteNumberFormat: rest.quoteNumberFormat, protocolNumberFormat: rest.protokollNumberFormat,
@@ -656,7 +662,7 @@ export const toDB = {
       employee: e.employeeId || null, project: e.projectId || null,
       date: e.date, category: e.category, description: e.description, amount: e.amount,
       mwstRate: e.mwstRate, inclMwst: e.inclMwst !== false, status: e.status || "offen",
-      receiptName: e.receiptName, receiptData: e.receiptData || "", lohnEntry: e.lohnEntryId || null,
+      receiptName: e.receiptName, receiptFile: e.receiptData || "", lohnEntry: e.lohnEntryId || null,
     };
   },
 
@@ -666,7 +672,7 @@ export const toDB = {
       date: e.date, category: e.category, description: e.description, amount: e.amount,
       mwstRate: e.mwstRate, inclMwst: e.inclMwst !== false,
       recurring: !!e.recurring, recurringInterval: e.recurringInterval || null, recurringUntil: e.recurringUntil || null,
-      receiptData: e.receiptData || "", receiptName: e.receiptName || "",
+      receiptFile: e.receiptData || "", receiptName: e.receiptName || "",
     };
   },
 
@@ -725,14 +731,14 @@ export const toDB = {
 
   // weight 0 statt null: PocketBase liefert eine leere Zahl als 0, sonst gälte die Zeile bei jedem Sync als geändert
   docAsset(a: DocAsset, studioId: Id) {
-    return { id: a.id, studio: studioId, kind: a.kind, name: a.name, family: a.family || "", weight: a.weight || 0, style: a.style || "", data: a.data };
+    return { id: a.id, studio: studioId, kind: a.kind, name: a.name, family: a.family || "", weight: a.weight || 0, style: a.style || "", file: a.data };
   },
 
   blogPost(b: BlogPost, studioId: Id) {
     return {
       id: b.id, studio: studioId, author: b.authorId || null, authorName: b.authorName,
       category: b.type, title: b.title, body: b.body, pinned: !!b.pinned,
-      status: b.status || "published", poll: b.poll || null, image: b.image || "",
+      status: b.status || "published", poll: b.poll || null, imageFile: b.image || "",
       eventDate: b.eventDate || null,
     };
   },

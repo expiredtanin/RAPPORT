@@ -1,8 +1,9 @@
 // Vollbild-Ansicht eines Belegs (Spesen, interne Ausgaben); genutzt von Spesen, Zeiterfassung und Buchhaltung.
-// Im Datenordner ist `receiptData` ein Verweis auf die Datei; gelesen wird sie erst hier (useAttachment).
+// Im Datenordner und in der Cloud ist `receiptData` ein Verweis auf die Datei; gelesen wird sie erst hier (useAttachment).
 
 import type { Expense } from "../types";
 import { useAttachment } from "../hooks/useAttachment";
+import { isCloudBackend } from "../storage/adapter";
 
 /** Das, was `ReceiptViewer` von einer Spese/Ausgabe braucht. */
 export type ReceiptTarget = Pick<Expense, "receiptData" | "receiptName" | "description" | "category">;
@@ -41,8 +42,9 @@ export function ReceiptViewer({ expense, onClose }: {
           {receipt.status === "loading" && <div style={{ padding: 40, fontSize: 13, color: "var(--text4)" }}>Beleg wird geladen …</div>}
           {receipt.status === "missing" && (
             <div style={{ padding: 40, fontSize: 13, color: "var(--text3)", lineHeight: 1.7, maxWidth: 460, textAlign: "center" }}>
-              Die Datei dieses Belegs ist im Datenordner (noch) nicht vorhanden — vermutlich ist sie noch nicht synchronisiert.
-              Der Beleg bleibt verknüpft; bitte später erneut öffnen.
+              {isCloudBackend
+                ? "Der Beleg konnte nicht vom Server geladen werden (keine Verbindung oder keine Berechtigung). Der Beleg bleibt verknüpft; bitte später erneut öffnen."
+                : "Die Datei dieses Belegs ist im Datenordner (noch) nicht vorhanden — vermutlich ist sie noch nicht synchronisiert. Der Beleg bleibt verknüpft; bitte später erneut öffnen."}
             </div>
           )}
           {url && (isPdf ? (

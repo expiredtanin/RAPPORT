@@ -4,7 +4,7 @@
 // Spesenbelege). Lokal liegt das im selben localStorage-Eintrag wie alle anderen
 // Daten (~5 MB); deshalb prüft `checkLocalBudget()` (utils.ts) vor jedem Hinzufügen,
 // ob noch Platz ist. In der Cloud liegt jede Datei als eigener Datensatz (Collection
-// docAssets) und das Limit entfällt.
+// docAssets) mit Dateifeld `file` (max. 10 MB, storage/pocketbase-files.ts).
 //
 // Briefpapier aus einem PDF wird beim Hochladen einmal mit pdf.js gerastert (Seite 1 =
 // erste Seite, Seite 2 = Folgeseiten), als JPEG oder PNG — je nachdem, was kleiner ist.
@@ -14,7 +14,7 @@ import { cleanFamilyName } from "./docDesign";
 import { readAsDataUrl } from "../utils";
 import type { DocAsset } from "../types";
 
-/** Obergrenze pro Datei im Cloud-Modus (PocketBase-Feld erlaubt 15 Mio. Zeichen). */
+/** Obergrenze pro Datei im Cloud-Modus: 12 Mio. Zeichen data:-URL ≈ 9 MB Datei (PocketBase-Dateifeld erlaubt 10 MB). */
 export const CLOUD_ASSET_LIMIT = 12_000_000;
 
 /** Grösse in Zeichen, wie sie im Speicher landet. */

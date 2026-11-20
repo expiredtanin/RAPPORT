@@ -34,6 +34,10 @@
 // Collections je Rolle. 403/404 gilt hier als «keine Berechtigung» und wird
 // beim Laden zu leeren Listen, beim Schreiben zu einem übersprungenen Block.
 //
+// Dateien (Belege, Logo, Pinnwand-Bilder, Dokument-Design) liegen in PocketBase-Dateifeldern:
+// in der App als Verweis «rapport-pb:…» bzw. (Logo/Bilder/Schriften, nach dem Laden) als
+// data:-URL; Upload beim Speichern, Download mit Datei-Token — siehe pocketbase-files.ts.
+//
 // Neue Entity hinzufügen: Eintrag in ENTITY_MAP (oder CONFIG_MAP), Mapper in
 // pocketbase-mappers.ts, Collection im PocketBase-Schema (pb/), Typ in
 // types.ts/AppData. Reihenfolge in ENTITY_MAP beachten (Relationen!).
@@ -46,6 +50,7 @@ import type { RawData } from "./migrations";
 import type { StorageAdapter } from "./adapter";
 import { fromDB, toDB } from "./pocketbase-mappers";
 import { baseFrom, changedFields, planSync, type SyncOp, type SyncRow } from "./pocketbase-sync";
+import { PB_FILE_FIELDS, PbFileStore, replacePbRefs, type PbFileRef, type PreparedBody } from "./pocketbase-files";
 
 /** Fehlerform von PocketBase (ClientResponseError), soweit hier benutzt. */
 type PbError = { status?: number; message?: string; data?: { message?: string } };
@@ -58,6 +63,10 @@ type Op = SyncOp;
 const LIST_BATCH = 1000;
 /** Vorübergehende Fehler, bei denen sich ein erneuter Versuch lohnt (Netz weg, Rate-Limit, Server). */
 const isTransient = (e: unknown) => { const s = pbError(e).status; return s === 0 || s === 429 || (s !== undefined && s >= 500); };
+/** data-Keys, deren Dateien beim Laden gleich als data:-URL geholt werden (Druck/PDF brauchen sie sofort). */
+const EAGER_FILE_KEYS = ["settings", "blogPosts", "docAssets"] as const;
+/** Datei-Token gilt bei PocketBase 3 Minuten; etwas früher erneuern. */
+const FILE_TOKEN_MS = 120_000;
 
 // [data-Key, Collection, Mapper-Name, natürlicher Schlüssel (Default "id"), Sort-Feld]
 // Deckt alle "Daten"-Entities ab, die 1:1 studio-gebunden sind und komplett per
@@ -126,6 +135,9 @@ export class PocketBaseAdapter implements StorageAdapter {
   _currentWrite?: Promise<void> | null;
   /** Abgleichsstand pro Collection (Datenbankform, nach Schlüssel), siehe pocketbase-sync.ts. */
   _base: Map<string, Map<string, SyncRow>>;
+  /** Dateiablage: Zuordnung data:-URL ↔ Verweis, Upload-Vorbereitung, Download (pocketbase-files.ts). */
+  _files: PbFileStore;
+  _fileToken: { token: Promise<string>; at: number } | null = null;
   /** Wartezeiten (ms) zwischen den Wiederholungen bei vorübergehenden Fehlern. */
   static RETRY_DELAYS = [1000, 3000, 10000];
 
@@ -148,17 +160,50 @@ export class PocketBaseAdapter implements StorageAdapter {
     // innerhalb einer Adapter-Instanz, daher kein Reset bei Studio-Wechsel nötig.
     this._batchSupported = null;
     this._base = new Map();
+    this._files = new PbFileStore(ref => this._download(ref));
+  }
+
+  /** Lädt eine geschützte Datei mit Datei-Token (Token wird kurz wiederverwendet). */
+  async _download(ref: PbFileRef): Promise<Blob> {
+    if (!this._fileToken || Date.now() - this._fileToken.at > FILE_TOKEN_MS) {
+      const token = this.client.files.getToken();
+      this._fileToken = { token, at: Date.now() };
+      token.catch(() => { this._fileToken = null; });
+    }
+    const token = await this._fileToken.token;
+    const url = this.client.files.getURL({ collectionName: ref.collection, id: ref.recordId }, ref.filename, { token });
+    const res = await fetch(url);
+    if (!res.ok) throw Object.assign(new Error(`Datei ${ref.filename}: HTTP ${res.status}`), { status: res.status });
+    return res.blob();
+  }
+
+  /** Beleg zu einem Verweis (`rapport-pb:…`) als data:-URL; null = nicht ladbar (fehlt, keine Berechtigung, Netz). */
+  readAttachment(ref: string): Promise<string | null> {
+    return this._files.read(ref);
+  }
+
+  /** Ersetzt alle Verweise in `value` durch die Dateiinhalte (JSON-Backup). Nicht ladbare bleiben Verweis. */
+  embedAttachments<T>(value: T): Promise<T> {
+    return replacePbRefs(value, async ref => (await this._files.read(ref)) ?? ref);
+  }
+
+  /** Logo, Pinnwand-Bilder und Dokument-Design: Verweise in `result` durch data:-URLs ersetzen (zwischengespeichert). */
+  async _inlineEagerFiles(result: Record<string, unknown>): Promise<void> {
+    for (const key of EAGER_FILE_KEYS) {
+      if (result[key] === undefined) continue;
+      result[key] = await replacePbRefs(result[key], async ref => (await this._files.inline(ref)) ?? ref);
+    }
   }
 
   /** Aktives Studio setzen (nach Login/Studio-Wechsel). Wechsel verwirft den Sync-Snapshot. */
   setStudioId(studioId: Id | null) {
-    if (studioId !== this._studioId) { this._lastData = null; this._base = new Map(); }
+    if (studioId !== this._studioId) { this._lastData = null; this._base = new Map(); this._files.clear(); }
     this._studioId = studioId;
   }
 
   /** Abgleichsstand einer Collection aus App-Zeilen setzen (nach dem Laden). */
   _setBaseFromApp(table: string, mapper: EntityMapper, list: unknown, sid: Id, keyField: string) {
-    this._base.set(table, baseFrom(this._toRows(mapper, list, sid), keyField));
+    this._base.set(table, baseFrom(this._toRows(mapper, list, sid, table), keyField));
   }
 
   /** Wartet, bis kein Schreibvorgang mehr läuft (Fehler zählen als fertig). */
@@ -221,6 +266,8 @@ export class PocketBaseAdapter implements StorageAdapter {
     this._studioId = null;
     this._lastData = null;
     this._base = new Map();
+    this._files.clear();
+    this._fileToken = null;
   }
 
   /** Schickt die Passwort-Reset-Mail. */
@@ -427,6 +474,13 @@ export class PocketBaseAdapter implements StorageAdapter {
     entityMapNonPersons.forEach(([dataKey], i) => { result[dataKey] = entityResults[i]; });
     CONFIG_MAP.forEach(([dataKey], i) => { result[dataKey] = configResults[i]; });
 
+    // Dateien: Logo/Bilder/Schriften gleich als data:-URL, Belege bleiben Verweise. Zuordnungen von
+    // Dateien, die es nicht mehr gibt (und von früher hochgeladenen Belegen), vergessen.
+    const eagerRefs = new Set<string>();
+    for (const key of EAGER_FILE_KEYS) await replacePbRefs(result[key], async ref => { eagerRefs.add(ref); return ref; });
+    this._files.retainOnly(eagerRefs);
+    await this._inlineEagerFiles(result);
+
     // Abgleichsstand = gerade geladener Serverstand (Grundlage für den Drei-Wege-Abgleich
     // beim nächsten Speichern, siehe pocketbase-sync.ts).
     this._base = new Map();
@@ -471,7 +525,9 @@ export class PocketBaseAdapter implements StorageAdapter {
         c.collection("studioSettings").getFullList({ filter }),
         c.collection("studioRoles").getFullList({ filter, sort: "sort" }),
       ]);
-      const settings = fromDB.studioSettings(settingsList[0], roles);
+      const loaded: Record<string, unknown> = { settings: fromDB.studioSettings(settingsList[0], roles) };
+      await this._inlineEagerFiles(loaded);
+      const settings = loaded.settings as ReturnType<typeof fromDB.studioSettings>;
       result.settings = settings;
       if (this._studioId === sid) this._base.set("studioRoles", baseFrom(toDB.studioRoles(settings.roles, sid), "roleId"));
     }
@@ -490,7 +546,10 @@ export class PocketBaseAdapter implements StorageAdapter {
         c.collection(coll).getFullList(sort ? { filter, sort, batch: LIST_BATCH } : { filter, batch: LIST_BATCH })
           .then(rows => rows.map(fromDB[mapper]))
           .catch((err: unknown) => { if (pbError(err).status !== 403 && pbError(err).status !== 404) throw err; return []; })
-          .then(list => {
+          .then(async rows => {
+            const loaded: Record<string, unknown> = { [dataKey]: rows };
+            await this._inlineEagerFiles(loaded);
+            const list = loaded[dataKey];
             result[dataKey] = list;
             if (this._studioId === sid) this._setBaseFromApp(coll, mapper, list, sid, keyField);
           }));
@@ -570,13 +629,14 @@ export class PocketBaseAdapter implements StorageAdapter {
     if (changed("settings")) {
       await skip403("studioSettings", async () => {
         const existingSettings = await c.collection("studioSettings").getFullList({ filter: `studio = "${sid}"` });
-        const settingsPayload = toDB.studioSettings(data.settings || {}, sid);
+        // Logo: bekannte data:-URL → Verweis, Server-Dateiname → Verweis (vergleichbar)
+        const settingsPayload = this._files.toRefs("studioSettings", toDB.studioSettings(data.settings || {}, sid));
         if (existingSettings[0]) {
-          // Nur geänderte Felder senden (Logo als Data-URL nicht bei jeder Einstellung neu)
-          const body = changedFields(settingsPayload, existingSettings[0]);
-          if (Object.keys(body).length > 0) await c.collection("studioSettings").update(existingSettings[0].id, body);
+          // Nur geänderte Felder senden (Logo nicht bei jeder Einstellung neu)
+          const body = changedFields(settingsPayload, this._files.fromRecord("studioSettings", existingSettings[0]));
+          if (Object.keys(body).length > 0) await this._applyOps("studioSettings", [{ type: "update", id: existingSettings[0].id, body }]);
         } else {
-          await c.collection("studioSettings").create(settingsPayload);
+          await this._applyOps("studioSettings", [{ type: "create", body: settingsPayload }]);
         }
       });
     }
@@ -597,11 +657,11 @@ export class PocketBaseAdapter implements StorageAdapter {
     for (const [dataKey, coll, mapper] of ENTITY_MAP) {
       if (coll === "persons" || coll === "employees") continue; // schon oben synchronisiert
       if (!changed(dataKey)) continue;
-      await skip403(coll, () => this._syncTable(coll, sid, this._toRows(mapper, data[dataKey], sid), "id"));
+      await skip403(coll, () => this._syncTable(coll, sid, this._toRows(mapper, data[dataKey], sid, coll), "id"));
     }
     for (const [dataKey, coll, mapper, keyField] of CONFIG_MAP) {
       if (!changed(dataKey)) continue;
-      await skip403(coll, () => this._syncTable(coll, sid, this._toRows(mapper, data[dataKey], sid), keyField));
+      await skip403(coll, () => this._syncTable(coll, sid, this._toRows(mapper, data[dataKey], sid, coll), keyField));
     }
 
     // Erst nach vollständigem, fehlerfreiem Durchlauf als "synchronisiert"
@@ -614,11 +674,12 @@ export class PocketBaseAdapter implements StorageAdapter {
   /**
    * Wendet den Mapper `toDB[mapper]` auf jede App-Zeile an. Die Mapper haben je
    * Entität einen anderen Parametertyp; hier ist die Zuordnung über ENTITY_MAP/
-   * CONFIG_MAP gesichert, deshalb der Cast.
+   * CONFIG_MAP gesichert, deshalb der Cast. Bekannte data:-URLs in Dateifeldern werden
+   * zu Verweisen (`table`), damit unveränderte Dateien im Abgleich gleich bleiben.
    */
-  _toRows(mapper: EntityMapper, list: unknown, sid: Id): Record<string, unknown>[] {
+  _toRows(mapper: EntityMapper, list: unknown, sid: Id, table: string): Record<string, unknown>[] {
     const fn = toDB[mapper] as (row: unknown, studioId: Id) => Record<string, unknown>;
-    return ((list as unknown[] | undefined) || []).map(row => fn(row, sid));
+    return ((list as unknown[] | undefined) || []).map(row => this._files.toRefs(table, fn(row, sid)));
   }
 
   /**
@@ -632,9 +693,11 @@ export class PocketBaseAdapter implements StorageAdapter {
     const base = this._base.get(table) ?? null;
     const filter = `studio = "${sid}"`;
     const fields = keyField === "id" ? "id" : `id,${keyField}`;
-    const existing = await c.getFullList(base ? { filter, fields, batch: LIST_BATCH } : { filter, batch: LIST_BATCH });
+    const existing = (await c.getFullList(base ? { filter, fields, batch: LIST_BATCH } : { filter, batch: LIST_BATCH }))
+      .map(r => this._files.fromRecord(table, r));
     await this._applyOps(table, planSync(rows, existing, keyField, base));
-    if (this._studioId === sid) this._base.set(table, baseFrom(rows, keyField));
+    // Gerade hochgeladene Dateien stehen im Abgleichsstand als Verweis (wie nach dem nächsten Laden)
+    if (this._studioId === sid) this._base.set(table, baseFrom(rows.map(r => this._files.toRefs(table, r)), keyField));
   }
 
   // Führt create/update/delete-Operationen für eine Collection aus — bevorzugt
@@ -658,8 +721,17 @@ export class PocketBaseAdapter implements StorageAdapter {
   static BATCH_RETRY_MS = 1100;
   _lastBatchAt = 0;
 
-  async _applyOps(table: string, ops: Op[]): Promise<void> {
+  async _applyOps(table: string, allOps: Op[]): Promise<void> {
     const c = this.client.collection(table);
+    // Dateifelder vorbereiten: Uploads (multipart) gehen einzeln, alles andere wie bisher (Batch)
+    const ops: Op[] = [];
+    const uploads: { op: Op; prepared: PreparedBody }[] = [];
+    for (const op of allOps) {
+      if (op.type === "delete" || !PB_FILE_FIELDS[table]) { ops.push(op); continue; }
+      const prepared = await this._files.prepareBody(table, op.type === "update" ? op.id : String(op.body.id ?? ""), op.body);
+      if (prepared.multipart) uploads.push({ op, prepared });
+      else ops.push({ ...op, body: prepared.body });
+    }
     for (let i = 0; i < ops.length; i += PocketBaseAdapter.BATCH_SIZE) {
       const chunk = ops.slice(i, i + PocketBaseAdapter.BATCH_SIZE);
       // Eine einzelne Operation braucht keinen Batch (häufigster Fall: eine Zeile geändert)
@@ -677,6 +749,36 @@ export class PocketBaseAdapter implements StorageAdapter {
           try { await this._applyOpsBatched(table, chunk); continue; } catch { /* unten einzeln */ }
         }
         await this._applyOpsSequential(c, chunk);
+      }
+    }
+    for (const { op, prepared } of uploads) await this._applyUpload(table, op, prepared);
+  }
+
+  /** Wartezeiten (ms) bei 429 für einzelne Uploads (Rate-Limit «*:create» 20 pro 5 s, z.B. beim Import vieler Belege). */
+  static UPLOAD_RETRY_MS = [1100, 2500, 5000];
+
+  /**
+   * Schreibt eine Operation mit Datei (multipart, nicht im Batch) und merkt sich danach den Verweis
+   * zur hochgeladenen data:-URL. 404 bei Update wie im sequenziellen Pfad: übersprungen.
+   */
+  async _applyUpload(table: string, op: Op, prepared: PreparedBody): Promise<void> {
+    const c = this.client.collection(table);
+    for (let attempt = 0; ; attempt++) {
+      try {
+        const rec = op.type === "update" ? await c.update(op.id, prepared.body) : await c.create(prepared.body);
+        if (prepared.upload) this._files.remember(table, rec, prepared.upload);
+        return;
+      } catch (err) {
+        const status = pbError(err).status;
+        if (status === 429 && attempt < PocketBaseAdapter.UPLOAD_RETRY_MS.length) {
+          await new Promise(r => setTimeout(r, PocketBaseAdapter.UPLOAD_RETRY_MS[attempt]));
+          continue;
+        }
+        if (op.type === "update" && status === 404) {
+          console.warn(`PocketBaseAdapter: Upload ${op.id} nicht möglich (nicht gefunden), übersprungen.`);
+          return;
+        }
+        throw err;
       }
     }
   }

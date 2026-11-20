@@ -46,8 +46,8 @@ const AREA_DIRS: Record<string, string> = {
   employees: "Benutzer",
 };
 
-/** Dateiendung je MIME-Typ; Unbekanntes bekommt «.bin». */
-const EXT_BY_MIME: Record<string, string> = {
+/** Dateiendung je MIME-Typ; Unbekanntes bekommt «.bin». Auch für Cloud-Uploads (pocketbase-files.ts). */
+export const EXT_BY_MIME: Record<string, string> = {
   "application/pdf": "pdf",
   "image/jpeg": "jpg",
   "image/png": "png",
@@ -75,7 +75,7 @@ const EXT_BY_MIME: Record<string, string> = {
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "xlsx",
   "application/octet-stream": "bin",
 };
-const MIME_BY_EXT: Record<string, string> = {
+export const MIME_BY_EXT: Record<string, string> = {
   pdf: "application/pdf", jpg: "image/jpeg", png: "image/png", gif: "image/gif", webp: "image/webp",
   heic: "image/heic", svg: "image/svg+xml", ttf: "font/ttf", otf: "font/otf", woff: "font/woff",
   woff2: "font/woff2", tif: "image/tiff", tiff: "image/tiff", bmp: "image/bmp", heif: "image/heif",

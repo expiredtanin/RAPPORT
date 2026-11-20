@@ -36,6 +36,7 @@ export interface Settings {
   defaultHourlyRate: number;
   autoPrint: boolean;
   logoSize: number;
+  /** Logo als data:-URL (Cloud: Dateifeld studioSettings.logoFile, beim Laden zur data:-URL). */
   logo?: string | null;
   expenseCategories: string[];
   internalExpenseCategories: string[];
@@ -124,6 +125,7 @@ export interface DocAsset {
   family?: string;
   weight?: number;
   style?: "normal" | "italic";
+  /** Datei als data:-URL (Cloud: Dateifeld docAssets.file, beim Laden zur data:-URL). */
   data: string;
 }
 
@@ -485,7 +487,10 @@ export interface Expense {
   mwstRate: number;
   inclMwst: boolean;
   status: string;
-  /** Beleg als Base64-Data-URL (kein Datei-Upload) */
+  /**
+   * Beleg: data:-URL (frisch hochgeladen, lokal) oder Verweis auf die Datei — Datenordner
+   * «rapport-datei:…», Cloud «rapport-pb:expenses/<id>/<Datei>». Anzeigen über useAttachment.
+   */
   receiptData?: string | null;
   receiptName?: string | null;
   lohnEntryId?: Id | null;
@@ -503,6 +508,7 @@ export interface InternalExpense {
   recurringInterval?: string;
   /** Letzter Monat einer wiederkehrenden Ausgabe (leer = läuft weiter) */
   recurringUntil?: DateStr | null;
+  /** Beleg wie `Expense.receiptData` (Cloud: «rapport-pb:internalExpenses/<id>/<Datei>»). */
   receiptData?: string | null;
   receiptName?: string | null;
 }
@@ -866,7 +872,7 @@ export interface BlogPost {
   /** "published" | "entwurf" */
   status: string;
   poll?: Poll | null;
-  /** Bild als Base64-Data-URL (JPEG, max. 1200 px breit) */
+  /** Bild als Base64-Data-URL (JPEG, max. 1200 px breit; Cloud: Dateifeld blogPosts.imageFile, beim Laden zur data:-URL) */
   image?: string;
   eventDate?: DateStr;
   createdAt: Timestamp;

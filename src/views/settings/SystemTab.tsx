@@ -73,8 +73,9 @@ export function SystemTab({ s, setField, data, setView, isAdmin }: DraftProps & 
   };
 
   const exportData = async () => {
-    // Datenordner: Belege sind Verweise auf Dateien → einbetten, damit das Backup eigenständig ist
-    const full = isFileBackend ? await fileStorage.embedAttachments(data) : data;
+    // Datenordner/Cloud: Belege sind Verweise auf Dateien → einbetten, damit das Backup eigenständig ist
+    const full = isFileBackend ? await fileStorage.embedAttachments(data)
+      : isCloudBackend ? await cloud.embedAttachments(data) : data;
     // Strip legacy plaintext passwords; PBKDF2 hashes (passwordHash + passwordSalt) are
     // not reversible and remain in the backup so restored accounts keep working.
     const sanitized = {
