@@ -7,7 +7,7 @@ import { INTERNAL_EXPENSE_CATEGORIES } from "../constants";
 import { generateId, formatCHF, formatDate, receiptToDataUrl, checkLocalBudget, localISODate } from "../utils";
 import { isLocalBackend } from "../storage/adapter";
 import { ExpenseFigures } from "../components/ExpenseFigures";
-import { Header, Modal, FormField, DateInput, SortTh, RowMenu, EmptyState } from "../components/UI";
+import { TableToolbar, Header, Modal, FormField, DateInput, SortTh, RowMenu, EmptyState } from "../components/UI";
 import { removeWithUndo } from "../undo";
 import { showToast } from "../toast";
 import { extractReceiptText, parseReceiptFields } from "../ocr";
@@ -203,7 +203,7 @@ function InternalExpenses({ data, update }: Pick<ViewProps, "data" | "update" | 
       )}
 
       <div className="filter-bar">
-        <input className="pill" placeholder="Suchen …" value={filter.search} onChange={e => setFilter({ ...filter, search: e.target.value })} style={{ width: 170 }} />
+        <input className="pill" placeholder="Suchen …" value={filter.search} onChange={e => setFilter({ ...filter, search: e.target.value })} />
         <select className="pill" value={filter.year} onChange={e => setFilter({ ...filter, year: e.target.value })}>
           <option value="">Alle Jahre</option>
           {years.map(y => <option key={y} value={y}>{y}</option>)}
@@ -215,11 +215,6 @@ function InternalExpenses({ data, update }: Pick<ViewProps, "data" | "update" | 
         {hasFilters && (
           <button className="btn btn-ghost" style={{ fontSize: 12 }} onClick={() => setFilter({ year: filter.year, category: "", search: "" })}>Zurücksetzen</button>
         )}
-        <div className="seg seg-sm" role="tablist" aria-label="Gruppieren" style={{ marginLeft: "auto" }}>
-          {[{ id: "date", label: "Monat" }, { id: "category", label: "Kategorie" }].map(g => (
-            <button key={g.id} role="tab" aria-selected={groupBy === g.id} className={groupBy === g.id ? "on" : ""} onClick={() => setGroupBy(g.id as typeof groupBy)}>{g.label}</button>
-          ))}
-        </div>
       </div>
 
       {items.length === 0 ? (
@@ -233,6 +228,8 @@ function InternalExpenses({ data, update }: Pick<ViewProps, "data" | "update" | 
         </div>
       ) : (
         <div className="card" style={{ padding: 0 }}>
+          <TableToolbar summary={<><b className="num">{allFiltered.length}</b> {allFiltered.length === 1 ? "Eintrag" : "Einträge"} · <span className="num">{formatCHF(totalBrutto)}</span></>}
+            groups={[{ id: "date", label: "Monat" }, { id: "category", label: "Kategorie" }] as { id: typeof groupBy; label: string }[]} value={groupBy} onChange={setGroupBy} />
           <table>
             <thead>
               <tr>

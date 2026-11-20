@@ -18,7 +18,7 @@ import { EXPENSE_CATEGORIES } from "../constants";
 import { generateId, formatCHF, formatDate, receiptToDataUrl, checkLocalBudget, localISODate } from "../utils";
 import { isLocalBackend } from "../storage/adapter";
 import { ExpenseFigures } from "../components/ExpenseFigures";
-import { Header, Modal, FormField, StatusSelect, DateInput, SortTh, RowMenu, EmptyState } from "../components/UI";
+import { TableToolbar, Header, Modal, FormField, StatusSelect, DateInput, SortTh, RowMenu, EmptyState } from "../components/UI";
 import { removeWithUndo } from "../undo";
 import { showToast } from "../toast";
 import { extractReceiptText, parseReceiptFields } from "../ocr";
@@ -272,16 +272,16 @@ function Expenses({ data, update, standalone }: Pick<ViewProps, "data" | "update
       )}
 
       <div className="filter-bar">
-        <input className="pill" placeholder="Suchen …" value={filter.search} onChange={e => setFilter({ ...filter, search: e.target.value })} style={{ width: 170 }} />
+        <input className="pill" placeholder="Suchen …" value={filter.search} onChange={e => setFilter({ ...filter, search: e.target.value })} />
         <select className="pill" value={filter.year} onChange={e => setFilter({ ...filter, year: e.target.value })}>
           <option value="">Alle Jahre</option>
           {years.map(y => <option key={y} value={y}>{y}</option>)}
         </select>
-        <select className="pill" style={{ maxWidth: 180 }} value={filter.category} onChange={e => setFilter({ ...filter, category: e.target.value })}>
+        <select className="pill" value={filter.category} onChange={e => setFilter({ ...filter, category: e.target.value })}>
           <option value="">Alle Kategorien</option>
           {expCats.map(c => <option key={c} value={c}>{c}</option>)}
         </select>
-        <select className="pill" style={{ maxWidth: 190 }} value={filter.projectId} onChange={e => setFilter({ ...filter, projectId: e.target.value })}>
+        <select className="pill" value={filter.projectId} onChange={e => setFilter({ ...filter, projectId: e.target.value })}>
           <option value="">Alle Projekte</option>
           {data.projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
         </select>
@@ -299,11 +299,6 @@ function Expenses({ data, update, standalone }: Pick<ViewProps, "data" | "update
         {hasFilters && (
           <button className="btn btn-ghost" style={{ fontSize: 12 }} onClick={() => setFilter({ year: filter.year, category: "", projectId: "", employeeId: "", search: "", status: "" })}>Zurücksetzen</button>
         )}
-        <div className="seg seg-sm" role="tablist" aria-label="Gruppieren" style={{ marginLeft: "auto" }}>
-          {[{ id: "date", label: "Monat" }, { id: "category", label: "Kategorie" }, { id: "project", label: "Projekt" }].map(g => (
-            <button key={g.id} role="tab" aria-selected={groupBy === g.id} className={groupBy === g.id ? "on" : ""} onClick={() => setGroupBy(g.id as typeof groupBy)}>{g.label}</button>
-          ))}
-        </div>
       </div>
 
       {/* Tabelle gruppiert */}
@@ -318,15 +313,17 @@ function Expenses({ data, update, standalone }: Pick<ViewProps, "data" | "update
         </div>
       ) : (
         <div className="card" style={{ padding: 0 }}>
+          <TableToolbar summary={<><b className="num">{allFiltered.length}</b> {allFiltered.length === 1 ? "Eintrag" : "Einträge"} · <span className="num">{formatCHF(totalBrutto)}</span></>}
+            groups={[{ id: "date", label: "Monat" }, { id: "category", label: "Kategorie" }, { id: "project", label: "Projekt" }] as { id: typeof groupBy; label: string }[]} value={groupBy} onChange={setGroupBy} />
           <table>
             <thead>
               <tr>
                 <SortTh sort={sort} onSort={toggleSort} col="date" style={{ width: 96 }}>Datum</SortTh>
                 <SortTh sort={sort} onSort={toggleSort} col="category">Beschreibung · Kategorie</SortTh>
                 <SortTh sort={sort} onSort={toggleSort} col={groupBy === "project" ? "employee" : "project"} className="hide-narrow">{groupBy === "project" ? "Mitarbeiter" : "Projekt · Mitarbeiter"}</SortTh>
-                <th className="hide-narrow" style={{ textAlign: "right", width: 100 }}>Vorsteuer</th>
+                <th className="hide-mid" style={{ textAlign: "right", width: 96 }}>Vorsteuer</th>
                 <SortTh sort={sort} onSort={toggleSort} col="amount" style={{ textAlign: "right", width: 112 }}>Brutto</SortTh>
-                <th style={{ width: 150 }}>Status</th>
+                <th style={{ width: 136 }}>Status</th>
                 <th style={{ width: 80 }}></th>
               </tr>
             </thead>
@@ -359,11 +356,11 @@ function Expenses({ data, update, standalone }: Pick<ViewProps, "data" | "update
                             <div style={{ color: "var(--text)" }}>{e.description || e.category || "—"}</div>
                             {groupBy !== "category" && e.description && <div style={{ fontSize: 12, color: "var(--text4)", marginTop: 1 }}>{e.category}</div>}
                           </td>
-                          <td className="hide-narrow" style={{ fontSize: 12.5, color: "var(--text3)" }}>
-                            {groupBy !== "project" && <div>{proj?.name || "—"}</div>}
+                          <td className="hide-narrow" style={{ fontSize: 12.5, color: "var(--text3)", maxWidth: 220 }}>
+                            {groupBy !== "project" && <div className="cell-1line" title={proj?.name}>{proj?.name || "—"}</div>}
                             <div style={{ color: "var(--text4)", fontSize: 12 }}>{emp?.name || "—"}</div>
                           </td>
-                          <td className="hide-narrow num" style={{ textAlign: "right", color: "var(--text4)" }} title={`Netto ${formatCHF(net)}`}>{tax > 0 ? formatCHF(tax) : "—"}</td>
+                          <td className="hide-mid num" style={{ textAlign: "right", color: "var(--text4)" }} title={`Netto ${formatCHF(net)}`}>{tax > 0 ? formatCHF(tax) : "—"}</td>
                           <td style={{ textAlign: "right" }}><strong>{formatCHF(e.amount)}</strong></td>
                           <td>
                             {e.lohnEntryId
@@ -389,7 +386,7 @@ function Expenses({ data, update, standalone }: Pick<ViewProps, "data" | "update
                     {groupedData.length > 1 && group.items.length > 1 && (
                       <tr style={{ background: "var(--surface2)", borderTop: "1px solid var(--border)" }}>
                         <td colSpan={3} style={{ padding: "5px 12px", fontSize: 11, color: "var(--text4)" }}>Total {group.label} · netto {formatCHF(gNet)}</td>
-                        <td className="hide-narrow" style={{ textAlign: "right", padding: "5px 12px", fontWeight: 600, fontSize: 11, color: "var(--text4)" }}>{formatCHF(gTax)}</td>
+                        <td className="hide-mid" style={{ textAlign: "right", padding: "5px 12px", fontWeight: 600, fontSize: 11, color: "var(--text4)" }}>{formatCHF(gTax)}</td>
                         <td style={{ textAlign: "right", padding: "5px 12px", fontWeight: 700, fontSize: 11 }}>{formatCHF(gBrutto)}</td>
                         <td colSpan={2} />
                       </tr>
@@ -403,7 +400,7 @@ function Expenses({ data, update, standalone }: Pick<ViewProps, "data" | "update
                 <td colSpan={3} style={{ color: "var(--text4)", fontSize: 12 }}>
                   {allFiltered.length} {allFiltered.length === 1 ? "Eintrag" : "Einträge"} {filter.year ? filter.year : ""} · netto {formatCHF(totalNet)}
                 </td>
-                <td className="hide-narrow" style={{ textAlign: "right", fontWeight: 600, color: "var(--text4)" }}>{formatCHF(totalTax)}</td>
+                <td className="hide-mid" style={{ textAlign: "right", fontWeight: 600, color: "var(--text4)" }}>{formatCHF(totalTax)}</td>
                 <td style={{ textAlign: "right", fontWeight: 700 }}>{formatCHF(totalBrutto)}</td>
                 <td colSpan={2} />
               </tr>

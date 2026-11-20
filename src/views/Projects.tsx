@@ -21,7 +21,7 @@
 import React, { useState, useEffect } from "react";
 import { PROJECT_TYPES } from "../constants";
 import { generateId, formatHours, applyProjectNumberFormat, parseSeqFromNumber, localISODate } from "../utils";
-import { Header, Modal, StatusBadge, ShareButton, SortTh, RowMenu } from "../components/UI";
+import { Header, Modal, StatusBadge, ShareButton, SortTh, RowMenu, TableToolbar } from "../components/UI";
 import { removeWithUndo } from "../undo";
 import type { Project, ViewProps } from "../types";
 import { ProjectEditForm, type ProjectForm } from "./ProjectEditForm";
@@ -157,12 +157,10 @@ function Projects({ data, saveAll, modal, setModal, onSelect, setPrintContent }:
         </select>
       </div>
 
-      <div className="filter-bar">
-        <span className="filter-label">Gruppieren</span>
-        {[{ id: "none", label: "Keine" }, { id: "status", label: "Status" }, { id: "category", label: "Kategorie" }, { id: "client", label: "Auftraggeber" }, { id: "year", label: "Jahr" }].map(g => (
-          <button key={g.id} className={`pill${groupBy === g.id ? " active" : ""}`} onClick={() => setGroupBy(g.id)}>{g.label}</button>
-        ))}
-      </div>
+      <TableToolbar detached
+        summary={<><b className="num">{filtered.length}</b> {filtered.length === 1 ? "Projekt" : "Projekte"}</>}
+        groups={[{ id: "none", label: "Keine" }, { id: "status", label: "Status" }, { id: "category", label: "Kategorie" }, { id: "client", label: "Auftraggeber" }, { id: "year", label: "Jahr" }]}
+        value={groupBy} onChange={setGroupBy} />
 
       <div className="card" style={{ padding: 0 }}>
         <table>

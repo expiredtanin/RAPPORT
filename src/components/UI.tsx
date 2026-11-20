@@ -755,3 +755,29 @@ export function EmptyState({ icon = "inbox", title, text, action }: { icon?: str
     </div>
   );
 }
+
+/**
+ * Kopfzeile einer Liste: links Anzahl/Summe, rechts der Umschalter «Gruppieren».
+ * `detached`: steht direkt über einer `.card` mit Tabelle und verbindet sich mit ihr (Kopf der Karte).
+ */
+export function TableToolbar<T extends string>({ summary, groups, value, onChange, detached }: {
+  summary: ReactNode;
+  groups?: { id: T; label: string }[];
+  value?: T;
+  onChange?: (v: T) => void;
+  detached?: boolean;
+}) {
+  return (
+    <div className={`table-toolbar${detached ? " detached" : ""}`}>
+      <span>{summary}</span>
+      {groups && onChange && (
+        <div className="seg seg-sm" role="tablist" aria-label="Gruppieren">
+          <span className="seg-label">Gruppieren</span>
+          {groups.map(g => (
+            <button key={g.id} role="tab" aria-selected={value === g.id} className={value === g.id ? "on" : ""} onClick={() => onChange(g.id)}>{g.label}</button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}

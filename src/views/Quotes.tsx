@@ -25,7 +25,7 @@ import React, { useState, useEffect } from "react";
 import { SIA_PHASES, SIA_PHASE_WEIGHTS } from "../constants";
 import { calcSIAHours, calcManualHours, generateId, formatCHF, formatDate, formatHours, roundCHF, applyProjectNumberFormat, migrateLinkedQuotes, localISODate, invoiceNet, quoteBudgetFields } from "../utils";
 import { invoicesForQuote } from "./invoices/invoiceHelpers";
-import { Header, Modal, FormField, StatusSelect, DateInput, SortTh, RowMenu } from "../components/UI";
+import { Header, Modal, FormField, StatusSelect, DateInput, SortTh, RowMenu, TableToolbar } from "../components/UI";
 import { removeWithUndo } from "../undo";
 import LivePreview from "../components/LivePreview";
 import { showToast } from "../toast";
@@ -338,7 +338,7 @@ function Quotes({ data, update, saveAll, modal, setModal, setPrintContent, setVi
     <div>
       <Header title="Offerten" action={<button className="btn btn-primary" onClick={openNew}>+ Neue Offerte</button>} />
       <div className="filter-bar">
-        <input className="pill" placeholder="Suche…" value={filter.search} onChange={e => setFilter({...filter, search: e.target.value})} style={{ minWidth: 180 }} />
+        <input className="pill" placeholder="Suche…" value={filter.search} onChange={e => setFilter({...filter, search: e.target.value})} />
         <select className="pill" value={filter.status} onChange={e => setFilter({...filter, status: e.target.value})}>
           <option value="">Alle Status</option>
           {["entwurf","gesendet","angenommen","abgelehnt","abgelaufen"].map(s => <option key={s}>{s}</option>)}
@@ -351,18 +351,15 @@ function Quotes({ data, update, saveAll, modal, setModal, setPrintContent, setVi
           <option value="">Alle Jahre</option>
           {availableQuoteYears.map(y => <option key={y} value={y}>{y}</option>)}
         </select>
-        <div style={{ marginLeft: "auto", fontSize: 12, color: "var(--text4)" }}>{filtered.length} Offerte{filtered.length !== 1 ? "n" : ""} · {formatCHF(filtered.reduce((s,q)=>s+(q.total||0),0))}</div>
       </div>
 
-      <div className="filter-bar">
-        <span className="filter-label">Gruppieren</span>
-        {[{ id: "none", label: "Keine" }, { id: "date", label: "Monat" }, { id: "client", label: "Kunde" }, { id: "status", label: "Status" }].map(g => (
-          <button key={g.id} className={`pill${groupBy === g.id ? " active" : ""}`} onClick={() => setGroupBy(g.id)}>{g.label}</button>
-        ))}
-      </div>
+      <TableToolbar detached
+        summary={<><b className="num">{filtered.length}</b> {filtered.length === 1 ? "Offerte" : "Offerten"} · <span className="num">{formatCHF(filtered.reduce((s,q)=>s+(q.total||0),0))}</span></>}
+        groups={[{ id: "none", label: "Keine" }, { id: "date", label: "Monat" }, { id: "client", label: "Kunde" }, { id: "status", label: "Status" }]}
+        value={groupBy} onChange={setGroupBy} />
       <div className="card" style={{ padding: 0 }}>
         <table>
-          <thead><tr><SortTh sort={sort} onSort={toggleSort} col="number" style={{ width: 100 }}>Nr.</SortTh><SortTh sort={sort} onSort={toggleSort} col="client">Kunde</SortTh><th className="hide-narrow">Modus</th><SortTh sort={sort} onSort={toggleSort} col="date" className={compact ? "hide-compact" : ""}>Datum</SortTh><SortTh sort={sort} onSort={toggleSort} col="validUntil" className="hide-narrow">Gültig bis</SortTh><SortTh sort={sort} onSort={toggleSort} col="total" style={{ textAlign: "right" }}>Honorar</SortTh><SortTh sort={sort} onSort={toggleSort} col="status">Status</SortTh><th></th></tr></thead>
+          <thead><tr><SortTh sort={sort} onSort={toggleSort} col="number" style={{ width: 100 }}>Nr.</SortTh><SortTh sort={sort} onSort={toggleSort} col="client">Kunde</SortTh><th className="hide-mid">Modus</th><SortTh sort={sort} onSort={toggleSort} col="date" className={compact ? "hide-compact" : ""}>Datum</SortTh><SortTh sort={sort} onSort={toggleSort} col="validUntil" className="hide-narrow">Gültig bis</SortTh><SortTh sort={sort} onSort={toggleSort} col="total" style={{ textAlign: "right" }}>Honorar</SortTh><SortTh sort={sort} onSort={toggleSort} col="status">Status</SortTh><th></th></tr></thead>
           <tbody>
             {filtered.length === 0 && <tr><td colSpan={8} className="empty-state">{(data.quotes||[]).length === 0 ? "Noch keine Offerten" : "Keine Treffer"}</td></tr>}
             {groupedQuotes.map(group => (
@@ -387,7 +384,7 @@ function Quotes({ data, update, saveAll, modal, setModal, setPrintContent, setVi
                 <tr key={q.id} className="row-link" onClick={() => openEdit(q)}>
                   <td><strong>{q.number}</strong>{q.projectName && <div style={{ fontSize: 11, color: "var(--text4)", marginTop: 1 }}>{q.projectName}</div>}</td>
                   <td>{cl?.name || "—"}</td>
-                  <td className="hide-narrow" style={{ fontSize: 12, color: "var(--text4)" }}>{q.mode === "sia" ? "SIA 102" : q.mode === "free" ? "Freie Positionen" : "Aufwand"}</td>
+                  <td className="hide-mid" style={{ fontSize: 12, color: "var(--text4)" }}>{q.mode === "sia" ? "SIA 102" : q.mode === "free" ? "Freie Positionen" : "Aufwand"}</td>
                   <td>{formatDate(q.date)}</td>
                   <td className="hide-narrow">{formatDate(q.validUntil)}</td>
                   <td style={{ textAlign: "right" }}>
@@ -407,7 +404,7 @@ function Quotes({ data, update, saveAll, modal, setModal, setPrintContent, setVi
                       };
                       return (
                         <>
-                          {linkedProj && <button className="btn btn-quiet btn-sm" title="Mit Projekt verknüpft" onClick={openProjectModal} style={{ marginRight: 2 }}><span className="msr" style={{ fontSize: 15 }}>work</span>{linkedProj.number || "Projekt"}</button>}
+                          {linkedProj && <button className="btn-icon" title={`Mit Projekt ${linkedProj.number || linkedProj.name} verknüpft`} aria-label="Projekt-Verknüpfung" onClick={openProjectModal}><span className="msr" style={{ fontSize: 16 }}>work</span></button>}
                           <RowMenu items={[
                             { label: "Bearbeiten", icon: "edit", onClick: () => openEdit(q) },
                             { label: "PDF", icon: "picture_as_pdf", onClick: () => setPrintContent({ type: "quote", quote: q, client: cl, settings: data.settings }) },

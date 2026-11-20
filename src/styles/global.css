@@ -833,7 +833,13 @@ button.today-row:hover { background: var(--surface3); }
 .kpi-band { gap: 0 !important; background: var(--surface); border: 1px solid var(--border2); border-radius: var(--r-card); overflow: hidden; box-shadow: var(--shadow-card); }
 .kpi-band > .kpi, .kpi-band > .card { border: none !important; border-left: 1px solid var(--border2) !important; border-radius: 0 !important; box-shadow: none !important; background: transparent !important; }
 .kpi-band > :first-child { border-left: none !important; }
-.kpi-band .kpi-value { font-size: clamp(18px, 1.7vw, 22px); }
+.kpi-band { box-shadow: none; }
+/* im Band wie .ws-figs: ohne Farbpunkte, gleiche Grössen */
+.kpi-band .kpi { padding: 16px 18px !important; }
+.kpi-band .kpi-dot { display: none; }
+.kpi-band .kpi-label { color: var(--text4); margin-bottom: 6px; }
+.kpi-band .kpi-value { font-size: 20px; font-weight: 620; }
+.kpi-band .kpi-sub { margin-top: 3px; }
 @media (max-width: 1150px) { .kpi-band > :nth-child(odd) { border-left: none !important; } .kpi-band > :nth-child(n+3) { border-top: 1px solid var(--border2) !important; } }
 a.btn, a.btn:hover { text-decoration: none; }
 /* editierbarer Titel im Kopfband (z.B. Protokoll) */
@@ -842,8 +848,8 @@ a.btn, a.btn:hover { text-decoration: none; }
 .title-input:focus { border-bottom: 1px solid var(--accent) !important; }
 @media (max-width: 1100px) { .letters-grid { grid-template-columns: minmax(0, 1fr) !important; } }
 /* Kennzahlen-Band Spesen/Ausgaben: Kategorien als runde Balken */
-.exp-figs .exp-cats { display: flex; flex-direction: column; gap: 5px; }
-.exp-figs .exp-cats small { margin-bottom: 2px; }
+.exp-cats { display: flex; flex-direction: column; gap: 5px; }
+.exp-cats small, .exp-cats .kpi-label { margin-bottom: 2px; }
 .exp-cat { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 8px; font-size: 11.5px; color: var(--text3); }
 .exp-cat span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .exp-cat i { font-style: normal; color: var(--text4); }
@@ -879,3 +885,20 @@ i.paid { background: var(--positive); } i.open { background: var(--accent); } i.
 .acc-q-n { width: 30px; font-size: 12px; font-weight: 650; color: var(--text3); }
 .acc-q.on { background: var(--surface2); border-radius: 8px; margin: 0 -8px; padding-left: 8px; padding-right: 8px; width: calc(100% + 16px); }
 .acc-q.on .acc-q-n { color: var(--accent); }
+/* Kopfzeile über einer Tabelle in einer Karte: Anzahl/Summe links, Umschalter rechts */
+.table-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 12px 10px 16px; border-bottom: 1px solid var(--border2); font-size: 12.5px; color: var(--text4); flex-wrap: wrap; }
+.table-toolbar b { color: var(--text); font-weight: 600; }
+.seg .seg-label { font-size: 12px; color: var(--text4); padding: 0 6px 0 8px; align-self: center; }
+/* Nebenspalten, die erst unter 1300 px weichen (z.B. Vorsteuer bei Spesen) */
+@media (max-width: 1300px) { .hide-mid { display: none !important; } }
+.cell-1line { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* Filterzeile: Felder teilen sich die Breite proportional (Suche etwas breiter), bleiben in einer Zeile */
+.filter-bar > select.pill { flex: 1 1 0; min-width: 96px; max-width: 210px; text-overflow: ellipsis; }
+.filter-bar > input.pill { flex: 1.3 1 0; min-width: 120px; max-width: 260px; }
+.table-toolbar.detached { background: var(--surface); border: 1px solid var(--border2); border-bottom: none; border-radius: var(--r-card) var(--r-card) 0 0; margin-top: 4px; }
+.table-toolbar.detached + .card { border-top-left-radius: 0 !important; border-top-right-radius: 0 !important; }
+.table-toolbar.detached + .card > table > thead th, .table-toolbar.detached + .card table:first-child thead th { border-top: 1px solid var(--border2); }
+/* Pendenzen in zwei Spalten (Protokolle) */
+.task-cols { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 28px; }
+.task-cols .task-row:nth-child(2) { border-top: none; }
+@media (max-width: 1100px) { .task-cols { grid-template-columns: minmax(0, 1fr); } .task-cols .task-row:nth-child(2) { border-top: 1px solid var(--border2); } }

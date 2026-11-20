@@ -1,6 +1,7 @@
 // Filter- und Gruppierungsleiste der Rechnungsliste (Suche, Status, Kunde, Jahr, Gruppieren, Trefferzahl).
 
 import { formatCHF } from "../../utils";
+import { TableToolbar } from "../../components/UI";
 import type { Invoice, Person } from "../../types";
 import type { InvoiceFilter } from "./invoiceList";
 
@@ -19,7 +20,7 @@ export function InvoiceFilterBars({ filter, setFilter, clients, availableYears, 
   return (
     <>
       <div className="filter-bar">
-        <input className="pill" placeholder="Suche (Nr., Kunde, Beschreibung…)" value={filter.search} onChange={e => setFilter({ ...filter, search: e.target.value })} style={{ minWidth: 220 }} />
+        <input className="pill" placeholder="Suche (Nr., Kunde, Beschreibung…)" value={filter.search} onChange={e => setFilter({ ...filter, search: e.target.value })} />
         <select className="pill" value={filter.status} onChange={e => setFilter({ ...filter, status: e.target.value })}>
           <option value="">Alle Status</option>
           {["entwurf", "gesendet", "bezahlt", "überfällig"].map(s => <option key={s} value={s}>{s}</option>)}
@@ -37,16 +38,10 @@ export function InvoiceFilterBars({ filter, setFilter, clients, availableYears, 
         )}
       </div>
 
-      <div className="filter-bar">
-        <span className="filter-label">Gruppieren</span>
-        {[{ id: "none", label: "Keine" }, { id: "date", label: "Monat" }, { id: "client", label: "Kunde" }, { id: "status", label: "Status" }].map(g => (
-          <button key={g.id} className={`pill${groupBy === g.id ? " active" : ""}`} onClick={() => setGroupBy(g.id)}>{g.label}</button>
-        ))}
-        <div style={{ marginLeft: "auto", fontSize: 12, color: "var(--text4)", textAlign: "right" }}>
-          <div><strong style={{ color: "var(--text)" }}>{filtered.length}</strong> {filtered.length === 1 ? "Rechnung" : "Rechnungen"} · {formatCHF(filteredTotal)}</div>
-          {filteredOpen > 0 && <div style={{ color: "var(--warning)" }}>davon offen: {formatCHF(filteredOpen)}</div>}
-        </div>
-      </div>
+      <TableToolbar detached
+        summary={<><b className="num">{filtered.length}</b> {filtered.length === 1 ? "Rechnung" : "Rechnungen"} · <span className="num">{formatCHF(filteredTotal)}</span>{filteredOpen > 0 && <>, davon offen <span className="num" style={{ color: "var(--warning)" }}>{formatCHF(filteredOpen)}</span></>}</>}
+        groups={[{ id: "none", label: "Keine" }, { id: "date", label: "Monat" }, { id: "client", label: "Kunde" }, { id: "status", label: "Status" }]}
+        value={groupBy} onChange={setGroupBy} />
     </>
   );
 }

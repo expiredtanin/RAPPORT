@@ -46,7 +46,7 @@ export function InvoiceTable({ filtered, groupedInvoices, groupBy, sort, toggleS
             return (
               <tr key={inv.id} className="row-link" onClick={() => openEdit(inv)}>
                 <td>
-                  <strong>{inv.number}</strong>
+                  <strong style={{ whiteSpace: "nowrap" }}>{inv.number}</strong>
                   {(inv.reminders || []).length > 0 && (
                     <div style={{ fontSize: 10, color: "var(--warning)", marginTop: 2 }}>
                       {(inv.reminders || []).length === 1 ? "Erinnerung" : `${(inv.reminders || []).length}× Mahnung`} · {formatDate((inv.reminders || []).at(-1)?.date)}

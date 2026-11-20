@@ -22,7 +22,7 @@ export function ExpenseFigures({ count, brutto, netto, vorsteuer, totalSub, cate
       <div className="exp-cats">
         <small>Grösste Kategorien</small>
         {categories.length === 0 && <em>—</em>}
-        {categories.map(c => (
+        {categories.slice(0, 3).map(c => (
           <div key={c.cat} className="exp-cat" title={`${c.cat}: ${formatCHF(c.amount)}`}>
             <span>{c.cat}</span><i className="num">{formatCHF(c.amount).replace(/^CHF\s*/u, "")}</i>
             <b style={{ width: `${Math.max(4, (c.amount / max) * 100)}%` }} />

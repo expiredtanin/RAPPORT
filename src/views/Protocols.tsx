@@ -20,10 +20,11 @@
 import React, { useState, useEffect } from "react";
 import { PROTOKOLL_TYPES } from "../constants";
 import { generateId, formatDate, htmlToText, initialsOf, participantKuerzel, responsibleLabel, protocolApproval, nextProtoSeq, applyProtoNumberFormat, localISODate } from "../utils";
-import { Header, Modal, FormField, RichEditor, DateInput, ShareButton, SortTh, RowMenu, EmptyState } from "../components/UI";
+import { TableToolbar, Header, Modal, FormField, RichEditor, DateInput, ShareButton, SortTh, RowMenu, EmptyState } from "../components/UI";
 import { useConfirm } from "../hooks/useConfirm";
-import { removeWithUndo } from "../undo";
-import { baselineChanges, glyphOf, scheduleOf, TRACK_LABELS, trackItems, upcomingItems } from "../schedule";
+import { changeWithUndo, removeWithUndo } from "../undo";
+import { openTasks, type OpenTask } from "../today";
+import { setLinkedStatus, baselineChanges, glyphOf, scheduleOf, TRACK_LABELS, trackItems, upcomingItems } from "../schedule";
 import type { AppData, Protocol, ProtocolApproval, ProtocolEntry, ProtocolParticipant, ProtocolTraktandum, ViewProps } from "../types";
 
 /** Auswahl im Dialog «Folgesitzung erstellen»: pro Traktandum, welche Einträge übernommen werden. */
@@ -42,6 +43,7 @@ declare global {
 export default
 function Protokolle({ data, saveAll, setPrintContent, modal, setModal }: Pick<ViewProps, "data" | "update" | "saveAll" | "setPrintContent"> & Partial<Pick<ViewProps, "modal" | "setModal">>) {
   const today = localISODate();
+  const [showAllTasks, setShowAllTasks] = useState(false);
   const protokolle = data.protocols || [];
 
   const [detailId, setDetailId] = useState<string | null>(() => {
@@ -134,13 +136,12 @@ function Protokolle({ data, saveAll, setPrintContent, modal, setModal }: Pick<Vi
     return va.localeCompare(vb) * sort.dir;
   });
 
-  // Offene Aufgaben über alle Protokolle
-  const alleTasks = protokolle.flatMap(p =>
-    (p.traktanden || []).flatMap(t =>
-      (t.items || []).filter(it => it.type === "aufgabe" && it.status !== "erledigt")
-        .map(it => ({ ...it, protokollId: p.id, protokollNr: p.nummer, protokollTitle: p.title, protokollDate: p.date }))
-    )
-  );
+  // Offene Aufgaben über alle Protokolle (je Stelle nur die neueste Kopie, wie in «Heute» und im Projekt)
+  const alleTasks = openTasks(protokolle, data.employees || [], today);
+  const taskDone = (t: OpenTask) => changeWithUndo("Aufgabe erledigt", prev => ({
+    ...prev, protocols: setLinkedStatus(prev.protocols || [], t.projectId, { protocolId: t.protocolId, entryId: t.entryId, kind: "aufgabe", text: t.textKey }, true),
+  }));
+  const projName = (id: string) => data.projects.find(p => p.id === id)?.name || "";
 
   return (
     <div>
@@ -148,33 +149,27 @@ function Protokolle({ data, saveAll, setPrintContent, modal, setModal }: Pick<Vi
         <button className="btn btn-primary" onClick={() => newProtokoll()}>+ Neues Protokoll</button>
       } />
 
-      {/* Offene Aufgaben-Banner */}
+      {/* Offene Aufgaben (Pendenzen) */}
       {alleTasks.length > 0 && (
-        <div className="card mark" style={{ marginBottom: 20, padding: "12px 20px", ["--mark" as string]: "var(--warning)" } as React.CSSProperties}>
-          <div style={{ fontSize: 11, letterSpacing: "0.1em", color: "var(--warning)", marginBottom: 10, fontWeight: 600 }}>
-            → OFFENE AUFGABEN ({alleTasks.length})
+        <section className="card" style={{ marginBottom: 20 }}>
+          <div className="today-k">Offene Aufgaben <span>{alleTasks.length}</span></div>
+          <div className="task-cols">
+            {(showAllTasks ? alleTasks : alleTasks.slice(0, 6)).map(t => (
+              <div key={t.key} className="task-row">
+                <button className={`chk${t.overdue ? " late" : ""}`} onClick={() => taskDone(t)} title="Erledigt" aria-label={`«${t.label}» erledigt`} />
+                <button className="task-text" onClick={() => setDetailId(t.protocolId)}>
+                  {t.label}<span className="today-meta">{[t.responsible, t.protocolLabel, projName(t.projectId)].filter(Boolean).join(" · ")}</span>
+                </button>
+                {t.due && <span className={`today-pill${t.overdue ? " late" : ""}`}>{t.overdue ? "überfällig" : `${t.due.slice(8, 10)}.${t.due.slice(5, 7)}.`}</span>}
+              </div>
+            ))}
           </div>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-            {alleTasks.slice(0, 6).map(t => {
-              const due = t.dueDateType === "kw" ? `KW ${t.dueKW}/${t.dueYear || new Date().getFullYear()}` : t.dueDate ? formatDate(t.dueDate) : "—";
-              const isLate = t.dueDate && t.dueDateType === "datum" && t.dueDate < today;
-              return (
-                <div key={t.id} onClick={() => setDetailId(t.protokollId)}
-                  style={{ fontSize: 12, padding: "5px 10px", background: isLate ? "var(--negative-bg)" : "var(--surface2)", border: `1px solid ${isLate ? "#e8b0b0" : "var(--border)"}`, borderRadius: 20, cursor: "pointer" }}>
-                  <span style={{ color: "var(--text4)", fontSize: 10, marginRight: 6 }}>{t.protokollNr}</span>
-                  <strong>{htmlToText(t.text)}</strong>
-                  {t.responsible && <span style={{ color: "var(--text4)", marginLeft: 6 }}>→ {t.responsible}</span>}
-                  <span style={{ color: isLate ? "var(--negative)" : "var(--text4)", marginLeft: 6, fontSize: 10 }}>{due}</span>
-                </div>
-              );
-            })}
-            {alleTasks.length > 6 && <div style={{ fontSize: 12, color: "var(--text4)", padding: "5px 10px" }}>+{alleTasks.length - 6} weitere</div>}
-          </div>
-        </div>
+          {alleTasks.length > 6 && <button className="btn btn-quiet btn-sm" style={{ marginTop: 8 }} onClick={() => setShowAllTasks(v => !v)}>{showAllTasks ? "Weniger anzeigen" : `Alle ${alleTasks.length} anzeigen`}</button>}
+        </section>
       )}
 
       <div className="filter-bar">
-        <input className="pill" placeholder="Suche (Titel, Nr., Ort…)" value={filter.search} onChange={e => setFilter({ ...filter, search: e.target.value })} style={{ minWidth: 200 }} />
+        <input className="pill" placeholder="Suche (Titel, Nr., Ort…)" value={filter.search} onChange={e => setFilter({ ...filter, search: e.target.value })} />
         <select className="pill" value={filter.type} onChange={e => setFilter({ ...filter, type: e.target.value })}>
           <option value="">Alle Typen</option>
           {PROTOKOLL_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
@@ -186,9 +181,6 @@ function Protokolle({ data, saveAll, setPrintContent, modal, setModal }: Pick<Vi
         {(filter.search || filter.type || filter.projectId) && (
           <button className="btn btn-ghost" style={{ fontSize: 12 }} onClick={() => setFilter({ search: "", type: "", projectId: "" })}>Zurücksetzen</button>
         )}
-        <div style={{ marginLeft: "auto", fontSize: 12, color: "var(--text4)" }}>
-          <strong style={{ color: "var(--text)" }}>{filtered.length}</strong> Protokolle
-        </div>
       </div>
 
       {protokolle.length === 0 ? (
@@ -198,12 +190,10 @@ function Protokolle({ data, saveAll, setPrintContent, modal, setModal }: Pick<Vi
         </div>
       ) : sorted.length === 0 ? (
         <div className="card" style={{ padding: 0 }}>
-          <table>
-            <thead><tr><th style={{ width: 130 }}>Nr.</th><th style={{ width: 100 }}>Datum</th><th style={{ width: 160 }}>Typ</th><th>Titel</th><th style={{ width: 160 }}>Projekt</th><th style={{ width: 50 }}>TN</th><th style={{ width: 50 }}>📌</th><th style={{ width: 60 }}></th></tr></thead>
-            <tbody><tr><td colSpan={8} className="empty-state">Keine Treffer</td></tr></tbody>
-          </table>
+          <EmptyState icon="filter_alt_off" title="Keine Treffer" text="Kein Protokoll passt zu den Filtern." />
         </div>
-      ) : (
+      ) : (<>
+        <TableToolbar detached summary={<><b className="num">{filtered.length}</b> {filtered.length === 1 ? "Protokoll" : "Protokolle"}</>} />
         <div className="card" style={{ padding: 0 }}>
           <table>
             <thead>
@@ -248,6 +238,7 @@ function Protokolle({ data, saveAll, setPrintContent, modal, setModal }: Pick<Vi
             </tbody>
           </table>
         </div>
+      </>
       )}
     </div>
   );

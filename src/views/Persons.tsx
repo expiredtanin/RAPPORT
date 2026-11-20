@@ -16,7 +16,7 @@ import { isCloudBackend } from "../storage/adapter";
 import { CONTACT_CATEGORIES, CONTACT_TYPES, DEFAULT_LEAD_SOURCES } from "../constants";
 import { clientRevenue, lastContact, referredLeadCount, referredRevenue } from "../crm";
 import ActivityLog from "../components/ActivityLog";
-import { Header, Modal, FormField, StatusBadge, RowMenu, EmptyState } from "../components/UI";
+import { Header, Modal, FormField, StatusBadge, RowMenu, EmptyState, TableToolbar } from "../components/UI";
 import { changeWithUndo, removeWithUndo } from "../undo";
 import type { AppData, Contact, ContactCategory, Person, UpdateFn, ViewProps } from "../types";
 
@@ -610,16 +610,11 @@ export default function Persons({ data, update, modal, setModal }: Pick<ViewProp
         {hasFilter && <button className="btn btn-ghost" onClick={() => { setSearch(""); setAnsicht("firmen"); setGroupBy("alpha"); }} style={{ fontSize: 12 }}>Zurücksetzen</button>}
       </div>
 
-      <div className="filter-bar">
-        <span className="filter-label">Gruppieren</span>
-        {activeGroupOpts.map(g => <button key={g.id} className={`pill${groupBy === g.id ? " active" : ""}`} onClick={() => setGroupBy(g.id)}>{g.label}</button>)}
-        <div style={{ marginLeft: "auto", fontSize: 12, color: "var(--text4)" }}>
-          {showPersonsView
-            ? <><strong style={{ color: "var(--text)" }}>{filteredPersons.length}</strong> {filteredPersons.length === 1 ? "Person" : "Personen"}</>
-            : <><strong style={{ color: "var(--text)" }}>{filteredFirmen.length}</strong> {filteredFirmen.length === 1 ? "Kontakt" : "Kontakte"} · {allPersonsFlat.length} Ansprechpartner</>
-          }
-        </div>
-      </div>
+      <TableToolbar detached
+        summary={showPersonsView
+          ? <><b className="num">{filteredPersons.length}</b> {filteredPersons.length === 1 ? "Person" : "Personen"}</>
+          : <><b className="num">{filteredFirmen.length}</b> {filteredFirmen.length === 1 ? "Kontakt" : "Kontakte"} · {allPersonsFlat.length} Ansprechpartner</>}
+        groups={activeGroupOpts} value={groupBy} onChange={setGroupBy} />
 
       {/* Einzelpersonen-Ansicht */}
       {showPersonsView ? (
