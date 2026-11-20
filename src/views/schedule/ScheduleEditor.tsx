@@ -5,21 +5,30 @@
 // rücken Nachfolger über `shiftSuccessors` nach. Zusätzlich: Vorlagen (mit wählbarem Beginn), Stand
 // einfrieren und vergleichen, kritischer Weg, Stunden je Planungsphase, PDF (A3 quer).
 //
-// Bedienung: Klick wählt aus (Leiste mit den Daten und Aktionen), Doppelklick oder Enter öffnet den Dialog.
-// Tastatur, solange die Karte aktiv ist: ←/→ einen Tag (mit ⇧ eine Woche) verschieben, Entf löschen,
-// Esc Auswahl aufheben, ⌘Z/Ctrl+Z rückgängig (Verlauf nur in dieser Ansicht, bis zum Verlassen).
+// Bedienung: Klick wählt aus (Leiste mit den Daten und Aktionen), Doppelklick auf den Balken oder Enter
+// öffnet den Dialog, Doppelklick auf den Namen (oder F2) benennt in der Zeile um. Zeilen in der linken
+// Spalte hoch/runter ziehen (oder ⌥↑/⌥↓, Pfeilknöpfe in der Leiste). «+ Zeile» legt eine leere Zeile an
+// (unter der ausgewählten bzw. am Ende), ohne Dialog; im Zeitraster aufziehen → Dialog, vorbefüllt.
+// Tastatur, solange die Karte aktiv ist: ←/→ einen Tag (mit ⇧ eine Woche) verschieben, ↑/↓ Auswahl,
+// Entf löschen (mit «Rückgängig» in der Meldung), Esc Auswahl aufheben bzw. Vollbild verlassen,
+// ⌘Z/Ctrl+Z rückgängig (Verlauf nur in dieser Ansicht, bis zum Verlassen).
+// «Vollbild» legt die Karte über die ganze App (Portal, `.sched-full`); «Heute-Linie» ein/aus pro Gerät
+// (`rapport_schedule_today`).
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { SIA_PHASES } from "../../constants";
 import { generateId, localISODate } from "../../utils";
 import {
   addDays, baselineDelta, constructionTemplate, criticalPath, dayNum, dependencyConflicts, durationDays, formatDuration,
   holidayDates, moveItem, phaseProgress, planningTemplate, scheduleOf, scheduleRange, shiftSuccessors, trackItems, wouldCreateCycle,
+  displayOrder, emptyRow, isPlaced, moveRow, removeScheduleItem, restoreScheduleItem, stepRow, type RowTarget,
   breaksOf, glyphOf, markerOf, seriesDates, SCHEDULE_MARKERS, SCHEDULE_VARIANTS,
   isDone, linkedEntry, protocolSuggestions, seriesSessions, setLinkedStatus, suggestionToItem, type ProtocolSuggestion,
 } from "../../schedule";
 import { Modal, FormField, DateInput, RowMenu } from "../../components/UI";
 import { useConfirm } from "../../hooks/useConfirm";
+import { showToast } from "../../toast";
 import { GanttChart, ScheduleLegend } from "./GanttChart";
 import { ZOOM_LEVELS } from "./zoom";
 import type { Id, Project, ProjectSchedule, ScheduleBreak, ScheduleItem, ScheduleMarker, ScheduleTrack, ScheduleVariant, ViewProps } from "../../types";
@@ -31,6 +40,9 @@ const MAX_UNDO = 40;
 const FIT_FROM_DAYS = 150;
 
 const smallBtn = { fontSize: 11, padding: "4px 10px" } as const;
+/** Heute-Linie ein/aus, pro Gerät (ARCHITECTURE.md §4) */
+const TODAY_KEY = "rapport_schedule_today";
+const readShowToday = () => { try { return localStorage.getItem(TODAY_KEY) !== "0"; } catch { return true; } };
 
 /** Terminprogramm-Karte eines Projekts. */
 export function ScheduleEditor({ project, data, update, setPrintContent, canEdit }: {
@@ -41,7 +53,7 @@ export function ScheduleEditor({ project, data, update, setPrintContent, canEdit
   canEdit: boolean;
 }) {
   const today = localISODate();
-  const schedule = scheduleOf(project);
+  const schedule = scheduleOf(project, true); // mit leeren Zeilen
   const [track, setTrack] = useState<ScheduleTrack>(() => trackItems(schedule, "planung").length || !trackItems(schedule, "bau").length ? "planung" : "bau");
   const [zoom, setZoom] = useState(() => {
     const r = scheduleRange(schedule.items);
@@ -50,20 +62,30 @@ export function ScheduleEditor({ project, data, update, setPrintContent, canEdit
   const [showCritical, setShowCritical] = useState(false);
   const [showBaseline, setShowBaseline] = useState(false);
   const [selectedId, setSelectedId] = useState<Id | null>(null);
-  /** Dialog: bestehendes Element oder neues (erst beim Speichern eingefügt, nach `afterId`) */
-  const [editing, setEditing] = useState<{ item: ScheduleItem; isNew: boolean; afterId?: Id } | null>(null);
+  /** Dialog: bestehendes Element oder neues (erst beim Speichern eingefügt, nach `afterId`); `drawn` = in einer leeren Zeile aufgezogen */
+  const [editing, setEditing] = useState<{ item: ScheduleItem; isNew: boolean; afterId?: Id; drawn?: boolean } | null>(null);
+  /** Zeile, deren Name gerade in der Zeile bearbeitet wird */
+  const [editLabelId, setEditLabelId] = useState<Id | null>(null);
+  const [full, setFull] = useState(false);
+  const [showToday, setShowToday] = useState(readShowToday);
+  const toggleToday = () => setShowToday(v => {
+    try { localStorage.setItem(TODAY_KEY, v ? "0" : "1"); } catch { /* privater Modus: nur für diese Sitzung */ }
+    return !v;
+  });
   const [history, setHistory] = useState<ProjectSchedule[]>([]);
   const [templateStart, setTemplateStart] = useState("");
   const [breaksOpen, setBreaksOpen] = useState(false);
   const cardRef = useRef<HTMLDivElement>(null);
   const { askConfirm, ConfirmModalEl } = useConfirm();
 
+  /** alle Zeilen des Programms (auch leere); gerechnet und gedruckt wird nur mit `placed` */
   const items = trackItems(schedule, track);
+  const placed = useMemo(() => items.filter(isPlaced), [items]);
   const baseline = schedule.baselines?.[track];
   const trackBreaks = breaksOf(schedule, track);
-  const crit = useMemo(() => criticalPath(items), [items]);
-  const conflicts = useMemo(() => dependencyConflicts(items), [items]);
-  const range = scheduleRange(items);
+  const crit = useMemo(() => criticalPath(placed), [placed]);
+  const conflicts = useMemo(() => dependencyConflicts(placed), [placed]);
+  const range = scheduleRange(placed);
   const holidays = useMemo(() => range ? holidayDates(data.feiertage, addDays(range.start, -60), addDays(range.end, 60)) : [],
     [data.feiertage, range?.start, range?.end]); // eslint-disable-line react-hooks/exhaustive-deps
   const employees = data.employees || [];
@@ -110,7 +132,7 @@ export function ScheduleEditor({ project, data, update, setPrintContent, canEdit
     }
   };
 
-  const canLink = (fromId: Id, toId: Id) =>
+  const canLink = (fromId: Id, toId: Id) => !!items.find(it => it.id === toId && isPlaced(it)) &&
     !wouldCreateCycle(items, fromId, toId) && !(items.find(it => it.id === toId)?.deps || []).some(d => d.fromId === fromId);
   const link = (fromId: Id, toId: Id) => {
     if (!canLink(fromId, toId)) return;
@@ -118,9 +140,30 @@ export function ScheduleEditor({ project, data, update, setPrintContent, canEdit
     setSelectedId(toId);
   };
 
+  /** Neue leere Zeile unter der ausgewählten (gleiche Gruppe) bzw. am Ende; Name gleich in der Zeile eingeben. */
+  const addRow = () => {
+    const row = emptyRow(track, generateId(), selected);
+    const idx = selected ? items.findIndex(x => x.id === selected.id) + 1 : items.length;
+    saveTrack([...items.slice(0, idx), row, ...items.slice(idx)]);
+    setSelectedId(row.id);
+    setEditLabelId(row.id);
+  };
+  /** In einer leeren Zeile aufgezogen (Klick = Termin an diesem Tag): Dialog, vorbefüllt; gespeichert erst mit «Hinzufügen». */
+  const onDraw = (id: Id, start: string, end: string, click: boolean) => {
+    const row = items.find(x => x.id === id);
+    if (!row || !canEdit) return;
+    setEditLabelId(null);
+    setEditing({ item: { ...row, start, end, kind: click ? "milestone" : "task", marker: click ? row.marker || "meilenstein" : undefined }, isNew: false, drawn: true });
+  };
+  const rename = (id: Id, label: string) => {
+    const it = items.find(x => x.id === id);
+    if (it && it.label !== label) replaceItem({ ...it, label });
+  };
+  const reorder = (id: Id, target: RowTarget) => { saveTrack(moveRow(items, id, target)); setSelectedId(id); };
+
   /** Neues Element nach dem ausgewählten (gleiche Gruppe, beginnt danach); eingefügt wird erst beim Speichern. */
   const addItem = (kind: ScheduleItem["kind"]) => {
-    const after = selected || items[items.length - 1];
+    const after = (selected && isPlaced(selected) ? selected : null) || placed[placed.length - 1];
     const start = after ? addDays(after.end, after.kind === "milestone" ? 0 : 1) : project.startDate || today;
     const item: ScheduleItem = {
       id: generateId(), label: "", kind, track,
@@ -154,15 +197,27 @@ export function ScheduleEditor({ project, data, update, setPrintContent, canEdit
 
   const freezeBaseline = async () => {
     if (baseline && !await askConfirm(`Der eingefrorene Stand vom ${fmtDate(baseline.savedAt)} wird durch den heutigen ersetzt.`, "Neu einfrieren")) return;
-    save({ ...schedule, baselines: { ...schedule.baselines, [track]: { savedAt: new Date().toISOString(), items: items.map(({ id, start, end }) => ({ id, start, end })) } } });
+    save({ ...schedule, baselines: { ...schedule.baselines, [track]: { savedAt: new Date().toISOString(), items: placed.map(({ id, start, end }) => ({ id, start, end })) } } });
     setShowBaseline(true);
   };
 
-  const removeItem = async (it: ScheduleItem) => {
-    if (!await askConfirm(`«${it.label}» löschen? Pfeile von und zu diesem Eintrag werden entfernt. (Rückgängig mit ⌘Z)`)) return;
-    saveTrack(items.filter(x => x.id !== it.id).map(x => ({ ...x, deps: (x.deps || []).filter(d => d.fromId !== it.id) })));
+  /** Löscht sofort; «Rückgängig» in der Meldung setzt die Zeile an alter Stelle wieder ein (auch ⌘Z). */
+  const removeItem = (it: ScheduleItem) => {
+    const before = items;
+    saveTrack(removeScheduleItem(items, it.id));
     setEditing(null);
     setSelectedId(null);
+    showToast(`«${it.label || "Neue Zeile"}» gelöscht`, {
+      action: {
+        label: "Rückgängig",
+        run: () => update("projects", prev => prev.map(p => {
+          if (p.id !== project.id) return p;
+          const s = scheduleOf(p, true);
+          const others = s.items.filter(x => x.track !== track);
+          return { ...p, schedule: { ...s, items: [...others, ...restoreScheduleItem(trackItems(s, track), before, it.id)] } };
+        })),
+      },
+    });
   };
   const clearTrack = async () => {
     if (!await askConfirm(`Das ganze ${track === "planung" ? "Planungsterminprogramm" : "Bauprogramm"} mit ${items.length} Einträgen löschen? (Rückgängig mit ⌘Z, solange die Seite offen ist)`)) return;
@@ -170,35 +225,50 @@ export function ScheduleEditor({ project, data, update, setPrintContent, canEdit
     setSelectedId(null);
   };
 
-  const moveRow = (it: ScheduleItem, dir: -1 | 1) => {
-    const idx = items.findIndex(x => x.id === it.id);
-    const j = idx + dir;
-    if (idx < 0 || j < 0 || j >= items.length) return;
-    const next = [...items];
-    [next[idx], next[j]] = [next[j], next[idx]];
-    saveTrack(next);
+  /** Zeile in der angezeigten Reihenfolge eins hoch/runter (am Gruppenrand in die Nachbargruppe). */
+  const stepSelected = (it: ScheduleItem, dir: -1 | 1) => {
+    const next = stepRow(items, it.id, dir);
+    if (next !== items) saveTrack(next);
   };
+  const order = displayOrder(items);
+  const posInOrder = selected ? order.findIndex(x => x.id === selected.id) : -1;
 
   // Tastatur: nur wenn die Karte aktiv ist (Fokus darin) und kein Dialog offen ist
   const keyRef = useRef<(e: KeyboardEvent) => void>(() => {});
   const onKey = (e: KeyboardEvent) => {
-    if (!canEdit || editing || document.querySelector(".modal-overlay")) return;
-    if (!cardRef.current?.contains(document.activeElement)) return;
+    if (editing || editLabelId || document.querySelector(".modal-overlay") || e.defaultPrevented) return;
+    if (!full && !cardRef.current?.contains(document.activeElement)) return;
     const tag = (document.activeElement as HTMLElement | null)?.tagName;
     if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+    if (e.key === "Escape") {
+      if (selected) setSelectedId(null);
+      else if (full) setFull(false);
+      return;
+    }
+    // ↑/↓ wählt die Zeile darüber/darunter (auch ohne Recht zum Bearbeiten)
+    if ((e.key === "ArrowUp" || e.key === "ArrowDown") && !e.altKey && !e.metaKey && !e.ctrlKey) {
+      const next = order[posInOrder < 0 ? 0 : posInOrder + (e.key === "ArrowUp" ? -1 : 1)];
+      if (next) { e.preventDefault(); setSelectedId(next.id); }
+      return;
+    }
+    if (!canEdit) return;
     if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z") { e.preventDefault(); undo(); return; }
     if (!selected) return;
-    if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+    if ((e.key === "ArrowUp" || e.key === "ArrowDown") && e.altKey) {
+      e.preventDefault();
+      stepSelected(selected, e.key === "ArrowUp" ? -1 : 1);
+    } else if ((e.key === "ArrowLeft" || e.key === "ArrowRight") && isPlaced(selected)) {
       e.preventDefault();
       replaceItem(moveItem(selected, (e.key === "ArrowLeft" ? -1 : 1) * (e.shiftKey ? 7 : 1)));
+    } else if (e.key === "F2" || (e.key === "Enter" && !isPlaced(selected))) {
+      e.preventDefault();
+      setEditLabelId(selected.id);
     } else if (e.key === "Enter") {
       e.preventDefault();
       setEditing({ item: selected, isNew: false });
     } else if (e.key === "Delete" || e.key === "Backspace") {
       e.preventDefault();
       removeItem(selected);
-    } else if (e.key === "Escape") {
-      setSelectedId(null);
     }
   };
   useEffect(() => { keyRef.current = onKey; });
@@ -246,16 +316,31 @@ export function ScheduleEditor({ project, data, update, setPrintContent, canEdit
 
   const totalDays = range ? dayNum(range.end) - dayNum(range.start) + 1 : 0;
   const selFloat = selected ? crit.float.get(selected.id) : undefined;
+  const trackName = track === "planung" ? "Planungsterminprogramm" : "Bauprogramm";
 
-  return (
+  // Vollbild: Fokus in die Karte (Tastatur), Seite darunter nicht mitscrollen
+  useEffect(() => {
+    if (!full) return;
+    cardRef.current?.focus({ preventScroll: true });
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => { document.body.style.overflow = prev; };
+  }, [full]);
+
+  const card = (
     <div ref={cardRef} className="card" tabIndex={-1} style={{ padding: 0, marginTop: 20, outline: "none" }}
       onPointerDownCapture={e => { if (!(e.target as HTMLElement).closest("input, textarea, select, button")) cardRef.current?.focus({ preventScroll: true }); }}>
       {ConfirmModalEl}
       {/* Kopf: Programm (Planung/Bau), Zeitraum, Zoom, Aktionen; seltene Aktionen im ⋯-Menü */}
-      <div className="sched-bar">
+      <div className="sched-bar" style={full ? { position: "sticky", top: 0, zIndex: 5, background: "var(--surface)" } : undefined}>
+        {full && (
+          <div style={{ fontSize: 14, fontWeight: 600, marginRight: 8, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 320 }} title={project.name}>
+            {project.number ? <span style={{ color: "var(--text3)", fontWeight: 500 }}>{project.number} </span> : null}{project.name}
+          </div>
+        )}
         <div className="seg" role="tablist" aria-label="Programm">
           {(["planung", "bau"] as ScheduleTrack[]).map(t => (
-            <button key={t} role="tab" aria-selected={track === t} className={track === t ? "on" : ""} onClick={() => { setTrack(t); setSelectedId(null); }}>
+            <button key={t} role="tab" aria-selected={track === t} className={track === t ? "on" : ""} onClick={() => { setTrack(t); setSelectedId(null); setEditLabelId(null); }}>
               {t === "planung" ? "Planung" : "Bau"}{trackItems(schedule, t).length ? <span className="seg-n">{trackItems(schedule, t).length}</span> : null}
             </button>
           ))}
@@ -267,19 +352,30 @@ export function ScheduleEditor({ project, data, update, setPrintContent, canEdit
               <button key={z.id} className={zoom === z.id ? "on" : ""} onClick={() => setZoom(z.id)} title={z.id === "alles" ? "Ganzes Programm in die Breite einpassen" : undefined}>{z.label}</button>
             ))}
           </div>
+          <button className={`btn btn-quiet btn-sm${showToday ? " on" : ""}`} onClick={toggleToday} aria-pressed={showToday}
+            title={showToday ? "Heute-Linie ausblenden (Einstellung bleibt auf diesem Gerät)" : "Heute-Linie einblenden"}>
+            <span className="msr" style={{ fontSize: 17 }}>{showToday ? "check_box" : "check_box_outline_blank"}</span>Heute-Linie
+          </button>
           {canEdit && <>
-            <button className="btn btn-ghost btn-sm" onClick={() => addItem("task")} title={selected ? `Neue Aufgabe nach «${selected.label}»` : "Neue Aufgabe am Ende"}><span className="msr" style={{ fontSize: 16 }}>add</span>Aufgabe</button>
-            <button className="btn btn-ghost btn-sm" onClick={() => addItem("milestone")} title="Meilenstein, Abgabe, Entscheid, Sitzung, Lieferung, Abnahme oder Vertragstermin"><span className="msr" style={{ fontSize: 16 }}>add</span>Termin</button>
+            <button className="btn btn-ghost btn-sm" onClick={addRow} title={selected ? `Leere Zeile unter «${selected.label || "Neue Zeile"}» — danach im Zeitraster aufziehen` : "Leere Zeile am Ende — danach im Zeitraster aufziehen"}>
+              <span className="msr" style={{ fontSize: 16 }}>add</span>Zeile
+            </button>
             <button className="btn-icon" onClick={undo} disabled={!history.length} title="Letzte Änderung rückgängig (⌘Z / Ctrl+Z)" aria-label="Rückgängig"><span className="msr" style={{ fontSize: 19 }}>undo</span></button>
           </>}
           <RowMenu label="Weitere Aktionen" items={[
+            { label: "Aufgabe mit Dialog hinzufügen …", icon: "add_box", hidden: !canEdit, onClick: () => addItem("task") },
+            { label: "Termin mit Dialog hinzufügen …", icon: "event", hidden: !canEdit, onClick: () => addItem("milestone") },
             { label: showCritical ? "Kritischen Weg ausblenden" : "Kritischen Weg zeigen", icon: "route", onClick: () => setShowCritical(v => !v) },
             { label: showBaseline ? "Vergleich ausblenden" : `Vergleich mit Stand ${baseline ? fmtDate(baseline.savedAt).slice(0, 6) : ""}`, icon: "compare_arrows", hidden: !baseline, onClick: () => setShowBaseline(v => !v) },
             { label: baseline ? "Stand neu einfrieren" : "Stand einfrieren", icon: "ac_unit", hidden: !canEdit, onClick: freezeBaseline },
             { label: `Unterbrüche${trackBreaks.length ? ` (${trackBreaks.length})` : ""}`, icon: "beach_access", hidden: !canEdit, onClick: () => setBreaksOpen(true) },
-            { label: "PDF drucken", icon: "picture_as_pdf", onClick: () => setPrintContent({ type: "schedule", project, track, items, baseline: showBaseline ? baseline : undefined, critical: showCritical ? [...crit.critical] : [], holidays, breaks: trackBreaks, data }) },
+            { label: "PDF drucken", icon: "picture_as_pdf", onClick: () => setPrintContent({ type: "schedule", project, track, items: placed, baseline: showBaseline ? baseline : undefined, critical: showCritical ? [...crit.critical] : [], holidays, breaks: trackBreaks, showToday, data }) },
           ]} />
         </>}
+        <button className={`btn btn-sm ${full ? "btn-primary" : "btn-ghost"}`} onClick={() => setFull(v => !v)}
+          title={full ? "Zurück zur Projektseite (Esc)" : "Terminprogramm über die ganze Fläche (Esc schliesst)"}>
+          <span className="msr" style={{ fontSize: 17 }}>{full ? "close_fullscreen" : "open_in_full"}</span>{full ? "Schliessen" : "Vollbild"}
+        </button>
       </div>
 
       {canEdit && suggestions.length > 0 && (
@@ -301,7 +397,7 @@ export function ScheduleEditor({ project, data, update, setPrintContent, canEdit
               <span style={{ fontSize: 12, color: "var(--text4)" }}>Beginn</span>
               <div style={{ width: 130 }}><DateInput value={templateStart || defaultTemplateStart} onChange={e => setTemplateStart(e.target.value)} /></div>
               <button className="btn btn-primary" onClick={loadTemplate}>{track === "planung" ? "Aus SIA-Phasen erstellen" : "BKP-Vorlage erstellen"}</button>
-              <button className="btn btn-ghost" onClick={() => addItem("task")}>Leer beginnen</button>
+              <button className="btn btn-ghost" onClick={addRow} title="Leere Zeile anlegen, benennen und im Zeitraster aufziehen">Leer beginnen</button>
             </div>
           ) : <div style={{ fontSize: 12, color: "var(--text4)" }}>Erstellen können Personen mit dem Recht «Projekte».</div>}
           {canEdit && history.length > 0 && <button className="btn btn-ghost" style={{ ...smallBtn, marginTop: 12 }} onClick={undo}>↶ Rückgängig</button>}
@@ -318,6 +414,12 @@ export function ScheduleEditor({ project, data, update, setPrintContent, canEdit
           {/* Feste Höhe, einzeilig: Auswählen darf den Zeitstrahl nicht verschieben (Doppelklick) */}
           <div className={`sched-sel${selected ? " on" : ""}`}>
             {selected ? <>
+              {!isPlaced(selected) ? (
+                <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  <strong style={{ fontWeight: 600 }}>{selected.label || "Neue Zeile"}</strong>
+                  <span style={{ color: "var(--text3)", marginLeft: 10 }}>{canEdit ? "noch ohne Termine — im Zeitraster ziehen = Balken, klicken = Termin" : "noch ohne Termine"}</span>
+                </span>
+              ) : (
               <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
                 title={`${selected.label} · ${selected.kind === "milestone" ? fmtDate(selected.start) : `${fmtDate(selected.start)} – ${fmtDate(selected.end)}`}`}>
                 <strong style={{ fontWeight: 600 }}>{glyphOf(selected) ? `${glyphOf(selected)} ` : ""}{selected.label}</strong>
@@ -326,22 +428,26 @@ export function ScheduleEditor({ project, data, update, setPrintContent, canEdit
                 </span>
                 {selFloat !== undefined && <span style={{ marginLeft: 10, color: selFloat <= 0 ? "var(--negative)" : "var(--text4)" }}>{selFloat <= 0 ? "kritisch" : `Puffer ${formatDuration(selFloat)}`}</span>}
               </span>
+              )}
               {canEdit && <>
-                {selected.kind === "milestone" && (() => {
+                <button className="btn-icon" style={{ flexShrink: 0 }} onClick={() => stepSelected(selected, -1)} disabled={posInOrder <= 0} title="Zeile nach oben (⌥↑)" aria-label="Zeile nach oben"><span className="msr" style={{ fontSize: 19 }}>arrow_upward</span></button>
+                <button className="btn-icon" style={{ flexShrink: 0 }} onClick={() => stepSelected(selected, 1)} disabled={posInOrder < 0 || posInOrder >= order.length - 1} title="Zeile nach unten (⌥↓)" aria-label="Zeile nach unten"><span className="msr" style={{ fontSize: 19 }}>arrow_downward</span></button>
+                {isPlaced(selected) && selected.kind === "milestone" && (() => {
                   const done = isDone(selected, protocols, project.id);
                   return <button className="btn btn-ghost" style={{ ...smallBtn, flexShrink: 0, color: done ? "var(--text3)" : "var(--positive)" }}
                     title={selected.source?.kind === "aufgabe" ? "wird auch im Protokoll gesetzt" : undefined}
                     onClick={() => setDone(selected, !done)}>{done ? "Wieder offen" : "✓ Erledigt"}</button>;
                 })()}
-                <button className="btn btn-ghost" style={{ ...smallBtn, flexShrink: 0 }} onClick={() => setEditing({ item: selected, isNew: false })}>Bearbeiten</button>
-                <button className="btn btn-ghost" style={{ ...smallBtn, flexShrink: 0 }} onClick={() => addItem("task")}>+ Folgeaufgabe</button>
-                <button className="btn btn-ghost" style={{ ...smallBtn, flexShrink: 0, color: "var(--negative)" }} onClick={() => removeItem(selected)}>Löschen</button>
+                <button className="btn btn-ghost" style={{ ...smallBtn, flexShrink: 0 }} onClick={() => setEditLabelId(selected.id)} title="Namen in der Zeile ändern (F2 oder Doppelklick auf den Namen)">Umbenennen</button>
+                {isPlaced(selected) && <button className="btn btn-ghost" style={{ ...smallBtn, flexShrink: 0 }} onClick={() => setEditing({ item: selected, isNew: false })} title="Alle Angaben (Enter oder Doppelklick auf den Balken)">Bearbeiten</button>}
+                {isPlaced(selected) && <button className="btn btn-ghost" style={{ ...smallBtn, flexShrink: 0 }} onClick={() => addItem("task")} title="Neue Aufgabe, die nach dieser beginnt (Pfeil)">+ Folgeaufgabe</button>}
+                <button className="btn btn-ghost" style={{ ...smallBtn, flexShrink: 0, color: "var(--negative)" }} onClick={() => removeItem(selected)} title="Löschen (Entf) — rückgängig in der Meldung oder mit ⌘Z">Löschen</button>
               </>}
               <button className="btn-icon" style={{ flexShrink: 0 }} onClick={() => setSelectedId(null)} title="Auswahl aufheben (Esc)" aria-label="Auswahl aufheben"><span className="msr" style={{ fontSize: 18 }}>close</span></button>
             </> : (
               <span style={{ color: "var(--text4)", fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>
                 {canEdit
-                  ? "Klick wählt aus · Doppelklick bearbeitet · Balken ziehen verschiebt (in Wochen, mit Alt tageweise) · Enden ziehen ändert die Dauer · Punkt am Balkenende auf eine Zeile ziehen = «beginnt nach»"
+                  ? "Klick wählt aus · Doppelklick auf den Namen benennt um, auf den Balken öffnet alle Angaben · Zeilen links hoch/runter ziehen · Balken ziehen verschiebt (in Wochen, mit Alt tageweise), Enden ändern die Dauer · Punkt am Balkenende auf eine Zeile ziehen = «beginnt nach»"
                   : "Klick auf eine Zeile zeigt Termine und Puffer."}
               </span>
             )}
@@ -349,20 +455,28 @@ export function ScheduleEditor({ project, data, update, setPrintContent, canEdit
           {/* Platz immer reserviert: sonst springt der Zeitstrahl beim ersten Klick und ein Doppelklick träfe die Zeile darüber */}
           {canEdit && (
             <div style={{ fontSize: 10, color: "var(--text4)", margin: "-4px 0 8px 2px", height: 14, overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis", visibility: selected ? "visible" : "hidden" }}>
-              Tastatur: ← → einen Tag, mit ⇧ eine Woche · Enter bearbeiten · Entf löschen · ⌘Z rückgängig · Nachfolger rücken automatisch nach
+              Tastatur: ← → einen Tag, mit ⇧ eine Woche · ↑ ↓ Auswahl, mit ⌥ Zeile verschieben · F2 umbenennen · Enter bearbeiten · Entf löschen · ⌘Z rückgängig · Esc {full ? "Auswahl aufheben, nochmals: Vollbild schliessen" : "Auswahl aufheben"}
             </div>
           )}
 
           <GanttChart
             items={items} dayWidth={zoomLevel.dayWidth} fit={zoom === "alles"} today={today} holidays={holidays} breaks={trackBreaks}
+            labelWidth={full ? 360 : 300}
             critical={showCritical ? crit.critical : undefined}
             baseline={showBaseline ? baseline : undefined}
             conflicts={conflicts} selectedId={selectedId}
+            showToday={showToday}
             onSelect={id => setSelectedId(prev => (prev === id ? prev : id))}
-            onOpen={id => { const it = items.find(x => x.id === id); if (it && canEdit) setEditing({ item: it, isNew: false }); }}
+            onOpen={id => { const it = items.find(x => x.id === id); if (it && canEdit && isPlaced(it)) setEditing({ item: it, isNew: false }); }}
             onChange={canEdit ? it => { replaceItem(it); setSelectedId(it.id); } : undefined}
             onLink={canEdit ? link : undefined}
             canLink={canLink}
+            onDraw={canEdit ? onDraw : undefined}
+            onReorder={canEdit ? reorder : undefined}
+            onRename={canEdit ? rename : undefined}
+            editLabelId={editLabelId}
+            onEditLabel={setEditLabelId}
+            onAddRow={canEdit ? addRow : undefined}
             snapDays={zoom === "tag" ? 1 : 7}
             renderMeta={meta}
             describe={describe}
@@ -372,11 +486,11 @@ export function ScheduleEditor({ project, data, update, setPrintContent, canEdit
           />
           <div style={{ display: "flex", gap: 12, alignItems: "flex-start", marginTop: 10 }}>
             <div style={{ flex: 1 }}>
-              <ScheduleLegend items={items} breaks={trackBreaks.length} critical={showCritical} baseline={showBaseline && !!baseline} />
+              <ScheduleLegend items={placed} breaks={trackBreaks.length} critical={showCritical} baseline={showBaseline && !!baseline} today={showToday} />
             </div>
             {canEdit && (
               <button className="btn btn-ghost" style={{ ...smallBtn, color: "var(--text4)", border: "none", boxShadow: "none", flexShrink: 0 }} onClick={clearTrack}>
-                {track === "planung" ? "Planungsterminprogramm" : "Bauprogramm"} löschen
+                {trackName} löschen
               </button>
             )}
           </div>
@@ -391,22 +505,33 @@ export function ScheduleEditor({ project, data, update, setPrintContent, canEdit
 
       {editing && (
         <ItemDialog
-          item={editing.item} isNew={editing.isNew} items={items} track={track} data={data} projectId={project.id}
+          item={editing.item} isNew={editing.isNew} drawn={!!editing.drawn} items={placed} track={track} data={data} projectId={project.id}
           onOpenProtocol={id => { setEditing(null); openProtocol(id); }}
           onSetLinkedDone={(src, done) => update("protocols", prev => setLinkedStatus(prev || [], project.id, src, done))}
           onClose={() => setEditing(null)}
           onSave={saveEditing}
           onDelete={() => removeItem(editing.item)}
-          onMove={dir => moveRow(editing.item, dir)}
+          onMove={dir => stepSelected(editing.item, dir)}
         />
       )}
     </div>
   );
+
+  // Vollbild: dieselbe Karte über der ganzen App (inkl. Seitenleiste); Zustand bleibt in dieser Komponente.
+  // Ziel ist `.app-wrapper` (trägt `data-theme`, sonst wäre das Vollbild im Dark Mode hell).
+  // UI-Zoom (Einstellungen) liegt auf `.main-content` und wird übernommen.
+  const portalTarget = full ? document.querySelector(".app-wrapper") || document.body : null;
+  const uiZoom = full ? Number((document.querySelector(".main-content") as HTMLElement | null)?.style.zoom) || 1 : 1;
+  return portalTarget
+    ? createPortal(<div className="sched-full" role="dialog" aria-label={`${trackName} im Vollbild`} style={uiZoom !== 1 ? { zoom: uiZoom } : undefined}>{card}</div>, portalTarget)
+    : card;
 }
 
 /** Dialog «Eintrag bearbeiten»: Stammdaten, Termine, Zuständigkeit, Vorgänger und Nachfolger. */
-function ItemDialog({ item, isNew, items, track, data, projectId, onClose, onSave, onDelete, onMove, onOpenProtocol, onSetLinkedDone }: {
+function ItemDialog({ item, isNew, drawn = false, items, track, data, projectId, onClose, onSave, onDelete, onMove, onOpenProtocol, onSetLinkedDone }: {
   item: ScheduleItem;
+  /** in einer leeren Zeile aufgezogen: wie neu (Titel «Neue …», «Hinzufügen»), die Zeile gibt es schon */
+  drawn?: boolean;
   projectId: Id;
   onOpenProtocol: (id: Id) => void;
   /** Status der übernommenen Protokoll-Aufgabe setzen (sofort, im Protokoll) */
@@ -431,7 +556,7 @@ function ItemDialog({ item, isNew, items, track, data, projectId, onClose, onSav
   };
   const setDays = (n: number) => { if (n >= 1) setF({ ...f, end: addDays(f.start, Math.round(n) - 1) }); };
   const deps = f.deps || [];
-  const withMe = isNew ? [...items, f] : items.map(x => x.id === f.id ? f : x);
+  const withMe = items.some(x => x.id === f.id) ? items.map(x => x.id === f.id ? f : x) : [...items, f];
   const candidates = others.filter(o => !deps.some(d => d.fromId === o.id) && !wouldCreateCycle(withMe, o.id, f.id));
   const successors = others.filter(o => (o.deps || []).some(d => d.fromId === item.id));
   const art: "task" | "milestone" | "serie" = f.kind === "milestone" ? "milestone" : f.variant === "serie" ? "serie" : "task";
@@ -443,7 +568,7 @@ function ItemDialog({ item, isNew, items, track, data, projectId, onClose, onSav
     else setF({ ...f, kind: "task", variant: f.variant === "serie" ? undefined : f.variant, marker: undefined, repeatDays: undefined, end: longEnd });
   };
   return (
-    <Modal title={isNew ? `Neue${art === "milestone" ? "r" : ""} ${kindLabel}` : `${kindLabel} bearbeiten`} onClose={onClose} onSave={() => onSave(f)} saveLabel={isNew ? "Hinzufügen" : "Speichern"} wide>
+    <Modal title={isNew || drawn ? `Neue${art === "milestone" ? "r" : ""} ${kindLabel}` : `${kindLabel} bearbeiten`} onClose={onClose} onSave={() => onSave(f)} saveLabel={isNew || drawn ? "Hinzufügen" : "Speichern"} wide>
       <div className="form-row">
         <FormField label="Bezeichnung" style={{ flex: 3 }}>
           <input value={f.label} onChange={e => setF({ ...f, label: e.target.value })} autoFocus
@@ -616,10 +741,10 @@ function ItemDialog({ item, isNew, items, track, data, projectId, onClose, onSav
         </div>
       </div>
 
-      {!isNew && (
+      {!isNew && !drawn && (
         <div style={{ display: "flex", gap: 8, marginTop: 18 }}>
-          <button className="btn btn-ghost" style={{ fontSize: 11 }} onClick={() => onMove(-1)} title="Zeile im Programm nach oben">↑</button>
-          <button className="btn btn-ghost" style={{ fontSize: 11 }} onClick={() => onMove(1)} title="Zeile im Programm nach unten">↓</button>
+          <button className="btn btn-ghost" style={{ fontSize: 11 }} onClick={() => onMove(-1)} title="Zeile im Programm nach oben" aria-label="Zeile nach oben">↑ Zeile hoch</button>
+          <button className="btn btn-ghost" style={{ fontSize: 11 }} onClick={() => onMove(1)} title="Zeile im Programm nach unten" aria-label="Zeile nach unten">↓ Zeile runter</button>
           <div style={{ flex: 1 }} />
           <button className="btn btn-danger" style={{ fontSize: 11 }} onClick={onDelete}>Löschen</button>
         </div>

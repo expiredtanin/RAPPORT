@@ -7,11 +7,16 @@
 // Doppelklick öffnet (`onOpen`). Beim Ziehen erscheinen die neuen Daten; nahe am Rand scrollt die Ansicht mit.
 // Ohne `onChange` nur Anzeige (Druck, Büroübersicht). Nachfolger rücken nicht hier nach, sondern in
 // der aufrufenden Ansicht über `shiftSuccessors` (schedule.ts). Hover-Stile: `.gantt-*` in global.css.
+//
+// Zeilen (Editor): mit `onReorder` lassen sich die Zeilen in der linken Spalte hoch und runter ziehen
+// (Linie zeigt das Ziel, Ziel über `rowDropTarget`), mit `onRename` Doppelklick auf den Namen = umbenennen
+// in der Zeile (Enter/Esc). Leere Zeilen (ohne Termine, `isPlaced`) zeigen keinen Balken: im Zeitraster
+// aufziehen = `onDraw(id, start, end)`, ein Klick ohne Ziehen liefert einen Tag (`click` = true).
 
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
-  addDays, dayNum, groupSpans, numToDate, durationDays, formatDuration, glyphOf, markerOf, seriesDates,
-  SCHEDULE_MARKERS, SCHEDULE_VARIANTS,
+  addDays, dayAtX, dayNum, drawnSpan, groupSpans, isPlaced, numToDate, durationDays, formatDuration, glyphOf, markerOf, rowDropTarget, seriesDates,
+  SCHEDULE_MARKERS, SCHEDULE_VARIANTS, type RowTarget,
 } from "../../schedule";
 import { getWeekNumber } from "../../utils";
 import type { DateStr, Id, ScheduleItem, ScheduleMarker } from "../../types";
@@ -49,13 +54,15 @@ function Marker({ m, cx, cy, s, color, stroke, strokeWidth, open }: { m: Schedul
  * Legende der im Programm vorkommenden Zeichen (Termin-Symbole, Balkenarten, Unterbrüche, Hervorhebungen).
  * Zeigt nur, was in `items` vorkommt; für Editor und Druck.
  */
-export function ScheduleLegend({ items, breaks = 0, critical = false, baseline = false, compact = false }: {
+export function ScheduleLegend({ items, breaks = 0, critical = false, baseline = false, compact = false, today = true }: {
   items: ScheduleItem[];
   /** Anzahl Unterbrüche (> 0 → Eintrag «Bauferien/Unterbruch») */
   breaks?: number;
   critical?: boolean;
   baseline?: boolean;
   compact?: boolean;
+  /** Eintrag «heute» (aus, wenn die Heute-Linie ausgeblendet ist) */
+  today?: boolean;
 }) {
   const markers = SCHEDULE_MARKERS.filter(m => items.some(it => (it.kind === "milestone" || it.variant === "serie") && markerOf(it) === m.id));
   const variants = SCHEDULE_VARIANTS.filter(v => items.some(it => it.kind === "task" && (it.variant || "") === v.id));
@@ -82,7 +89,7 @@ export function ScheduleLegend({ items, breaks = 0, critical = false, baseline =
       {breaks > 0 && entry("breaks", <rect x={1} y={1} width={20} height={12} fill="url(#gantt-legend-hatch)" opacity={0.7} />, "Bauferien / Unterbruch")}
       {critical && entry("crit", <rect x={1} y={3} width={20} height={8} rx={2} fill="var(--negative)" fillOpacity={0.3} stroke="var(--negative)" />, "kritischer Weg")}
       {baseline && entry("base", <rect x={1} y={9} width={20} height={3} rx={1.5} fill="var(--text4)" />, "eingefrorener Stand")}
-      {entry("today", <line x1={11} x2={11} y1={0} y2={14} stroke="var(--accent)" strokeWidth={1.5} />, "heute")}
+      {today && entry("today", <line x1={11} x2={11} y1={0} y2={14} stroke="var(--accent)" strokeWidth={1.5} />, "heute")}
     </div>
   );
 }
@@ -101,10 +108,31 @@ const MIN_HIT = 10;
 const fmtShort = (d: DateStr) => `${d.slice(8, 10)}.${d.slice(5, 7)}.`;
 const fmtLong = (d: DateStr) => `${d.slice(8, 10)}.${d.slice(5, 7)}.${d.slice(0, 4)}`;
 
-type DragMode = "move" | "start" | "end" | "link";
+type DragMode = "move" | "start" | "end" | "link" | "draw";
 interface Drag {
   id: Id; mode: DragMode; x0: number; y0: number; sl0: number; days: number; moved: boolean;
   px?: number; py?: number; target?: Id | null;
+  /** «draw» (leere Zeile aufziehen): Tag beim Drücken und aktueller Tag */
+  a?: number; b?: number; alt?: boolean;
+}
+/** Zeile in der linken Spalte ziehen (neu ordnen): Zeiger in Zeilen (`pos`) und Ziel */
+interface RowDrag { id: Id; y0: number; moved: boolean; pos: number; target: RowTarget | null }
+
+/** Nächster senkrecht scrollende Vorfahr (Arbeitsfläche, Vollbild), sonst das Fenster. */
+function scrollParent(el: HTMLElement | null): HTMLElement | null {
+  for (let p = el?.parentElement; p; p = p.parentElement) {
+    const oy = getComputedStyle(p).overflowY;
+    if ((oy === "auto" || oy === "scroll") && p.scrollHeight > p.clientHeight) return p;
+  }
+  return null;
+}
+/** Beim Ziehen nahe am oberen/unteren Rand senkrecht mitscrollen. */
+function edgeScrollY(from: HTMLElement | null, clientY: number) {
+  const sp = scrollParent(from);
+  const top = sp ? sp.getBoundingClientRect().top : 0, bottom = sp ? sp.getBoundingClientRect().bottom : window.innerHeight;
+  const dy = clientY > bottom - 50 ? 16 : clientY < top + 50 ? -16 : 0;
+  if (!dy) return;
+  if (sp) sp.scrollTop += dy; else window.scrollBy(0, dy);
 }
 
 /** Eine sichtbare Zeile: Gruppenkopf (Sammelbalken) oder Element. */
@@ -114,6 +142,7 @@ export function GanttChart({
   items, dayWidth, fit = false, labelWidth = 300, labelTitle = "Aufgabe", from, to, today, holidays = [], critical,
   baseline, conflicts = [], breaks = [], selectedId, onSelect, onOpen, onChange, onLink, canLink, renderMeta, describe, barColor,
   snapDays = 1, collapsible = true, rowHeight, isDone, sessions, onOpenProtocol,
+  showToday = true, onDraw, onReorder, onRename, editLabelId = null, onEditLabel, onAddRow,
 }: {
   items: ScheduleItem[];
   /** Breite eines Tages in px (ohne `fit`) */
@@ -165,6 +194,19 @@ export function GanttChart({
   sessions?: (item: ScheduleItem) => { date: DateStr; state: "gehalten" | "kommend" | "ohne"; protocol?: { id: Id; nummer?: string; date: DateStr } }[];
   /** Klick auf eine gehaltene Sitzung: Protokoll öffnen */
   onOpenProtocol?: (protocolId: Id) => void;
+  /** Heute-Linie und Markierung im Kopf zeigen (Standard ja) */
+  showToday?: boolean;
+  /** leere Zeile im Zeitraster aufgezogen (bzw. angeklickt: `click`, ein Tag) */
+  onDraw?: (id: Id, start: DateStr, end: DateStr, click: boolean) => void;
+  /** Zeile in der linken Spalte an ein neues Ziel gezogen */
+  onReorder?: (id: Id, target: RowTarget) => void;
+  /** Name in der Zeile geändert (Doppelklick auf den Namen) */
+  onRename?: (id: Id, label: string) => void;
+  /** Zeile, deren Name gerade in der Zeile bearbeitet wird (gesteuert vom Aufrufer) */
+  editLabelId?: Id | null;
+  onEditLabel?: (id: Id | null) => void;
+  /** Knopf «+ Zeile» unter der letzten Zeile */
+  onAddRow?: () => void;
 }) {
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [drag, setDrag] = useState<Drag | null>(null);
@@ -178,27 +220,33 @@ export function GanttChart({
   const dragRef = useRef<Drag | null>(null);
   const svgRef = useRef<SVGSVGElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const labelRef = useRef<HTMLDivElement>(null);
+  const [rowDrag, setRowDrag] = useState<RowDrag | null>(null);
+  const rowDragRef = useRef<RowDrag | null>(null);
 
-  // Zeitraum: Montag vor dem ersten Element bis zwei Wochen nach dem letzten
+  // Zeitraum: Montag vor dem ersten Element bis zwei Wochen nach dem letzten (leere Zeilen zählen nicht)
   const range = useMemo(() => {
-    const starts = items.map(i => dayNum(i.start));
-    const ends = items.map(i => dayNum(i.end));
+    const placed = items.filter(isPlaced);
+    const starts = placed.map(i => dayNum(i.start));
+    const ends = placed.map(i => dayNum(i.end));
     const t = dayNum(today);
     let s = from ? dayNum(from) : (starts.length ? Math.min(...starts) : t) - 7;
     const e = to ? dayNum(to) : (ends.length ? Math.max(...ends) : t + 60) + 14;
     if (!from) s -= (new Date(s * 86400000).getUTCDay() + 6) % 7; // auf Montag
-    return { s, e: Math.max(e, s + 14) };
-  }, [items, from, to, today]);
+    // Ohne festes Ende mindestens die sichtbare Breite füllen (Platz zum Aufziehen neuer Balken)
+    const fill = !to && !fit && boxWidth ? s + Math.ceil(boxWidth / dayWidth) - 1 : 0;
+    return { s, e: Math.max(e, s + 14, fill) };
+  }, [items, from, to, today, fit, boxWidth, dayWidth]);
 
-  // Einpassen: verfügbare Breite messen
+  // Verfügbare Breite messen (Einpassen, Auffüllen)
   useLayoutEffect(() => {
     const el = scrollRef.current;
-    if (!fit || !el) return;
+    if (!el) return;
     const ro = new ResizeObserver(() => setBoxWidth(el.clientWidth));
     ro.observe(el);
     setBoxWidth(el.clientWidth);
     return () => ro.disconnect();
-  }, [fit]);
+  }, []);
   const dw = fit && boxWidth ? Math.max(0.5, (boxWidth - 2) / (range.e - range.s + 1)) : dayWidth;
   const x = (d: DateStr | number) => ((typeof d === "number" ? d : dayNum(d)) - range.s) * dw;
   const width = (range.e - range.s + 1) * dw;
@@ -225,6 +273,8 @@ export function GanttChart({
   const rowOf = new Map<Id, number>();
   rows.forEach((r, i) => { if (r.type === "item") rowOf.set(r.item.id, i); });
   const height = HEADER_H + rows.length * ROW_H;
+  /** Höhe des Zeitstrahls: mit «+ Zeile» eine Zeile mehr, damit beide Spalten gleich hoch sind */
+  const svgH = Math.max(height + (onAddRow ? ROW_H : 0), HEADER_H + ROW_H);
 
   /** Element mit der Vorschau des laufenden Ziehens. */
   const shown = (it: ScheduleItem): ScheduleItem => {
@@ -254,8 +304,7 @@ export function GanttChart({
         if (e.clientX > r.right - 40) el.scrollLeft += 18;
         else if (e.clientX < r.left + 40 && d.mode !== "link") el.scrollLeft -= 18;
       }
-      if (e.clientY > window.innerHeight - 50) window.scrollBy(0, 16);
-      else if (e.clientY < 50) window.scrollBy(0, -16);
+      edgeScrollY(scrollRef.current, e.clientY);
       const sl = el?.scrollLeft || 0;
       const moved = d.moved || Math.abs(e.clientX - d.x0) > 3 || Math.abs(e.clientY - d.y0) > 3;
       const raw = (e.clientX - d.x0 + (sl - d.sl0)) / dw;
@@ -267,7 +316,8 @@ export function GanttChart({
         target = (document.elementFromPoint(e.clientX, e.clientY) as Element | null)?.closest("[data-item]")?.getAttribute("data-item") || null;
         if (target === d.id) target = null;
       }
-      const next = { ...d, moved, days, px: rect ? e.clientX - rect.left : 0, py: rect ? e.clientY - rect.top : 0, target };
+      const b = d.mode === "draw" && rect ? dayAtX(e.clientX - rect.left, range.s, dw) : d.b;
+      const next = { ...d, moved, days, px: rect ? e.clientX - rect.left : 0, py: rect ? e.clientY - rect.top : 0, target, b, alt: e.altKey };
       dragRef.current = next;
       setDrag(next);
     };
@@ -277,6 +327,13 @@ export function GanttChart({
       setDrag(null);
       const it = items.find(i => i.id === d.id);
       if (!it) return;
+      if (d.mode === "draw") {
+        if (d.a === undefined) return;
+        if (!d.moved) { onDraw?.(d.id, numToDate(d.a), numToDate(d.a), true); return; }
+        const span = drawnSpan(d.a, d.b ?? d.a, d.alt ? 1 : snapDays);
+        onDraw?.(d.id, span.start, span.end, false);
+        return;
+      }
       if (d.mode === "link") {
         if (d.target && (!canLink || canLink(d.id, d.target))) onLink?.(d.id, d.target);
         return;
@@ -298,13 +355,62 @@ export function GanttChart({
 
   const startDrag = (e: React.PointerEvent, id: Id, mode: DragMode) => {
     if (e.button !== 0) return;
-    if (!onChange && mode !== "link") { onSelect?.(id); return; }
+    if (!onChange && mode !== "link" && mode !== "draw") { onSelect?.(id); return; }
     e.stopPropagation();
     e.preventDefault();
     const d: Drag = { id, mode, x0: e.clientX, y0: e.clientY, sl0: scrollRef.current?.scrollLeft || 0, days: 0, moved: false };
+    if (mode === "draw") {
+      const rect = svgRef.current?.getBoundingClientRect();
+      d.a = d.b = rect ? dayAtX(e.clientX - rect.left, range.s, dw) : range.s;
+      onSelect?.(id);
+    }
     dragRef.current = d;
     setDrag(d);
   };
+
+  // ── Zeilen neu ordnen (linke Spalte) ──
+  /** sichtbare Zeilen für `rowDropTarget` */
+  const dropRows = () => rows.map(r => r.type === "group" ? { group: r.group } : { id: r.item.id });
+  useEffect(() => {
+    if (!rowDrag) return;
+    const onMove = (e: PointerEvent) => {
+      const d = rowDragRef.current!;
+      edgeScrollY(labelRef.current, e.clientY);
+      const top = labelRef.current?.getBoundingClientRect().top || 0;
+      const moved = d.moved || Math.abs(e.clientY - d.y0) > 4;
+      const pos = (e.clientY - top - HEADER_H) / ROW_H;
+      const next = { ...d, moved, pos, target: moved ? rowDropTarget(dropRows(), pos, d.id) : null };
+      rowDragRef.current = next;
+      setRowDrag(next);
+    };
+    const onUp = () => {
+      const d = rowDragRef.current;
+      rowDragRef.current = null;
+      setRowDrag(null);
+      if (d?.moved && d.target) onReorder?.(d.id, d.target);
+    };
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") { rowDragRef.current = null; setRowDrag(null); } };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp, { once: true });
+    window.addEventListener("keydown", onKey);
+    return () => { window.removeEventListener("pointermove", onMove); window.removeEventListener("pointerup", onUp); window.removeEventListener("keydown", onKey); };
+    // nur beim Start neu binden
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rowDrag?.id]);
+  const startRowDrag = (e: React.PointerEvent, id: Id) => {
+    if (!onReorder || e.button !== 0 || (e.target as HTMLElement).closest("input, button")) return;
+    const d: RowDrag = { id, y0: e.clientY, moved: false, pos: 0, target: null };
+    rowDragRef.current = d;
+    setRowDrag(d);
+  };
+  /** y der Ablage-Linie (px ab oben, inkl. Kopf) */
+  const dropLineY = (() => {
+    const t = rowDrag?.moved ? rowDrag.target : null;
+    if (!t) return null;
+    const idx = "group" in t ? rows.findIndex(r => r.type === "group" && r.group === t.group) + 1
+      : rows.findIndex(r => r.type === "item" && r.item.id === t.id) + (t.where === "after" ? 1 : 0);
+    return HEADER_H + idx * ROW_H;
+  })();
 
   // ── Kalenderkopf ──
   const months: { x: number; w: number; label: string }[] = [];
@@ -340,7 +446,7 @@ export function GanttChart({
   for (const it of items) for (const dep of it.deps || []) {
     const ri = rowOf.get(it.id), rp = rowOf.get(dep.fromId);
     const pred = byId.get(dep.fromId), succ = byId.get(it.id);
-    if (ri === undefined || rp === undefined || !pred || !succ) continue;
+    if (ri === undefined || rp === undefined || !pred || !succ || !isPlaced(pred) || !isPlaced(succ)) continue;
     const px = pred.kind === "milestone" ? x(pred.start) + 7 : x(pred.end) + dw;
     const py = HEADER_H + rp * ROW_H + ROW_H / 2;
     const sx = succ.kind === "milestone" ? x(succ.start) - 7 : x(succ.start);
@@ -361,7 +467,7 @@ export function GanttChart({
   const linkTargetRow = drag?.mode === "link" && drag.target ? rowOf.get(drag.target) : undefined;
 
   /** Tooltip eines Elements. */
-  const tip = (it: ScheduleItem) => [
+  const tip = (it: ScheduleItem) => !isPlaced(it) ? `${it.label || "Neue Zeile"}\nNoch ohne Termine: im Zeitraster einen Balken aufziehen (Klick = Termin an diesem Tag)` : [
     it.label,
     it.kind === "milestone" ? `${SCHEDULE_MARKERS.find(m => m.id === markerOf(it))!.label}: ${fmtLong(it.start)}`
       : `${fmtLong(it.start)} – ${fmtLong(it.end)} (${formatDuration(durationDays(it))})`,
@@ -375,10 +481,10 @@ export function GanttChart({
     <div className="gantt" style={{ display: "flex", border: "1px solid var(--border2)", borderRadius: "var(--r-card)", overflow: "hidden", background: "var(--surface)", userSelect: "none" }}
       onPointerLeave={() => setHoverRow(null)}>
       {/* Zeilenbeschriftung */}
-      <div style={{ width: `min(${labelWidth}px, 40vw)`, flexShrink: 0, borderRight: "1px solid var(--border2)" }}>
+      <div ref={labelRef} style={{ width: `min(${labelWidth}px, 40vw)`, flexShrink: 0, borderRight: "1px solid var(--border2)", position: "relative" }}>
         <div style={{ height: HEADER_H, borderBottom: "1px solid var(--border)", background: "var(--surface)", display: "flex", alignItems: "flex-end", justifyContent: "space-between", padding: "0 8px 6px 10px", fontSize: 10, letterSpacing: "0.08em", color: "var(--text4)" }}>
           <span style={{ letterSpacing: 0, fontSize: 11.5, fontWeight: 500, color: "var(--text4)" }}>{labelTitle}</span>
-          {!fit && onSelect && dayNum(today) >= range.s && dayNum(today) <= range.e && (
+          {!fit && onSelect && showToday && dayNum(today) >= range.s && dayNum(today) <= range.e && (
             <button type="button" className="no-print" onClick={scrollToToday} title="Zum heutigen Tag scrollen"
               style={{ border: "1px solid var(--border)", background: "var(--surface)", borderRadius: 10, fontSize: 10, padding: "1px 8px", color: "var(--text3)", cursor: "pointer", letterSpacing: 0 }}>
               Heute
@@ -386,32 +492,54 @@ export function GanttChart({
           )}
         </div>
         {rows.map((r, i) => r.type === "group" ? (
-          <div key={`g-${r.group}`} onClick={() => collapsible && toggle(r.group)} title={`${r.group}\n${fmtLong(r.start)} – ${fmtLong(r.end)}`}
+          <div key={`g-${r.group}`} onClick={() => collapsible && toggle(r.group)} title={r.start ? `${r.group}\n${fmtLong(r.start)} – ${fmtLong(r.end)}` : r.group}
             onPointerEnter={() => setHoverRow(i)}
             style={{ height: ROW_H, display: "flex", alignItems: "center", gap: 6, padding: "0 10px", background: "var(--surface2)", borderBottom: "1px solid var(--border2)", fontSize: ROW_H < 22 ? 10.5 : 12, fontWeight: 600, color: "var(--text2)", cursor: collapsible ? "pointer" : "default" }}>
             {collapsible && <span style={{ fontSize: 9, width: 8 }}>{collapsed.has(r.group) ? "▸" : "▾"}</span>}
             <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>{r.group}</span>
-            <span style={{ fontWeight: 400, color: "var(--text4)", fontSize: 10 }}>{collapsed.has(r.group) ? `${r.count} ausgeblendet` : `${fmtShort(r.start)}–${fmtShort(r.end)}`}</span>
+            <span style={{ fontWeight: 400, color: "var(--text4)", fontSize: 10 }}>{collapsed.has(r.group) ? `${r.count} ausgeblendet` : r.start ? `${fmtShort(r.start)}–${fmtShort(r.end)}` : ""}</span>
           </div>
         ) : (
-          <div key={r.item.id} data-item={r.item.id} title={tip(r.item)} className={r.item.id === selectedId ? "mark mark-tight" : undefined}
-            onClick={() => onSelect?.(r.item.id)} onDoubleClick={() => onOpen?.(r.item.id)} onPointerEnter={() => setHoverRow(i)}
-            style={{ height: ROW_H, display: "flex", alignItems: "center", gap: 6, padding: "0 10px 0 22px", borderBottom: "1px solid var(--border2, var(--border))", fontSize: ROW_H < 22 ? 10.5 : 12,
+          <div key={r.item.id} data-item={r.item.id} title={editLabelId === r.item.id ? undefined : tip(r.item)}
+            className={`gantt-row${r.item.id === selectedId ? " mark mark-tight" : ""}${rowDrag?.moved && rowDrag.id === r.item.id ? " gantt-row-dragging" : ""}`}
+            onPointerDown={e => startRowDrag(e, r.item.id)}
+            onClick={() => onSelect?.(r.item.id)}
+            onDoubleClick={e => { if ((e.target as HTMLElement).closest("input")) return; if (onRename && onEditLabel) onEditLabel(r.item.id); else onOpen?.(r.item.id); }}
+            onPointerEnter={() => setHoverRow(i)}
+            style={{ height: ROW_H, display: "flex", alignItems: "center", gap: 6, padding: "0 10px 0 22px", position: "relative", borderBottom: "1px solid var(--border2, var(--border))", fontSize: ROW_H < 22 ? 10.5 : 12,
               background: r.item.id === selectedId ? "var(--surface3)" : linkTargetRow === i ? (linkOk ? "var(--positive-bg)" : "var(--negative-bg)") : hoverRow === i ? "var(--surface2)" : "transparent",
-              cursor: onSelect ? "pointer" : "default" }}>
-            <span style={{ color: r.item.kind === "milestone" ? "var(--text3)" : "var(--text)", fontStyle: r.item.kind === "milestone" ? "italic" : "normal", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>
-              {isDone?.(r.item) ? <span style={{ fontStyle: "normal", color: "var(--positive)", marginRight: 4 }} title="erledigt">✓</span>
-                : glyphOf(r.item) ? <span style={{ fontStyle: "normal", color: "var(--text3)", marginRight: 4 }}>{glyphOf(r.item)}</span> : null}{r.item.bkp ? <span style={{ color: "var(--text4)" }}>{r.item.bkp} </span> : null}{r.item.label}
-            </span>
-            {renderMeta?.(r.item)}
+              cursor: rowDrag?.moved ? "grabbing" : onSelect ? "pointer" : "default" }}>
+            {onReorder && <span className="msr gantt-grip" aria-hidden="true" title="Ziehen: Zeile verschieben">drag_indicator</span>}
+            {editLabelId === r.item.id && onRename ? (
+              <LabelInput value={r.item.label} placeholder={r.item.kind === "milestone" ? "Termin benennen" : "Aufgabe benennen"}
+                onDone={v => { if (v !== null && v.trim() !== r.item.label) onRename(r.item.id, v.trim()); onEditLabel?.(null); }} />
+            ) : !isPlaced(r.item) ? <>
+              <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: r.item.label ? "var(--text)" : "var(--text4)", fontStyle: r.item.label ? "normal" : "italic" }}>
+                {r.item.label || "Neue Zeile"}
+              </span>
+              {onDraw && <span style={{ fontSize: 10, color: "var(--text4)", flexShrink: 0, whiteSpace: "nowrap" }}>rechts aufziehen →</span>}
+            </> : <>
+              <span style={{ color: r.item.kind === "milestone" ? "var(--text3)" : "var(--text)", fontStyle: r.item.kind === "milestone" ? "italic" : "normal", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>
+                {isDone?.(r.item) ? <span style={{ fontStyle: "normal", color: "var(--positive)", marginRight: 4 }} title="erledigt">✓</span>
+                  : glyphOf(r.item) ? <span style={{ fontStyle: "normal", color: "var(--text3)", marginRight: 4 }}>{glyphOf(r.item)}</span> : null}{r.item.bkp ? <span style={{ color: "var(--text4)" }}>{r.item.bkp} </span> : null}{r.item.label}
+              </span>
+              {renderMeta?.(r.item)}
+            </>}
           </div>
         ))}
-        {!rows.length && <div style={{ padding: 16, fontSize: 12, color: "var(--text4)" }}>Noch keine Einträge.</div>}
+        {!rows.length && !onAddRow && <div style={{ padding: 16, fontSize: 12, color: "var(--text4)" }}>Noch keine Einträge.</div>}
+        {onAddRow && (
+          <button type="button" className="gantt-addrow no-print" onClick={onAddRow} title="Neue leere Zeile am Ende — danach im Zeitraster aufziehen"
+            style={{ height: ROW_H }}>
+            <span className="msr" style={{ fontSize: 16 }}>add</span>Zeile
+          </button>
+        )}
+        {dropLineY !== null && <div aria-hidden="true" style={{ position: "absolute", left: 4, right: 4, top: dropLineY - 1.5, height: 3, borderRadius: 2, background: "var(--accent)", pointerEvents: "none", zIndex: 2 }} />}
       </div>
 
       {/* Kalender und Balken */}
       <div ref={scrollRef} style={{ flex: 1, overflowX: fit ? "hidden" : "auto", minWidth: 0 }}>
-        <svg ref={svgRef} width={width} height={Math.max(height, HEADER_H + ROW_H)} style={{ display: "block", fontFamily: "var(--font-ui)" }}
+        <svg ref={svgRef} width={width} height={svgH} style={{ display: "block", fontFamily: "var(--font-ui)" }}
           aria-label="Terminprogramm">
           <defs>
             <pattern id={hatchId} width={6} height={6} patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
@@ -436,10 +564,10 @@ export function GanttChart({
             {days.map(d => (
               <g key={d.x}>
                 <line x1={d.x} x2={d.x} y1={18} y2={height} stroke="var(--border)" strokeOpacity={d.wd === "Mo" ? 0.7 : 0.22} />
-                {d.isToday && <rect x={d.x + 1} y={19} width={dw - 2} height={HEADER_H - 20} rx={3} fill="var(--accent)" opacity={0.16} />}
+                {d.isToday && showToday && <rect x={d.x + 1} y={19} width={dw - 2} height={HEADER_H - 20} rx={3} fill="var(--accent)" opacity={0.16} />}
                 <text x={d.x + dw / 2} y={27} fontSize={7.5} textAnchor="middle" fill={d.weekend || d.holiday ? "var(--text4)" : "var(--text3)"}>{d.wd}</text>
-                <text x={d.x + dw / 2} y={37} fontSize={9.5} textAnchor="middle" fontWeight={d.isToday ? 700 : 500}
-                  fill={d.isToday ? "var(--accent)" : d.weekend || d.holiday ? "var(--text4)" : "var(--text)"}>{d.d}</text>
+                <text x={d.x + dw / 2} y={37} fontSize={9.5} textAnchor="middle" fontWeight={d.isToday && showToday ? 700 : 500}
+                  fill={d.isToday && showToday ? "var(--accent)" : d.weekend || d.holiday ? "var(--text4)" : "var(--text)"}>{d.d}</text>
               </g>
             ))}
             {/* Monatsnamen nur am Monatsanfang; jede KW trägt den Monat mit, damit er beim Scrollen sichtbar bleibt */}
@@ -449,7 +577,8 @@ export function GanttChart({
           </> : weeks.map(w => (
             <g key={w.x}>
               <line x1={w.x} x2={w.x} y1={22} y2={height} stroke="var(--border)" strokeOpacity={0.4} />
-              <text x={w.x + 3} y={33} fontSize={9} fill="var(--text4)">{w.label}</text>
+              {/* KW-Nummer nicht unter dem Schild «heute» */}
+              {!(showToday && w.x + 3 > x(today) - 4 && w.x + 3 < x(today) + 36) && <text x={w.x + 3} y={33} fontSize={9} fill="var(--text4)">{w.label}</text>}
             </g>
           ))}
           <line x1={0} x2={width} y1={HEADER_H} y2={HEADER_H} stroke="var(--border)" />
@@ -457,14 +586,19 @@ export function GanttChart({
           {rows.map((r, i) => {
             const sel = r.type === "item" && r.item.id === selectedId;
             const linkHere = linkTargetRow === i;
+            const empty = r.type === "item" && !isPlaced(r.item) && !!onDraw;
             return (
               <rect key={`row-${i}`} x={0} y={HEADER_H + i * ROW_H} width={width} height={ROW_H}
                 data-item={r.type === "item" ? r.item.id : undefined}
                 fill={linkHere ? (linkOk ? "var(--positive-bg)" : "var(--negative-bg)") : sel ? "var(--surface3)" : r.type === "group" ? "var(--surface2)" : hoverRow === i ? "var(--surface2)" : "transparent"}
                 opacity={r.type === "group" && !sel ? 0.6 : 1}
+                style={empty ? { cursor: "crosshair" } : undefined}
                 onPointerEnter={() => setHoverRow(i)}
-                onClick={() => r.type === "item" && onSelect?.(r.item.id)}
-                onDoubleClick={() => r.type === "item" && onOpen?.(r.item.id)} />
+                onPointerDown={empty ? e => startDrag(e, (r as { item: ScheduleItem }).item.id, "draw") : undefined}
+                onClick={() => r.type === "item" && !empty && onSelect?.(r.item.id)}
+                onDoubleClick={() => r.type === "item" && !empty && onOpen?.(r.item.id)}>
+                {empty && <title>Ziehen: Balken aufziehen · Klick: Termin an diesem Tag</title>}
+              </rect>
             );
           })}
           {breaks.map(b => {
@@ -483,7 +617,7 @@ export function GanttChart({
             );
           })}
           {shade.map(s => <rect key={`${s.kind}-${s.x}`} x={s.x} y={HEADER_H} width={s.w} height={height - HEADER_H} fill={s.kind === "holiday" ? "var(--warning-bg)" : "var(--surface2)"} opacity={s.kind === "holiday" ? 0.9 : 0.6} pointerEvents="none" />)}
-          {todayX >= 0 && todayX <= width && (
+          {showToday && todayX >= 0 && todayX <= width && (
             <g pointerEvents="none">
               <line x1={todayX} x2={todayX} y1={dayView ? HEADER_H : HEADER_H - 6} y2={height} stroke="var(--accent)" strokeWidth={1.5} />
               {/* In der Tagesansicht ist der Tag im Kopf markiert, sonst ein Schild «heute» */}
@@ -505,7 +639,7 @@ export function GanttChart({
 
           {/* Sammelbalken der Gruppen */}
           {rows.map((r, i) => {
-            if (r.type !== "group" || !r.hasTask) return null;
+            if (r.type !== "group" || !r.hasTask || !r.start) return null;
             const gy = HEADER_H + i * ROW_H;
             const gx = x(r.start), gw = Math.max(2, x(r.end) + dw - gx);
             return (
@@ -519,7 +653,7 @@ export function GanttChart({
 
           {/* Elemente */}
           {rows.map((r, i) => {
-            if (r.type !== "item") return null;
+            if (r.type !== "item" || !isPlaced(r.item)) return null;
             const it = byId.get(r.item.id)!;
             const y = HEADER_H + i * ROW_H;
             const isCrit = critical?.has(it.id);
@@ -538,8 +672,11 @@ export function GanttChart({
                   <rect x={cx - 10} y={y + 2} width={20} height={ROW_H - 4} fill="transparent" />
                   {sel && <circle cx={cx} cy={cy} r={s + 4} fill="none" stroke="var(--accent)" strokeWidth={2} />}
                   <Marker m={markerOf(it)} cx={cx} cy={cy} s={s} color={isCrit ? "var(--negative)" : "var(--text)"} />
-                  {onLink && <circle className="gantt-knob" cx={cx + s + 6} cy={cy} r={4} fill="var(--surface)" stroke="var(--text3)" strokeWidth={1.2} style={{ cursor: "crosshair" }}
-                    onPointerDown={e => startDrag(e, it.id, "link")}><title>Ziehen: Pfeil zu einer Folgeaufgabe</title></circle>}
+                  {onLink && <g className="gantt-knob" style={{ cursor: "crosshair" }} onPointerDown={e => startDrag(e, it.id, "link")}>
+                    <circle cx={cx + s + 6} cy={cy} r={6} fill="transparent" />
+                    <circle cx={cx + s + 6} cy={cy} r={4} fill="var(--surface)" stroke="var(--text3)" strokeWidth={1.2} />
+                    <title>Ziehen: Pfeil zu einer Folgeaufgabe («beginnt nach»)</title>
+                  </g>}
                   <text x={cx + s + (onLink ? 14 : 5)} y={cy + 3.5} fontSize={10} fill="var(--text3)" pointerEvents="none">{isDone?.(it) ? "✓ " : ""}{dragging ? fmtLong(it.start) : fmtShort(it.start)}</text>
                 </g>
               );
@@ -587,27 +724,68 @@ export function GanttChart({
                 {onChange && bw >= 14 && <>
                   <rect className="gantt-handle" x={bx} y={by + 2} width={3} height={bh - 4} rx={1.5} fill="var(--text)" pointerEvents="none" />
                   <rect className="gantt-handle" x={bx + bw - 3} y={by + 2} width={3} height={bh - 4} rx={1.5} fill="var(--text)" pointerEvents="none" />
-                  <rect x={bx - 3} y={by} width={7} height={bh} fill="transparent" style={{ cursor: "ew-resize" }} onPointerDown={e => startDrag(e, it.id, "start")}><title>Ziehen: Beginn ändern</title></rect>
-                  <rect x={bx + bw - 4} y={by} width={7} height={bh} fill="transparent" style={{ cursor: "ew-resize" }} onPointerDown={e => startDrag(e, it.id, "end")}><title>Ziehen: Ende ändern</title></rect>
+                  <rect x={bx - 4} y={by - 2} width={9} height={bh + 4} fill="transparent" style={{ cursor: "ew-resize" }} onPointerDown={e => startDrag(e, it.id, "start")}><title>Ziehen: Beginn ändern</title></rect>
+                  <rect x={bx + bw - 5} y={by - 2} width={9} height={bh + 4} fill="transparent" style={{ cursor: "ew-resize" }} onPointerDown={e => startDrag(e, it.id, "end")}><title>Ziehen: Ende ändern</title></rect>
                 </>}
-                {onLink && <circle className="gantt-knob" cx={bx + bw + 7} cy={y + ROW_H / 2} r={4} fill="var(--surface)" stroke="var(--text3)" strokeWidth={1.2} style={{ cursor: "crosshair" }}
-                  onPointerDown={e => startDrag(e, it.id, "link")}><title>Ziehen: Pfeil zu einer Folgeaufgabe</title></circle>}
-                <text x={bx + bw + (onLink ? 15 : 5)} y={y + ROW_H / 2 + 3.5} fontSize={10} fill={dragging ? "var(--text)" : "var(--text4)"} fontWeight={dragging ? 600 : 400} pointerEvents="none">{label}</text>
+                {onLink && <g className="gantt-knob" style={{ cursor: "crosshair" }} onPointerDown={e => startDrag(e, it.id, "link")}>
+                  <circle cx={bx + bw + 9} cy={y + ROW_H / 2} r={7} fill="transparent" />
+                  <circle cx={bx + bw + 9} cy={y + ROW_H / 2} r={4} fill="var(--surface)" stroke="var(--text3)" strokeWidth={1.2} />
+                  <title>Ziehen: Pfeil zu einer Folgeaufgabe («beginnt nach»)</title>
+                </g>}
+                <text x={bx + bw + (onLink ? 18 : 5)} y={y + ROW_H / 2 + 3.5} fontSize={10} fill={dragging ? "var(--text)" : "var(--text4)"} fontWeight={dragging ? 600 : 400} pointerEvents="none">{label}</text>
               </g>
             );
           })}
+
+          {/* Balken, der in einer leeren Zeile gerade aufgezogen wird */}
+          {drag?.mode === "draw" && drag.a !== undefined && (() => {
+            const ri = rowOf.get(drag.id);
+            if (ri === undefined) return null;
+            const span = drag.moved ? drawnSpan(drag.a, drag.b ?? drag.a, drag.alt ? 1 : snapDays) : { start: numToDate(drag.a), end: numToDate(drag.a) };
+            const gx = x(span.start), gw = Math.max(dw, x(span.end) + dw - gx), gy = HEADER_H + ri * ROW_H;
+            const n = dayNum(span.end) - dayNum(span.start) + 1;
+            return (
+              <g pointerEvents="none">
+                <rect x={gx} y={gy + BAR_PAD} width={gw} height={ROW_H - 2 * BAR_PAD} rx={3} fill="var(--accent)" fillOpacity={0.3} stroke="var(--accent)" strokeDasharray="4 2" />
+                <text x={gx + gw + 6} y={gy + ROW_H / 2 + 3.5} fontSize={10} fontWeight={600} fill="var(--text)">
+                  {drag.moved ? `${fmtShort(span.start)} – ${fmtShort(span.end)} · ${dayView ? `${n} T` : formatDuration(n)}` : fmtShort(span.start)}
+                </text>
+              </g>
+            );
+          })()}
 
           {/* Pfeil, der gerade gezogen wird */}
           {drag?.mode === "link" && drag.px !== undefined && (() => {
             const it = byId.get(drag.id);
             const ri = rowOf.get(drag.id);
             if (!it || ri === undefined) return null;
-            const sx = it.kind === "milestone" ? x(it.start) + 13 : x(it.end) + dw + 7;
+            const sx = it.kind === "milestone" ? x(it.start) + 13 : x(it.end) + dw + 9;
             const stroke = linkOk === null ? "var(--accent)" : linkOk ? "var(--positive)" : "var(--negative)";
             return <line x1={sx} y1={HEADER_H + ri * ROW_H + ROW_H / 2} x2={drag.px} y2={drag.py} stroke={stroke} strokeWidth={1.8} strokeDasharray="5 3" pointerEvents="none" />;
           })()}
         </svg>
       </div>
     </div>
+  );
+}
+
+/** Eingabefeld für den Namen in der Zeile: Enter/Verlassen übernimmt, Esc bricht ab (`null`). */
+function LabelInput({ value, placeholder, onDone }: { value: string; placeholder: string; onDone: (v: string | null) => void }) {
+  const [v, setV] = useState(value);
+  const done = useRef(false);
+  const finish = (r: string | null) => { if (done.current) return; done.current = true; onDone(r); };
+  return (
+    <input autoFocus value={v} placeholder={placeholder} aria-label="Name"
+      onFocus={e => e.currentTarget.select()}
+      onChange={e => setV(e.target.value)}
+      onPointerDown={e => e.stopPropagation()}
+      onClick={e => e.stopPropagation()}
+      onKeyDown={e => {
+        e.stopPropagation();
+        if (e.key === "Enter") { e.preventDefault(); finish(v); }
+        else if (e.key === "Escape") { e.preventDefault(); finish(null); }
+      }}
+      onBlur={() => finish(v)}
+      style={{ flex: 1, minWidth: 0, height: "calc(100% - 6px)", fontSize: "inherit", padding: "0 6px", margin: 0, borderRadius: 5 }} />
   );
 }

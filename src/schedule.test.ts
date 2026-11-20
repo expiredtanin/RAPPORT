@@ -5,6 +5,7 @@ import {
   addDays, formatDuration, constructionTemplate, criticalPath, dayNum, dependencyConflicts, durationDays, groupSpans,
   phaseProgress, planningTemplate, scheduleOf, shiftSuccessors, wouldCreateCycle, baselineDelta, overlapDays, blockedDays,
   markerOf, glyphOf, seriesDates, breaksOf,
+  emptyRow, isPlaced, moveRow, stepRow, displayOrder, rowDropTarget, drawnSpan, dayAtX, removeScheduleItem, restoreScheduleItem, scheduleRange,
   entryDue, isoWeekMonday, protocolSuggestions, suggestionToItem, linkedEntry, isDone, setLinkedStatus, seriesSessions, upcomingItems, baselineChanges,
 } from "./schedule";
 import { SIA_PHASES } from "./constants";
@@ -239,3 +240,85 @@ describe("Protokolle ↔ Terminprogramm", () => {
   });
 });
 
+
+describe("Zeilen bearbeiten (Editor)", () => {
+  const g = (it: ScheduleItem, group: string): ScheduleItem => ({ ...it, group });
+  const ids = (list: ScheduleItem[]) => list.map(x => x.id);
+
+  it("leere Zeilen zählen nirgends mit, ausser im Editor", () => {
+    const row = emptyRow("planung", "e1", { group: "Rohbau", phaseId: "31" });
+    expect(row).toMatchObject({ id: "e1", label: "", kind: "task", track: "planung", group: "Rohbau", phaseId: "31", start: "", end: "" });
+    expect(isPlaced(row)).toBe(false);
+    const project = { schedule: { items: [task("a", "2026-01-05", "2026-01-09"), row] } };
+    expect(ids(scheduleOf(project).items)).toEqual(["a"]);
+    expect(ids(scheduleOf(project, true).items)).toEqual(["a", "e1"]);
+    expect(scheduleRange([row])).toBeNull();
+    expect(scheduleRange([row, task("a", "2026-01-05", "2026-01-09")])).toEqual({ start: "2026-01-05", end: "2026-01-09" });
+    expect(groupSpans([g(row, "X")])).toEqual([{ group: "X", start: "", end: "", items: [g(row, "X")] }]);
+    expect(emptyRow("bau", "e2", { group: "G", phaseId: "31" }).phaseId).toBeUndefined();
+  });
+
+  it("moveRow verschiebt vor/nach eine Zeile und übernimmt deren Gruppe", () => {
+    const items = [g(task("a", "2026-01-05", "2026-01-09"), "A"), g(task("b", "2026-01-05", "2026-01-09"), "A"), g(task("c", "2026-01-05", "2026-01-09"), "B")];
+    expect(ids(moveRow(items, "a", { id: "b", where: "after" }))).toEqual(["b", "a", "c"]);
+    expect(ids(moveRow(items, "c", { id: "a", where: "before" }))).toEqual(["c", "a", "b"]);
+    expect(moveRow(items, "c", { id: "a", where: "before" })[0].group).toBe("A");
+    const intoB = moveRow(items, "a", { group: "B" });
+    expect(ids(intoB)).toEqual(["b", "a", "c"]);
+    expect(intoB.find(x => x.id === "a")!.group).toBe("B");
+    expect(moveRow(items, "x", { id: "a", where: "before" })).toBe(items);
+    expect(moveRow(items, "a", { id: "a", where: "before" })).toBe(items);
+  });
+
+  it("stepRow folgt der angezeigten Reihenfolge und wechselt am Rand die Gruppe", () => {
+    // gespeichert gemischt: A, B, A → angezeigt A(a, c), B(b)
+    const items = [g(task("a", "2026-01-05", "2026-01-09"), "A"), g(task("b", "2026-01-05", "2026-01-09"), "B"), g(task("c", "2026-01-05", "2026-01-09"), "A")];
+    expect(ids(displayOrder(items))).toEqual(["a", "c", "b"]);
+    expect(ids(displayOrder(stepRow(items, "c", -1)))).toEqual(["c", "a", "b"]);
+    const up = stepRow(items, "b", -1); // erste in B → letzte in A
+    expect(ids(displayOrder(up))).toEqual(["a", "c", "b"]);
+    expect(up.find(x => x.id === "b")!.group).toBe("A");
+    const down = stepRow(items, "c", 1);
+    expect(ids(displayOrder(down))).toEqual(["a", "c", "b"]); // jetzt erste Zeile in B
+    expect(down.find(x => x.id === "c")!.group).toBe("B");
+    expect(stepRow(items, "a", -1)).toBe(items); // schon oben
+    expect(stepRow(items, "b", 1)).toBe(items);  // schon unten
+  });
+
+  it("rowDropTarget: obere/untere Hälfte, Gruppenkopf, unterhalb der letzten Zeile", () => {
+    const rows = [{ group: "A" }, { id: "a" }, { id: "b" }, { group: "B" }, { id: "c" }];
+    expect(rowDropTarget(rows, 1.2, "c")).toEqual({ id: "a", where: "before" });
+    expect(rowDropTarget(rows, 1.7, "c")).toEqual({ id: "a", where: "after" });
+    expect(rowDropTarget(rows, 0.3, "c")).toEqual({ group: "A" });
+    expect(rowDropTarget(rows, 3.6, "a")).toEqual({ group: "B" });
+    expect(rowDropTarget(rows, 3.2, "a")).toEqual({ id: "b", where: "after" });
+    expect(rowDropTarget(rows, 9, "a")).toEqual({ id: "c", where: "after" });
+    expect(rowDropTarget(rows, 2.5, "b")).toBeNull();
+    expect(rowDropTarget([], 1, "a")).toBeNull();
+  });
+
+  it("drawnSpan: Ziehen → Datum, in beide Richtungen, mit Wochenraster", () => {
+    const mon = dayNum("2026-11-16"); // Montag
+    expect(drawnSpan(mon + 2, mon + 9)).toEqual({ start: "2026-11-18", end: "2026-11-25" });
+    expect(drawnSpan(mon + 9, mon + 2)).toEqual({ start: "2026-11-18", end: "2026-11-25" });
+    expect(drawnSpan(mon + 2, mon + 9, 7)).toEqual({ start: "2026-11-16", end: "2026-11-29" });
+    expect(drawnSpan(mon + 3, mon + 3, 7)).toEqual({ start: "2026-11-16", end: "2026-11-22" });
+    expect(dayAtX(0, mon, 8)).toBe(mon);
+    expect(dayAtX(7.9, mon, 8)).toBe(mon);
+    expect(dayAtX(8, mon, 8)).toBe(mon + 1);
+    expect(dayAtX(-1, mon, 8)).toBe(mon - 1);
+  });
+
+  it("Löschen und Rückgängig: alte Stelle, Pfeile zurück, spätere Änderungen bleiben", () => {
+    const before = [task("a", "2026-01-05", "2026-01-09"), task("b", "2026-01-12", "2026-01-16", [{ fromId: "a", lagDays: 2 }]), task("c", "2026-01-19", "2026-01-23", [{ fromId: "b" }])];
+    const after = removeScheduleItem(before, "b");
+    expect(ids(after)).toEqual(["a", "c"]);
+    expect(after[1].deps).toEqual([]);
+    // seither: c umbenannt, neue Zeile d
+    const current = [after[0], { ...after[1], label: "C neu" }, task("d", "2026-02-02", "2026-02-06")];
+    const restored = restoreScheduleItem(current, before, "b");
+    expect(ids(restored)).toEqual(["a", "b", "c", "d"]);
+    expect(restored[2]).toMatchObject({ label: "C neu", deps: [{ fromId: "b" }] });
+    expect(restoreScheduleItem(restored, before, "b")).toBe(restored); // schon da
+  });
+});

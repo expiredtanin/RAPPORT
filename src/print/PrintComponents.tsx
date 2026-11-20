@@ -35,7 +35,7 @@ import { InvoicePrint, QRBillPrint } from "./docs/InvoicePrint";
 import { QuotePrint } from "./docs/QuotePrint";
 import { SchedulePrint } from "./docs/SchedulePrint";
 import { ScheduleFormatBar } from "./docs/ScheduleFormatBar";
-import { DEFAULT_SCHEDULE_PRINT, PX_PER_MM, schedulePrintLayout, type SchedulePrintOptions } from "./docs/scheduleLayout";
+import { DEFAULT_SCHEDULE_PRINT, PX_PER_MM, printUsableMm, schedulePrintLayout, shiftPrintWindow, type SchedulePrintLayout, type SchedulePrintOptions } from "./docs/scheduleLayout";
 import { VertragPrint } from "./docs/ContractPrint";
 import { LieferscheinPrint } from "./docs/DeliveryNotePrint";
 import { ProtokollPrint } from "./docs/ProtocolPrint";
@@ -86,6 +86,12 @@ export function PrintView({ content, onClose, settings, assets }: { content: Con
   const sched = wide ? schedulePrintLayout(content.items || [], schedOpts, {
     top: settings?.pageMarginTop ?? 20, right: settings?.pageMarginRight ?? 20, bottom: settings?.pageMarginBottom ?? 20, left: settings?.pageMarginLeft ?? 20,
   }) : null;
+  /** Terminprogramm: Ausschnitt in der Vorschau ziehen — Stand beim Drücken, verschoben wird relativ dazu */
+  const panBase = useRef<{ opts: SchedulePrintOptions; layout: SchedulePrintLayout } | null>(null);
+  const schedPan = sched ? {
+    start: () => { panBase.current = { opts: schedOpts, layout: sched }; },
+    move: (days: number) => { const b = panBase.current; if (b) setSchedOpts(shiftPrintWindow(b.opts, b.layout, days)); },
+  } : undefined;
   const pageW = sched ? sched.pageW : 210;
   const pageH = sched ? (sched.pageH ?? measuredH) : 297;
   const paged = !isQrOnly && !sched;
@@ -210,7 +216,8 @@ export function PrintView({ content, onClose, settings, assets }: { content: Con
         <button onClick={onClose} style={{ padding: "9px 18px", background: "#2a2a22", color: "#fff", border: "none", borderRadius: 4, cursor: "pointer", fontFamily: "DM Mono, monospace", fontSize: 13 }}>← Zurück</button>
         <button onClick={triggerPrint} style={{ padding: "9px 18px", background: "#252520", color: "#f0ede8", border: "none", borderRadius: 4, cursor: "pointer", fontFamily: "DM Mono, monospace", fontSize: 13, fontWeight: 500 }}>Drucken / PDF</button>
         </div>
-        {sched && <ScheduleFormatBar opts={schedOpts} setOpts={setSchedOpts} layout={sched} pageH={pageH} />}
+        {sched && <ScheduleFormatBar opts={schedOpts} setOpts={setSchedOpts} layout={sched} pageH={pageH}
+          usableMm={printUsableMm(schedOpts.paper, { left: settings?.pageMarginLeft ?? 20, right: settings?.pageMarginRight ?? 20 })} />}
       </div>
 
       <div ref={sheetRef} className={sheetClass(design, paged)} data-doc={content.type} style={{
@@ -256,7 +263,7 @@ export function PrintView({ content, onClose, settings, assets }: { content: Con
           {content.type === "studioBudget" && <StudioBudgetPrint snapshot={content.snapshot} settings={settings} />}
           {content.type === "protokoll" && <ProtokollPrint protokoll={content.protokoll} data={content.data} settings={settings} />}
           {content.type === "mitarbeiterOverview" && <MitarbeiterOverviewPrint employees={content.employees} settings={settings} />}
-          {content.type === "schedule" && <SchedulePrint content={content} settings={settings} layout={sched!} />}
+          {content.type === "schedule" && <SchedulePrint content={content} settings={settings} layout={sched!} pan={schedPan} />}
           {content.type === "timeReport" && <TimeReportPrint employee={content.employee} entries={content.entries} month={content.month} data={content.data} settings={settings} />}
         </div>
       </div>

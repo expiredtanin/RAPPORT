@@ -94,11 +94,129 @@ export function moveItem(it: ScheduleItem, days: number): ScheduleItem {
   return { ...it, start: addDays(it.start, days), end: addDays(it.end, days) };
 }
 
-/** Leeres Terminprogramm; `null`/alte Daten werden zu einer gültigen Form. */
-export function scheduleOf(project: Pick<Project, "schedule"> | undefined): ProjectSchedule {
+/**
+ * true, wenn das Element Termine hat. Leere Zeilen (`start`/`end` = "") legt der Editor an, damit man sie
+ * benennen und später im Zeitraster aufziehen kann; sie zählen nirgends mit (Rechnung, Druck, Übersichten).
+ */
+export const isPlaced = (it: Pick<ScheduleItem, "start" | "end">): boolean => !!it.start && !!it.end;
+
+/**
+ * Leeres Terminprogramm; `null`/alte Daten werden zu einer gültigen Form.
+ * Leere Zeilen (ohne Termine) nur mit `withEmptyRows` — das braucht allein der Editor.
+ */
+export function scheduleOf(project: Pick<Project, "schedule"> | undefined, withEmptyRows = false): ProjectSchedule {
   const s = project?.schedule;
-  return { items: Array.isArray(s?.items) ? s!.items : [], baselines: s?.baselines || {}, breaks: Array.isArray(s?.breaks) ? s!.breaks : [],
+  const items = Array.isArray(s?.items) ? s!.items : [];
+  return { items: withEmptyRows ? items : items.filter(isPlaced), baselines: s?.baselines || {}, breaks: Array.isArray(s?.breaks) ? s!.breaks : [],
     dismissed: Array.isArray(s?.dismissed) ? s!.dismissed : [] };
+}
+
+// ─── Zeilen bearbeiten (Editor) ────────────────────────────────────────────────
+
+/** Neue leere Zeile (Aufgabe ohne Termine) in der Gruppe von `after`. */
+export function emptyRow(track: ScheduleTrack, id: Id, after?: Pick<ScheduleItem, "group" | "phaseId"> | null): ScheduleItem {
+  return { id, label: "", kind: "task", track, group: after?.group || "", phaseId: track === "planung" ? after?.phaseId : undefined, start: "", end: "", deps: [] };
+}
+
+/** Zeilen in der angezeigten Reihenfolge (nach Gruppen, wie GanttChart sie zeigt). */
+export const displayOrder = (items: ScheduleItem[]): ScheduleItem[] => groupSpans(items).flatMap(g => g.items);
+
+/** Ziel beim Verschieben einer Zeile: vor/nach einer anderen Zeile oder als erste in eine Gruppe. */
+export type RowTarget = { id: Id; where: "before" | "after" } | { group: string };
+
+/**
+ * Verschiebt eine Zeile an ein Ziel; sie übernimmt dabei die Gruppe des Ziels (und bei der Planung
+ * deren SIA-Phase nicht — die bleibt). Unbekannte Ids → unverändert.
+ */
+export function moveRow(items: ScheduleItem[], id: Id, target: RowTarget): ScheduleItem[] {
+  const it = items.find(x => x.id === id);
+  if (!it || ("id" in target && target.id === id)) return items;
+  const rest = items.filter(x => x.id !== id);
+  if ("group" in target) {
+    const at = rest.findIndex(x => (x.group || "") === target.group);
+    const moved = { ...it, group: target.group };
+    return at < 0 ? [...rest, moved] : [...rest.slice(0, at), moved, ...rest.slice(at)];
+  }
+  const ref = rest.findIndex(x => x.id === target.id);
+  if (ref < 0) return items;
+  const moved = { ...it, group: rest[ref].group || "" };
+  const at = target.where === "before" ? ref : ref + 1;
+  return [...rest.slice(0, at), moved, ...rest.slice(at)];
+}
+
+/** Eine Zeile in der angezeigten Reihenfolge um eins nach oben (-1) oder unten (1); am Gruppenrand in die Nachbargruppe. */
+export function stepRow(items: ScheduleItem[], id: Id, dir: -1 | 1): ScheduleItem[] {
+  const order = displayOrder(items);
+  const idx = order.findIndex(x => x.id === id);
+  const nb = order[idx + dir];
+  if (idx < 0 || !nb) return items;
+  // Am Gruppenrand erst nur die Gruppe wechseln (letzte der Gruppe davor bzw. erste der Gruppe danach)
+  if ((nb.group || "") !== (order[idx].group || "")) return moveRow(items, id, dir < 0 ? { id: nb.id, where: "after" } : { group: nb.group || "" });
+  return moveRow(items, id, { id: nb.id, where: dir < 0 ? "before" : "after" });
+}
+
+/**
+ * Ablageziel beim Ziehen einer Zeile. `rows` = sichtbare Zeilen (Gruppenkopf oder Element), `pos` =
+ * Zeiger in Zeilen (z.B. 2.7 = in der dritten Zeile, untere Hälfte). Gruppenkopf → als erste in die Gruppe,
+ * obere/untere Hälfte einer Zeile → davor/danach, unterhalb der letzten → nach der letzten Zeile.
+ * null = keine Änderung (auf sich selbst).
+ */
+export function rowDropTarget(rows: ({ group: string } | { id: Id })[], pos: number, dragId: Id): RowTarget | null {
+  if (!rows.length) return null;
+  const i = Math.max(0, Math.min(rows.length - 1, Math.floor(pos)));
+  const r = rows[i];
+  if ("group" in r) {
+    // Untere Hälfte eines Gruppenkopfs = erste Zeile der Gruppe; obere Hälfte = nach dem Ende der Gruppe davor
+    if (pos - i >= 0.5 || i === 0) return { group: r.group };
+    const prev = rows[i - 1];
+    return "id" in prev ? (prev.id === dragId ? null : { id: prev.id, where: "after" }) : { group: prev.group };
+  }
+  if (r.id === dragId) return null;
+  return { id: r.id, where: pos >= rows.length || pos - i >= 0.5 ? "after" : "before" };
+}
+
+/**
+ * Zeitraum aus einem aufgezogenen Balken (Tagesnummern, Reihenfolge egal). Mit `snapDays` 7 auf ganze
+ * Wochen erweitert (Montag bis Sonntag), sonst tageweise.
+ */
+export function drawnSpan(a: number, b: number, snapDays = 1): { start: DateStr; end: DateStr } {
+  let lo = Math.min(a, b), hi = Math.max(a, b);
+  if (snapDays === 7) {
+    const dow = (n: number) => (new Date(n * DAY).getUTCDay() + 6) % 7; // 0 = Montag
+    lo -= dow(lo);
+    hi += 6 - dow(hi);
+  }
+  return { start: numToDate(lo), end: numToDate(hi) };
+}
+
+/** Tagesnummer unter einem Punkt im Zeitstrahl (`px` ab linkem Rand, Zeitraum ab Tag `startDay`). */
+export const dayAtX = (px: number, startDay: number, dayWidth: number): number => startDay + Math.floor(px / dayWidth);
+
+/** Entfernt ein Element und die Pfeile von ihm. */
+export function removeScheduleItem(items: ScheduleItem[], id: Id): ScheduleItem[] {
+  return items.filter(x => x.id !== id).map(x => (x.deps || []).some(d => d.fromId === id) ? { ...x, deps: (x.deps || []).filter(d => d.fromId !== id) } : x);
+}
+
+/**
+ * Macht das Löschen von `id` rückgängig, ohne spätere Änderungen zu verlieren: das Element kommt aus
+ * `before` an seine alte Stelle (hinter den nächsten noch vorhandenen Vorgänger in der Liste), Pfeile von
+ * ihm werden bei noch vorhandenen Nachfolgern wieder eingesetzt.
+ */
+export function restoreScheduleItem(current: ScheduleItem[], before: ScheduleItem[], id: Id): ScheduleItem[] {
+  const idx = before.findIndex(x => x.id === id);
+  if (idx < 0 || current.some(x => x.id === id)) return current;
+  const item = before[idx];
+  let at = 0;
+  for (let j = idx - 1; j >= 0; j--) {
+    const pos = current.findIndex(x => x.id === before[j].id);
+    if (pos !== -1) { at = pos + 1; break; }
+  }
+  const lostDeps = new Map(before.map(x => [x.id, (x.deps || []).filter(d => d.fromId === id)]));
+  const list = current.map(x => {
+    const add = lostDeps.get(x.id) || [];
+    return add.length && !(x.deps || []).some(d => d.fromId === id) ? { ...x, deps: [...(x.deps || []), ...add] } : x;
+  });
+  return [...list.slice(0, at), item, ...list.slice(at)];
 }
 
 /** Elemente eines Programms (Planung oder Bau) in gespeicherter Reihenfolge. */
@@ -233,15 +351,16 @@ export function holidayDates(feiertage: Feiertag[] | undefined, from: DateStr, t
   return out;
 }
 
-/** Erster und letzter Tag aller Elemente (leer → null). */
+/** Erster und letzter Tag aller Elemente (leer oder nur leere Zeilen → null). */
 export function scheduleRange(items: ScheduleItem[]): { start: DateStr; end: DateStr } | null {
+  items = items.filter(isPlaced); // leere Zeilen zählen nicht
   if (!items.length) return null;
   const s = Math.min(...items.map(it => dayNum(it.start)));
   const e = Math.max(...items.map(it => dayNum(it.end)));
   return { start: numToDate(s), end: numToDate(e) };
 }
 
-/** Gruppen in der Reihenfolge ihres ersten Auftretens, mit Zeitraum (Sammelbalken). */
+/** Gruppen in der Reihenfolge ihres ersten Auftretens, mit Zeitraum (Sammelbalken; "" = nur leere Zeilen). */
 export function groupSpans(items: ScheduleItem[]): { group: string; start: DateStr; end: DateStr; items: ScheduleItem[] }[] {
   const order: string[] = [];
   const map = new Map<string, ScheduleItem[]>();
@@ -252,8 +371,8 @@ export function groupSpans(items: ScheduleItem[]): { group: string; start: DateS
   }
   return order.map(group => {
     const list = map.get(group)!;
-    const r = scheduleRange(list)!;
-    return { group, start: r.start, end: r.end, items: list };
+    const r = scheduleRange(list); // null = nur leere Zeilen
+    return { group, start: r?.start || "", end: r?.end || "", items: list };
   });
 }
 

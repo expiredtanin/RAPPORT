@@ -1,24 +1,41 @@
 // Druckvorlage Terminprogramm (`schedule`): Planungsterminprogramm oder Bauprogramm eines Projekts auf
 // einem Blatt — Kopf mit Absender und Projekt, Zeitstrahl über die ganze Breite, darunter Termine und Legende.
 // Blattgrösse, Massstab und Zeitraum kommen aus `layout` (scheduleLayout.ts, gewählt in PrintView).
+// Am Bildschirm verschiebt Ziehen über dem Zeitstrahl den Ausschnitt (`pan`); `showToday` aus dem Editor.
 
+import { useRef } from "react";
 import { GanttChart, ScheduleLegend } from "../../views/schedule/GanttChart";
 import { TRACK_LABELS, glyphOf, isDone, seriesSessions } from "../../schedule";
 import { formatSenderAddress, localISODate } from "../../utils";
 import { StudioLogo } from "../../components/UI";
 import type { AppData, Project, ScheduleBaseline, ScheduleBreak, ScheduleItem, ScheduleTrack, Settings } from "../../types";
 import { HEADING, type Content } from "./shared";
-import { PRINT_LABEL_WIDTH, SCHEDULE_SCALES, type SchedulePrintLayout } from "./scheduleLayout";
+import { PRINT_LABEL_WIDTH, printScaleLabel, type SchedulePrintLayout } from "./scheduleLayout";
 
 const fmt = (d: string) => `${d.slice(8, 10)}.${d.slice(5, 7)}.${d.slice(0, 4)}`;
 
-export function SchedulePrint({ content, settings, layout }: { content: Content; settings: Settings; layout: SchedulePrintLayout }) {
-  const { project, track, baseline, critical, holidays, breaks = [], data } = content as unknown as {
+export function SchedulePrint({ content, settings, layout, pan }: {
+  content: Content; settings: Settings; layout: SchedulePrintLayout;
+  /** Ausschnitt durch Ziehen verschieben (nur Vorschau): `move(tage)` relativ zum Stand bei `start` */
+  pan?: { start: () => void; move: (days: number) => void };
+}) {
+  const { project, track, baseline, critical, holidays, breaks = [], data, showToday = true } = content as unknown as {
     project: Project; track: ScheduleTrack; items: ScheduleItem[]; baseline?: ScheduleBaseline;
-    critical: string[]; holidays: string[]; breaks?: ScheduleBreak[]; data: AppData;
+    critical: string[]; holidays: string[]; breaks?: ScheduleBreak[]; data: AppData; showToday?: boolean;
   };
   const { items, from, to, dayWidth, rowHeight } = layout;
-  const scale = layout.pageH === null ? SCHEDULE_SCALES.find(s => Math.abs(s.mmPerDay - dayWidth * 25.4 / 96) < 0.01)?.label : undefined;
+  const scale = layout.mmPerDay ? printScaleLabel(layout.mmPerDay) : undefined;
+  const panning = useRef<{ x0: number; dw: number } | null>(null);
+  const onPanDown = (e: React.PointerEvent) => {
+    if (!pan || e.button !== 0) return;
+    panning.current = { x0: e.clientX, dw: dayWidth };
+    pan.start();
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+  };
+  const onPanMove = (e: React.PointerEvent) => {
+    const p = panning.current;
+    if (p && pan) pan.move(Math.round(-(e.clientX - p.x0) / p.dw));
+  };
   const client = (data.persons || []).find(p => p.id === project.clientId);
   const employees = data.employees || [];
   const milestones = items.filter(it => it.kind === "milestone").sort((a, b) => a.start.localeCompare(b.start));
@@ -42,11 +59,13 @@ export function SchedulePrint({ content, settings, layout }: { content: Content;
           {layout.cropped ? "Ausschnitt " : ""}{fmt(from)} – {fmt(to)}{scale ? ` · Massstab ${scale}` : ""}
         </div>
       </div>
+      <div onPointerDown={onPanDown} onPointerMove={onPanMove} onPointerUp={() => { panning.current = null; }} onPointerCancel={() => { panning.current = null; }}
+        title={pan ? "Ziehen: Ausschnitt verschieben" : undefined} style={{ cursor: pan ? "grab" : undefined, touchAction: "none" }}>
       <GanttChart
         items={items} dayWidth={dayWidth} labelWidth={PRINT_LABEL_WIDTH} from={from} to={to}
         today={localISODate()} holidays={holidays} critical={critical.length ? new Set(critical) : undefined}
         baseline={baseline} breaks={breaks} collapsible={false}
-        rowHeight={rowHeight}
+        rowHeight={rowHeight} showToday={showToday}
         isDone={it => isDone(it, data.protocols || [], project.id)}
         sessions={it => seriesSessions(it, data.protocols || [], project.id, localISODate())}
         renderMeta={it => {
@@ -56,6 +75,7 @@ export function SchedulePrint({ content, settings, layout }: { content: Content;
           return who ? <span style={{ fontSize: 9, color: "#777", maxWidth: 110, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{who}</span> : null;
         }}
       />
+      </div>
       <div style={{ display: "flex", gap: 30, marginTop: 14, fontSize: 9, color: "#666", alignItems: "flex-start" }}>
         {milestones.length > 0 && (
           <div>
@@ -67,7 +87,7 @@ export function SchedulePrint({ content, settings, layout }: { content: Content;
         )}
         <div style={{ marginLeft: "auto", lineHeight: 1.7, maxWidth: "60%" }}>
           <div style={{ letterSpacing: "0.12em", marginBottom: 4 }}>LEGENDE</div>
-          <ScheduleLegend items={items} breaks={breaks.length} critical={critical.length > 0} baseline={!!baseline} compact />
+          <ScheduleLegend items={items} breaks={breaks.length} critical={critical.length > 0} baseline={!!baseline} compact today={showToday} />
           <div style={{ marginTop: 4 }}>Pfeile = «beginnt nach» · KW nach ISO 8601 · Feiertage hinterlegt</div>
         </div>
       </div>
