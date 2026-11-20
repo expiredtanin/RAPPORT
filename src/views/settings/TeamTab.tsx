@@ -40,7 +40,7 @@ const PERMISSION_GROUPS = [
     { id: "letters", label: "Briefe" },
   ]},
   { label: "Administration", items: [
-    { id: "mitarbeiter", label: "Mitarbeiter (inkl. Zeiterfassung aller MA)" },
+    { id: "mitarbeiter", label: "Personal (inkl. Zeiterfassung aller Mitarbeitenden)" },
     { id: "settings", label: "Einstellungen / Mein Profil" },
     { id: "dashboard-vorlage", label: "Dashboard-Vorlagen speichern" },
     { id: "pinnwand-schreiben", label: "Pinnwand — Beiträge verfassen" },

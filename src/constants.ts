@@ -164,7 +164,7 @@ export const NAV_ITEMS: NavItem[] = [
     { id: "letters", label: "Briefe" },
   ]},
   { id: "personen", label: "Kontakte", icon: "group", group: "Büro" },
-  { id: "mitarbeiter", label: "Mitarbeiter", icon: "badge", group: "Büro" },
+  { id: "mitarbeiter", label: "Personal", icon: "badge", group: "Büro" },
   { id: "settings", label: "Einstellungen", icon: "settings", group: "" },
 ];
 

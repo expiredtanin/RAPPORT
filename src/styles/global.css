@@ -822,6 +822,16 @@ button.today-row:hover { background: var(--surface3); }
 .page-sub { font-size: 13.5px; color: var(--text3); margin-top: 6px; max-width: 760px; }
 .page-tabs { margin-top: 12px; }
 .page-tabs .ws-tabs { margin-top: 0; }
+/* Bereichs-Reiter im Seitenkopf (App.tsx per Portal): nur bei eingeklappter Leiste bzw. schmalem Fenster */
+.section-tabs-h { display: none; margin-top: 12px; }
+.section-tabs-h .ws-tabs { margin-top: 0; }
+.section-tabs-h.show { display: block; }
+.page-head:has(.section-tabs-h.show) { padding-bottom: 0; }
+.page-head:has(.section-tabs-h.show) .page-tabs { margin-top: 0; }
+@media (max-width: 1100px) {
+  .section-tabs-h { display: block; }
+  .page-head:has(.section-tabs-h) { padding-bottom: 0; }
+}
 /* Bereichs-Reiter (Buchhaltung/Dokumente bei eingeklappter Leiste) gehören dann zum Kopfband */
 .main-content:has(> .section-tabs.show) .page-head { margin-top: 0; padding-top: 12px; }
 .section-tabs.show { margin: calc(-1 * var(--pad-top)) calc(-1 * var(--pad-x)) 0; padding: 14px var(--pad-x) 0; background: var(--surface); }

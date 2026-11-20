@@ -81,6 +81,8 @@ export function Header({ title, action, crumb, sub, tabs }: { title: ReactNode; 
         {action && <div className="page-actions">{action}</div>}
       </div>
       {sub && <div className="page-sub">{sub}</div>}
+      {/* Platz für die Bereichs-Reiter (Buchhaltung, Dokumente), die App.tsx per Portal einsetzt */}
+      <div className="page-section-slot" />
       {tabs && <div className="page-tabs">{tabs}</div>}
     </header>
   );

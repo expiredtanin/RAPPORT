@@ -19,6 +19,7 @@
 // Render-Block mit `hasViewAccess` einbinden. Versions-Changelog: `CHANGELOGS` + `LATEST_VERSION` in changelog.ts.
 
 import React, { useState, useEffect, Suspense, lazy } from "react";
+import { createPortal } from "react-dom";
 import { defaultData, statusCssVars } from "./constants";
 import { verifyPassword, withHashedPassword, stripCredentials } from "./utils";
 import { storage, cloudStorage, isCloudBackend, isServerMode } from "./storage/adapter";
@@ -38,6 +39,7 @@ import Toaster from "./components/Toaster";
 import CommandPalette from "./components/CommandPalette";
 import type { PaletteTarget } from "./commandPalette";
 import ErrorBoundary from "./components/ErrorBoundary";
+import { PageTabs } from "./components/UI";
 import { useNavigation } from "./hooks/useNavigation";
 import { useStudioData } from "./hooks/useStudioData";
 import { useAppearance } from "./hooks/useAppearance";
@@ -244,6 +246,19 @@ export default function App() {
   const [navOpen, setNavOpen] = useState(false);
   const [expandedNav, setExpandedNav] = useState(new Set<string>());
   const { darkMode, setDarkMode, setSidebarCollapsed, collapsed, uiZoom, setUiZoom } = useAppearance();
+  // Bereichs-Reiter (Buchhaltung, Dokumente) im Seitenkopf: Header (UI.tsx) stellt einen leeren Platz
+  // `.page-section-slot` bereit, die Reiter kommen per Portal hinein — wie die Reiter in den Einstellungen,
+  // ohne Context. Der Platz entsteht erst mit der (lazy geladenen) Ansicht, darum ein MutationObserver.
+  const [mainEl, setMainEl] = useState<HTMLDivElement | null>(null);
+  const [sectionSlot, setSectionSlot] = useState<Element | null>(null);
+  useEffect(() => {
+    if (!mainEl) return;
+    const find = () => { const el = mainEl.querySelector(".page-section-slot"); setSectionSlot(prev => (prev === el ? prev : el)); };
+    find();
+    const mo = new MutationObserver(find);
+    mo.observe(mainEl, { childList: true, subtree: true });
+    return () => mo.disconnect();
+  }, [mainEl]);
 
   // Navigation zu Protokoll von Projekt aus
   useEffect(() => {
@@ -437,14 +452,22 @@ export default function App() {
       />
 
       {/* Main */}
-      <div className="main-content" style={{ flex: 1, padding: "28px 36px 40px", overflowY: "auto", minWidth: 0, background: "var(--bg)", zoom: uiZoom !== 1 ? uiZoom : undefined }}>
-        {/* Reiter eines Bereichs (Buchhaltung, Dokumente): nur sichtbar, wenn die Seitenleiste nur Symbole zeigt */}
+      <div ref={setMainEl} className="main-content" style={{ flex: 1, padding: "28px 36px 40px", overflowY: "auto", minWidth: 0, background: "var(--bg)", zoom: uiZoom !== 1 ? uiZoom : undefined }}>
+        {/* Reiter eines Bereichs (Buchhaltung, Dokumente): nur sichtbar, wenn die Seitenleiste nur Symbole zeigt
+            (eingeklappt oder schmales Fenster). Im Seitenkopf unter dem Titel; ohne Kopf als Zeile darüber. */}
         {(() => {
           const section = visibleNavItems.find(i => i.children && (i.id === view || i.children.some(c => c.id === view)));
           if (!section?.children) return null;
+          const tabs = [{ id: section.id, label: "Übersicht" }, ...section.children.map(c => ({ id: c.id, label: c.label }))];
+          if (sectionSlot && mainEl?.contains(sectionSlot)) {
+            return createPortal(
+              <div className={`section-tabs-h${collapsed ? " show" : ""}`} aria-label={section.label}>
+                <PageTabs tabs={tabs} value={view} onChange={id => navigate(id)} />
+              </div>, sectionSlot);
+          }
           return (
             <nav className={`section-tabs${collapsed ? " show" : ""}`} aria-label={section.label}>
-              {[{ id: section.id, label: "Übersicht" }, ...section.children].map(c => (
+              {tabs.map(c => (
                 <button key={c.id} className={`pill${view === c.id ? " active" : ""}`} onClick={() => navigate(c.id)}>{c.label}</button>
               ))}
             </nav>
