@@ -160,7 +160,8 @@ export default function BackupPanel() {
           </section>
           <section className="card">
             <div className="k">So funktionieren Backups</div>
-            <p className="hint">Gesichert werden alle PocketBase-Daten (Datenbank und Dateien) als Archiv auf diesem Mac. Für Ausfallsicherheit den Backup-Ordner zusätzlich extern sichern, z.B. mit Time Machine.</p>
+            <p className="hint">Gesichert werden alle PocketBase-Daten (Datenbank und Dateien) als Archiv auf diesem Mac. Damit die Datenbank konsistent ist, hält PocketBase dafür einige Sekunden an — darum laufen die automatischen Backups nachts{config.BACKUP_HOUR && config.BACKUP_HOUR !== '-1' ? ` (um ${config.BACKUP_HOUR} Uhr)` : ''}.</p>
+            <p className="hint" style={{ marginTop: 8 }}>Für Ausfallsicherheit den Backup-Ordner zusätzlich extern sichern, z.B. mit Time Machine.</p>
             <p className="hint" style={{ marginTop: 8 }}>Ablage: <span className="mono">~/Library/Application Support/com.rapport.server-app/backups/</span></p>
           </section>
         </div>

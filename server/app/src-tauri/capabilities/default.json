@@ -1,17 +1,15 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Default capabilities — IPC, Process restart, Log access",
+  "description": "Hauptfenster: IPC, Neustart nach App-Update, Autostart, Updater, externe Links. Notifications schickt nur das Rust-Backend (braucht keine Freigabe); Fremd-Webviews (PocketBase-Embed) haben keinen IPC-Zugriff.",
   "windows": ["main"],
   "permissions": [
     "core:default",
     "core:webview:allow-print",
     "process:allow-restart",
-    "process:allow-exit",
     "opener:allow-open-url",
     "opener:allow-default-urls",
     "updater:default",
-    "autostart:default",
-    "notification:default"
+    "autostart:default"
   ]
 }

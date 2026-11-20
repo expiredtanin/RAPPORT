@@ -10,7 +10,6 @@ mod container_update;
 mod disk;
 mod events;
 mod firstaid;
-mod health;
 mod http_server;
 mod paths;
 mod pb_embed;
@@ -115,6 +114,7 @@ pub fn run() {
     log::info!("PATH erweitert um {}", rapport_bin.display());
 
     let supervisor = Arc::new(Mutex::new(Supervisor::new()));
+    let supervisor_for_exit = supervisor.clone();
 
     tauri::Builder::default()
         .plugin(tauri_plugin_process::init())
@@ -180,7 +180,7 @@ pub fn run() {
             let auto_start_containers = config::load()
                 .ok()
                 .and_then(|c| c.get("AUTO_START_CONTAINERS_ON_LAUNCH").cloned())
-                .map(|v| v == "true" || v == "1")
+                .map(|v| matches!(v.trim().to_ascii_lowercase().as_str(), "true" | "1" | "yes" | "on"))
                 .unwrap_or(false);
             tauri::async_runtime::spawn(async move {
                 let mut sv = supervisor_clone.lock().await;
@@ -237,9 +237,11 @@ pub fn run() {
                 }
             });
 
-            // Backup-Scheduler — pg_dumpall alle BACKUP_INTERVAL_HOURS Stunden.
+            // Backup-Scheduler — taeglich zur BACKUP_HOUR (pb kurz gestoppt,
+            // konsistente SQLite-Kopie), Aufbewahrung BACKUP_RETENTION_COUNT.
+            let app_handle_for_backup = app.handle().clone();
             tauri::async_runtime::spawn(async move {
-                backup::scheduler_loop().await;
+                backup::scheduler_loop(app_handle_for_backup).await;
             });
 
             // Container-Update-Scheduler — alle CONTAINER_AUTOUPDATE_INTERVAL_HOURS:
@@ -257,21 +259,41 @@ pub fn run() {
                 use tauri_plugin_notification::NotificationExt;
                 let mut interval = tokio::time::interval(std::time::Duration::from_secs(2));
                 let mut last_state: Option<TrayStatus> = None;
+                // Kein Burst nach Sleep/Hänger: verpasste Ticks auslassen.
+                interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
                 loop {
                     interval.tick().await;
+                    // `compose ps` OHNE Supervisor-Lock — sonst blockiert ein
+                    // haengender Daemon alle UI-/HTTP-Abfragen.
+                    let statuses = supervisor::query_compose_status().await;
                     let mut sv = supervisor_for_health.lock().await;
-                    let newly_errored = sv.tick_health().await;
-                    let agg = aggregate_status(&sv.list());
+                    let report = sv.apply_health(statuses);
+                    let list = sv.list();
+                    let agg = aggregate_status(&list);
                     // Display-Names holen bevor wir den Lock abgeben.
-                    let error_titles: Vec<(String, String)> = newly_errored
+                    let error_titles: Vec<(String, String)> = report
+                        .newly_errored
                         .iter()
                         .map(|id| (id.clone(), sv.display_name(id).unwrap_or_else(|| id.clone())))
                         .collect();
                     drop(sv);
+                    supervisor::update_status_cache(list).await;
 
                     if Some(agg) != last_state {
                         set_tray_icon(&app_handle, agg);
                         last_state = Some(agg);
+                    }
+                    if let Some(err) = &report.docker_lost {
+                        events::error(format!("Docker nicht erreichbar: {err}")).await;
+                        let _ = app_handle
+                            .notification()
+                            .builder()
+                            .title("RAPPORT Server — Docker nicht erreichbar")
+                            .body("Der Docker-Daemon (Colima) antwortet nicht. Die Services sind offline.")
+                            .show();
+                    }
+                    if report.docker_back {
+                        events::info("Docker wieder erreichbar").await;
                     }
                     for (id, name) in error_titles {
                         events::error(format!("Service {name} ist in den Fehler-State gewechselt")).await;
@@ -296,10 +318,7 @@ pub fn run() {
                 loop {
                     interval.tick().await;
                     let cfg = config::load().unwrap_or_default();
-                    let enabled = cfg
-                        .get("AUTO_RECOVERY_ENABLED")
-                        .map(|v| v != "false" && v != "0")
-                        .unwrap_or(true);
+                    let enabled = config::flag(&cfg, "AUTO_RECOVERY_ENABLED", true);
                     if !enabled {
                         continue;
                     }
@@ -360,11 +379,10 @@ pub fn run() {
                 }
             });
 
-            // HTTP-Admin-WebUI (LAN-Zugriff fuer headless Mac Mini).
+            // HTTP-Admin-WebUI (LAN-Zugriff fuer headless Mac Mini). Das
+            // Frontend kommt aus den in die App eingebetteten Assets.
             let supervisor_for_http = supervisor.clone();
-            let static_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-                .join("..")
-                .join("dist");
+            let app_handle_for_http = app.handle().clone();
             tauri::async_runtime::spawn(async move {
                 let cfg = config::load().unwrap_or_default();
                 let bind = cfg
@@ -379,20 +397,18 @@ pub fn run() {
                     .get("ADMIN_UI_PASSWORD")
                     .cloned()
                     .unwrap_or_default();
-                let tls = cfg
-                    .get("ADMIN_UI_TLS")
-                    .map(|v| v != "false" && v != "0")
-                    .unwrap_or(true);
+                let tls = config::flag(&cfg, "ADMIN_UI_TLS", true);
                 if password.is_empty() {
                     log::warn!("ADMIN_UI_PASSWORD leer — WebUI nicht gestartet");
                     return;
                 }
                 if let Err(e) = http_server::serve(
-                    bind, port, password, tls, supervisor_for_http, static_dir,
+                    bind, port, password, tls, supervisor_for_http, app_handle_for_http,
                 )
                 .await
                 {
                     log::error!("http_server: {e}");
+                    events::error(format!("Admin-WebUI nicht gestartet: {e}")).await;
                 }
             });
 
@@ -479,6 +495,25 @@ pub fn run() {
             pb_embed::show_pocketbase_embed,
             pb_embed::hide_pocketbase_embed,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(move |_app, event| {
+            // Beim Beenden die `docker compose logs -f`-Prozesse mitnehmen —
+            // `app.exit()` laeuft ohne Drops, `kill_on_drop` greift also nicht
+            // und die Prozesse wuerden verwaist weiterlaufen.
+            if let tauri::RunEvent::Exit = event {
+                let sv = supervisor_for_exit.clone();
+                tauri::async_runtime::block_on(async move {
+                    let lock = tokio::time::timeout(
+                        std::time::Duration::from_secs(2),
+                        sv.lock(),
+                    )
+                    .await;
+                    match lock {
+                        Ok(mut guard) => guard.kill_all_log_pumps(),
+                        Err(_) => log::warn!("Exit: Supervisor belegt — Log-Pumps nicht beendet"),
+                    }
+                });
+            }
+        });
 }

@@ -66,7 +66,9 @@ pub async fn recreate_containers() -> Result<RecreateResult, String> {
 /// VOLL DESTRUKTIV: Volumes platt + frisches Init.
 pub async fn reset_data() -> Result<ResetResult, String> {
     crate::events::warn("Erste Hilfe: DATEN-RESET — erst Safety-Backup").await;
-    let safety = crate::backup::create()
+    // Lock: kein automatisches Backup/Restore mitten im Reset.
+    let _guard = crate::backup::op_lock().lock().await;
+    let safety = crate::backup::create_unlocked(Some("vor-reset"))
         .await
         .map_err(|e| format!("Safety-Backup vor Daten-Reset fehlgeschlagen — Reset abgebrochen: {e}"))?;
     crate::events::warn(format!(
@@ -153,16 +155,11 @@ async fn run_capture(argv: &[&str]) -> String {
     }
 }
 
-const REDACT_PREFIXES: &[&str] = &[
-    "PB_SUPERUSER_PASSWORD",
-    "ADMIN_UI_PASSWORD",
-];
-
 fn redacted_config() -> String {
     let map = crate::config::load().unwrap_or_default();
     let mut out = String::new();
     for (k, v) in &map {
-        let redacted = REDACT_PREFIXES.iter().any(|p| k.contains(p));
+        let redacted = crate::config::is_secret_key(k);
         if redacted {
             out.push_str(&format!("{k}=<REDACTED {} chars>\n", v.len()));
         } else {

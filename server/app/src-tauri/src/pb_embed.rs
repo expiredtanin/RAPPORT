@@ -12,9 +12,12 @@ use tauri::{AppHandle, LogicalPosition, LogicalSize, Manager, State, WebviewBuil
 
 const EMBED_LABEL: &str = "pb-embed";
 
-// Deckt sich mit server/app/src/styles.css: Sidebar 210px + 15px Aussenabstand.
-const SIDEBAR_OFFSET_X: f64 = 225.0;
-const MARGIN: f64 = 15.0;
+// Deckt sich mit styles.css: .sidebar 216px + 1px border-right, Inhalt randlos.
+const SIDEBAR_OFFSET_X: f64 = 217.0;
+// Unter 760px Fensterbreite ist die Seitenleiste nur 64px breit (+1px Rand).
+const SIDEBAR_OFFSET_X_NARROW: f64 = 65.0;
+const NARROW_BREAKPOINT: f64 = 760.0;
+const MARGIN: f64 = 0.0;
 
 /// RAPPORT-Theme-Overlay fuer die PocketBase-Admin-UI, per Init-Script injiziert.
 /// Ein initialization_script laeuft als WKUserScript AUSSERHALB der
@@ -73,6 +76,16 @@ fn init_script() -> String {
     )
 }
 
+/// Linker Rand des Inhaltsbereichs in logischen px, abhaengig von der
+/// Fensterbreite (schmale Seitenleiste unter dem CSS-Breakpoint).
+fn sidebar_offset(window_width: f64) -> f64 {
+    if window_width < NARROW_BREAKPOINT {
+        SIDEBAR_OFFSET_X_NARROW
+    } else {
+        SIDEBAR_OFFSET_X
+    }
+}
+
 /// Position+Groesse fuer den Content-Bereich rechts der Sidebar, analog zur
 /// CSS-Konstante in styles.css. Faellt zurueck auf `None`, wenn das
 /// Hauptfenster (noch) nicht existiert oder die Grössenabfrage scheitert.
@@ -80,10 +93,11 @@ fn content_bounds(app: &AppHandle) -> Option<(LogicalPosition<f64>, LogicalSize<
     let window = app.get_window("main")?;
     let scale = window.scale_factor().ok()?;
     let size = window.inner_size().ok()?.to_logical::<f64>(scale);
-    let w = (size.width - SIDEBAR_OFFSET_X - MARGIN).max(100.0);
+    let offset_x = sidebar_offset(size.width);
+    let w = (size.width - offset_x - MARGIN).max(100.0);
     let h = (size.height - MARGIN * 2.0).max(100.0);
     Some((
-        LogicalPosition::new(SIDEBAR_OFFSET_X, MARGIN),
+        LogicalPosition::new(offset_x, MARGIN),
         LogicalSize::new(w, h),
     ))
 }

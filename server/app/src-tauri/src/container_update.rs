@@ -2,7 +2,8 @@
 //!
 //! Workflow:
 //!   1. `docker compose pull` zieht Image-Updates
-//!   2. Image-IDs vorher/nachher vergleichen — was hat sich geaendert?
+//!   2. Pro Container: laeuft er mit der Image-ID, auf die seine Referenz
+//!      jetzt lokal zeigt? Wenn nicht → Update verfuegbar.
 //!   3. Wenn was geaendert: erst Backup (tar.gz von /pb/pb_data), dann
 //!      `docker compose up -d` — Compose erkennt selbst was neu erstellt werden
 //!      muss anhand veraenderter Image-IDs.
@@ -44,63 +45,93 @@ pub struct ApplyResult {
     pub recreate_log: String,
 }
 
-#[derive(Debug, Clone, Serialize, Default)]
-struct ImageRow {
+/// Ein Container des Stacks: Service, konfigurierte Image-Referenz und die
+/// Image-ID, mit der der Container tatsaechlich laeuft.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ContainerImage {
     service: String,
-    image: String,
-    id: String,
+    image_ref: String,
+    running_id: String,
 }
 
-/// Liefert die Image-ID pro Compose-Service.
-async fn snapshot_images() -> Result<HashMap<String, ImageRow>, String> {
+async fn docker(args: &[&str]) -> Result<String, String> {
     let out = Command::new("docker")
         .current_dir(services::compose_dir())
-        .args(["compose", "images", "--format", "json"])
+        .args(args)
         .output()
         .await
-        .map_err(|e| format!("spawn: {e}"))?;
+        .map_err(|e| format!("spawn docker {args:?}: {e}"))?;
     if !out.status.success() {
         return Err(format!(
-            "compose images: {}",
+            "docker {args:?}: {}",
             String::from_utf8_lossy(&out.stderr).trim()
         ));
     }
-    let stdout = String::from_utf8_lossy(&out.stdout);
-    let mut map = HashMap::new();
-    // Compose kann ein JSON-Array ODER JSON-Lines liefern — beide Faelle abfangen.
-    if let Ok(arr) = serde_json::from_str::<Vec<serde_json::Value>>(&stdout) {
-        for v in arr {
-            if let Some(row) = parse_row(&v) {
-                map.insert(row.service.clone(), row);
-            }
-        }
-    } else {
-        for line in stdout.lines() {
-            let line = line.trim();
-            if line.is_empty() {
-                continue;
-            }
-            if let Ok(v) = serde_json::from_str::<serde_json::Value>(line) {
-                if let Some(row) = parse_row(&v) {
-                    map.insert(row.service.clone(), row);
-                }
-            }
-        }
-    }
-    Ok(map)
+    Ok(String::from_utf8_lossy(&out.stdout).to_string())
 }
 
-fn parse_row(v: &serde_json::Value) -> Option<ImageRow> {
-    let service = v.get("Service").and_then(|x| x.as_str())?.to_string();
-    let repo = v.get("Repository").and_then(|x| x.as_str()).unwrap_or("");
-    let tag = v.get("Tag").and_then(|x| x.as_str()).unwrap_or("");
-    let id = v.get("ID").or_else(|| v.get("ImageId"))
-        .and_then(|x| x.as_str()).unwrap_or("").to_string();
-    Some(ImageRow {
-        service,
-        image: format!("{repo}:{tag}"),
-        id,
-    })
+/// Liest pro Service die Image-Referenz und die Image-ID des bestehenden
+/// Containers. Frueher wurde `compose images` vor/nach dem Pull verglichen —
+/// das liefert aber die Image-ID des CONTAINERS, die sich durch einen Pull
+/// nicht aendert; ausserdem fand "Pruefen" + "Anwenden" nichts mehr, weil
+/// beim Anwenden schon alles gezogen war.
+async fn container_images() -> Result<Vec<ContainerImage>, String> {
+    let ps = docker(&["compose", "ps", "-a", "--format", "json"]).await?;
+    let rows = crate::supervisor::parse_json_rows(&ps);
+    let mut out = Vec::new();
+    for v in rows {
+        let service = v.get("Service").and_then(|x| x.as_str()).unwrap_or("");
+        let image_ref = v.get("Image").and_then(|x| x.as_str()).unwrap_or("");
+        let cid = v.get("ID").and_then(|x| x.as_str()).unwrap_or("");
+        if service.is_empty() || image_ref.is_empty() || cid.is_empty() {
+            continue;
+        }
+        let running_id = docker(&["inspect", "--format", "{{.Image}}", cid])
+            .await
+            .map(|s| s.trim().to_string())
+            .unwrap_or_default();
+        out.push(ContainerImage {
+            service: service.to_string(),
+            image_ref: image_ref.to_string(),
+            running_id,
+        });
+    }
+    Ok(out)
+}
+
+/// Lokale Image-ID einer Referenz (nach dem Pull = neueste Version).
+async fn local_image_id(image_ref: &str) -> Option<String> {
+    docker(&["image", "inspect", "--format", "{{.Id}}", image_ref])
+        .await
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+}
+
+/// Reine Vergleichslogik: Update = Container laeuft mit einer anderen
+/// Image-ID als die, auf die die Referenz lokal (nach dem Pull) zeigt.
+fn diff_updates(
+    containers: &[ContainerImage],
+    local_ids: &HashMap<String, String>,
+) -> Vec<UpdateAvailable> {
+    let mut updates: Vec<UpdateAvailable> = containers
+        .iter()
+        .filter_map(|c| {
+            let new_id = local_ids.get(&c.image_ref)?;
+            if c.running_id.is_empty() || new_id == &c.running_id {
+                return None;
+            }
+            Some(UpdateAvailable {
+                service: c.service.clone(),
+                image: c.image_ref.clone(),
+                old_id: c.running_id.clone(),
+                new_id: new_id.clone(),
+            })
+        })
+        .collect();
+    updates.sort_by(|a, b| a.service.cmp(&b.service));
+    updates.dedup_by(|a, b| a.service == b.service);
+    updates
 }
 
 /// Pullt alle Compose-Images. Bei `app` (lokal gebaut, nicht in der Registry)
@@ -141,27 +172,23 @@ async fn compose_up() -> Result<String, String> {
     Ok(log)
 }
 
-/// Prueft auf Image-Updates ohne sie anzuwenden. `docker compose pull` laeuft,
-/// danach vergleichen wir die Image-IDs.
+/// Prueft auf Image-Updates ohne sie anzuwenden: `docker compose pull`,
+/// danach laufende Container-Image-IDs mit den lokal getaggten vergleichen.
+/// Mehrfach aufrufbar — ein vorheriger Pull versteckt keine Updates.
 pub async fn check() -> Result<CheckResult, String> {
-    let before = snapshot_images().await?;
     compose_pull().await?;
-    let after = snapshot_images().await?;
-    let mut updates = vec![];
-    for (svc, new_row) in &after {
-        let old_id = before.get(svc).map(|r| r.id.as_str()).unwrap_or("");
-        if !new_row.id.is_empty() && old_id != new_row.id {
-            updates.push(UpdateAvailable {
-                service: svc.clone(),
-                image: new_row.image.clone(),
-                old_id: old_id.to_string(),
-                new_id: new_row.id.clone(),
-            });
+    let containers = container_images().await?;
+    let mut local_ids = HashMap::new();
+    for c in &containers {
+        if !local_ids.contains_key(&c.image_ref) {
+            if let Some(id) = local_image_id(&c.image_ref).await {
+                local_ids.insert(c.image_ref.clone(), id);
+            }
         }
     }
     Ok(CheckResult {
         checked_at_iso: Local::now().to_rfc3339(),
-        updates,
+        updates: diff_updates(&containers, &local_ids),
     })
 }
 
@@ -183,11 +210,16 @@ pub async fn apply() -> Result<ApplyResult, String> {
         "Container-Update: Backup vor Recreate ({} Services updates)",
         check_res.updates.len()
     );
-    let backup = backup::create()
+    // Lock ueber Backup + Recreate: kein Restore/Backup dazwischen.
+    let _guard = backup::op_lock().lock().await;
+    let backup = backup::create_unlocked(Some("vor-update"))
         .await
         .map_err(|e| format!("Pre-Backup fehlgeschlagen, Update abgebrochen: {e}"))?;
 
     let log = compose_up().await?;
+    drop(_guard);
+    // Aufbewahrung auch hier anwenden, sonst wachsen Pre-Update-Backups an.
+    let _ = backup::prune(backup::retention_from_config());
 
     let services_list: Vec<String> =
         check_res.updates.iter().map(|u| u.service.clone()).collect();
@@ -208,10 +240,7 @@ pub async fn apply() -> Result<ApplyResult, String> {
 
 fn config_values() -> (bool, u64) {
     let cfg = crate::config::load().unwrap_or_default();
-    let enabled = cfg
-        .get("CONTAINER_AUTOUPDATE_ENABLED")
-        .map(|v| v != "false" && v != "0")
-        .unwrap_or(false);
+    let enabled = crate::config::flag(&cfg, "CONTAINER_AUTOUPDATE_ENABLED", false);
     let interval = cfg
         .get("CONTAINER_AUTOUPDATE_INTERVAL_HOURS")
         .and_then(|v| v.parse().ok())
@@ -251,5 +280,34 @@ pub async fn scheduler_loop() {
             }
             Err(e) => log::warn!("Auto-Update fehlgeschlagen: {e}"),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn c(svc: &str, r: &str, id: &str) -> ContainerImage {
+        ContainerImage { service: svc.into(), image_ref: r.into(), running_id: id.into() }
+    }
+
+    #[test]
+    fn diff_detects_only_changed_images() {
+        let containers = vec![c("pb", "reg/pb:main", "sha256:old"), c("app", "reg/app:main", "sha256:same")];
+        let mut ids = HashMap::new();
+        ids.insert("reg/pb:main".to_string(), "sha256:new".to_string());
+        ids.insert("reg/app:main".to_string(), "sha256:same".to_string());
+        let u = diff_updates(&containers, &ids);
+        assert_eq!(u.len(), 1);
+        assert_eq!(u[0].service, "pb");
+        assert_eq!(u[0].old_id, "sha256:old");
+        assert_eq!(u[0].new_id, "sha256:new");
+    }
+
+    #[test]
+    fn diff_ignores_unknown_refs_and_empty_ids() {
+        let containers = vec![c("pb", "reg/pb:main", ""), c("app", "lokal:dev", "sha256:a")];
+        let ids = HashMap::new();
+        assert!(diff_updates(&containers, &ids).is_empty());
     }
 }

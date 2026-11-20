@@ -6,7 +6,6 @@
 //! Mount-Konfiguration kommt komplett aus `server/container/docker-compose.yml`
 //! plus dortiger `.env`.
 
-use crate::health::HealthProbe;
 use serde::{Deserialize, Serialize};
 
 use std::path::{Path, PathBuf};
@@ -15,13 +14,28 @@ use std::sync::OnceLock;
 /// Wird beim App-Start aus Konfig / Auto-Detect gesetzt — danach read-only.
 static COMPOSE_DIR: OnceLock<PathBuf> = OnceLock::new();
 
-/// Compose-Projektverzeichnis. Liefert den vorher gesetzten Pfad, oder
-/// panickt wenn `init_compose_dir()` noch nicht gelaufen ist.
+/// Platzhalter, solange kein Compose-Verzeichnis gefunden wurde.
+static FALLBACK_DIR: OnceLock<PathBuf> = OnceLock::new();
+
+/// Compose-Projektverzeichnis. Ist noch keins gesetzt (z.B. Erst-Start vor
+/// dem Setup-Wizard), wird die Suche erneut versucht — so greift ein frisch
+/// vom Wizard angelegter Stack ohne App-Neustart. Ohne Treffer kommt der
+/// Wizard-Zielpfad zurueck: `docker compose` scheitert dort mit einer klaren
+/// Meldung ("no configuration file provided") statt die App per Panic in
+/// einzelnen Hintergrund-Tasks lahmzulegen.
 pub fn compose_dir() -> &'static Path {
-    COMPOSE_DIR
-        .get()
-        .map(|p| p.as_path())
-        .expect("compose_dir not initialized — call init_compose_dir() first")
+    if let Some(p) = COMPOSE_DIR.get() {
+        return p.as_path();
+    }
+    let override_path = crate::config::load()
+        .ok()
+        .and_then(|c| c.get("COMPOSE_DIR").cloned());
+    if let Ok(p) = init_compose_dir(override_path) {
+        return p;
+    }
+    FALLBACK_DIR
+        .get_or_init(crate::setup::compose_dir)
+        .as_path()
 }
 
 /// Initialisiert den Compose-Pfad. Reihenfolge:
@@ -88,13 +102,12 @@ pub struct ServiceDef {
     pub id: String,
     /// Anzeige-Name fuer die UI.
     pub display_name: String,
-    /// Host-Port fuer die UI-Anzeige + Health-Probe.
+    /// Host-Port fuer die UI-Anzeige.
     pub port: u16,
     /// Andere Services die laut Compose vorher laufen sollten — nur
     /// informativ fuer Sortierung in der UI. Echte Dep-Order erzwingt Compose.
+    /// (Health kommt aus den Compose-Healthchecks, siehe supervisor::map_state.)
     pub depends_on: Vec<String>,
-    /// Health-Probe (HTTP/TCP) fuer "echt up" jenseits von `docker ps`.
-    pub health: HealthProbe,
 }
 
 pub fn default_services() -> Vec<ServiceDef> {
@@ -104,18 +117,12 @@ pub fn default_services() -> Vec<ServiceDef> {
             display_name: "PocketBase".into(),
             port: 18090, // Host-Port aus server/container/.env (PB_PORT)
             depends_on: vec![],
-            health: HealthProbe::Http {
-                url: "http://127.0.0.1:8090/api/health".into(),
-            },
         },
         ServiceDef {
             id: "app".into(),
             display_name: "RAPPORT".into(),
             port: 18080, // APP_PORT
             depends_on: vec!["pb".into()],
-            health: HealthProbe::Http {
-                url: "http://127.0.0.1:8080/".into(),
-            },
         },
     ]
 }

@@ -81,7 +81,7 @@ export default function SettingsPanel() {
   const text = (key, props = {}) => (
     <input className="input" value={config?.[key] ?? ''} onChange={e => set(key, e.target.value, false)} onBlur={e => save(key, e.target.value)} {...props} />
   )
-  const secret = key => (
+  const secret = key => runtime !== 'tauri' ? <span className="hint">nur in der App auf dem Server-Mac</span> : (
     <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
       <input className="input mono" type={reveal[key] ? 'text' : 'password'} value={config?.[key] ?? ''} onChange={e => set(key, e.target.value, false)} onBlur={e => save(key, e.target.value)} style={{ width: 220 }} autoComplete="off" />
       <button className="btn btn-sm btn-quiet" onClick={() => setReveal(r => ({ ...r, [key]: !r[key] }))} title={reveal[key] ? 'Verbergen' : 'Anzeigen'}><Icon name={reveal[key] ? 'visibility_off' : 'visibility'} size={17} /></button>
@@ -97,7 +97,8 @@ export default function SettingsPanel() {
       <PageHead title="Einstellungen" sub={saving ? `Speichere ${saving} …` : saved ? 'Gespeichert.' : 'Änderungen werden sofort gespeichert.'} />
       {error && <Note tone="neg">{error}</Note>}
       {restartHint && <Note tone="warn">Für Änderungen am Fernzugriff die Server-App einmal beenden (Menüleiste → Beenden) und neu öffnen.</Note>}
-      {empty && <Note>Die Einstellungen lassen sich nur in der Server-App auf dem Server-Mac ändern, nicht über den Browser.</Note>}
+      {empty && <Note>Die Einstellungen lassen sich nur in der Server-App auf dem Server-Mac ändern.</Note>}
+      {!empty && runtime !== 'tauri' && <Note>Im Browser lassen sich Passwörter nicht anzeigen oder ändern — dafür die Server-App auf dem Server-Mac öffnen.</Note>}
 
       {!empty && (
         <div className="cols" style={{ gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)' }}>
@@ -121,6 +122,7 @@ export default function SettingsPanel() {
                 <Switch label="Automatische Backups" checked={bool('BACKUP_ENABLED', true)} onChange={v => set('BACKUP_ENABLED', String(v))} />
               </Setting>
               <Setting title="Alle … Stunden">{text('BACKUP_INTERVAL_HOURS', { type: 'number', min: 1, style: { width: 90, textAlign: 'right' } })}</Setting>
+              <Setting title="Uhrzeit" hint="Stunde für das tägliche Backup (0–23, −1 = ohne feste Zeit). Verpasste Backups werden nachgeholt.">{text('BACKUP_HOUR', { type: 'number', min: -1, max: 23, style: { width: 90, textAlign: 'right' } })}</Setting>
               <Setting title="Anzahl behalten" hint="Ältere werden automatisch gelöscht.">{text('BACKUP_RETENTION_COUNT', { type: 'number', min: 1, style: { width: 90, textAlign: 'right' } })}</Setting>
             </section>
 

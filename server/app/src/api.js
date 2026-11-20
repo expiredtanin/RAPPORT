@@ -85,8 +85,9 @@ export const api = inTauri
       startAll: () => fetchJson('/services/start-all', { method: 'POST' }),
       stopAll: () => fetchJson('/services/stop-all', { method: 'POST' }),
       restartAll: () => fetchJson('/services/restart-all', { method: 'POST' }),
-      getConfig: () => Promise.resolve({}),
-      setConfigValue: () => Promise.resolve(null),
+      // Browser-WebUI: geheime Werte kommen als "<redacted>" und lassen sich hier nicht ändern (403)
+      getConfig: () => fetchJson('/config'),
+      setConfigValue: (key, value) => fetchJson('/config', { method: 'POST', body: JSON.stringify({ key, value }) }),
       backupNow: () => fetchJson('/backups/now', { method: 'POST' }),
       listBackups: () => fetchJson('/backups'),
       restoreBackup: (filename) => fetchJson(`/backups/${encodeURIComponent(filename)}/restore`, { method: 'POST' }),

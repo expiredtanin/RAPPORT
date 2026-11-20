@@ -6,7 +6,7 @@
 //! - `ADMIN_UI_PORT`     (Default `9090`)
 //! - `ADMIN_UI_PASSWORD` (Auto-generiert, ~32 Bytes random)
 //! - `ADMIN_UI_TLS`      (Default `true` — self-signed Cert wird automatisch
-//!                        in `<data_dir>/admin-ui-cert.pem` erzeugt)
+//!   in `<data_dir>/admin-ui-cert.pem` erzeugt; `false` nur mit Loopback-Bind)
 //!
 //! Auth: Basic-Auth mit User `admin`. Fehlversuche werden pro IP gezaehlt;
 //! nach `MAX_FAILS` Fehlern in `FAIL_WINDOW` Sekunden ist die IP fuer
@@ -29,7 +29,6 @@ use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::Mutex;
-use tower_http::services::ServeDir;
 
 const MAX_FAILS: u32 = 5;
 const FAIL_WINDOW: Duration = Duration::from_secs(60);
@@ -44,11 +43,34 @@ struct AuthFailure {
 
 type FailMap = Arc<Mutex<HashMap<IpAddr, AuthFailure>>>;
 
+/// Obergrenze fuer die Fehlversuch-Tabelle (Schutz vor Speicherwachstum).
+const MAX_FAIL_ENTRIES: usize = 4096;
+
 #[derive(Clone)]
 pub struct HttpState {
     pub supervisor: Arc<Mutex<Supervisor>>,
     pub password: String,
     fails: FailMap,
+    /// Liefert die in die App eingebetteten Frontend-Dateien aus.
+    app: tauri::AppHandle,
+}
+
+/// Bind-Adresse pruefen. Ohne TLS nur Loopback — sonst ginge das
+/// Admin-Passwort im Klartext (Basic-Auth) durchs LAN.
+pub fn resolve_bind(bind: &str, port: u16, tls: bool) -> Result<SocketAddr, String> {
+    let ip: IpAddr = bind
+        .trim()
+        .trim_start_matches('[')
+        .trim_end_matches(']')
+        .parse()
+        .map_err(|e| format!("ungueltige ADMIN_UI_BIND {bind:?}: {e}"))?;
+    if !tls && !ip.is_loopback() {
+        return Err(format!(
+            "ADMIN_UI_TLS=false ist nur mit Loopback-Bind erlaubt (ist: {ip}) — \
+             Basic-Auth wuerde sonst unverschluesselt durchs LAN gehen"
+        ));
+    }
+    Ok(SocketAddr::new(ip, port))
 }
 
 pub async fn serve(
@@ -57,12 +79,14 @@ pub async fn serve(
     password: String,
     tls: bool,
     supervisor: Arc<Mutex<Supervisor>>,
-    static_dir: std::path::PathBuf,
+    app: tauri::AppHandle,
 ) -> Result<(), String> {
+    let addr = resolve_bind(&bind, port, tls)?;
     let state = HttpState {
         supervisor,
         password,
         fails: Arc::new(Mutex::new(HashMap::new())),
+        app,
     };
 
     let api = Router::new()
@@ -73,7 +97,9 @@ pub async fn serve(
         .route("/services/:id/stop", post(stop_service))
         .route("/services/:id/restart", post(restart_service_h))
         .route("/services/restart-all", post(restart_all_h))
+        .route("/services/:id", get(service_status_h))
         .route("/services/:id/logs", get(service_logs))
+        .route("/config", get(get_config_h).post(set_config_h))
         .route("/activity", get(current_activity))
         .route("/backups", get(list_backups_h))
         .route("/backups/now", post(backup_now_h))
@@ -89,23 +115,17 @@ pub async fn serve(
         .route("/setup/status", get(setup_status_h))
         .route("/setup/install", post(setup_install_h));
 
-    let static_service = ServeDir::new(&static_dir).append_index_html_on_directories(true);
-
     // Middleware-Reihenfolge (innen → aussen):
     //   csrf_check   — state-changing Requests brauchen den Custom-Header
     //   basic_auth   — IP-Lockout + Credential-Check
     //   security_headers — auf allen Antworten (auch 401 etc.)
     let app = Router::new()
         .nest("/api", api)
-        .fallback_service(static_service)
+        .fallback(static_handler)
         .layer(middleware::from_fn(csrf_check))
         .layer(middleware::from_fn_with_state(state.clone(), basic_auth))
         .layer(middleware::from_fn(security_headers))
         .with_state(state);
-
-    let addr: SocketAddr = format!("{bind}:{port}")
-        .parse()
-        .map_err(|e| format!("bad bind addr {bind}:{port}: {e}"))?;
 
     if tls {
         // rustls 0.23 verlangt expliziten Crypto-Provider. Egal welcher zuerst —
@@ -143,6 +163,12 @@ fn ensure_tls_cert() -> Result<(std::path::PathBuf, std::path::PathBuf), String>
     let cert = crate::paths::admin_ui_cert_path();
     let key = crate::paths::admin_ui_key_path();
     if cert.exists() && key.exists() {
+        // Rechte bestehender Keys nachziehen (aeltere Versionen: 0644-Fenster).
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let _ = std::fs::set_permissions(&key, std::fs::Permissions::from_mode(0o600));
+        }
         return Ok((cert, key));
     }
     log::info!("Generating self-signed TLS cert for Admin WebUI ...");
@@ -160,12 +186,19 @@ fn ensure_tls_cert() -> Result<(std::path::PathBuf, std::path::PathBuf), String>
     let cert_kp = rcgen::generate_simple_self_signed(san)
         .map_err(|e| format!("rcgen: {e}"))?;
     std::fs::write(&cert, cert_kp.cert.pem()).map_err(|e| format!("write cert: {e}"))?;
-    std::fs::write(&key, cert_kp.key_pair.serialize_pem())
-        .map_err(|e| format!("write key: {e}"))?;
+    // Key direkt mit 0600 anlegen (nicht erst schreiben, dann chmod).
+    let mut opts = std::fs::OpenOptions::new();
+    opts.write(true).create(true).truncate(true);
     #[cfg(unix)]
     {
-        use std::os::unix::fs::PermissionsExt;
-        let _ = std::fs::set_permissions(&key, std::fs::Permissions::from_mode(0o600));
+        use std::os::unix::fs::OpenOptionsExt;
+        opts.mode(0o600);
+    }
+    {
+        use std::io::Write;
+        let mut f = opts.open(&key).map_err(|e| format!("write key: {e}"))?;
+        f.write_all(cert_kp.key_pair.serialize_pem().as_bytes())
+            .map_err(|e| format!("write key: {e}"))?;
     }
     Ok((cert, key))
 }
@@ -206,8 +239,15 @@ async fn basic_auth(
 
     // Failure registrieren.
     let mut fails = state.fails.lock().await;
-    let rec = fails.entry(ip).or_default();
     let now = Instant::now();
+    if fails.len() >= MAX_FAIL_ENTRIES {
+        // Abgelaufene Eintraege wegraeumen, damit die Tabelle nicht waechst.
+        fails.retain(|_, r| {
+            r.locked_until.map(|t| now < t).unwrap_or(false)
+                || r.first_seen.map(|t| now.duration_since(t) < FAIL_WINDOW).unwrap_or(false)
+        });
+    }
+    let rec = fails.entry(ip).or_default();
     match rec.first_seen {
         Some(first) if now.duration_since(first) < FAIL_WINDOW => {
             rec.count += 1;
@@ -244,7 +284,9 @@ fn check_auth(header: Option<&axum::http::HeaderValue>, password: &str) -> bool 
     // Praefix ab, was ueber genug Versuche das Passwort Byte fuer Byte leaken
     // kann (Timing-Angriff). `ct_eq` vergleicht immer alle Bytes.
     use subtle::ConstantTimeEq;
-    user == "admin" && pass.as_bytes().ct_eq(password.as_bytes()).into()
+    let user_ok = user.as_bytes().ct_eq(b"admin");
+    let pass_ok = pass.as_bytes().ct_eq(password.as_bytes());
+    !password.is_empty() && bool::from(user_ok & pass_ok)
 }
 
 fn unauthorized() -> Response {
@@ -369,6 +411,96 @@ async fn restart_all_h(State(s): State<HttpState>) -> impl IntoResponse {
     map_result(crate::supervisor::Supervisor::restart_all_managed(s.supervisor.clone()).await)
 }
 
+async fn service_status_h(
+    State(s): State<HttpState>,
+    Path(id): Path<String>,
+) -> impl IntoResponse {
+    let sv = s.supervisor.lock().await;
+    Json(sv.status(&id))
+}
+
+/// Platzhalter fuer geheime Werte in `GET /api/config`.
+const REDACTED: &str = "<redacted>";
+
+/// Schluessel, die ueber HTTP nicht gesetzt werden duerfen: Geheimnisse
+/// (Passwoerter nur lokal in der App) und `COMPOSE_DIR` (wuerde `docker
+/// compose` auf ein beliebiges Verzeichnis umlenken).
+fn http_writable(key: &str) -> bool {
+    !crate::config::is_secret_key(key) && key != "COMPOSE_DIR"
+}
+
+async fn get_config_h() -> Response {
+    match crate::config::load() {
+        Ok(mut map) => {
+            crate::config::ensure_defaults(&mut map);
+            for (k, v) in map.iter_mut() {
+                if crate::config::is_secret_key(k) {
+                    *v = REDACTED.to_string();
+                }
+            }
+            Json(map).into_response()
+        }
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e).into_response(),
+    }
+}
+
+#[derive(serde::Deserialize)]
+struct SetConfigBody {
+    key: String,
+    value: String,
+}
+
+async fn set_config_h(Json(body): Json<SetConfigBody>) -> Response {
+    if !http_writable(&body.key) {
+        return (
+            StatusCode::FORBIDDEN,
+            "Dieser Schluessel ist nur in der App auf dem Server aenderbar",
+        )
+            .into_response();
+    }
+    match crate::config::set_value(&body.key, &body.value) {
+        Ok(()) => (StatusCode::OK, "ok").into_response(),
+        Err(e) => (StatusCode::BAD_REQUEST, e).into_response(),
+    }
+}
+
+/// Liefert das Frontend aus den in die App eingebetteten Assets (Tauri
+/// AssetResolver) — frueher kam es aus `<crate>/../dist` zur Build-Zeit,
+/// was in der verteilten App nicht existiert. Unbekannte Pfade ohne
+/// Dateiendung bekommen `index.html` (SPA). `..`-Pfade werden abgelehnt
+/// (im Dev-Modus liest der Resolver direkt vom Dateisystem).
+async fn static_handler(State(s): State<HttpState>, uri: axum::http::Uri) -> Response {
+    let raw = uri.path();
+    if raw.starts_with("/api/") || raw == "/api" {
+        // Unbekannte API-Route: kein index.html ausliefern.
+        return StatusCode::NOT_FOUND.into_response();
+    }
+    if !is_safe_asset_path(raw) {
+        return StatusCode::BAD_REQUEST.into_response();
+    }
+    let path = raw.trim_start_matches('/').to_string();
+    match s.app.asset_resolver().get(path) {
+        Some(asset) => {
+            let mut resp = Response::new(Body::from(asset.bytes));
+            if let Ok(v) = asset.mime_type.parse() {
+                resp.headers_mut().insert(header::CONTENT_TYPE, v);
+            }
+            resp
+        }
+        None => StatusCode::NOT_FOUND.into_response(),
+    }
+}
+
+/// Kein `..`-Segment, kein Backslash, kein NUL und keine kodierten Punkte/
+/// Trenner (Frontend-Assets brauchen die nie).
+fn is_safe_asset_path(p: &str) -> bool {
+    let lower = p.to_ascii_lowercase();
+    !p.contains('\\')
+        && !p.contains('\0')
+        && !p.split('/').any(|seg| seg == ".." || seg == ".")
+        && !["%2e", "%2f", "%5c", "%00"].iter().any(|bad| lower.contains(bad))
+}
+
 async fn service_logs(
     State(s): State<HttpState>,
     Path(id): Path<String>,
@@ -387,13 +519,16 @@ async fn list_backups_h() -> impl IntoResponse {
 }
 
 async fn backup_now_h() -> Response {
-    match crate::backup::create().await {
+    match crate::backup::create_and_prune().await {
         Ok(info) => Json(info).into_response(),
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e).into_response(),
     }
 }
 
 async fn restore_backup_h(Path(filename): Path<String>) -> Response {
+    if !crate::backup::is_valid_backup_name(&filename) {
+        return (StatusCode::BAD_REQUEST, "ungueltiger Dateiname").into_response();
+    }
     match crate::backup::restore(&filename).await {
         Ok(res) => Json(res).into_response(),
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e).into_response(),
@@ -463,5 +598,55 @@ fn map_result(r: Result<(), String>) -> Response {
     match r {
         Ok(()) => (StatusCode::OK, "ok").into_response(),
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e).into_response(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn basic(user: &str, pass: &str) -> axum::http::HeaderValue {
+        let b = base64::engine::general_purpose::STANDARD.encode(format!("{user}:{pass}"));
+        format!("Basic {b}").parse().unwrap()
+    }
+
+    #[test]
+    fn auth_checks() {
+        assert!(check_auth(Some(&basic("admin", "geheim")), "geheim"));
+        assert!(!check_auth(Some(&basic("admin", "falsch")), "geheim"));
+        assert!(!check_auth(Some(&basic("root", "geheim")), "geheim"));
+        assert!(!check_auth(Some(&basic("admin", "")), ""));
+        assert!(!check_auth(None, "geheim"));
+        let bad: axum::http::HeaderValue = "Bearer xyz".parse().unwrap();
+        assert!(!check_auth(Some(&bad), "geheim"));
+    }
+
+    #[test]
+    fn bind_rules() {
+        assert!(resolve_bind("127.0.0.1", 9090, true).is_ok());
+        assert!(resolve_bind("0.0.0.0", 9090, true).is_ok());
+        assert!(resolve_bind("::1", 9090, false).is_ok());
+        assert!(resolve_bind("[::]", 9090, true).is_ok());
+        assert!(resolve_bind("0.0.0.0", 9090, false).is_err());
+        assert!(resolve_bind("kaputt", 9090, true).is_err());
+    }
+
+    #[test]
+    fn asset_paths() {
+        assert!(is_safe_asset_path("/"));
+        assert!(is_safe_asset_path("/assets/index-abc.js"));
+        assert!(!is_safe_asset_path("/../etc/passwd"));
+        assert!(!is_safe_asset_path("/assets/%2e%2e/%2e%2e/x"));
+        assert!(!is_safe_asset_path("/a/..%2f..%2fx"));
+        assert!(!is_safe_asset_path("/a\\b"));
+    }
+
+    #[test]
+    fn http_config_write_rules() {
+        assert!(http_writable("BACKUP_HOUR"));
+        assert!(http_writable("ADMIN_UI_BIND"));
+        assert!(!http_writable("ADMIN_UI_PASSWORD"));
+        assert!(!http_writable("PB_SUPERUSER_PASSWORD"));
+        assert!(!http_writable("COMPOSE_DIR"));
     }
 }

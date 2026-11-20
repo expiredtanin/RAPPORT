@@ -62,8 +62,10 @@ export default function AppUpdateBanner() {
           setProgress({ downloaded: totalBytes, total: totalBytes })
         }
       })
-      // Tauri restartet automatisch — sollten wir nie sehen
+      // Nach der Installation neu starten (Tauri tut das nicht von selbst; process:allow-restart)
       setStep('done')
+      const { relaunch } = await import('@tauri-apps/plugin-process')
+      await relaunch()
     } catch (e) {
       console.error('[update] failed:', e)
       setFailedAt(cur)

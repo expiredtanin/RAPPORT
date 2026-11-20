@@ -16,19 +16,21 @@ Die Server-App ist eine **Tauri-2-App**, deren Rust-Backend keine Container selb
 
 ```
 server/app/
-├── src/                          React-Admin-UI (JSX, kein TS)
-│   ├── main.jsx                  Entry
-│   ├── App.jsx                   Root: Tabs (Status / Logs / Backup / Settings)
-│   ├── api.js                    invoke() in Tauri, fetch() im Browser — gleicher Shape
+├── src/                          React-Admin-UI (JSX, kein TS), Gestaltung wie die Haupt-App
+│   ├── main.jsx                  Entry; Schriften lokal (Inter, Archivo Black, Material Symbols Rounded)
+│   ├── App.jsx                   Rahmen: Seitenleiste, Navigation, Polling von Diensten/Auslastung, Sammelaktionen
+│   ├── api.js                    invoke() in Tauri, fetch() im Browser — gleicher Shape (Config im Browser ohne Geheimnisse)
+│   ├── styles.css                Variablen wie ../../src/styles/global.css, hell/dunkel nach System
 │   └── components/
-│       ├── ServiceCard.jsx       eine Karte pro Service mit State-Dot
-│       ├── LogViewer.jsx         live tail über docker compose logs
-│       ├── BackupPanel.jsx       Backup/Restore + Disk-Usage + Container-Updates
-│       ├── FirstAidPanel.jsx     Erste-Hilfe-Aktionen (Recreate/Reset)
-│       ├── EventFeed.jsx         Ringbuffer-Event-Log-Anzeige (siehe events.rs)
+│       ├── ui.jsx                PageHead, Note, Icon, ConfirmProvider/useConfirm (statt window.confirm —
+│       │                         in WKWebView stumm), Formatierung
+│       ├── Overview.jsx          Übersicht: Zustand, Kennzahlen, Dienste mit Auslastung, Zugänge, Aktivität (events.rs)
+│       ├── BackupPanel.jsx       Backups & Updates: Liste, Wiederherstellen, Speicherplatz, Container-Updates
+│       ├── LogViewer.jsx         Logs je Dienst mit Filter, Anhalten, Kopieren
+│       ├── FirstAidPanel.jsx     Erste Hilfe: Diagnose → Neu erstellen → Daten-Reset (Tippwort)
 │       ├── SetupWizard.jsx       Docker/Colima-Erstinstallation (siehe setup.rs)
-│       ├── AppUpdateBanner.jsx   Hinweis-Banner bei verfügbarem App-Update
-│       └── SettingsPanel.jsx     Admin-WebUI-Sektion + Roh-Editor für config.env
+│       ├── AppUpdateBanner.jsx   App-Update mit Backup, Fortschritt und Neustart (relaunch)
+│       └── SettingsPanel.jsx     Einstellungen gruppiert + Rohzugriff auf config.env
 │
 ├── src-tauri/                    Rust-Backend
 │   ├── src/
@@ -40,14 +42,14 @@ server/app/
 │   │   ├── http_server.rs        axum + rustls + Basic-Auth + Rate-Limit
 │   │   ├── config.rs             config.env Lesen/Schreiben + Default-Generation
 │   │   ├── paths.rs              ~/Library/.../com.rapport.server-app/...
-│   │   ├── health.rs             (alt: HTTP-Probes — nicht mehr aktiv genutzt,
-│   │   │                          wir lesen Container-State aus `docker compose ps`)
-│   │   ├── backup.rs             tar.gz-Snapshots von /pb/pb_data, Restore-Flow
+│   │   ├── backup.rs             tar.gz-Snapshots von /pb/pb_data (pb kurz gestoppt),
+│   │   │                          Restore-Flow, Auto-Backup-Scheduler + Rotation
 │   │   ├── disk.rs                Disk-Usage-Sammler (pb_data, Backups, Docker-Volumes, Host)
 │   │   ├── container_update.rs   Image-Update-Check + Apply (mit Pre-Backup)
 │   │   ├── firstaid.rs           Erste-Hilfe: Recreate/Reset-Data/Redeploy
 │   │   ├── stats.rs               CPU/RAM/Netz pro Container (docker stats)
 │   │   ├── events.rs              Ringbuffer-Event-Log fürs Status-Dashboard
+│   │   ├── pb_embed.rs           PocketBase-Admin als Child-Webview im Hauptfenster
 │   │   └── commands.rs           #[tauri::command]-Wrapper für die UI
 │   ├── Cargo.toml
 │   └── tauri.conf.json
@@ -81,8 +83,15 @@ Der Rust-Supervisor (`supervisor.rs`) ist im Wesentlichen ein Wrapper um die `do
 | `stop(id)` | `docker compose stop <id>` |
 | `start_all()` | `docker compose up -d` (Compose erzwingt `depends_on`) |
 | `stop_all()` | `docker compose down` |
-| `logs(id)` | Hintergrund-Spawn von `docker compose logs -f <id>`, stdout → Ring-Buffer (1000 Zeilen) |
-| `tick_health()` | alle 2s: `docker compose ps -a --format json` parsen, Container-State + Health-Status auf die UI-State-Machine mappen |
+| `restart(id)` / `restart_all()` | `docker compose restart [<id>]`, danach `up -d --no-recreate` (legt fehlende Container an) |
+| `logs(id)` | Hintergrund-Spawn von `docker compose logs -f --tail 1000 <id>`, stdout → Ring-Buffer (1000 Zeilen, wird beim Respawn neu befüllt) |
+| `query_compose_status()` + `apply_health()` | alle 2s: `docker compose ps -a --format json` (ohne Supervisor-Lock, 20 s Timeout) parsen — Compose liefert je nach Version ein JSON-Array oder NDJSON, beides wird gelesen — und auf die UI-State-Machine mappen |
+
+Der Tick pflegt auch die Log-Pumps: beendete `logs -f`-Prozesse werden abgeräumt, für laufende Container ohne Pump (z. B. per Terminal gestartet) wird einer gestartet (höchstens alle 30 s). Beim App-Exit werden alle Pumps beendet.
+
+**Docker nicht erreichbar** (Colima gestoppt, Daemon hängt): alle Services → `Stopped` mit `last_error = "Docker nicht erreichbar: …"`, ein Event + eine Notification (nicht pro Service, keine Auto-Recovery-Versuche). Kommt Docker zurück: Event „Docker wieder erreichbar“.
+
+**Crash-Benachrichtigung:** Wechselt ein Service in `Error`, gibt es Event + System-Notification. Auto-Recovery (`AUTO_RECOVERY_*`) startet ihn nach `AUTO_RECOVERY_BASE_DELAY_SECONDS` neu (exponentielles Backoff), nach `AUTO_RECOVERY_MAX_ATTEMPTS` gibt sie mit Notification auf.
 
 Pro Service wird die State-Machine `Stopped → Starting → Running` (mit `Error`-Zweig) aus Compose-Output abgeleitet. **Healthchecks definiert Compose** in der yml; unsere App liest nur den Status, probt nicht selber.
 
@@ -91,7 +100,8 @@ Pro Service wird die State-Machine `Stopped → Starting → Running` (mit `Erro
 ```
 compose.state               → ServiceState
 ─────────────────────────────────────────
-nicht in ps                 → Stopped
+nicht in ps                 → Stopped (während eines laufenden compose-
+                              Aufrufs + 30 s Nachlauf bleibt Starting)
 running + health=healthy    → Running
 running + health=starting   → Starting
 running + (kein health)     → Running
@@ -121,10 +131,15 @@ Der erste Pfad mit einer `docker-compose.yml` wird genommen. Hat keiner eine, lo
 
 `http_server.rs` startet **axum 0.7** mit `axum-server`-rustls-Adapter. Im Detail:
 
-- **Routen**: `GET /api/services`, `POST /api/services/start-all|stop-all|:id/start|:id/stop`, `GET /api/services/:id/logs`, `GET /api/activity`. Plus statisches `dist/` als Fallback (gleiche React-App wie in der Tauri-WebView).
-- **TLS**: self-signed Cert via [`rcgen`](https://crates.io/crates/rcgen), SANs für `localhost`, `127.0.0.1`, `<hostname>`, `<hostname>.local`. Cert + Key landen in `~/Library/.../admin-ui-cert.pem` (chmod 600 fürs Key). Browser warnt einmal pro Gerät.
-- **Auth**: HTTP-Basic, User `admin`, Passwort aus `ADMIN_UI_PASSWORD`. Pro IP wird ein Fehler-Counter geführt — nach 5 Fehlversuchen in 60 s ist die IP für 5 Min geblockt.
-- **Bind**: Default `127.0.0.1:9090`. LAN-Freigabe ist Opt-In via Settings-Toggle (mit Confirm-Dialog).
+- **Routen** (alle unter `/api`, Basic-Auth; schreibende zusätzlich Header `X-Rapport-Csrf`):
+  `GET services`, `GET services/:id` (Status oder `null`), `POST services/start-all|stop-all|restart-all|:id/start|:id/stop|:id/restart`, `GET services/:id/logs`, `GET activity`,
+  `GET backups`, `POST backups/now`, `POST backups/:filename/restore`, `POST container-updates/check|apply`, `GET events|stats|disk`, `POST firstaid/recreate|reset-data|diagnose`, `GET setup/status`, `POST setup/install`,
+  `GET config` (wie `get_config`, aber Werte geheimer Schlüssel — Name enthält `PASSWORD`/`SECRET`/`TOKEN`/`KEY` — als `"<redacted>"`), `POST config` mit JSON `{"key","value"}` (wie `set_config_value`; geheime Schlüssel und `COMPOSE_DIR` → 403, ungültiger Schlüssel/Wert → 400).
+- **Frontend**: aus den in die App eingebetteten Assets (Tauri `asset_resolver`, SPA-Fallback auf `index.html`); unbekannte `/api/*` → 404, Pfade mit `..`/kodierten Trennern → 400.
+- **TLS**: self-signed Cert via [`rcgen`](https://crates.io/crates/rcgen), SANs für `localhost`, `127.0.0.1`, `<hostname>`, `<hostname>.local`. Cert + Key landen in `~/Library/.../admin-ui-cert.pem`; der Key wird direkt mit 0600 angelegt. Browser warnt einmal pro Gerät.
+- **Auth**: HTTP-Basic, User `admin`, Passwort aus `ADMIN_UI_PASSWORD` (User + Passwort zeitkonstant verglichen). Pro IP wird ein Fehler-Counter geführt — nach 5 Fehlversuchen in 60 s ist die IP für 5 Min geblockt; die Tabelle wird bei >4096 Einträgen von abgelaufenen bereinigt.
+- **Bind**: Default `127.0.0.1:9090` (IPv4/IPv6). LAN-Freigabe ist Opt-In via Settings-Toggle (mit Confirm-Dialog). `ADMIN_UI_TLS=false` startet nur mit Loopback-Bind (sonst Basic-Auth im Klartext im LAN) — Fehler landet im Event-Log.
+- **Änderungen** an `ADMIN_UI_*` greifen erst nach App-Neustart.
 
 ---
 
@@ -143,8 +158,19 @@ Der erste Pfad mit einer `docker-compose.yml` wird genommen. Hat keiner eine, lo
 ├── admin-ui-key.pem            TLS-Private-Key (chmod 600)
 ├── pb_data/                     (nicht genutzt — Compose mountet sein eigenes Volume)
 ├── logs/                       (App-eigene Logs, separat von Compose-Logs)
-└── backups/                    tar.gz-Snapshots von /pb/pb_data (siehe backup.rs)
+└── backups/                    tar.gz-Snapshots von /pb/pb_data (siehe backup.rs),
+                                dazu diagnose-*.txt aus der Ersten Hilfe
 ```
+
+### Backups (`backup.rs`)
+
+- **Konsistent:** PocketBase hält SQLite im WAL-Modus offen; ein `tar` im laufenden Container ist nicht konsistent. Darum: `compose stop pb` → `compose run --rm --no-deps -T --entrypoint tar pb -czf - -C / pb/pb_data` (gestreamt in `<name>.partial`, gzip geprüft, dann umbenannt) → `compose start pb`. Ausfall von pb: wenige Sekunden.
+- **Dateinamen:** `rapport-YYYYmmdd-HHMMSS[-label][-n].tar.gz`, Labels `vor-restore`, `vor-update`, `vor-reset` für Sicherheits-Backups. Restore akzeptiert nur Namen nach genau diesem Muster (kein Pfad-Traversal).
+- **Automatisch:** Scheduler prüft alle 10 Min. `BACKUP_ENABLED` (Default `true`), `BACKUP_INTERVAL_HOURS` (24), `BACKUP_HOUR` (Stunde 0–23 Ortszeit, Default 3; `-1` = keine feste Stunde; bei Intervallen < 24 h ignoriert). War der Rechner zur Stunde aus, läuft es nach, sobald es 24 h überfällig ist. Fehlschlag → Event + Notification.
+- **Rotation:** `BACKUP_RETENTION_COUNT` (Default 14 für neue Installationen; bestehende `config.env` behalten ihren Wert) — neueste N bleiben, auch nach „Backup jetzt“ und Container-Update. Das neueste wird nie gelöscht.
+- **Restore:** Safety-Backup → `compose stop pb app` → Einmal-Container puffert das Archiv, prüft es (`tar -tz`, nur `pb/pb_data/…`, kein `..`) und löscht erst dann die alten Daten → `compose up -d` (auch nach Fehlern).
+- **Reihenfolge:** Backup, Restore, Container-Update und Daten-Reset laufen über einen gemeinsamen Lock nie gleichzeitig.
+- **Container-Update:** `compose pull`, dann je Container die laufende Image-ID mit der lokal getaggten vergleichen (früher: `compose images` vorher/nachher — fand nie etwas, weil das die Container-Image-ID ist). Bei Updates: Pre-Backup (`vor-update`), `compose up -d`, Rotation.
 
 Container-Volumes verwaltet Compose über Docker selbst (`pb-data`-Named-Volume). Wenn die App stoppt, bleiben die Daten erhalten.
 
@@ -169,18 +195,20 @@ Effekt: ein **headless Mac Mini** kann die App im Boot-Login starten, sie versch
 
 - 🔒 WebUI Default `127.0.0.1`; LAN ist bewusste Opt-In-Aktion
 - 🔒 WebUI über HTTPS (rustls + self-signed)
-- 🔒 Basic-Auth mit IP-basiertem Rate-Limit
-- 🔒 `config.env` + TLS-Key chmod 600
-- ⚠️ Updater-Plugin: `active: false`, Pubkey-Placeholder noch drin
-- ⚠️ Container-Crash-Notification: nur via UI-Status, kein Alert-Push
+- 🔒 Basic-Auth (zeitkonstant) mit IP-basiertem Rate-Limit, CSRF-Header auf allen schreibenden Routen
+- 🔒 `config.env` + TLS-Key von Anfang an 0600 (kein Fenster mit Default-umask); Werte mit Zeilenumbrüchen werden abgelehnt (keine Schlüssel-Injection)
+- 🔒 Geheimnisse gehen nicht über HTTP raus (`GET /api/config` geschwärzt), Diagnose-Bundle schwärzt alle `*PASSWORD*`/`*SECRET*`/`*TOKEN*`/`*KEY*`
+- 🔒 Capabilities: kein `process:allow-exit`, kein `notification:default` (Notifications kommen aus Rust); PocketBase-Embed (Remote-URL) hat keinen IPC-Zugriff
+- 🔒 Container-Crash und Docker-Ausfall → System-Notification
+- ℹ️ Updater: Endpoint + Pubkey in `tauri.conf.json` gesetzt (`plugins.updater`); der private Schlüssel liegt nur beim Maintainer (`release.sh`). Neue Schlüssel nie in der App generieren.
 
 ---
 
 ## 10 · Bekannte Lücken / nächste Schritte
 
 - [ ] Audit-Log (wer hat wann was gestartet/gestoppt)
-- [ ] Updater-Pubkey generieren oder Plugin ganz raus
-- [ ] Capabilities tighten (`process:allow-exit` einschränken)
+- [ ] Backup ohne pb-Stopp (PocketBase-Backup-API mit Superuser-Token oder `sqlite3 .backup` im Image)
+- [ ] Backups ausserhalb des Rechners (z. B. zweites Ziel)
 - [ ] Compose-Dir + `.env` ins Bundle inkludieren statt Pfad-Sucherei
 - [ ] Linux/Windows getestet (aktuell nur Mac aarch64 verifiziert)
 

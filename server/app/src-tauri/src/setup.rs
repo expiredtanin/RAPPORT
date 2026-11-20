@@ -111,8 +111,13 @@ pub async fn install_and_start() -> Result<InstallResult, String> {
     // Compose-Stack-Bootstrap: nur wenn noch nichts gefunden wird (z.B.
     // Erst-Install). Wer eine eigene SERVER-CONTAINER-Repo hat (lokaler
     // Klon unter ~/RAPPORT/SERVER-CONTAINER/) bleibt unberuehrt.
-    if let Err(_) = crate::services::init_compose_dir(None) {
+    if crate::services::init_compose_dir(None).is_err() {
         bootstrap_compose_stack(&mut log).await?;
+        // Frisch angelegten Stack sofort uebernehmen (ohne App-Neustart).
+        match crate::services::init_compose_dir(None) {
+            Ok(p) => log::info!("Compose-Dir nach Setup: {}", p.display()),
+            Err(e) => log::warn!("Compose-Dir nach Setup nicht gefunden: {e}"),
+        }
     }
 
     crate::events::info("Setup: colima start ...").await;
@@ -177,7 +182,8 @@ async fn download_all(log: &mut String) -> Result<(), String> {
 }
 
 struct Arch {
-    /// `arm64` oder `amd64`
+    /// `arm64` oder `amd64` (derzeit ungenutzt, fuer kuenftige Downloads)
+    #[allow(dead_code)]
     docker_label: &'static str,
     /// `Darwin-arm64` oder `Darwin-x86_64`
     colima_label: &'static str,

@@ -79,22 +79,14 @@ pub async fn get_config() -> Result<config::EnvMap, String> {
 
 #[tauri::command]
 pub async fn set_config_value(key: String, value: String) -> Result<(), String> {
-    let mut map = config::load()?;
-    map.insert(key, value);
-    config::save(&map)
+    // Validiert Schluessel/Wert (keine Zeilenumbrueche → keine Datei-Injection).
+    config::set_value(&key, &value)
 }
 
 #[tauri::command]
 pub async fn backup_now() -> Result<BackupInfo, String> {
-    let info = backup::create().await?;
     // Direkt nach manuellem Backup auch prunen (sonst macht's nur der Scheduler).
-    let retention = config::load()
-        .ok()
-        .and_then(|c| c.get("BACKUP_RETENTION_COUNT").cloned())
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(7);
-    let _ = backup::prune(retention);
-    Ok(info)
+    backup::create_and_prune().await
 }
 
 #[tauri::command]
