@@ -21,6 +21,13 @@ import ErrorBoundary from './components/ErrorBoundary'
 
 document.addEventListener('contextmenu', e => e.preventDefault())
 
+// macOS-App ohne System-Titelleiste (tauri.conf.json: titleBarStyle «Overlay»): die Fensterknöpfe liegen
+// oben links in der Seitenleiste; `mac-app` gibt ihnen dort Platz (global.css) und macht Kopfbereiche
+// ziehbar (data-tauri-drag-region). Im Browser und unter Windows/Linux bleibt alles wie bisher.
+if ((window as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__ && /Mac/.test(navigator.userAgent)) {
+  document.documentElement.classList.add('mac-app')
+}
+
 createRoot(document.getElementById('root') as HTMLElement).render(
   <StrictMode>
     <ErrorBoundary fullscreen>

@@ -41,16 +41,22 @@ export interface SidebarProps {
   onOpenPalette: () => void;
 }
 
+/** macOS-App ohne System-Titelleiste (Klasse aus main.tsx, gesetzt vor dem ersten Rendern). Eingeklappt braucht die Seitenleiste dann Platz für die Fensterknöpfe. */
+const isMacApp = () => typeof document !== "undefined" && document.documentElement.classList.contains("mac-app");
+
 export default function Sidebar({
   data, items, view, collapsed, navOpen, setNavOpen, setSidebarCollapsed, expandedNav, setExpandedNav,
   navigate, setSelectedProjectId, goBack, goForward, navCanBack, navCanForward, onShowAbout,
   onShowChangelog, currentUser, currentUserRecord, userInitials, darkMode, setDarkMode, handleLogout, onOpenPalette,
 }: SidebarProps) {
   // Von Hand aufgeklappte Bereiche schliessen beim Navigieren wieder; der aktive Bereich ist immer offen.
+  const MAC_APP = isMacApp();
   const go = (id: string) => { navigate(id); setSelectedProjectId(null); setNavOpen(false); setExpandedNav(new Set()); };
   return (
-    <aside className={`sidebar${navOpen ? " open" : ""}${collapsed ? " collapsed" : ""}`} style={{ width: collapsed ? 60 : 220 }}>
-      <div className="side-head">
+    <aside className={`sidebar${navOpen ? " open" : ""}${collapsed ? " collapsed" : ""}`} style={{ width: collapsed ? (MAC_APP ? 80 : 60) : 220 }}>
+      {/* macOS-App: Streifen für die Fensterknöpfe, zum Verschieben des Fensters ziehbar */}
+      {MAC_APP && <div className="side-titlebar" data-tauri-drag-region />}
+      <div className="side-head" data-tauri-drag-region>
         {collapsed ? (
           <button className="sidebar-logo-btn side-wordmark" onClick={() => setSidebarCollapsed(false)} title="Seitenleiste ausklappen" aria-label="Seitenleiste ausklappen">R</button>
         ) : (

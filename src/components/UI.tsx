@@ -74,10 +74,10 @@ export function StatusSelect({ value, options, onChange }: { value: string; opti
  */
 export function Header({ title, action, crumb, sub, tabs }: { title: ReactNode; action?: ReactNode; crumb?: ReactNode; sub?: ReactNode; tabs?: ReactNode }) {
   return (
-    <header className={`page-head${tabs ? " has-tabs" : ""}`}>
+    <header className={`page-head${tabs ? " has-tabs" : ""}`} data-tauri-drag-region>
       {crumb && <div className="page-crumb">{crumb}</div>}
-      <div className="page-head-row">
-        <h1>{title}</h1>
+      <div className="page-head-row" data-tauri-drag-region>
+        <h1 data-tauri-drag-region>{title}</h1>
         {action && <div className="page-actions">{action}</div>}
       </div>
       {sub && <div className="page-sub">{sub}</div>}

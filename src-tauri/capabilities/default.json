@@ -8,6 +8,7 @@
   "permissions": [
     "core:default",
     "core:webview:allow-print",
+    "core:window:allow-start-dragging",
     "updater:default",
     "process:allow-restart",
     "dialog:allow-open",
