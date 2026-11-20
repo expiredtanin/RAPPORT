@@ -23,7 +23,7 @@ export default function LivePreview({ settings, assets, content }: Pick<Componen
   return (
     <div ref={ref} style={{ width: "100%", maxWidth: 620 }}>
       <DocPreview settings={settings} assets={assets} width={w} content={content} />
-      <div style={{ fontSize: 11.5, color: "var(--text4)", marginTop: 10, textAlign: "center" }}>Vorschau des PDFs mit dem aktuellen Stand (Seitenumbrüche erst im Druck)</div>
+      <div style={{ fontSize: 11.5, color: "var(--text4)", marginTop: 10, textAlign: "center" }}>Vorschau des PDFs mit dem aktuellen Stand, Seiten wie im Druck</div>
     </div>
   );
 }
