@@ -71,3 +71,14 @@ Die **Zahlen** dort stammen aus denselben Demo-Daten wie die Screenshots —
 `report()` unten ist also auch für die Startseite die Kontrollrechnung.
 Jahreszahlen und Wochentage rechnet Hugo aus `now` (`layouts/_shortcodes/yr.html`
 und `wd.html`), damit die Belege nicht still veralten.
+
+## Demobüro zum Importieren
+
+`demo-buero.json` ist das Demobüro als Backup: in der App unter Einstellungen → System → «Backup importieren»
+(überschreibt die lokalen Daten) oder bei der Ersteinrichtung «Backup importieren». Anmeldung danach mit
+Benutzer `admin`, Passwort `admin`. Die Daten sind relativ zum Erzeugungsdatum datiert — für aktuelle
+Wochen neu erzeugen:
+
+```bash
+node scripts/marketing-shots/demo-export.mjs
+```
