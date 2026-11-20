@@ -576,26 +576,27 @@ function ProtokollDetail({ protokoll, data, onBack, onSave, onDelete, setPrintCo
       <datalist id={`wer-${p.id}`}>
         {p.participants.map(tn => <option key={tn.id} value={participantKuerzel(tn)}>{tn.name}</option>)}
       </datalist>
-      {/* Header */}
-      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
-        <button onClick={onBack} style={{ background: "none", border: "none", fontSize: 12, color: "var(--text4)", cursor: "pointer", padding: 0, fontFamily: "inherit" }}>← Protokolle</button>
-        {isDirty && <span style={{ fontSize: 11, color: "var(--warning)" }}>● Ungespeichert</span>}
-      </div>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 24 }}>
-        <div style={{ flex: 1, marginRight: 20 }}>
+      {/* Kopf als Band wie bei den Projekten; der Titel ist direkt editierbar */}
+      <header className="page-head">
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
+          <button className="btn btn-quiet btn-sm" onClick={onBack} style={{ marginLeft: -10 }}><span className="msr" style={{ fontSize: 16 }}>arrow_back</span>Protokolle</button>
+          {isDirty && <span style={{ fontSize: 12, color: "var(--warning)" }}>● Ungespeichert</span>}
+        </div>
+      <div className="page-head-row" style={{ alignItems: "flex-start" }}>
+        <div style={{ flex: 1, minWidth: 260 }}>
           <input
+            className="title-input"
             value={p.title}
             onChange={e => setField("title", e.target.value)}
             placeholder="Protokolltitel…"
-            style={{ fontSize: 28, fontFamily: "var(--font-ui)", fontWeight: 400, background: "none", border: "none", borderBottom: "2px solid var(--border)", borderRadius: 0, padding: "4px 0", width: "100%", outline: "none", color: "var(--text)" }}
           />
-          <div style={{ fontSize: 12, color: "var(--text4)", marginTop: 6 }}>
+          <div className="page-crumb" style={{ marginTop: 4, marginBottom: 0 }}>
             {p.nummer}
             {p.type && <span> · {p.type}</span>}
             {(() => { const proj = data.projects.find(x => x.id === p.projectId); return proj?.number ? <span style={{ color: "var(--accent)", marginLeft: 8, fontWeight: 600 }}>{proj.number}</span> : null; })()}
           </div>
         </div>
-        <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
+        <div className="page-actions">
           <button className="btn btn-ghost" onClick={async () => { if (await askConfirm("Protokoll löschen?")) onDelete(p.id); }}>Löschen</button>
           <button className="btn btn-ghost" onClick={() => setShowFolge(true)} title="Neue Sitzung auf Basis dieses Protokolls erstellen">↪ Folgesitzung</button>
           <ShareButton options={[{ label: "PDF", onClick: () => setPrintContent({ type: "protokoll", protokoll: p, data, settings: data.settings }) }]} />
@@ -606,8 +607,9 @@ function ProtokollDetail({ protokoll, data, onBack, onSave, onDelete, setPrintCo
               </span>}
         </div>
       </div>
+      </header>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 340px", gap: 20, alignItems: "start" }}>
+      <div className="responsive-grid-2" style={{ display: "grid", gridTemplateColumns: "1fr 340px", gap: 20, alignItems: "start" }}>
 
         {/* ── LINKE SPALTE: Metadaten + Traktanden ── */}
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>

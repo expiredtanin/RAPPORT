@@ -17,7 +17,7 @@
 // Nicht-Admins sehen nur «Mein Profil».
 
 import React, { useState, useEffect } from "react";
-import { Header } from "../components/UI";
+import { Header, PageTabs } from "../components/UI";
 import UpdatesSupport from "../components/UpdatesSupport";
 import DocDesignSettings from "../components/DocDesignSettings";
 import { PersonalSettings } from "./settings/PersonalSettings";
@@ -79,13 +79,7 @@ export default function Settings({ data, update, currentUser, uiZoom, setUiZoom,
   return (
     <div>
       {/* ── Profil-Tab ── */}
-      {tab === "profil" && <PersonalSettings data={data} update={update} currentUser={currentUser} uiZoom={uiZoom || 1} setUiZoom={setUiZoom || (() => {})} nav={
-        <div className="filter-bar" style={{ marginBottom: 20 }}>
-          {TABS.map(t => (
-            <button key={t.id} onClick={() => setTab(t.id)} className={`pill${tab === t.id ? " active" : ""}`}>{t.label}</button>
-          ))}
-        </div>
-      } />}
+      {tab === "profil" && <PersonalSettings data={data} update={update} currentUser={currentUser} uiZoom={uiZoom || 1} setUiZoom={setUiZoom || (() => {})} nav={<PageTabs tabs={TABS} value={tab} onChange={setTab} />} />}
 
       {/* ── Settings-Tabs (studio / dokumente / team / system / kalender) ── */}
       {tab !== "profil" && <>
@@ -98,13 +92,8 @@ export default function Settings({ data, update, currentUser, uiZoom, setUiZoom,
                     <span className="msr" style={{ fontSize: 17 }}>check_circle</span>{saved ? "Gespeichert" : "Alles gespeichert"}
                   </span>)
             : null
-        } />
+        } tabs={<PageTabs tabs={TABS} value={tab} onChange={setTab} />} />
 
-        <div className="filter-bar" style={{ marginBottom: 20 }}>
-          {TABS.map(t => (
-            <button key={t.id} onClick={() => setTab(t.id)} className={`pill${tab === t.id ? " active" : ""}`}>{t.label}</button>
-          ))}
-        </div>
 
         {tab === "studio" && <StudioTab s={s} setField={setField} data={data} />}
         {tab === "dokumente" && <DocumentsTab s={s} setField={setField} />}

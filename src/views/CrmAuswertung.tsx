@@ -81,7 +81,7 @@ export default function CrmAuswertung({ data, setView }: { data: AppData; setVie
         </select>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14, marginBottom: 8 }} className="responsive-grid-4">
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14, marginBottom: 8 }} className="responsive-grid-4 kpi-band">
         <KpiCard label="Umsatz (netto)" value={formatCHF(revenue)} sub={`${billed.length} Rechnungen, ohne Entwürfe`} color="var(--positive)" />
         <KpiCard label="Trefferquote" value={pct(overallWinRate(data, year))} sub={`${avg.count} ${avg.count === 1 ? "Zusage" : "Zusagen"}`} color="var(--info)" />
         <KpiCard label="Ø bis Zusage" value={avg.avgDays === null ? "—" : `${Math.round(avg.avgDays)} Tage`} sub="von Anfrage bis Zusage" />

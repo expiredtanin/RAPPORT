@@ -87,7 +87,7 @@ export default function CrmPipeline({ data, update, setView }: Pick<ViewProps, "
   return (
     <div>
       {ConfirmModalEl}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14, marginBottom: 20 }} className="responsive-grid-4">
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14, marginBottom: 20 }} className="responsive-grid-4 kpi-band">
         <KpiCard label="Offene Leads" value={open.length} sub={`${leads.length - open.length} abgeschlossen`} color="var(--info)" />
         <KpiCard label="Pipeline (netto)" value={formatCHF(pipelineValue(leads))} sub={`gewichtet ${formatCHF(pipelineValue(leads, true))}`} />
         <KpiCard label={`Trefferquote ${year}`} value={winRate === null ? "—" : `${Math.round(winRate * 100)} %`} sub="gewonnen / entschieden" color="var(--positive)" />

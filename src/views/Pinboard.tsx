@@ -9,7 +9,7 @@
 import React, { useState, useRef } from "react";
 import { generateId, getFeiertageForYear, imageFileToJpeg, localISODate } from "../utils";
 import type { BlogPost, CurrentUser, AppData, Poll, ViewProps } from "../types";
-import { EmptyState } from "../components/UI";
+import { EmptyState, Header, PageTabs } from "../components/UI";
 
 type PostForm = Partial<BlogPost> & Pick<BlogPost, "title" | "body" | "type" | "pinned"> & { eventDate: string; image: string; poll: Poll | null };
 
@@ -351,13 +351,6 @@ export default function Pinboard({ data, update, currentUser }: Pick<ViewProps, 
     ...(canWrite ? [{ id: "entwuerfe", label: "Entwürfe" }] : []),
   ];
 
-  const btnStyle = (active: boolean): React.CSSProperties => ({
-    padding: "5px 14px", borderRadius: 20, border: "1.5px solid", fontSize: 11, cursor: "pointer", fontFamily: "inherit",
-    background: active ? "var(--text)" : "var(--surface)",
-    color: active ? "var(--bg)" : "var(--text3)",
-    borderColor: active ? "var(--text)" : "var(--border3)",
-    transition: "all 0.15s",
-  });
 
   const leftPosts  = sorted.filter((_, i) => i % 2 === 0);
   const rightPosts = sorted.filter((_, i) => i % 2 === 1);
@@ -377,26 +370,14 @@ export default function Pinboard({ data, update, currentUser }: Pick<ViewProps, 
 
   return (
     <div>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 24 }}>
-        <div>
-          <h1 style={{ fontFamily: "var(--font-ui)", fontSize: 30, fontWeight: 400, letterSpacing: "-0.02em", lineHeight: 1.1, color: "var(--text)", marginBottom: 6 }}>Pinnwand</h1>
-          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-            {FILTER_OPTS.map(opt => (
-              <button key={opt.id} onClick={() => setFilter(opt.id)} style={btnStyle(filter === opt.id)}>{opt.label}</button>
-            ))}
-          </div>
-        </div>
-        {canWrite && (
-          <button className="btn btn-primary" onClick={() => setModal({ mode: "create" })} style={{ flexShrink: 0 }}>
-            + Beitrag
-          </button>
-        )}
-      </div>
+      <Header title="Pinnwand"
+        action={canWrite ? <button className="btn btn-primary" onClick={() => setModal({ mode: "create" })}>+ Beitrag</button> : undefined}
+        tabs={<PageTabs tabs={FILTER_OPTS} value={filter} onChange={setFilter} />} />
 
       {/* Holiday notice */}
       {feiertageThisWeek.length > 0 && (
-        <div style={{ padding: "12px 18px", background: "var(--positive-bg)", border: "1.5px solid #a8d8b8", borderRadius: 12, marginBottom: 16, display: "flex", alignItems: "center", gap: 12 }}>
-          <span style={{ fontSize: 20 }}>🎉</span>
+        <div className="mark" style={{ padding: "12px 18px 12px 26px", background: "var(--positive-bg)", borderRadius: 12, marginBottom: 16, display: "flex", alignItems: "center", gap: 12, ["--mark" as string]: "var(--positive)" } as React.CSSProperties}>
+          <span className="msr" style={{ fontSize: 20, color: "var(--positive)" }}>celebration</span>
           <div>
             <div style={{ fontSize: 12, fontWeight: 600, color: "var(--positive)", marginBottom: 2 }}>Feiertag diese Woche</div>
             <div style={{ fontSize: 12, color: "#3a7a5a" }}>

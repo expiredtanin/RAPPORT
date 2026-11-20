@@ -3,7 +3,7 @@
 // Der gewählte Tab wird nicht gespeichert; die App öffnet immer in der Pipeline.
 
 import { useState } from "react";
-import { Header } from "../components/UI";
+import { Header, PageTabs } from "../components/UI";
 import { isCloudBackend } from "../storage/adapter";
 import CrmPipeline from "./CrmPipeline";
 import CrmAuswertung from "./CrmAuswertung";
@@ -16,11 +16,7 @@ export default function Crm({ data, update, setView }: Pick<ViewProps, "data" | 
   const [tab, setTab] = useState<(typeof TABS)[number]["id"]>("pipeline");
   return (
     <div>
-      <Header title="Akquise" action={
-        <div style={{ display: "flex", gap: 6 }}>
-          {TABS.map(t => <button key={t.id} className={`pill${tab === t.id ? " active" : ""}`} onClick={() => setTab(t.id)}>{t.label}</button>)}
-        </div>
-      } />
+      <Header title="Akquise" tabs={<PageTabs tabs={[...TABS]} value={tab} onChange={setTab} />} />
       {isCloudBackend && (
         // Leads/Aktivitäten stehen noch nicht in der Cloud-Zuordnung des PocketBase-Adapters (ENTITY_MAP).
         <div style={{ background: "var(--surface2)", border: "1px solid var(--warning)", color: "var(--text2)", borderRadius: 12, padding: "10px 14px", fontSize: 12, marginBottom: 16 }}>

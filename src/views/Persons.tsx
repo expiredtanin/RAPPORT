@@ -84,57 +84,45 @@ function FirmaDetail({ firma, data, update, onBack, onEdit, onAddPerson, onEditP
 
   return (
     <div>
-      <button className="btn btn-ghost" onClick={onBack} style={{ marginBottom: 18, padding: "6px 14px", fontSize: 12 }}>← Alle Kontakte</button>
-
-      {/* Header */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 24 }}>
-        <div>
-          <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
-            <CategoryBadge person={firma} />
-            {firma.type && <span style={{ fontSize: 11, color: "var(--text4)" }}>{firma.type}</span>}
+      {/* Kopf als Band wie bei den Projekten */}
+      <header className="page-head">
+        <button className="btn btn-quiet btn-sm" onClick={onBack} style={{ marginLeft: -10, marginBottom: 6 }}><span className="msr" style={{ fontSize: 16 }}>arrow_back</span>Alle Kontakte</button>
+        <div className="page-crumb" style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <CategoryBadge person={firma} />
+          {firma.type && <span>{firma.type}</span>}
+        </div>
+        <div className="page-head-row">
+          <h1>{firma.name}</h1>
+          <div className="page-actions">
+            {firma.email && <a className="btn btn-ghost" href={`mailto:${firma.email}`}><span className="msr" style={{ fontSize: 17 }}>mail</span>E-Mail</a>}
+            {firma.phone && <a className="btn btn-ghost" href={`tel:${firma.phone.replace(/\s+/g, "")}`}><span className="msr" style={{ fontSize: 17 }}>call</span>Anrufen</a>}
+            <button className="btn btn-ghost" onClick={onEdit}><span className="msr" style={{ fontSize: 17 }}>edit</span>Bearbeiten</button>
           </div>
-          <h1 style={{ fontFamily: "'Inter', sans-serif", fontSize: 34, fontWeight: 400, letterSpacing: "-0.01em", marginBottom: 6 }}>{firma.name}</h1>
-          {addr && <div style={{ fontSize: 13, color: "var(--text3)" }}>{addr}</div>}
         </div>
-        <div style={{ display: "flex", gap: 8 }}>
-          <button className="btn btn-ghost" onClick={onEdit}><span className="msr" style={{ fontSize: 16 }}>edit</span></button>
-        </div>
-      </div>
+        {addr && <div className="page-sub">{addr}</div>}
+      </header>
 
-      {/* KPIs */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14, marginBottom: 28 }} className="responsive-grid-4">
-        {[
-          { label: "PROJEKTE",    value: allProjects.length },
+      {/* Kennzahlen als ein Band (wie im Projekt-Arbeitsraum) */}
+      {(() => {
+        const open = invoices.filter(i => i.status === "gesendet" || i.status === "überfällig").reduce((s, i) => s + (i.total || 0), 0);
+        const last = lastContact(data, firma.id);
+        const figs: { label: string; value: string; sub?: string; tone?: string }[] = [
+          { label: "Projekte", value: String(allProjects.length), sub: isClientLike ? (asPartner.length ? `${asPartner.length} als Beteiligte` : undefined) : `${protocols.length} Protokolle` },
           ...(isClientLike ? [
-            { label: "RECHNUNGEN",  value: invoices.length },
-            { label: "OFFERTEN",    value: quotes.length },
-            { label: "OFFEN",       value: formatCHF(invoices.filter(i => i.status === "gesendet" || i.status === "überfällig").reduce((s, i) => s + (i.total || 0), 0)), color: "var(--warning)" },
+            { label: "Umsatz (netto)", value: formatCHF(clientRevenue(data, firma.id)).replace(/^CHF\s*/u, ""), sub: `${invoices.length} Rechnungen · ${quotes.length} Offerten` },
+            { label: "Offen", value: formatCHF(open).replace(/^CHF\s*/u, ""), sub: open > 0 ? "CHF ausstehend" : "nichts ausstehend", tone: open > 0 ? "warn" : undefined },
           ] : [
-            { label: "BETEILIGUNGEN", value: asPartner.length },
-            { label: "PROTOKOLLE",    value: protocols.length },
-            { label: "ANSPRECHP.",    value: (firma.contacts || []).length },
+            { label: "Ansprechpartner", value: String((firma.contacts || []).length) },
           ]),
-        ].map((k, i) => (
-          <div key={i} className="card">
-            <div style={{ fontSize: 10, color: "var(--text4)", letterSpacing: "0.12em", marginBottom: 8 }}>{k.label}</div>
-            <div style={{ fontSize: 24, fontFamily: "'Inter', sans-serif", fontWeight: 700, color: k.color || "var(--text2)" }}>{k.value}</div>
+          ...(referredLeadCount(data, firma.id) > 0 ? [{ label: "Vermittelt", value: String(referredLeadCount(data, firma.id)), sub: formatCHF(referredRevenue(data, firma.id)) }] : []),
+          { label: "Letzter Kontakt", value: last ? formatDate(last) : "—", sub: last ? undefined : "noch nichts erfasst" },
+        ];
+        return (
+          <div className="ws-figs" style={{ gridTemplateColumns: `repeat(${figs.length}, minmax(0, 1fr))`, marginBottom: 22 }}>
+            {figs.map(f => <div key={f.label}><small>{f.label}</small><strong className={`num${f.tone ? ` ${f.tone}` : ""}`}>{f.value}</strong>{f.sub && <em>{f.sub}</em>}</div>)}
           </div>
-        ))}
-      </div>
-
-      {/* CRM-Kennzahlen: Umsatz als Auftraggeber, vermittelte Aufträge als Empfehler, letzter Kontakt */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 14, marginBottom: 28 }} className="responsive-grid-3">
-        {[
-          { label: "UMSATZ TOTAL (NETTO)", value: formatCHF(clientRevenue(data, firma.id)) },
-          { label: "VERMITTELT", value: `${referredLeadCount(data, firma.id)} · ${formatCHF(referredRevenue(data, firma.id))}` },
-          { label: "LETZTER KONTAKT", value: lastContact(data, firma.id) ? formatDate(lastContact(data, firma.id) as string) : "—" },
-        ].map(k => (
-          <div key={k.label} className="card">
-            <div style={{ fontSize: 10, color: "var(--text4)", letterSpacing: "0.12em", marginBottom: 8 }}>{k.label}</div>
-            <div style={{ fontSize: 18, fontFamily: "'Inter', sans-serif", fontWeight: 700, color: "var(--text2)" }}>{k.value}</div>
-          </div>
-        ))}
-      </div>
+        );
+      })()}
 
       <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 20 }} className="responsive-grid-2">
         <div>

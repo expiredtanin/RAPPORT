@@ -16,7 +16,7 @@ export function InvoiceKpiCards({ filtered, filteredPaid, filteredOpen, filtered
   totalUnbilledAmount: number;
 }) {
   return (
-    <div className="responsive-grid-4" style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16, marginBottom: 20 }}>
+    <div className="responsive-grid-4 kpi-band" style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16, marginBottom: 20 }}>
       <KpiCard label="Bezahlt" value={formatCHF(filteredPaid)} color="var(--positive)"
         sub={`${filtered.filter(i => i.status === "bezahlt").length} Rechnung(en)`} />
       <KpiCard label="Ausstehend" value={formatCHF(filteredOpen)} color={filteredOverdue > 0 ? "var(--negative)" : "var(--warning)"}

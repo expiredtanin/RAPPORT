@@ -19,7 +19,7 @@
 
 import React, { useState } from "react";
 import { generateId, getAbsenzTypes, hashPassword, localISODate } from "../utils";
-import { Header, ShareButton } from "../components/UI";
+import { Header, PageTabs, ShareButton } from "../components/UI";
 import { useConfirm } from "../hooks/useConfirm";
 import type { Absence, Employee, FerienEntry, OvertimeClosing, User, ViewProps } from "../types";
 import { createEmployeeCalc } from "./employees/calc";
@@ -191,14 +191,7 @@ function Employees({ data, update, saveAll, setPrintContent }: Pick<ViewProps, "
           <ShareButton options={[{ label: "PDF Übersicht", onClick: () => setPrintContent({ type: "mitarbeiterOverview", employees, settings: data.settings }) }]} />
           <button className="btn btn-primary" onClick={() => { setEmpForm({ pensum: 100, wochenstunden: data.settings.defaultWochenstunden || 35, ferienWochen: data.settings.defaultFerienWochen || 5, pkAGSatz: data.settings.defaultPkAGSatz ?? 8.0, ferienUebertragVorjahr: {}, personalNr: nextPersonalNr(), _appAccess: false, _appUsername: "", _appPassword: "", _appRoleId: (data.appRoles || []).find(r => r.id !== "r-admin")?.id || "", _appUserId: undefined }); setModal("emp"); }}>+ Mitarbeiter</button>
         </div>
-      } />
-
-
-      <div className="filter-bar">
-        {TABS.map(t => (
-          <button key={t.id} onClick={() => setTab(t.id)} className={`pill${tab === t.id ? " active" : ""}`}>{t.label}</button>
-        ))}
-      </div>
+      } tabs={<PageTabs tabs={TABS} value={tab} onChange={setTab} />} />
 
 
       {/* ── ÜBERSICHT ── */}

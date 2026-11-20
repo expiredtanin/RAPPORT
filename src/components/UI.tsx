@@ -67,20 +67,35 @@ export function StatusSelect({ value, options, onChange }: { value: string; opti
   );
 }
 
-// alignItems: "flex-start" statt "center" — sonst zentriert sich der Titel an
-// der Höhe von `action` (ein einzelner Button ~36px, eine ganze Filterleiste
-// mit mehreren Feldern eher 40-44px), wodurch der Titel je nach Seite auf
-// unterschiedlicher Höhe landet. Mit flex-start bleibt der Titel immer an
-// derselben Stelle, egal wie hoch die Action-Zeile daneben ist.
-/** Seitentitel mit optionaler Aktionszeile rechts (Buttons, Filter). */
-export function Header({ title, action }: { title: ReactNode; action?: ReactNode }) {
+/**
+ * Seitenkopf als weisses Band über die ganze Breite (wie der Projekt-Arbeitsraum): optional eine Zeile darüber
+ * (`crumb`), Titel mit Aktionen rechts, eine Beschreibung (`sub`) und Reiter (`tabs`, z.B. `<PageTabs>`).
+ * Die Ränder kommen aus `--pad-x`/`--pad-top` der `.main-content` (global.css), damit das Band bündig anschliesst.
+ */
+export function Header({ title, action, crumb, sub, tabs }: { title: ReactNode; action?: ReactNode; crumb?: ReactNode; sub?: ReactNode; tabs?: ReactNode }) {
   return (
-    <div style={{ marginBottom: 18, paddingBottom: 14, borderBottom: "1px solid var(--border)" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16, flexWrap: "wrap" }}>
-        <h1 style={{ fontFamily: "var(--font-ui)", fontSize: 30, fontWeight: 600, letterSpacing: "-0.03em", lineHeight: 1.1, minWidth: 0 }}>{title}</h1>
-        {action}
+    <header className={`page-head${tabs ? " has-tabs" : ""}`}>
+      {crumb && <div className="page-crumb">{crumb}</div>}
+      <div className="page-head-row">
+        <h1>{title}</h1>
+        {action && <div className="page-actions">{action}</div>}
       </div>
-    </div>
+      {sub && <div className="page-sub">{sub}</div>}
+      {tabs && <div className="page-tabs">{tabs}</div>}
+    </header>
+  );
+}
+
+/** Reiter im Seitenkopf (unterstrichen wie im Projekt-Arbeitsraum). `count` erscheint als kleine Zahl. */
+export function PageTabs<T extends string>({ tabs, value, onChange }: { tabs: { id: T; label: ReactNode; count?: number }[]; value: T; onChange: (id: T) => void }) {
+  return (
+    <nav className="ws-tabs" role="tablist">
+      {tabs.map(t => (
+        <button key={t.id} role="tab" aria-selected={value === t.id} className={value === t.id ? "on" : ""} onClick={() => onChange(t.id)}>
+          {t.label}{t.count ? <span className="ws-count">{t.count}</span> : null}
+        </button>
+      ))}
+    </nav>
   );
 }
 

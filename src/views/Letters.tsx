@@ -7,6 +7,7 @@
 import { useState } from "react";
 import { generateId, textToHtml } from "../utils";
 import { Header, FormField, RichEditor } from "../components/UI";
+import LivePreview from "../components/LivePreview";
 import { useConfirm } from "../hooks/useConfirm";
 import type { ViewProps } from "../types";
 
@@ -55,15 +56,21 @@ function Letters({ data, update, setPrintContent }: Pick<ViewProps, "data" | "up
     fillTemplate(remaining[0]?.id || "", clientId, projectId);
   };
 
+  // Vorschau rechts standardmässig auf breiten Fenstern
+  const [showPreview, setShowPreview] = useState(() => typeof window === "undefined" || window.innerWidth >= 1300);
+
   return (
     <div>
       {ConfirmModalEl}
-      <Header title="Briefe" action={
+      <Header title="Briefe" action={<>
+        <button className={`btn ${showPreview ? "btn-ghost" : "btn-quiet"}`} onClick={() => setShowPreview(v => !v)} aria-pressed={showPreview}>
+          <span className="msr" style={{ fontSize: 17 }}>{showPreview ? "visibility_off" : "visibility"}</span>Vorschau
+        </button>
         <button className="btn btn-primary" onClick={() => setPrintContent({ type: "letter", client, subject, body, isHtml: true, settings: data.settings })}>
           Drucken / PDF
         </button>
-      } />
-      <div style={{ display: "grid", gridTemplateColumns: "280px 1fr", gap: 20, alignItems: "start" }}>
+      </>} />
+      <div className="letters-grid" style={{ display: "grid", gridTemplateColumns: showPreview ? "260px minmax(0, 1fr) minmax(320px, 0.9fr)" : "260px minmax(0, 1fr)", gap: 20, alignItems: "start" }}>
 
         {/* Linke Spalte */}
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
@@ -116,6 +123,13 @@ function Letters({ data, update, setPrintContent }: Pick<ViewProps, "data" | "up
             <RichEditor value={body} onChange={setBody} />
           </div>
         </div>
+
+        {/* Live-Vorschau wie im Druck (mit Seitenumbrüchen) */}
+        {showPreview && (
+          <div className="card" style={{ background: "var(--surface2)", padding: 16, position: "sticky", top: 0 }}>
+            <LivePreview settings={data.settings} assets={data.docAssets} content={{ type: "letter", client, subject, body }} />
+          </div>
+        )}
 
       </div>
     </div>

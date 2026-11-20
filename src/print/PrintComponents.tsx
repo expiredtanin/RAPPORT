@@ -291,7 +291,8 @@ const PREVIEW_PROTOCOL = {
 export function DocPreview({ settings, assets, sample, width, content }: {
   settings: Settings; assets?: DocAsset[]; sample?: "invoice" | "letter" | "protokoll"; width: number;
   /** echtes Dokument statt Beispiel (Live-Vorschau im Rechnungs-/Offerten-Dialog); Höhe dann nach Inhalt */
-  content?: { type: "invoice"; inv: Invoice; client: Person | undefined | null } | { type: "quote"; quote: Quote; client: Person | undefined | null };
+  content?: { type: "invoice"; inv: Invoice; client: Person | undefined | null } | { type: "quote"; quote: Quote; client: Person | undefined | null }
+    | { type: "letter"; client: Person | undefined | null; subject: string; body: string };
 }) {
   const design = useMemo(() => resolveDocDesign(settings, assets), [settings, assets]);
   const docCss = useMemo(() => buildDocCss(design, ".doc-preview"), [design]);
@@ -358,6 +359,7 @@ export function DocPreview({ settings, assets, sample, width, content }: {
             <div className="doc-content" style={{ position: "relative", zIndex: 1 }}>
               {content.type === "invoice" && <InvoicePrint inv={content.inv} client={content.client} settings={settings} />}
               {content.type === "quote" && <QuotePrint quote={content.quote} client={content.client} settings={settings} />}
+              {content.type === "letter" && <LetterPrint client={content.client} subject={content.subject} body={content.body} isHtml settings={settings} />}
             </div>
           </div>
         </div>

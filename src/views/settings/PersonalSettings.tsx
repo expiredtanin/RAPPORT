@@ -47,13 +47,11 @@ export function PersonalSettings({ data, update, currentUser, uiZoom, setUiZoom,
 
   return (
     <div>
-      <Header title="Mein Profil" action={
-        <button className="btn btn-primary" style={{ background: saved ? "var(--positive)" : "#2a2a22", transition: "background 0.3s" }} onClick={saveProfile}>
+      <Header title={nav ? "Einstellungen" : "Mein Profil"} tabs={nav} action={
+        <button className="btn btn-primary" onClick={saveProfile}>
           {saved ? "✓ Gespeichert" : "Speichern"}
         </button>
       } />
-
-      {nav}
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }} className="responsive-grid-2">
         <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
