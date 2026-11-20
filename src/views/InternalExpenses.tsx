@@ -6,7 +6,8 @@ import React, { useState, useRef } from "react";
 import { INTERNAL_EXPENSE_CATEGORIES } from "../constants";
 import { generateId, formatCHF, formatDate, receiptToDataUrl, checkLocalBudget, localISODate } from "../utils";
 import { isLocalBackend } from "../storage/adapter";
-import { Header, Modal, FormField, DateInput, KpiCard, SortTh, RowMenu, EmptyState } from "../components/UI";
+import { ExpenseFigures } from "../components/ExpenseFigures";
+import { Header, Modal, FormField, DateInput, SortTh, RowMenu, EmptyState } from "../components/UI";
 import { removeWithUndo } from "../undo";
 import { showToast } from "../toast";
 import { extractReceiptText, parseReceiptFields } from "../ocr";
@@ -117,7 +118,7 @@ function InternalExpenses({ data, update }: Pick<ViewProps, "data" | "update" | 
         if (!months[key]) months[key] = [];
         months[key].push(e);
       });
-      return Object.entries(months).sort((a, b) => sort.dir * b[0].localeCompare(a[0])).map(([key, its]) => ({
+      return Object.entries(months).sort((a, b) => (sort.col === "date" ? -sort.dir : 1) * b[0].localeCompare(a[0])).map(([key, its]) => ({
         key, label: key ? new Date(key + "-01").toLocaleDateString("de-CH", { month: "long", year: "numeric" }) : "Ohne Datum", items: its,
       }));
     }
@@ -198,34 +199,11 @@ function InternalExpenses({ data, update }: Pick<ViewProps, "data" | "update" | 
       )}
 
       {allFiltered.length > 0 && (
-        <div className="responsive-grid-4" style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16, marginBottom: 20 }}>
-          <KpiCard label="Total brutto" value={formatCHF(totalBrutto)} color="var(--info)" sub={`${allFiltered.length} Einträge`} />
-          <KpiCard label="Netto" value={formatCHF(totalNet)} sub="abzgl. Vorsteuer" />
-          <KpiCard label="Vorsteuer" value={formatCHF(totalTax)} color="var(--warning)" sub="rückforderbar" />
-          <div className="card" style={{ borderTop: "3px solid var(--positive)", height: "100%", boxSizing: "border-box" }}>
-            <div style={{ fontSize: 10, color: "var(--text4)", letterSpacing: "0.12em", marginBottom: 8 }}>TOP KATEGORIE</div>
-            {categoryTotals[0] ? (
-              <>
-                <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6 }}>{categoryTotals[0].cat}</div>
-                {categoryTotals.map(c => (
-                  <div key={c.cat} style={{ marginBottom: 4 }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: "var(--text4)", marginBottom: 2 }}>
-                      <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 100 }}>{c.cat}</span>
-                      <span>{formatCHF(c.amount)}</span>
-                    </div>
-                    <div style={{ height: 3, background: "var(--border2)", borderRadius: 2 }}>
-                      <div style={{ width: `${(c.amount / categoryTotals[0].amount) * 100}%`, height: "100%", background: "var(--accent)", borderRadius: 2 }} />
-                    </div>
-                  </div>
-                ))}
-              </>
-            ) : <div style={{ fontSize: 12, color: "var(--text5)" }}>—</div>}
-          </div>
-        </div>
+        <ExpenseFigures count={allFiltered.length} brutto={totalBrutto} netto={totalNet} vorsteuer={totalTax} totalSub={undefined} categories={categoryTotals} />
       )}
 
       <div className="filter-bar">
-        <input className="pill" placeholder="Suche (Beschreibung, Kategorie…)" value={filter.search} onChange={e => setFilter({ ...filter, search: e.target.value })} style={{ minWidth: 200 }} />
+        <input className="pill" placeholder="Suchen …" value={filter.search} onChange={e => setFilter({ ...filter, search: e.target.value })} style={{ width: 170 }} />
         <select className="pill" value={filter.year} onChange={e => setFilter({ ...filter, year: e.target.value })}>
           <option value="">Alle Jahre</option>
           {years.map(y => <option key={y} value={y}>{y}</option>)}
@@ -237,16 +215,11 @@ function InternalExpenses({ data, update }: Pick<ViewProps, "data" | "update" | 
         {hasFilters && (
           <button className="btn btn-ghost" style={{ fontSize: 12 }} onClick={() => setFilter({ year: filter.year, category: "", search: "" })}>Zurücksetzen</button>
         )}
-        <div style={{ marginLeft: "auto", fontSize: 12, color: "var(--text4)" }}>
-          <strong style={{ color: "var(--text)" }}>{allFiltered.length}</strong> {allFiltered.length === 1 ? "Eintrag" : "Einträge"} · {formatCHF(totalBrutto)}
+        <div className="seg seg-sm" role="tablist" aria-label="Gruppieren" style={{ marginLeft: "auto" }}>
+          {[{ id: "date", label: "Monat" }, { id: "category", label: "Kategorie" }].map(g => (
+            <button key={g.id} role="tab" aria-selected={groupBy === g.id} className={groupBy === g.id ? "on" : ""} onClick={() => setGroupBy(g.id as typeof groupBy)}>{g.label}</button>
+          ))}
         </div>
-      </div>
-
-      <div className="filter-bar">
-        <span className="filter-label">Gruppieren</span>
-        {[{ id: "date", label: "Monat" }, { id: "category", label: "Kategorie" }].map(g => (
-          <button key={g.id} className={`pill${groupBy === g.id ? " active" : ""}`} onClick={() => setGroupBy(g.id as typeof groupBy)}>{g.label}</button>
-        ))}
       </div>
 
       {items.length === 0 ? (
@@ -256,22 +229,18 @@ function InternalExpenses({ data, update }: Pick<ViewProps, "data" | "update" | 
         </div>
       ) : allFiltered.length === 0 ? (
         <div className="card" style={{ padding: 0 }}>
-          <table>
-            <thead><tr><th style={{ width: 100 }}>Datum</th><th style={{ width: 190 }}>Kategorie</th><th>Beschreibung</th><th style={{ width: 80 }}>Wiederk.</th><th style={{ textAlign: "right", width: 110 }}>Netto</th><th style={{ textAlign: "right", width: 100 }}>Vorsteuer</th><th style={{ textAlign: "right", width: 120 }}>Brutto</th><th style={{ width: 90 }}></th></tr></thead>
-            <tbody><tr><td colSpan={8} className="empty-state">Keine Treffer</td></tr></tbody>
-          </table>
+          <EmptyState icon="filter_alt_off" title="Keine Treffer" text="Kein Eintrag passt zu den Filtern." />
         </div>
       ) : (
         <div className="card" style={{ padding: 0 }}>
           <table>
             <thead>
               <tr>
-                <SortTh sort={sort} onSort={toggleSort} col="date" style={{ width: 100 }}>Datum</SortTh>
-                {groupBy !== "category" && <SortTh sort={sort} onSort={toggleSort} col="category" style={{ width: 190 }}>Kategorie</SortTh>}
-                <th>Beschreibung</th>
-                <th style={{ width: 80 }}>Wiederk.</th>
-                <SortTh sort={sort} onSort={toggleSort} col="amount" style={{ textAlign: "right", width: 110 }}>Netto</SortTh>
-                <th style={{ textAlign: "right", width: 100 }}>Vorsteuer</th>
+                <SortTh sort={sort} onSort={toggleSort} col="date" style={{ width: 96 }}>Datum</SortTh>
+                <SortTh sort={sort} onSort={toggleSort} col="category">Beschreibung · Kategorie</SortTh>
+                <th className="hide-narrow" style={{ width: 110 }}>Wiederkehrend</th>
+                <th className="hide-narrow" style={{ textAlign: "right", width: 110 }}>Netto</th>
+                <th className="hide-narrow" style={{ textAlign: "right", width: 100 }}>Vorsteuer</th>
                 <SortTh sort={sort} onSort={toggleSort} col="amount" style={{ textAlign: "right", width: 120 }}>Brutto</SortTh>
                 <th style={{ width: 90 }}></th>
               </tr>
@@ -285,7 +254,7 @@ function InternalExpenses({ data, update }: Pick<ViewProps, "data" | "update" | 
                   <React.Fragment key={group.key}>
                     {groupedData.length > 1 && (
                       <tr>
-                        <td colSpan={groupBy === "category" ? 7 : 8} className="group-row">
+                        <td colSpan={7} className="group-row">
                           {group.label}
                           <span className="group-sum">{group.items.length} {group.items.length === 1 ? "Eintrag" : "Einträge"} · {formatCHF(gBrutto)}</span>
                         </td>
@@ -296,14 +265,16 @@ function InternalExpenses({ data, update }: Pick<ViewProps, "data" | "update" | 
                       const tax = getTax(e);
                       return (
                         <tr key={e.id} className="row-link" onClick={() => openEdit(e)}>
-                          <td>{formatDate(e.date)}</td>
-                          {groupBy !== "category" && <td>{e.category}</td>}
-                          <td style={{ color: "var(--text3)" }}>{e.description || "—"}</td>
-                          <td style={{ textAlign: "center", fontSize: 11, color: e.recurring ? "var(--positive)" : "var(--text5)" }}>
-                            {e.recurring ? <span title={e.recurringInterval || "monatlich"}>↻ {e.recurringInterval || "mtl."}</span> : "—"}
+                          <td className="num" style={{ whiteSpace: "nowrap" }}>{formatDate(e.date)}</td>
+                          <td>
+                            <div style={{ color: "var(--text)" }}>{e.description || e.category || "—"}</div>
+                            {groupBy !== "category" && e.description && <div style={{ fontSize: 12, color: "var(--text4)", marginTop: 1 }}>{e.category}</div>}
                           </td>
-                          <td style={{ textAlign: "right" }}>{formatCHF(net)}</td>
-                          <td style={{ textAlign: "right", color: "var(--text4)" }}>{e.mwstRate > 0 ? formatCHF(tax) : "—"}</td>
+                          <td className="hide-narrow" style={{ fontSize: 12.5, color: e.recurring ? "var(--text2)" : "var(--text5)", whiteSpace: "nowrap" }}>
+                            {e.recurring ? <><span className="msr" style={{ fontSize: 14, verticalAlign: "-2px", marginRight: 4, color: "var(--text4)" }}>autorenew</span>{e.recurringInterval || "monatlich"}</> : "—"}
+                          </td>
+                          <td className="hide-narrow num" style={{ textAlign: "right" }}>{formatCHF(net)}</td>
+                          <td className="hide-narrow num" style={{ textAlign: "right", color: "var(--text4)" }}>{tax > 0 ? formatCHF(tax) : "—"}</td>
                           <td style={{ textAlign: "right" }}><strong>{formatCHF(e.amount)}</strong></td>
                           <td className="row-actions" onClick={ev => ev.stopPropagation()}>
                             {e.receiptData && (
@@ -319,11 +290,12 @@ function InternalExpenses({ data, update }: Pick<ViewProps, "data" | "update" | 
                         </tr>
                       );
                     })}
-                    {groupedData.length > 1 && (
+                    {groupedData.length > 1 && group.items.length > 1 && (
                       <tr style={{ background: "var(--surface2)", borderTop: "1px solid var(--border)" }}>
-                        <td colSpan={groupBy === "category" ? 4 : 5} style={{ padding: "5px 12px", fontSize: 11, color: "var(--text4)", fontStyle: "italic" }}>Total {group.label}</td>
-                        <td style={{ textAlign: "right", padding: "5px 12px", fontWeight: 600, fontSize: 11 }}>{formatCHF(gNet)}</td>
-                        <td style={{ textAlign: "right", padding: "5px 12px", fontWeight: 600, fontSize: 11, color: "var(--text4)" }}>{formatCHF(gTax)}</td>
+                        <td colSpan={2} style={{ padding: "5px 12px", fontSize: 11, color: "var(--text4)" }}>Total {group.label}</td>
+                        <td className="hide-narrow" />
+                        <td className="hide-narrow" style={{ textAlign: "right", padding: "5px 12px", fontWeight: 600, fontSize: 11 }}>{formatCHF(gNet)}</td>
+                        <td className="hide-narrow" style={{ textAlign: "right", padding: "5px 12px", fontWeight: 600, fontSize: 11, color: "var(--text4)" }}>{formatCHF(gTax)}</td>
                         <td style={{ textAlign: "right", padding: "5px 12px", fontWeight: 700, fontSize: 11 }}>{formatCHF(gBrutto)}</td>
                         <td></td>
                       </tr>
@@ -334,11 +306,12 @@ function InternalExpenses({ data, update }: Pick<ViewProps, "data" | "update" | 
             </tbody>
             <tfoot>
               <tr style={{ borderTop: "2px solid var(--text)" }}>
-                <td colSpan={groupBy === "category" ? 4 : 5} style={{ color: "var(--text4)", fontSize: 12 }}>
+                <td colSpan={2} style={{ color: "var(--text4)", fontSize: 12 }}>
                   {allFiltered.length} {allFiltered.length === 1 ? "Eintrag" : "Einträge"} {filter.year || ""}
                 </td>
-                <td style={{ textAlign: "right", fontWeight: 600 }}>{formatCHF(totalNet)}</td>
-                <td style={{ textAlign: "right", fontWeight: 600, color: "var(--text4)" }}>{formatCHF(totalTax)}</td>
+                <td className="hide-narrow" />
+                <td className="hide-narrow" style={{ textAlign: "right", fontWeight: 600 }}>{formatCHF(totalNet)}</td>
+                <td className="hide-narrow" style={{ textAlign: "right", fontWeight: 600, color: "var(--text4)" }}>{formatCHF(totalTax)}</td>
                 <td style={{ textAlign: "right", fontWeight: 700 }}>{formatCHF(totalBrutto)}</td>
                 <td></td>
               </tr>

@@ -35,6 +35,28 @@ export function inPeriod(date: string | undefined | null, period: string): boole
   return d.startsWith(period);
 }
 
+const MONTHS = ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"];
+
+/** Anzeige einer Periode: «2026», «3. Quartal 2026», «November 2026», «Alle Jahre». */
+export function periodLabel(period: string): string {
+  if (!period) return "Alle Jahre";
+  const q = /^(\d{4})-Q([1-4])$/.exec(period);
+  if (q) return `${q[2]}. Quartal ${q[1]}`;
+  const m = /^(\d{4})-(\d{2})$/.exec(period);
+  if (m) return `${MONTHS[Number(m[2]) - 1] || m[2]} ${m[1]}`;
+  return period;
+}
+
+/**
+ * Frist der MWST-Abrechnung eines Quartals (effektive Methode, vierteljährlich): 60 Tage nach
+ * Quartalsende (Art. 71 MWSTG). Liefert `YYYY-MM-DD`.
+ */
+export function mwstDueDate(year: number, quarter: 1 | 2 | 3 | 4): string {
+  const end = new Date(Date.UTC(year, quarter * 3, 0)); // letzter Tag des Quartals
+  end.setUTCDate(end.getUTCDate() + 60);
+  return end.toISOString().slice(0, 10);
+}
+
 /** Netto einer Spese/Ausgabe (ungerundet): bei `inclMwst` der Betrag ohne den enthaltenen MWST-Anteil. */
 export function expenseNet(e: Pick<Expense, "amount" | "inclMwst" | "mwstRate">): number {
   const amount = e.amount || 0;

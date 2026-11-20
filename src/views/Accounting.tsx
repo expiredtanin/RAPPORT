@@ -9,33 +9,20 @@
 
 import React, { useState } from "react";
 import { formatCHF, formatDate, localISODate, invoiceNet } from "../utils";
-import { accountingSummary, exportBuchhaltungCSV } from "../accounting";
-import { Header, StatusBadge, KpiCard, ShareButton } from "../components/UI";
+import { accountingSummary, exportBuchhaltungCSV, inPeriod, mwstDueDate, periodLabel } from "../accounting";
+import { Header, StatusBadge, ShareButton } from "../components/UI";
 import { MahnModal } from "../components/MahnModal";
+import { addDays } from "../schedule";
 import { ReceiptViewer } from "../components/ReceiptViewer";
 import type { Expense, Invoice, ViewProps } from "../types";
 
-/** Zeile in der Ergebnis-Übersicht («Jahresergebnis»). */
-type ResultRow = {
-  label: string;
-  value: number;
-  bold?: boolean;
-  /** eingerückte Zusatzzeile (kursiv) */
-  note?: boolean;
-  /** Entwürfe: noch nicht fakturiert */
-  expected?: boolean;
-  /** Akonto-MWST: noch ausstehend */
-  pending?: boolean;
-  small?: boolean;
-  /** Trennlinie davor */
-  sep?: boolean;
-};
-
 export default
-function Accounting({ data, update, setView, setPrintContent }: Pick<ViewProps, "data" | "update" | "setView" | "setPrintContent">) {
+function Accounting({ data, update, setView, setModal, setPrintContent }: Pick<ViewProps, "data" | "update" | "setView" | "setModal" | "setPrintContent">) {
   const mwstRate = data.settings.mwstRate ?? 8.1;
   const currentYear = new Date().getFullYear().toString();
-  const [filterYear, setFilterYear] = useState(currentYear);
+  // Periode: "" = alle, "2026" = Jahr, "2026-Q3" = Quartal (MWST-Abrechnung)
+  const [period, setPeriod] = useState(currentYear);
+  const filterYear = period.slice(0, 4);
 
   const availableYears = Array.from(new Set([
     ...data.invoices.map(i => (i.date || "").slice(0, 4)),
@@ -46,8 +33,8 @@ function Accounting({ data, update, setView, setPrintContent }: Pick<ViewProps, 
   if (!availableYears.includes(currentYear)) availableYears.unshift(currentYear);
 
   // Gefilterte Daten und Summen — eine Quelle für Ansicht, PDF und CSV (accounting.ts)
-  const expenses = (data.expenses || []).filter(e => !filterYear || (e.date || "").startsWith(filterYear));
-  const sum = accountingSummary(data, filterYear);
+  const expenses = (data.expenses || []).filter(e => inPeriod(e.date, period));
+  const sum = accountingSummary(data, period);
 
   // Einnahmen
   const totalInvoiced = sum.revenueNet;
@@ -93,72 +80,89 @@ function Accounting({ data, update, setView, setPrintContent }: Pick<ViewProps, 
     setMahnModal({ inv });
   };
 
+  /** MWST-Schuld; negativ = Guthaben bei der ESTV */
+  const mwst = (v: number) => v < 0 ? `Guthaben ${formatCHF(-v)}` : formatCHF(v);
+  // Zu erledigen: was in der Buchhaltung jetzt ansteht (unabhängig von der gewählten Periode)
+  const drafts = data.invoices.filter(i => i.status === "entwurf");
+  const spesenOffen = (data.expenses || []).filter(e => (e.status || "offen") === "offen" && !e.lohnEntryId);
+  const thisMonth = today.slice(0, 7);
+  const lohnEmps = (data.employees || []).filter(e => e.active !== false && (e.monatslohn || 0) > 0);
+  const lohnDone = lohnEmps.filter(e => (data.lohnEntries || []).some(l => l.employeeId === e.id && l.monat === thisMonth)).length;
+  const monthName = new Date(`${thisMonth}-15T12:00:00`).toLocaleDateString("de-CH", { month: "long" });
+  const nowY = Number(today.slice(0, 4));
+  const curQ = Math.ceil(Number(today.slice(5, 7)) / 3);
+  const prevQ = curQ === 1 ? { y: nowY - 1, q: 4 as const } : { y: nowY, q: (curQ - 1) as 1 | 2 | 3 };
+  const prevQDue = mwstDueDate(prevQ.y, prevQ.q);
+  const prevQSum = accountingSummary(data, `${prevQ.y}-Q${prevQ.q}`);
+  const todos: { key: string; icon: string; label: string; meta: string; late?: boolean; onClick: () => void }[] = [
+    ...(overdueInvoices.length ? [{ key: "mahn", icon: "notification_important", label: `${overdueInvoices.length} ${overdueInvoices.length === 1 ? "Rechnung" : "Rechnungen"} überfällig`, meta: `${formatCHF(overdueInvoices.reduce((s, i) => s + (i.total || 0), 0))} · mahnen`, late: true, onClick: () => document.getElementById("mahnwesen")?.scrollIntoView({ behavior: "smooth" }) }] : []),
+    ...(drafts.length ? [{ key: "draft", icon: "draft", label: `${drafts.length} ${drafts.length === 1 ? "Rechnungsentwurf" : "Rechnungsentwürfe"} versenden`, meta: formatCHF(drafts.reduce((s, i) => s + invoiceNet(i), 0)) + " netto", onClick: () => setView("invoices") }] : []),
+    ...(spesenOffen.length ? [{ key: "spesen", icon: "receipt_long", label: `${spesenOffen.length} ${spesenOffen.length === 1 ? "Spese" : "Spesen"} genehmigen`, meta: formatCHF(spesenOffen.reduce((s, e) => s + (e.amount || 0), 0)), onClick: () => setView("expenses") }] : []),
+    ...(lohnEmps.length && lohnDone < lohnEmps.length ? [{ key: "lohn", icon: "payments", label: `Löhne ${monthName} abrechnen`, meta: `${lohnDone} von ${lohnEmps.length} erstellt`, onClick: () => setView("loehne") }] : []),
+    ...(prevQDue >= today && prevQSum.issuedCount + prevQSum.expCount > 0 ? [{ key: "mwst", icon: "account_balance", label: `MWST ${prevQ.q}. Quartal ${prevQ.y} abrechnen`, meta: `${mwst(prevQSum.mwstSchuld)} · bis ${formatDate(prevQDue)}`, late: prevQDue <= addDays(today, 10), onClick: () => setPeriod(`${prevQ.y}-Q${prevQ.q}`) }] : []),
+  ];
+  const quarterYear = Number(filterYear || today.slice(0, 4));
+  const quarters = ([1, 2, 3, 4] as const).map(q => {
+    const qs = accountingSummary(data, `${quarterYear}-Q${q}`);
+    const started = `${quarterYear}-${String(q * 3 - 2).padStart(2, "0")}` <= thisMonth;
+    const ended = `${quarterYear}-${String(q * 3).padStart(2, "0")}` < thisMonth;
+    return { q, sum: qs, due: mwstDueDate(quarterYear, q), started, ended };
+  });
+  const minus = (v: number) => v === 0 ? formatCHF(0) : `− ${formatCHF(Math.abs(v))}`;
+
   return (
     <div>
-      <Header title="Buchhaltung" action={
-        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          <select className="pill" value={filterYear} onChange={e => setFilterYear(e.target.value)}>
+      <Header title="Buchhaltung" sub={`${periodLabel(period)} · ${issuedCount} ${issuedCount === 1 ? "Rechnung" : "Rechnungen"} gestellt${overdueInvoices.length ? `, ${overdueInvoices.length} überfällig` : ", nichts überfällig"}.`} action={
+        <>
+          <select className="pill" value={period} onChange={e => setPeriod(e.target.value)} aria-label="Periode">
             <option value="">Alle Jahre</option>
-            {availableYears.map(y => <option key={y} value={y}>{y}</option>)}
+            {availableYears.map(y => (
+              <optgroup key={y} label={y}>
+                <option value={y}>{y} ganzes Jahr</option>
+                {[1, 2, 3, 4].map(q => <option key={q} value={`${y}-Q${q}`}>{q}. Quartal {y}</option>)}
+              </optgroup>
+            ))}
           </select>
           <ShareButton options={[
-            { label: "PDF", onClick: () => setPrintContent({ type: "buchhaltung", data, filterYear, settings: data.settings }) },
-            { label: "CSV", onClick: () => exportBuchhaltungCSV(data, filterYear) },
+            { label: "PDF", onClick: () => setPrintContent({ type: "buchhaltung", data, filterYear: period, settings: data.settings }) },
+            { label: "CSV", onClick: () => exportBuchhaltungCSV(data, period) },
           ]} />
-        </div>
+        </>
       } />
 
-      {/* KPI-Karten */}
-      <div className="responsive-grid-4" style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16, marginBottom: 28 }}>
-        {[
-          { label: "Umsatz netto", value: formatCHF(totalInvoiced), sub: totalDraftSub > 0 ? `${issuedCount} Rechnungen — dazu ${formatCHF(totalDraftSub)} in Entwürfen` : `${issuedCount} Rechnungen`, color: "var(--positive)" },
-          { label: "Davon bezahlt", value: formatCHF(totalPaid), sub: "eingegangen", color: "var(--positive)" },
-          { label: "Offen / überfällig", value: formatCHF(totalOpen + totalOverdue), sub: `${overdueInvoices.length} überfällig`, color: totalOverdue > 0 ? "var(--negative)" : "var(--warning)" },
-          { label: "Ausgaben total", value: formatCHF(totalAusgaben), sub: `Spesen + ${totalLoehneAnzahl} Lohnabrechnungen (inkl. AG-Abgaben)` },
-        ].map(c => (
-          <KpiCard key={c.label} label={c.label} value={c.value} sub={c.sub} color={c.color} />
-        ))}
+      {/* Kennzahlen als Band (wie im Projekt-Arbeitsraum) */}
+      <div className="ws-figs" style={{ marginBottom: 20 }}>
+        <div><small>Umsatz netto</small><strong className="num">{formatCHF(totalInvoiced)}</strong><em>{issuedCount} {issuedCount === 1 ? "Rechnung" : "Rechnungen"}{totalDraftSub > 0 ? ` · ${formatCHF(totalDraftSub)} in Entwürfen` : ""}</em></div>
+        <div><small>Bezahlt</small><strong className="num">{formatCHF(totalPaid)}</strong><em>eingegangen</em></div>
+        <div><small>Offen</small><strong className={`num${totalOverdue > 0 ? " neg" : ""}`}>{formatCHF(totalOpen + totalOverdue)}</strong><em>{totalOverdue > 0 ? `${formatCHF(totalOverdue)} überfällig` : "nichts überfällig"}</em></div>
+        <div><small>Ergebnis vor MWST</small><strong className={`num${result < 0 ? " neg" : ""}`}>{formatCHF(result)}</strong><em>Aufwand {formatCHF(totalAusgaben)}</em></div>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20, marginBottom: 28 }}>
-        {/* Ergebnis-Übersicht */}
-        <div className="card">
-          <div className="section-label" style={{ marginBottom: 16 }}>JAHRESERGEBNIS {filterYear || "GESAMT"}</div>
-          {([
-            { label: "Einnahmen (Netto, gestellte Rechnungen)", value: totalInvoiced, bold: false },
-            totalDraftSub > 0 && { label: "→ Erwartet aus Entwürfen (nicht im Ergebnis)", value: totalDraftSub, note: true, expected: true },
-            { label: "Spesen (Netto)", value: -totalExpNet, bold: false },
-            { label: "Interne Ausgaben (Netto)", value: -totalIntExpNet, bold: false },
-            { label: "Personalaufwand (Bruttolöhne)", value: -totalLoehne, bold: false },
-            totalLoehneAGAbgaben > 0 && { label: "→ AG-Beiträge (AHV/IV/EO, ALV, PK)", value: -totalLoehneAGAbgaben, note: true },
-            { label: "Ergebnis vor MWST", value: result, bold: true, sep: true },
-            { label: `MWST auf Einnahmen (${mwstRate}%, excl. Akonto)`, value: taxWithoutAkonto, bold: false, small: true },
-            akontoTax > 0 && { label: `↳ Akonto-MWST ausstehend (bei Schlussrechn.)`, value: akontoTax, bold: false, small: true, pending: true },
-            { label: "Vorsteuer (Spesen + Ausgaben)", value: -sum.vorsteuer, bold: false, small: true },
-            { label: "MWST-Schuld (excl. Akonto)", value: sum.mwstSchuld, bold: true, small: true },
-          ] as (ResultRow | false)[]).filter((r): r is ResultRow => !!r).map((row, i) => (
-            <div key={i} style={{
-              display: "flex", justifyContent: "space-between",
-              padding: row.sep ? "10px 0 4px" : row.note ? "2px 0 2px 12px" : "4px 0",
-              borderTop: row.sep ? "1.5px solid var(--text)" : "none",
-              marginTop: row.sep ? 8 : 0,
-            }}>
-              <span style={{ fontSize: row.small ? 11 : row.note ? 11 : 13, color: row.expected ? "var(--warning)" : row.pending ? "var(--accent)" : row.small || row.note ? "var(--text4)" : "var(--text2)", fontStyle: row.note ? "italic" : "normal" }}>
-                {row.label}
-                {row.expected && <span style={{ fontSize: 10, marginLeft: 4, background: "var(--warning-bg)", color: "var(--warning)", padding: "1px 8px", borderRadius: 20, fontStyle: "normal", fontWeight: 600 }}>noch nicht fakturiert</span>}
-                {row.pending && <span style={{ fontSize: 10, marginLeft: 4, background: "var(--warning-bg)", color: "var(--accent)", padding: "1px 8px", borderRadius: 20, fontStyle: "normal", fontWeight: 600 }}>ausstehend</span>}
-              </span>
-              <span style={{ fontSize: row.small || row.note ? 11 : 13, fontWeight: row.bold ? 700 : 400, color: row.expected ? "var(--warning)" : row.pending ? "var(--accent)" : row.value < 0 ? "var(--negative)" : row.bold ? "var(--text)" : "var(--text4)", fontFamily: row.bold ? "var(--font-ui)" : "inherit" }}>
-                {formatCHF(row.value)}
-              </span>
+      <div className="acc-grid">
+        <div className="ws-col">
+          {/* Erfolgsrechnung */}
+          <section className="card">
+            <div className="today-k">Ergebnis {periodLabel(period)}</div>
+            <div className="acc-lines">
+              <div><span>Einnahmen <i>gestellte Rechnungen, netto</i></span><b className="num">{formatCHF(totalInvoiced)}</b></div>
+              {totalDraftSub > 0 && <div className="sub"><span>dazu in Entwürfen <i>nicht im Ergebnis</i></span><b className="num">{formatCHF(totalDraftSub)}</b></div>}
+              <div><span>Spesen <i>netto</i></span><b className="num">{minus(totalExpNet)}</b></div>
+              <div><span>Büroausgaben <i>netto</i></span><b className="num">{minus(totalIntExpNet)}</b></div>
+              <div><span>Personalaufwand <i>{totalLoehneAnzahl} {totalLoehneAnzahl === 1 ? "Lohnabrechnung" : "Lohnabrechnungen"}</i></span><b className="num">{minus(totalLoehne + totalLoehneAGAbgaben)}</b></div>
+              {totalLoehneAGAbgaben > 0 && <div className="sub"><span>davon AG-Beiträge <i>AHV/IV/EO, ALV, PK</i></span><b className="num">{formatCHF(totalLoehneAGAbgaben)}</b></div>}
+              <div className="total"><span>Ergebnis vor MWST</span><b className={`num${result < 0 ? " neg" : ""}`}>{formatCHF(result)}</b></div>
             </div>
-          ))}
-        </div>
+            <div className="acc-lines acc-mwst">
+              <div><span>MWST auf Einnahmen <i>{mwstRate} %, ohne Akonto</i></span><b className="num">{formatCHF(taxWithoutAkonto)}</b></div>
+              {akontoTax > 0 && <div className="sub"><span>Akonto-MWST <i>fällig mit der Schlussrechnung</i></span><b className="num">{formatCHF(akontoTax)}</b></div>}
+              <div><span>Vorsteuer <i>Spesen und Büroausgaben</i></span><b className="num">{minus(sum.vorsteuer)}</b></div>
+              <div className="total"><span>{sum.mwstSchuld < 0 ? "MWST-Guthaben" : "MWST-Schuld"}</span><b className="num">{formatCHF(Math.abs(sum.mwstSchuld))}</b></div>
+            </div>
+          </section>
 
-        {/* Monatsumsatz */}
-        <div className="card">
-          <div className="section-label" style={{ marginBottom: 4 }}>MONATSUMSATZ {filterYear || new Date().getFullYear()}</div>
-          {(() => {
+          {/* Monatsumsatz */}
+          <section className="card">
+            {(() => {
             const year = filterYear || String(new Date().getFullYear());
             const months = ["Jan","Feb","Mär","Apr","Mai","Jun","Jul","Aug","Sep","Okt","Nov","Dez"];
             const monthData = months.map((label, i) => {
@@ -167,66 +171,66 @@ function Accounting({ data, update, setView, setPrintContent }: Pick<ViewProps, 
               const paid = invs.filter(inv => inv.status === "bezahlt").reduce((s, inv) => s + invoiceNet(inv), 0);
               const open = invs.filter(inv => inv.status === "gesendet" || inv.status === "überfällig").reduce((s, inv) => s + invoiceNet(inv), 0);
               const draft = invs.filter(inv => inv.status === "entwurf").reduce((s, inv) => s + invoiceNet(inv), 0);
-              return { label, key, paid, open, draft, total: paid + open + draft };
+              return { label, key, paid, open, draft, total: paid + open + draft, inPeriod: inPeriod(key + "-15", period) };
             });
             const maxVal = Math.max(...monthData.map(m => m.total), 1);
-            // Umsatz ohne Entwürfe (die Balken zeigen Entwürfe zusätzlich als «erwartet»)
             const yearTotal = monthData.reduce((s, m) => s + m.paid + m.open, 0);
             const currentMonth = localISODate().slice(0, 7);
             return (
               <>
-                <div style={{ fontSize: 11, color: "var(--text5)", marginBottom: 16 }}>
-                  Total {formatCHF(yearTotal)} · {data.invoices.filter(i => i.status !== "entwurf" && (i.date||"").startsWith(year)).length} Rechnungen
-                </div>
-                <div style={{ display: "flex", alignItems: "flex-end", gap: 4, height: 80, marginBottom: 8 }}>
+                <div className="today-k">Monatsumsatz {year} <span className="num">{formatCHF(yearTotal)}</span></div>
+                <div className="acc-bars">
                   {monthData.map(m => (
-                    <div key={m.key} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 0 }}>
-                      <div style={{ width: "100%", display: "flex", flexDirection: "column", justifyContent: "flex-end", height: 72 }}>
-                        {m.total === 0 ? (
-                          <div style={{ height: 2, background: "var(--surface3)", borderRadius: 1 }} />
-                        ) : (
-                          <>
-                            {m.draft > 0 && <div style={{ height: `${(m.draft / maxVal) * 70}px`, background: "#ccc", borderRadius: "2px 2px 0 0", minHeight: 2 }} title={`Entwurf: ${formatCHF(m.draft)}`} />}
-                            {m.open > 0 && <div style={{ height: `${(m.open / maxVal) * 70}px`, background: "var(--accent)", minHeight: 2 }} title={`Ausstehend: ${formatCHF(m.open)}`} />}
-                            {m.paid > 0 && <div style={{ height: `${(m.paid / maxVal) * 70}px`, background: "var(--positive)", borderRadius: m.draft === 0 && m.open === 0 ? "2px 2px 0 0" : 0, minHeight: 2 }} title={`Bezahlt: ${formatCHF(m.paid)}`} />}
-                          </>
-                        )}
+                    <div key={m.key} className={`acc-bar${m.inPeriod ? "" : " dim"}${m.key === currentMonth ? " now" : ""}`} title={`${m.label}: bezahlt ${formatCHF(m.paid)} · ausstehend ${formatCHF(m.open)}${m.draft ? ` · Entwurf ${formatCHF(m.draft)}` : ""}`}>
+                      <div className="acc-bar-stack">
+                        {m.total > 0 && <em className="num">{m.total >= 1000 ? `${Math.round(m.total / 1000)}k` : Math.round(m.total)}</em>}
+                        <div className="acc-col" style={{ height: `${(m.total / maxVal) * 100}%` }}>
+                          {m.draft > 0 && <i className="draft" style={{ flexGrow: m.draft }} />}
+                          {m.open > 0 && <i className="open" style={{ flexGrow: m.open }} />}
+                          {m.paid > 0 && <i className="paid" style={{ flexGrow: m.paid }} />}
+                        </div>
                       </div>
+                      <span>{m.label}</span>
                     </div>
                   ))}
                 </div>
-                <div style={{ display: "flex", gap: 4 }}>
-                  {monthData.map(m => (
-                    <div key={m.key} style={{
-                      flex: 1, textAlign: "center", fontSize: 9, color: m.key === currentMonth ? "var(--text)" : "var(--text5)",
-                      fontWeight: m.key === currentMonth ? 700 : 400,
-                    }}>{m.label}</div>
-                  ))}
-                </div>
-                <div style={{ display: "flex", gap: 14, marginTop: 14, paddingTop: 12, borderTop: "1px solid var(--border2)" }}>
-                  {[
-                    { color: "var(--positive)", label: "Bezahlt" },
-                    { color: "var(--warning)", label: "Ausstehend" },
-                    { color: "var(--text5)", label: "Entwurf" },
-                  ].map(l => (
-                    <div key={l.label} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 10, color: "var(--text4)" }}>
-                      <div style={{ width: 10, height: 10, background: l.color, borderRadius: 2 }} />
-                      {l.label}
-                    </div>
-                  ))}
-                </div>
+                <div className="acc-legend"><span><i className="paid" />Bezahlt</span><span><i className="open" />Ausstehend</span><span><i className="draft" />Entwurf</span></div>
               </>
             );
-          })()}
+            })()}
+          </section>
+        </div>
+
+        <div className="ws-col">
+          <section className="card">
+            <div className="today-k">Zu erledigen</div>
+            {todos.length === 0 && <div className="today-meta">Alles erledigt.</div>}
+            {todos.map(t => (
+              <button key={t.key} className="agenda-row" onClick={t.onClick}>
+                <span className="msr" style={{ fontSize: 18, color: t.late ? "var(--negative)" : "var(--text4)" }}>{t.icon}</span>
+                <span style={{ minWidth: 0 }}><span className="agenda-label">{t.label}</span><span className="today-meta">{t.meta}</span></span>
+              </button>
+            ))}
+          </section>
+          <section className="card">
+            <div className="today-k">MWST {quarterYear} <span>vierteljährlich</span></div>
+            {quarters.map(q => (
+              <button key={q.q} className={`agenda-row acc-q${period === `${quarterYear}-Q${q.q}` ? " on" : ""}`} disabled={!q.started} onClick={() => setPeriod(period === `${quarterYear}-Q${q.q}` ? String(quarterYear) : `${quarterYear}-Q${q.q}`)}>
+                <span className="acc-q-n">Q{q.q}</span>
+                <span style={{ minWidth: 0, flex: 1 }}>
+                  <span className="agenda-label num">{q.started ? mwst(q.sum.mwstSchuld) : "—"}</span>
+                  <span className="today-meta">{!q.started ? "noch nicht begonnen" : !q.ended ? "läuft" : q.due >= today ? `abrechnen bis ${formatDate(q.due)}` : `Frist ${formatDate(q.due)}`}</span>
+                </span>
+              </button>
+            ))}
+            <div className="today-meta" style={{ marginTop: 8 }}>Antippen zeigt das Quartal oben. Frist 60 Tage nach Quartalsende.</div>
+          </section>
         </div>
       </div>
 
-      {/* Mahnwesen */}
-      <div className="card" style={{ marginBottom: 28 }}>
-        <div className="section-label" style={{ marginBottom: overdueInvoices.length ? 16 : 0 }}>
-          MAHNWESEN — ÜBERFÄLLIGE RECHNUNGEN
-          {overdueInvoices.length === 0 && <span style={{ marginLeft: 12, color: "var(--positive)", fontWeight: 400 }}>✓ Keine überfälligen Rechnungen</span>}
-        </div>
+      {/* Mahnwesen (nur wenn etwas überfällig ist) */}
+      {overdueInvoices.length > 0 && <div className="card" id="mahnwesen" style={{ marginBottom: 20 }}>
+        <div className="today-k">Mahnwesen · überfällige Rechnungen</div>
         {overdueInvoices.length > 0 && (
           <table>
             <thead><tr>
@@ -275,21 +279,18 @@ function Accounting({ data, update, setView, setPrintContent }: Pick<ViewProps, 
             </tbody>
           </table>
         )}
-      </div>
+      </div>}
 
       {/* Letzte Rechnungen */}
       <div className="card">
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-          <div className="section-label" style={{ marginBottom: 0 }}>LETZTE RECHNUNGEN</div>
-          <button className="btn btn-ghost" style={{ fontSize: 12, padding: "4px 12px" }} onClick={() => setView("invoices")}>Alle anzeigen →</button>
-        </div>
+        <div className="today-k">Rechnungen {periodLabel(period)} <button className="btn btn-quiet btn-sm" onClick={() => setView("invoices")}>Alle Rechnungen →</button></div>
         <table>
           <thead><tr><th>Nr.</th><th>Kunde</th><th>Datum</th><th style={{ textAlign: "right" }}>Betrag</th><th>Status</th></tr></thead>
           <tbody>
-            {[...data.invoices].sort((a, b) => (b.date || "").localeCompare(a.date || "")).slice(0, 6).map(inv => {
+            {[...data.invoices].filter(i => inPeriod(i.date, period)).sort((a, b) => (b.date || "").localeCompare(a.date || "")).slice(0, 8).map(inv => {
               const client = ((data.persons||[])).find(c => c.id === inv.clientId);
               return (
-                <tr key={inv.id}>
+                <tr key={inv.id} className="row-link" onClick={() => { setView("invoices"); setModal({ type: "openInvoice", id: inv.id }); }}>
                   <td><strong>{inv.number}</strong></td>
                   <td>{client?.name || "—"}</td>
                   <td>{formatDate(inv.date)}</td>

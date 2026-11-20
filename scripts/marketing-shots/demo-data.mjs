@@ -408,9 +408,9 @@ export const demoData = {
       ] },
   ],
   employees: [
-    { id: E_JULIAN, name: "Julian Roth", role: "Bauleiter", pensum: 100, wochenstunden: 41, ferienWochen: 5, personalNr: "101", eintrittsdatum: dateAt(-250), ferienUebertragVorjahr: {} },
-    { id: E_LAURA, name: "Laura Meier", role: "Architektin", pensum: 100, wochenstunden: 41, ferienWochen: 5, personalNr: "102", eintrittsdatum: dateAt(-380), ferienUebertragVorjahr: {} },
-    { id: E_NINA, name: "Nina Baumgartner", role: "Praktikantin", pensum: 80, wochenstunden: 41, ferienWochen: 5, personalNr: "103", eintrittsdatum: dateAt(-58), ferienUebertragVorjahr: {} },
+    { id: E_JULIAN, name: "Julian Roth", role: "Bauleiter", pensum: 100, monatslohn: 8200, wochenstunden: 41, ferienWochen: 5, personalNr: "101", eintrittsdatum: dateAt(-250), ferienUebertragVorjahr: {} },
+    { id: E_LAURA, name: "Laura Meier", role: "Architektin", pensum: 100, monatslohn: 7600, wochenstunden: 41, ferienWochen: 5, personalNr: "102", eintrittsdatum: dateAt(-380), ferienUebertragVorjahr: {} },
+    { id: E_NINA, name: "Nina Baumgartner", role: "Praktikantin", pensum: 80, monatslohn: 3800, wochenstunden: 41, ferienWochen: 5, personalNr: "103", eintrittsdatum: dateAt(-58), ferienUebertragVorjahr: {} },
   ],
   feiertage: [], absences: [], ferienEntries: [], absenzTypes: [],
   lohnEntries: [], uberstundenAbschluss: [],

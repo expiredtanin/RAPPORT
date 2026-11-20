@@ -3,7 +3,7 @@
 
 import { describe, expect, it } from "vitest";
 import { calcLohn, hoechstlohnKumuliert, monatsAnteilNachEintritt } from "./utils";
-import {
+import { periodLabel, mwstDueDate,
   accountingSummary, buildBuchhaltungCSV, expenseNet, expenseTax, inPeriod, lohnAGBeitraege,
   lohnPersonalaufwand, lohnVorperioden, spesenFuerLohn,
 } from "./accounting";
@@ -190,5 +190,19 @@ describe("accountingSummary — Jahresergebnis und MWST-Abrechnung", () => {
     expect(csv).toContain('"2026-03"');
     // Entwurf nicht in der Einnahmen-Tabelle
     expect(csv).not.toContain("2026-03-004");
+  });
+});
+
+describe("Periode und MWST-Frist", () => {
+  it("benennt Perioden", () => {
+    expect(periodLabel("")).toBe("Alle Jahre");
+    expect(periodLabel("2026")).toBe("2026");
+    expect(periodLabel("2026-Q3")).toBe("3. Quartal 2026");
+    expect(periodLabel("2026-11")).toBe("November 2026");
+  });
+  it("Frist 60 Tage nach Quartalsende", () => {
+    expect(mwstDueDate(2026, 1)).toBe("2026-05-30");
+    expect(mwstDueDate(2026, 3)).toBe("2026-11-29");
+    expect(mwstDueDate(2026, 4)).toBe("2027-03-01");
   });
 });

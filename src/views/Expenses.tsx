@@ -17,7 +17,8 @@ import React, { useState, useRef } from "react";
 import { EXPENSE_CATEGORIES } from "../constants";
 import { generateId, formatCHF, formatDate, receiptToDataUrl, checkLocalBudget, localISODate } from "../utils";
 import { isLocalBackend } from "../storage/adapter";
-import { Header, Modal, FormField, StatusSelect, DateInput, KpiCard, SortTh, RowMenu, EmptyState } from "../components/UI";
+import { ExpenseFigures } from "../components/ExpenseFigures";
+import { Header, Modal, FormField, StatusSelect, DateInput, SortTh, RowMenu, EmptyState } from "../components/UI";
 import { removeWithUndo } from "../undo";
 import { showToast } from "../toast";
 import { extractReceiptText, parseReceiptFields } from "../ocr";
@@ -39,7 +40,6 @@ function Expenses({ data, update, standalone }: Pick<ViewProps, "data" | "update
   const [modal, setModal] = useState<string | null>(null); // null | "new" | id
   const [form, setForm] = useState<ExpenseForm>(emptyExp);
   const [filter, setFilter] = useState({ year: currentYear, category: "", projectId: "", employeeId: "", search: "", status: "" });
-  const compact = true;
   const [groupBy, setGroupBy] = useState<"date" | "category" | "project">("date");
   const [sort, setSort] = useState({ col: "date", dir: -1 });
   const [receiptView, setReceiptView] = useState<ReceiptTarget | null>(null);
@@ -163,7 +163,7 @@ function Expenses({ data, update, standalone }: Pick<ViewProps, "data" | "update
         if (!months[key]) months[key] = [];
         months[key].push(e);
       });
-      return Object.entries(months).sort((a, b) => sort.dir * b[0].localeCompare(a[0])).map(([key, items]) => ({
+      return Object.entries(months).sort((a, b) => (sort.col === "date" ? -sort.dir : 1) * b[0].localeCompare(a[0])).map(([key, items]) => ({
         key,
         label: key ? new Date(key + "-01").toLocaleDateString("de-CH", { month: "long", year: "numeric" }) : "Ohne Datum",
         items,
@@ -203,6 +203,7 @@ function Expenses({ data, update, standalone }: Pick<ViewProps, "data" | "update
     amount: allFiltered.filter(e => e.category === cat).reduce((s, e) => s + (e.amount || 0), 0),
   })).filter(c => c.amount > 0).sort((a, b) => b.amount - a.amount).slice(0, 4);
 
+  const offen = allFiltered.filter(e => (e.status || "offen") === "offen").length;
   const hasFilters = filter.category || filter.projectId || filter.employeeId || filter.search || filter.status;
 
   return (
@@ -267,43 +268,20 @@ function Expenses({ data, update, standalone }: Pick<ViewProps, "data" | "update
 
       {/* KPI-Streifen */}
       {allFiltered.length > 0 && (
-        <div className="responsive-grid-4" style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16, marginBottom: 20 }}>
-          <KpiCard label="Total brutto" value={formatCHF(totalBrutto)} sub={`${allFiltered.length} Einträge`} />
-          <KpiCard label="Netto" value={formatCHF(totalNet)} sub="abzgl. Vorsteuer" />
-          <KpiCard label="Vorsteuer" value={formatCHF(totalTax)} color="var(--warning)" sub="rückforderbar" />
-          <div className="card" style={{ borderTop: "3px solid var(--positive)", height: "100%", boxSizing: "border-box" }}>
-            <div style={{ fontSize: 10, color: "var(--text4)", letterSpacing: "0.12em", marginBottom: 8 }}>TOP KATEGORIE</div>
-            {categoryTotals[0] ? (
-              <>
-                <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6 }}>{categoryTotals[0].cat}</div>
-                {categoryTotals.map(c => (
-                  <div key={c.cat} style={{ marginBottom: 4 }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: "var(--text4)", marginBottom: 2 }}>
-                      <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 100 }}>{c.cat}</span>
-                      <span>{formatCHF(c.amount)}</span>
-                    </div>
-                    <div style={{ height: 3, background: "var(--border2)", borderRadius: 2 }}>
-                      <div style={{ width: `${(c.amount / categoryTotals[0].amount) * 100}%`, height: "100%", background: "var(--accent)", borderRadius: 2 }} />
-                    </div>
-                  </div>
-                ))}
-              </>
-            ) : <div style={{ fontSize: 12, color: "var(--text5)" }}>—</div>}
-          </div>
-        </div>
+        <ExpenseFigures count={allFiltered.length} brutto={totalBrutto} netto={totalNet} vorsteuer={totalTax} totalSub={offen ? `${offen} offen` : undefined} categories={categoryTotals} />
       )}
 
       <div className="filter-bar">
-        <input className="pill" placeholder="Suche (Beschreibung, Kategorie, Projekt…)" value={filter.search} onChange={e => setFilter({ ...filter, search: e.target.value })} style={{ minWidth: 220 }} />
+        <input className="pill" placeholder="Suchen …" value={filter.search} onChange={e => setFilter({ ...filter, search: e.target.value })} style={{ width: 170 }} />
         <select className="pill" value={filter.year} onChange={e => setFilter({ ...filter, year: e.target.value })}>
           <option value="">Alle Jahre</option>
           {years.map(y => <option key={y} value={y}>{y}</option>)}
         </select>
-        <select className="pill" value={filter.category} onChange={e => setFilter({ ...filter, category: e.target.value })}>
+        <select className="pill" style={{ maxWidth: 180 }} value={filter.category} onChange={e => setFilter({ ...filter, category: e.target.value })}>
           <option value="">Alle Kategorien</option>
           {expCats.map(c => <option key={c} value={c}>{c}</option>)}
         </select>
-        <select className="pill" value={filter.projectId} onChange={e => setFilter({ ...filter, projectId: e.target.value })}>
+        <select className="pill" style={{ maxWidth: 190 }} value={filter.projectId} onChange={e => setFilter({ ...filter, projectId: e.target.value })}>
           <option value="">Alle Projekte</option>
           {data.projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
         </select>
@@ -321,16 +299,11 @@ function Expenses({ data, update, standalone }: Pick<ViewProps, "data" | "update
         {hasFilters && (
           <button className="btn btn-ghost" style={{ fontSize: 12 }} onClick={() => setFilter({ year: filter.year, category: "", projectId: "", employeeId: "", search: "", status: "" })}>Zurücksetzen</button>
         )}
-        <div style={{ marginLeft: "auto", fontSize: 12, color: "var(--text4)" }}>
-          <strong style={{ color: "var(--text)" }}>{allFiltered.length}</strong> {allFiltered.length === 1 ? "Eintrag" : "Einträge"} · {formatCHF(totalBrutto)}
+        <div className="seg seg-sm" role="tablist" aria-label="Gruppieren" style={{ marginLeft: "auto" }}>
+          {[{ id: "date", label: "Monat" }, { id: "category", label: "Kategorie" }, { id: "project", label: "Projekt" }].map(g => (
+            <button key={g.id} role="tab" aria-selected={groupBy === g.id} className={groupBy === g.id ? "on" : ""} onClick={() => setGroupBy(g.id as typeof groupBy)}>{g.label}</button>
+          ))}
         </div>
-      </div>
-
-      <div className="filter-bar">
-        <span className="filter-label">Gruppieren</span>
-        {[{ id: "date", label: "Monat" }, { id: "category", label: "Kategorie" }, { id: "project", label: "Projekt" }].map(g => (
-          <button key={g.id} className={`pill${groupBy === g.id ? " active" : ""}`} onClick={() => setGroupBy(g.id as typeof groupBy)}>{g.label}</button>
-        ))}
       </div>
 
       {/* Tabelle gruppiert */}
@@ -341,26 +314,20 @@ function Expenses({ data, update, standalone }: Pick<ViewProps, "data" | "update
         </div>
       ) : allFiltered.length === 0 ? (
         <div className="card" style={{ padding: 0 }}>
-          <table>
-            <thead><tr><th style={{ width: 100 }}>Datum</th><th style={{ width: 170 }}>Kategorie</th><th style={{ width: 140 }}>Projekt</th><th style={{ width: 130 }}>Mitarbeiter</th><th>Beschreibung</th><th style={{ textAlign: "right", width: 110 }}>Netto</th><th style={{ textAlign: "right", width: 100 }}>Vorsteuer</th><th style={{ textAlign: "right", width: 120 }}>Brutto</th><th style={{ width: 130 }}>Status</th><th style={{ width: 90 }}></th></tr></thead>
-            <tbody><tr><td colSpan={10} className="empty-state">Keine Treffer</td></tr></tbody>
-          </table>
+          <EmptyState icon="filter_alt_off" title="Keine Treffer" text="Kein Eintrag passt zu den Filtern." />
         </div>
       ) : (
         <div className="card" style={{ padding: 0 }}>
           <table>
             <thead>
               <tr>
-                <SortTh sort={sort} onSort={toggleSort} col="date" style={{ width: 100 }}>Datum</SortTh>
-                {groupBy !== "category" && <SortTh sort={sort} onSort={toggleSort} col="category" style={{ width: 170 }}>Kategorie</SortTh>}
-                {groupBy !== "project" && <SortTh sort={sort} onSort={toggleSort} col="project" style={{ width: 140 }}>Projekt</SortTh>}
-                <SortTh sort={sort} onSort={toggleSort} col="employee" style={{ width: 130 }}>Mitarbeiter</SortTh>
-                <th>Beschreibung</th>
-                <SortTh sort={sort} onSort={toggleSort} col="amount" style={{ textAlign: "right", width: 110 }}>Netto</SortTh>
-                <th className={compact ? "hide-compact" : ""} style={{ textAlign: "right", width: 100 }}>Vorsteuer</th>
-                <SortTh sort={sort} onSort={toggleSort} col="amount" style={{ textAlign: "right", width: 120 }}>Brutto</SortTh>
-                <th style={{ width: 130 }}>Status</th>
-                <th style={{ width: 90 }}></th>
+                <SortTh sort={sort} onSort={toggleSort} col="date" style={{ width: 96 }}>Datum</SortTh>
+                <SortTh sort={sort} onSort={toggleSort} col="category">Beschreibung · Kategorie</SortTh>
+                <SortTh sort={sort} onSort={toggleSort} col={groupBy === "project" ? "employee" : "project"} className="hide-narrow">{groupBy === "project" ? "Mitarbeiter" : "Projekt · Mitarbeiter"}</SortTh>
+                <th className="hide-narrow" style={{ textAlign: "right", width: 100 }}>Vorsteuer</th>
+                <SortTh sort={sort} onSort={toggleSort} col="amount" style={{ textAlign: "right", width: 112 }}>Brutto</SortTh>
+                <th style={{ width: 150 }}>Status</th>
+                <th style={{ width: 80 }}></th>
               </tr>
             </thead>
             <tbody>
@@ -373,7 +340,7 @@ function Expenses({ data, update, standalone }: Pick<ViewProps, "data" | "update
                     {/* Gruppen-Header (nur wenn > 1 Gruppe) */}
                     {groupedData.length > 1 && (
                       <tr>
-                        <td colSpan={groupBy === "date" ? 10 : 9} className="group-row">
+                        <td colSpan={7} className="group-row">
                           {group.label}
                           <span className="group-sum">{group.items.length} {group.items.length === 1 ? "Eintrag" : "Einträge"} · {formatCHF(gBrutto)}</span>
                         </td>
@@ -387,13 +354,16 @@ function Expenses({ data, update, standalone }: Pick<ViewProps, "data" | "update
                       const expStatus = e.status || "offen";
                       return (
                         <tr key={e.id} className="row-link" onClick={() => openEdit(e)}>
-                          <td>{formatDate(e.date)}</td>
-                          {groupBy !== "category" && <td>{e.category}</td>}
-                          {groupBy !== "project" && <td style={{ color: "var(--text4)" }}>{proj?.name || "—"}</td>}
-                          <td style={{ color: "var(--text4)", fontSize: 12 }}>{emp?.name || "—"}</td>
-                          <td style={{ color: "var(--text3)" }}>{e.description || "—"}</td>
-                          <td style={{ textAlign: "right" }}>{formatCHF(net)}</td>
-                          <td className={compact ? "hide-compact" : ""} style={{ textAlign: "right", color: "var(--text4)" }}>{e.mwstRate > 0 ? formatCHF(tax) : "—"}</td>
+                          <td className="num" style={{ whiteSpace: "nowrap" }}>{formatDate(e.date)}</td>
+                          <td style={{ minWidth: 0 }}>
+                            <div style={{ color: "var(--text)" }}>{e.description || e.category || "—"}</div>
+                            {groupBy !== "category" && e.description && <div style={{ fontSize: 12, color: "var(--text4)", marginTop: 1 }}>{e.category}</div>}
+                          </td>
+                          <td className="hide-narrow" style={{ fontSize: 12.5, color: "var(--text3)" }}>
+                            {groupBy !== "project" && <div>{proj?.name || "—"}</div>}
+                            <div style={{ color: "var(--text4)", fontSize: 12 }}>{emp?.name || "—"}</div>
+                          </td>
+                          <td className="hide-narrow num" style={{ textAlign: "right", color: "var(--text4)" }} title={`Netto ${formatCHF(net)}`}>{tax > 0 ? formatCHF(tax) : "—"}</td>
                           <td style={{ textAlign: "right" }}><strong>{formatCHF(e.amount)}</strong></td>
                           <td>
                             {e.lohnEntryId
@@ -416,12 +386,12 @@ function Expenses({ data, update, standalone }: Pick<ViewProps, "data" | "update
                       );
                     })}
                     {/* Gruppen-Subtotal wenn > 1 Gruppe */}
-                    {groupedData.length > 1 && (
+                    {groupedData.length > 1 && group.items.length > 1 && (
                       <tr style={{ background: "var(--surface2)", borderTop: "1px solid var(--border)" }}>
-                        <td colSpan={groupBy === "date" ? 5 : 4} style={{ padding: "5px 12px", fontSize: 11, color: "var(--text4)", fontStyle: "italic" }}>Total {group.label}</td>
-                        <td style={{ textAlign: "right", padding: "5px 12px", fontWeight: 600, fontSize: 11 }}>{formatCHF(gNet)}</td>
-                        <td className={compact ? "hide-compact" : ""} style={{ textAlign: "right", padding: "5px 12px", fontWeight: 600, fontSize: 11, color: "var(--text4)" }}>{formatCHF(gTax)}</td>
-                        <td colSpan={3} style={{ textAlign: "right", padding: "5px 12px", fontWeight: 700, fontSize: 11 }}>{formatCHF(gBrutto)}</td>
+                        <td colSpan={3} style={{ padding: "5px 12px", fontSize: 11, color: "var(--text4)" }}>Total {group.label} · netto {formatCHF(gNet)}</td>
+                        <td className="hide-narrow" style={{ textAlign: "right", padding: "5px 12px", fontWeight: 600, fontSize: 11, color: "var(--text4)" }}>{formatCHF(gTax)}</td>
+                        <td style={{ textAlign: "right", padding: "5px 12px", fontWeight: 700, fontSize: 11 }}>{formatCHF(gBrutto)}</td>
+                        <td colSpan={2} />
                       </tr>
                     )}
                   </React.Fragment>
@@ -430,12 +400,12 @@ function Expenses({ data, update, standalone }: Pick<ViewProps, "data" | "update
             </tbody>
             <tfoot>
               <tr style={{ borderTop: "2px solid var(--text)" }}>
-                <td colSpan={groupBy === "date" ? 5 : 4} style={{ color: "var(--text4)", fontSize: 12 }}>
-                  {allFiltered.length} {allFiltered.length === 1 ? "Eintrag" : "Einträge"} {filter.year ? filter.year : ""}
+                <td colSpan={3} style={{ color: "var(--text4)", fontSize: 12 }}>
+                  {allFiltered.length} {allFiltered.length === 1 ? "Eintrag" : "Einträge"} {filter.year ? filter.year : ""} · netto {formatCHF(totalNet)}
                 </td>
-                <td style={{ textAlign: "right", fontWeight: 600 }}>{formatCHF(totalNet)}</td>
-                <td className={compact ? "hide-compact" : ""} style={{ textAlign: "right", fontWeight: 600, color: "var(--text4)" }}>{formatCHF(totalTax)}</td>
-                <td colSpan={3} style={{ textAlign: "right", fontWeight: 700 }}>{formatCHF(totalBrutto)}</td>
+                <td className="hide-narrow" style={{ textAlign: "right", fontWeight: 600, color: "var(--text4)" }}>{formatCHF(totalTax)}</td>
+                <td style={{ textAlign: "right", fontWeight: 700 }}>{formatCHF(totalBrutto)}</td>
+                <td colSpan={2} />
               </tr>
             </tfoot>
           </table>
