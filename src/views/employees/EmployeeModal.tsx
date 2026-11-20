@@ -46,6 +46,10 @@ export default function EmployeeModal({ data, empForm, setEmpForm, nextPersonalN
       </div>
       <div className="form-row">
         <FormField label="Eintrittsdatum *"><DatePicker value={empForm.eintrittsdatum || ""} onChange={e => setEmpForm({ ...empForm, eintrittsdatum: e.target.value })} style={!empForm.eintrittsdatum ? { borderColor: "var(--warning)" } : {}} /></FormField>
+        <FormField label="Austrittsdatum">
+          <DatePicker value={empForm.austrittsdatum || ""} onChange={e => setEmpForm({ ...empForm, austrittsdatum: e.target.value })} />
+          <div style={{ fontSize: 10, color: "var(--text5)", marginTop: 3 }}>letzter Monat anteilig</div>
+        </FormField>
       </div>
       <div style={{ fontSize: 11, letterSpacing: "0.08em", color: "var(--text4)", margin: "14px 0 10px", paddingTop: 12, borderTop: "1px solid var(--border2)" }}>ARBEITSZEIT & FERIEN</div>
       <div className="form-row">
@@ -103,6 +107,29 @@ export default function EmployeeModal({ data, empForm, setEmpForm, nextPersonalN
         <FormField label="PK / BVG AG %">
           <input type="number" step={0.1} min={0} value={empForm.pkAGSatz ?? (data.settings.defaultPkAGSatz ?? 8.0)} onChange={e => setEmpForm({ ...empForm, pkAGSatz: +e.target.value })} />
           <div style={{ fontSize: 10, color: "var(--text5)", marginTop: 3 }}>AG muss mind. AN-Anteil zahlen</div>
+        </FormField>
+      </div>
+      <div style={{ fontSize: 11, color: "var(--text4)", marginBottom: 8 }}>Pensionskasse laut PK-Ausweis (empfohlen; ersetzt die %-Sätze)</div>
+      <div className="form-row">
+        <FormField label="PK Arbeitnehmer CHF/Monat">
+          <input type="number" step={0.05} min={0} value={empForm.pkBeitragAN ?? ""} placeholder="leer = % oben" onChange={e => setEmpForm({ ...empForm, pkBeitragAN: e.target.value === "" ? null : +e.target.value })} />
+        </FormField>
+        <FormField label="PK Arbeitgeber CHF/Monat">
+          <input type="number" step={0.05} min={0} value={empForm.pkBeitragAG ?? ""} placeholder="leer = % oben" onChange={e => setEmpForm({ ...empForm, pkBeitragAG: e.target.value === "" ? null : +e.target.value })} />
+          {(empForm.pkBeitragAG ?? 0) < (empForm.pkBeitragAN ?? 0) && <div style={{ fontSize: 10, color: "var(--warning)", marginTop: 3 }}>AG-Beitrag muss mind. gleich hoch sein (Art. 66 BVG)</div>}
+        </FormField>
+      </div>
+      <div className="form-row">
+        <FormField label="Familienzulagen CHF/Monat">
+          <input type="number" step={5} min={0} value={empForm.familienzulagen ?? ""} placeholder="0" onChange={e => setEmpForm({ ...empForm, familienzulagen: e.target.value === "" ? null : +e.target.value })} />
+          <div style={{ fontSize: 10, color: "var(--text5)", marginTop: 3 }}>Kinder-/Ausbildungszulagen laut FAK, nicht AHV-pflichtig</div>
+        </FormField>
+        <FormField label=" ">
+          <label style={{ display: "flex", alignItems: "center", gap: 8, height: 36, cursor: "pointer", textTransform: "none", fontSize: 13 }}>
+            <input type="checkbox" checked={!!empForm.ahvRentner} onChange={e => setEmpForm({ ...empForm, ahvRentner: e.target.checked })} style={{ width: "auto" }} />
+            AHV-Rentner:in
+          </label>
+          <div style={{ fontSize: 10, color: "var(--text5)", marginTop: 3 }}>Freibetrag CHF 1'400/Mt., keine ALV/BVG; ab 65 automatisch aus dem Geburtsdatum</div>
         </FormField>
       </div>
       <div className="form-row">

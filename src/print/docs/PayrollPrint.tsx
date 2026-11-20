@@ -85,8 +85,8 @@ export function LohnPrint({ entry, emp, data, monatLabel, settings }: { entry: L
           {(s.pensum || 100) < 100 && entry.bruttoBase != null && entry.bruttoBase !== entry.brutto && (
             <LRow label="Basis 100%" betrag={entry.bruttoBase} sub />
           )}
-          {s.eintrittsdatum && monatsAnteilNachEintritt(s.eintrittsdatum, entry.monat) < 1 && (
-            <LRow label={`Anteilig ab Eintritt ${formatDate(s.eintrittsdatum)}`} betrag={entry.brutto} sub />
+          {monatsAnteilNachEintritt(s.eintrittsdatum, entry.monat, s.austrittsdatum) < 1 && (
+            <LRow label={s.austrittsdatum && s.austrittsdatum.slice(0, 7) === entry.monat ? `Anteilig bis Austritt ${formatDate(s.austrittsdatum)}` : `Anteilig ab Eintritt ${formatDate(s.eintrittsdatum)}`} betrag={entry.brutto} sub />
           )}
           {entry.dreizehnter > 0 && <LRow label="13. Monatslohn (1/12)" betrag={entry.dreizehnter} sub />}
           {entry.bonusBetrag > 0 && <LRow label={entry.bonusBeschrieb || "Einmalzahlung / Bonus"} betrag={entry.bonusBetrag} sub />}
@@ -95,14 +95,15 @@ export function LohnPrint({ entry, emp, data, monatLabel, settings }: { entry: L
           {/* Spacer */}
           <tr><td colSpan={3} style={{ padding: "4px 0", borderBottom: "none" }}><div style={{ fontSize: 10, letterSpacing: "0.1em", color: "#888", padding: "8px 10px 2px" }}>ABZÜGE ARBEITNEHMER</div></td></tr>
 
-          <LRow label="AHV / IV / EO" satz={`${s.ahvSatz ?? 5.3}%`} betrag={-entry.ahv} sub color="#8a1a1a" />
+          <LRow label={entry.ahvBasis != null && entry.ahvBasis !== entry.bruttoTotal ? `AHV / IV / EO (auf ${formatCHF(entry.ahvBasis)}, Rentnerfreibetrag)` : "AHV / IV / EO"} satz={`${s.ahvSatz ?? 5.3}%`} betrag={-entry.ahv} sub color="#8a1a1a" />
           <LRow label="ALV – Arbeitslosenversicherung" satz={`${s.alvSatz ?? 1.1}%`} betrag={-entry.alv} sub color="#8a1a1a" />
-          <LRow label="BVG – Berufliche Vorsorge / PK" satz={`${s.bvgSatz ?? 8.0}%`} betrag={-entry.bvg} sub color="#8a1a1a" />
+          <LRow label="BVG – Berufliche Vorsorge / PK" satz={(s.pkBeitragAN ?? 0) > 0 ? "PK-Ausweis" : `${s.bvgSatz ?? 8.0}%`} betrag={-entry.bvg} sub color="#8a1a1a" />
           <LRow label="NBU – Nichtberufsunfallversicherung" satz={`${s.nbuSatz ?? 1.5}%`} betrag={-entry.nbu} sub color="#8a1a1a" />
           <LRow label="KTG – Krankentaggeldversicherung" satz={`${s.ktgSatz ?? 0.5}%`} betrag={-entry.ktg} sub color="#8a1a1a" />
           {entry.qst > 0 && <LRow label="Quellensteuer" satz={`${s.quellensteuerSatz ?? 10}%`} betrag={-entry.qst} sub color="#8a1a1a" />}
 
           <LRow label="Nettolohn" betrag={entry.netto} bold topBorder />
+          {(entry.familienzulagen || 0) > 0 && <LRow label="Familienzulagen (Kinder-/Ausbildungszulagen)" betrag={entry.familienzulagen || 0} sub />}
 
           {spesen.length > 0 && <>
             <tr><td colSpan={3} style={{ padding: "4px 0", borderBottom: "none" }}><div style={{ fontSize: 10, letterSpacing: "0.1em", color: "#888", padding: "8px 10px 2px" }}>SPESENERSTATTUNG</div></td></tr>
@@ -131,7 +132,10 @@ export function LohnPrint({ entry, emp, data, monatLabel, settings }: { entry: L
             { label: "AHV/IV/EO", val: lohnAGBeitraege(entry).ahvAG },
             { label: "ALV", val: lohnAGBeitraege(entry).alvAG },
             { label: "BVG/PK (AG)", val: entry.bvgAG || 0 },
-            { label: "UVG BU", val: Math.round(entry.bruttoTotal * 0.5 / 100 * 100)/100 },
+            ...((entry.agFak || 0) > 0 ? [{ label: "FAK", val: entry.agFak || 0 }] : []),
+            ...((entry.agVk || 0) > 0 ? [{ label: "Verwaltungskosten", val: entry.agVk || 0 }] : []),
+            ...((entry.agBu || 0) > 0 ? [{ label: "UVG BU", val: entry.agBu || 0 }] : []),
+            ...((entry.agKtg || 0) > 0 ? [{ label: "KTG (AG)", val: entry.agKtg || 0 }] : []),
           ].map(r => (
             <div key={r.label}>
               <div style={{ fontSize: 10, color: "#aaa" }}>{r.label}</div>

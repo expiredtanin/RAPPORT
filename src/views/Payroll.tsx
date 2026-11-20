@@ -16,8 +16,8 @@
 // Fachliche Details der Abzüge: utils.ts `calcLohn`, docs/FACHLOGIK.md.
 
 import React, { useState } from "react";
-import { generateId, formatCHF, formatDate, calcLohn, monatsAnteilNachEintritt } from "../utils";
-import { lohnAGBeitraege, lohnPersonalaufwand, lohnVorperioden, spesenFuerLohn } from "../accounting";
+import { generateId, formatCHF, calcLohn, lohnAGSaetze } from "../utils";
+import { lohnAGBeitraege, lohnPersonalaufwand, lohnVorperioden, spesenFuerLohn, spesenWartend } from "../accounting";
 import { Header, NavArrows, ShareButton, EmptyState } from "../components/UI";
 import { useConfirm } from "../hooks/useConfirm";
 import type { Employee, LohnEntry, LohnResult, SaetzeSnapshot, ViewProps } from "../types";
@@ -61,6 +61,8 @@ function Payroll({ data, saveAll, setPrintContent, setView }: Pick<ViewProps, "d
       const em = parseInt(parts[1]) - 1; // 0-basiert
       if (selYear < ey || (selYear === ey && selMonth < em)) return false;
     }
+    // Nicht nach dem Austrittsmonat
+    if (emp.austrittsdatum && emp.austrittsdatum.slice(0, 7) < monatStr) return false;
     return true;
   };
 
@@ -71,7 +73,7 @@ function Payroll({ data, saveAll, setPrintContent, setView }: Pick<ViewProps, "d
   const findEntry = (empId: string) => lohnEntries.find(l => l.monat === monatStr && l.employeeId === empId);
   /** Vorschau/Abschluss mit den Overrides dieses Laufs und den früheren Abrechnungen des Jahres. */
   const calcFor = (emp: Employee, spesen: { amount?: number }[]) =>
-    calcLohn({ ...emp, monatslohn: getEffBrutto(emp), pensum: getEffPensum(emp) }, monatStr, spesen, (bonusOverride[emp.id] as number) || 0, lohnVorperioden(lohnEntries, emp.id, monatStr));
+    calcLohn({ ...emp, monatslohn: getEffBrutto(emp), pensum: getEffPensum(emp) }, monatStr, spesen, (bonusOverride[emp.id] as number) || 0, lohnVorperioden(lohnEntries, emp.id, monatStr), lohnAGSaetze(data.settings));
 
   const abschliessen = (emp: Employee) => {
     if (findEntry(emp.id)) return;
@@ -91,6 +93,11 @@ function Payroll({ data, saveAll, setPrintContent, setView }: Pick<ViewProps, "d
       pensum: effPensum,
       eintrittsdatum: emp.eintrittsdatum || "",
       pkAGSatz: emp.pkAGSatz ?? 8.0,
+      austrittsdatum: emp.austrittsdatum || "",
+      pkBeitragAN: emp.pkBeitragAN ?? null,
+      pkBeitragAG: emp.pkBeitragAG ?? null,
+      ahvRentner: !!emp.ahvRentner,
+      agSaetze: lohnAGSaetze(data.settings),
     };
     const entry: LohnEntry = {
       id: generateId(), monat: monatStr, employeeId: emp.id,
@@ -215,9 +222,9 @@ function Payroll({ data, saveAll, setPrintContent, setView }: Pick<ViewProps, "d
           <span>Basis 100%: {formatCHF(calc.bruttoBase)} × {displayPensum}%</span>
         </div>
       )}
-      {emp.eintrittsdatum && monatsAnteilNachEintritt(emp.eintrittsdatum, monatStr) < 1 && (
-        <div style={{ display: "flex", justifyContent: "space-between", padding: "1px 0 3px 12px", fontSize: 10, color: "var(--text4)" }}>
-          <span>anteilig ab Eintritt {formatDate(emp.eintrittsdatum)}</span>
+      {calc.hinweise && calc.hinweise.length > 0 && (
+        <div className="lohn-hinweise">
+          {calc.hinweise.map(h => <div key={h}>{h}</div>)}
         </div>
       )}
       {calc.dreizehnter > 0 && <LohnRow label="13. Monatslohn (1/12)" value={calc.dreizehnter} indent />}
@@ -227,9 +234,9 @@ function Payroll({ data, saveAll, setPrintContent, setView }: Pick<ViewProps, "d
       {(() => {
         const s = emp.saetzeSnapshot || emp; // abgeschlossen: snapshot, preview: live emp
         return <>
-          <LohnRow label={`AHV/IV/EO (${s.ahvSatz ?? 5.3}%)`} value={-calc.ahv} indent />
+          <LohnRow label={`AHV/IV/EO (${s.ahvSatz ?? 5.3}%${calc.ahvBasis != null && calc.ahvBasis !== calc.bruttoTotal ? ` von ${formatCHF(calc.ahvBasis)}` : ""})`} value={-calc.ahv} indent />
           <LohnRow label={`ALV (${s.alvSatz ?? 1.1}%)`} value={-calc.alv} indent />
-          <LohnRow label={`BVG/PK (${s.bvgSatz ?? 8.0}%)`} value={-calc.bvg} indent />
+          <LohnRow label={(s.pkBeitragAN ?? 0) > 0 ? "BVG/PK (laut PK-Ausweis)" : `BVG/PK (${s.bvgSatz ?? 8.0}%)`} value={-calc.bvg} indent />
           <LohnRow label={`NBU (${s.nbuSatz ?? 1.5}%)`} value={-calc.nbu} indent />
           <LohnRow label={`KTG (${s.ktgSatz ?? 0.5}%)`} value={-calc.ktg} indent />
           {calc.qst > 0 && <LohnRow label={`Quellensteuer (${s.quellensteuerSatz ?? 10}%)`} value={-calc.qst} indent />}
@@ -238,6 +245,7 @@ function Payroll({ data, saveAll, setPrintContent, setView }: Pick<ViewProps, "d
       <div style={{ borderTop: "1.5px solid var(--text)", marginTop: 8, paddingTop: 8 }}>
         <LohnRow label="Nettolohn" value={calc.netto} bold />
       </div>
+      {(calc.familienzulagen || 0) > 0 && <LohnRow label="Familienzulagen (nicht AHV-pflichtig)" value={calc.familienzulagen || 0} indent />}
       {calc.spesenTotal > 0 && <>
         <div style={{ marginTop: 10, marginBottom: 4, fontSize: 10, letterSpacing: "0.08em", color: "var(--text4)" }}>SPESENERSTATTUNG</div>
         <LohnRow label="Spesen" value={calc.spesenTotal} indent />
@@ -253,8 +261,12 @@ function Payroll({ data, saveAll, setPrintContent, setView }: Pick<ViewProps, "d
             <div style={{ fontSize: 10, letterSpacing: "0.08em", color: "var(--text4)", marginBottom: 4 }}>LOHNKOSTEN ARBEITGEBER</div>
             <LohnRow label={`AHV/IV/EO AG-Anteil (${s.ahvSatz ?? 5.3}%)`} value={ag.ahvAG} indent />
             <LohnRow label={`ALV AG-Anteil (${s.alvSatz ?? 1.1}%)`} value={ag.alvAG} indent />
-            {ag.bvgAG > 0 && <LohnRow label={`PK / BVG AG-Anteil (${s.pkAGSatz ?? 8.0}%)`} value={ag.bvgAG} indent />}
-            <LohnRow label="Gesamtlohnkosten (Brutto + AG-Beiträge, ohne Spesen)" value={lohnPersonalaufwand(calc)} bold />
+            {ag.bvgAG > 0 && <LohnRow label={(s.pkBeitragAG ?? 0) > 0 ? "PK / BVG AG-Anteil (laut PK-Ausweis)" : `PK / BVG AG-Anteil (${s.pkAGSatz ?? 8.0}%)`} value={ag.bvgAG} indent />}
+            {(calc.agFak || 0) > 0 && <LohnRow label="Familienausgleichskasse (FAK)" value={calc.agFak || 0} indent />}
+            {(calc.agVk || 0) > 0 && <LohnRow label="Verwaltungskosten Ausgleichskasse" value={calc.agVk || 0} indent />}
+            {(calc.agBu || 0) > 0 && <LohnRow label="Berufsunfall (UVG-BU)" value={calc.agBu || 0} indent />}
+            {(calc.agKtg || 0) > 0 && <LohnRow label="Krankentaggeld AG-Anteil" value={calc.agKtg || 0} indent />}
+            <LohnRow label="Lohnkosten total" value={lohnPersonalaufwand(calc)} bold />
           </div>
         );
       })()}
@@ -369,6 +381,15 @@ function Payroll({ data, saveAll, setPrintContent, setView }: Pick<ViewProps, "d
                           <span>{formatCHF(s.amount)}</span>
                         </div>
                       ))}
+                    </div>
+                  ) : null;
+                })()}
+                {!existingEntry && (() => {
+                  const w = spesenWartend(data.expenses || [], selectedEmp.id, monatStr);
+                  return w.length > 0 ? (
+                    <div className="lohn-hinweise" style={{ marginTop: 12 }}>
+                      {w.length} {w.length === 1 ? "Spese wartet" : "Spesen warten"} auf Genehmigung ({formatCHF(w.reduce((a, e) => a + (e.amount || 0), 0))}) und {w.length === 1 ? "geht" : "gehen"} erst nach der Genehmigung mit dem Lohn.
+                      {setView && <button className="btn btn-quiet btn-sm" style={{ marginLeft: 6 }} onClick={() => setView("expenses")}>Zu den Spesen</button>}
                     </div>
                   ) : null;
                 })()}

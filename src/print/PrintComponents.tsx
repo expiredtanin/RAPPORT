@@ -235,7 +235,7 @@ export function PrintView({ content, onClose, settings, assets }: { content: Con
           {content.type === "projectsOverview" && <ProjectsOverviewPrint projects={content.projects} data={content.data} settings={settings} />}
           {content.type === "qrbill" && <QRBillPrint inv={content.inv} client={content.client} settings={settings} />}
           {content.type === "quote" && <QuotePrint quote={content.quote} client={content.client} settings={settings} />}
-          {content.type === "vertrag" && <VertragPrint vertrag={content.vertrag} client={content.client} project={content.project} settings={settings} />}
+          {content.type === "vertrag" && <VertragPrint vertrag={content.vertrag} amounts={content.amounts} client={content.client} project={content.project} settings={settings} />}
           {content.type === "buchhaltung" && <BuchhaltungPrint data={content.data} filterYear={content.filterYear} settings={settings} />}
           {content.type === "lohn" && <LohnPrint entry={content.entry} emp={content.emp} data={content.data} monatLabel={content.monatLabel} settings={settings} />}
           {content.type === "lieferschein" && <LieferscheinPrint note={content.note} client={content.client} data={content.data} settings={settings} />}

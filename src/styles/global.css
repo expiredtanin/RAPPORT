@@ -906,3 +906,5 @@ i.paid { background: var(--positive); } i.open { background: var(--accent); } i.
 /* Monatswahl im Kopfband (Löhne) */
 .month-nav { display: inline-flex; align-items: center; gap: 12px; }
 .month-nav > span { font-size: 15px; font-weight: 600; min-width: 130px; }
+/* Hinweise in der Lohnabrechnung (Ein-/Austritt, Rentner, BVG) */
+.lohn-hinweise { margin: 6px 0 8px; padding: 8px 10px; border-radius: 8px; background: var(--surface2); font-size: 11.5px; line-height: 1.45; color: var(--text3); display: flex; flex-direction: column; gap: 3px; }

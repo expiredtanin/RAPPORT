@@ -9,6 +9,7 @@ import { isLocalBackend } from "../storage/adapter";
 import { ExpenseFigures } from "../components/ExpenseFigures";
 import { TableToolbar, Header, Modal, FormField, DateInput, SortTh, RowMenu, EmptyState } from "../components/UI";
 import { removeWithUndo } from "../undo";
+import { expandInternalExpenses } from "../accounting";
 import { showToast } from "../toast";
 import { extractReceiptText, parseReceiptFields } from "../ocr";
 import type { Expense, InternalExpense, ViewProps } from "../types";
@@ -36,10 +37,16 @@ function InternalExpenses({ data, update }: Pick<ViewProps, "data" | "update" | 
   const receiptInputRef = useRef<HTMLInputElement>(null);
 
   const items = data.internalExpenses || [];
-  const years = Array.from(new Set(items.map(e => (e.date || "").slice(0, 4)).filter(Boolean))).sort().reverse();
+  // Wiederkehrende als einzelne Buchungen bis heute (wie die Buchhaltung, accounting.ts)
+  const bookings = expandInternalExpenses(items, localISODate());
+  const years = Array.from(new Set(bookings.map(e => (e.date || "").slice(0, 4)).filter(Boolean))).sort().reverse();
 
   const openNew = () => { setForm(emptyItem); setModal("new"); };
-  const openEdit = (e: InternalExpense) => { setForm({ ...e }); setModal(e.id); };
+  const openEdit = (e: InternalExpense & { occurrenceOf?: string }) => {
+    const src = e.occurrenceOf ? items.find(x => x.id === e.occurrenceOf) : e;
+    if (!src) return;
+    setForm({ ...src }); setModal(src.id);
+  };
   const closeModal = () => { setModal(null); setForm(emptyItem); };
   const save = () => {
     if (!form.amount) { showToast("Bitte einen Betrag eingeben."); return; }
@@ -50,7 +57,7 @@ function InternalExpenses({ data, update }: Pick<ViewProps, "data" | "update" | 
     update("internalExpenses", updated);
     closeModal();
   };
-  const del = (id: string) => { const e = items.find(x => x.id === id); removeWithUndo(`Ausgabe${e?.description ? " «" + e.description + "»" : ""} gelöscht`, "internalExpenses", x => x.id === id); };
+  const del = (rawId: string) => { const id = rawId.split("@")[0]; const e = items.find(x => x.id === id); removeWithUndo(`Ausgabe${e?.description ? " «" + e.description + "»" : ""} gelöscht`, "internalExpenses", x => x.id === id); };
 
   const runReceiptScan = async (dataUrl: string) => {
     setScanning(true);
@@ -89,7 +96,7 @@ function InternalExpenses({ data, update }: Pick<ViewProps, "data" | "update" | 
   const getNet = (e: Pick<Expense, "amount" | "inclMwst" | "mwstRate">) => e.inclMwst ? e.amount / (1 + (e.mwstRate || 0) / 100) : e.amount;
   const getTax = (e: Pick<Expense, "amount" | "inclMwst" | "mwstRate">) => e.amount - getNet(e);
 
-  const allFiltered = items.filter(e => {
+  const allFiltered = bookings.filter(e => {
     if (filter.year && !(e.date || "").startsWith(filter.year)) return false;
     if (filter.category && e.category !== filter.category) return false;
     if (filter.search) {
@@ -268,7 +275,7 @@ function InternalExpenses({ data, update }: Pick<ViewProps, "data" | "update" | 
                             {groupBy !== "category" && e.description && <div style={{ fontSize: 12, color: "var(--text4)", marginTop: 1 }}>{e.category}</div>}
                           </td>
                           <td className="hide-narrow" style={{ fontSize: 12.5, color: e.recurring ? "var(--text2)" : "var(--text5)", whiteSpace: "nowrap" }}>
-                            {e.recurring ? <><span className="msr" style={{ fontSize: 14, verticalAlign: "-2px", marginRight: 4, color: "var(--text4)" }}>autorenew</span>{e.recurringInterval || "monatlich"}</> : "—"}
+                            {e.recurring ? <><span className="msr" style={{ fontSize: 14, verticalAlign: "-2px", marginRight: 4, color: "var(--text4)" }}>autorenew</span>{e.recurringInterval || "monatlich"}{e.recurringUntil ? ` bis ${e.recurringUntil.slice(5, 7)}.${e.recurringUntil.slice(0, 4)}` : ""}</> : "—"}
                           </td>
                           <td className="hide-narrow num" style={{ textAlign: "right" }}>{formatCHF(net)}</td>
                           <td className="hide-narrow num" style={{ textAlign: "right", color: "var(--text4)" }}>{tax > 0 ? formatCHF(tax) : "—"}</td>
@@ -281,7 +288,7 @@ function InternalExpenses({ data, update }: Pick<ViewProps, "data" | "update" | 
                             )}
                             <RowMenu items={[
                               { label: "Bearbeiten", icon: "edit", onClick: () => openEdit(e) },
-                              { label: "Löschen", icon: "delete", danger: true, onClick: () => del(e.id) },
+                              { label: e.recurring ? "Ganze Serie löschen" : "Löschen", icon: "delete", danger: true, onClick: () => del(e.id) },
                             ]} />
                           </td>
                         </tr>
@@ -382,6 +389,12 @@ function InternalExpenses({ data, update }: Pick<ViewProps, "data" | "update" | 
                   <option value="quartalsweise">Quartalsweise</option>
                   <option value="jährlich">Jährlich</option>
                 </select>
+              </FormField>
+            )}
+            {form.recurring && (
+              <FormField label="Läuft bis (letzter Monat)">
+                <input type="month" value={(form.recurringUntil || "").slice(0, 7)} onChange={e => setForm({ ...form, recurringUntil: e.target.value ? `${e.target.value}-01` : null })} />
+                <div style={{ fontSize: 11, color: "var(--text4)", marginTop: 4 }}>Die Buchhaltung bucht die Ausgabe ab dem Datum oben in jedem Intervall bis heute (bzw. bis zu diesem Monat). Nicht zusätzlich jeden Monat einzeln erfassen.</div>
               </FormField>
             )}
           </div>

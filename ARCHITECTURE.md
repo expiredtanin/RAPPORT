@@ -262,14 +262,17 @@ Alle Views liegen in [src/views/](src/views/), werden in [App.tsx](src/App.tsx) 
 - **Schlussrechnung**: Pauschal = `projectFee` minus alle gestellten Nicht-Schluss-Rechnungen des Projekts (netto nach Rabatt, ohne Entwürfe). Stundensatz = offene Stunden bis heute minus Akonti/Teilrechnungen, die nicht nach Stunden gestellt wurden. Aus einer Offerte = `Quote.sub` minus die Rechnungen dieser Offerte (`invoicesForQuote`: `quoteId`, bei der Hauptofferte zusätzlich Projekt-Rechnungen ohne Offertbezug; Nachträge getrennt).
 - **Teilrechnung «Nach SIA-Phase»**: offerierter Phasenbetrag aus den verknüpften Offerten (`phaseInvoiceAmount`; Aufwand-Offerten mit den Sätzen der Rollen), ohne Offerte Phasenstunden × Stundensatz.
 - **Akonto-Planer**: höchstens 24 Raten (Betrag durch die tatsächliche Anzahl), Vorschlag = Restbetrag (`projectFee` minus gestellte Rechnungen), «= Budget übernehmen» als Alternative.
-- **Offen (bewusst nicht geändert, Entscheid Karim):** Akonto-MWST wird in der Buchhaltung getrennt als «ausstehend» geführt; Vertragssumme aus Offerte = Brutto (`q.total`).
+- **Akonto-MWST** wird mit der Akontorechnung abgerechnet (Vorauszahlung, Art. 40 MWSTG); die Schlussrechnung zieht die Akonti netto ab und belastet MWST nur auf dem Rest.
+- **Vertragssumme** aus einer Offerte = netto exkl. MWST (`q.sub`, SIA 1001/1); Vertrag/PDF weisen die MWST separat aus (`contractAmounts`; ältere Verträge mit dem Offert-Brutto werden als netto gelesen).
 
 ### Buchhaltung und Löhne (Regeln, Stand 26.11)
 
 - **Eine Quelle:** Ansicht, PDF (`AccountingPrint`) und CSV rechnen über `accountingSummary`/`accountingRows` in [accounting.ts](src/accounting.ts) (Tests: `accounting.test.ts`).
-- **Spesen** zählen alle mit Netto und Vorsteuer, auch die über den Lohn ausbezahlten; **Personalaufwand** = Bruttolohn Total + AG-Beiträge (AHV/IV/EO und ALV paritätisch = AN-Abzug, PK-AG `bvgAG`), ohne Spesen. FAK, Verwaltungskosten, UVG-BU sind nicht erfasst.
-- **Lohnlauf:** mit dem Lohn ausbezahlt werden Spesen des Monats ohne Abrechnung, die nicht schon «ausbezahlt» sind, plus ältere mit «auf nächsten Lohn» (`spesenFuerLohn`). Ausgetretene (`active === false`) erscheinen nur mit bestehender Abrechnung.
-- **Interne Ausgaben** zählen in der Buchhaltung einmal am Datum; nur das Budget rechnet wiederkehrende hoch (offen, siehe Audit).
+- **MWST** (Einstellungen → Studio): Methode effektiv (Umsatzsteuer − Vorsteuer, vierteljährlich) oder Saldosteuersatz (Entgelt inkl. MWST × Satz, ohne Vorsteuer, halbjährlich; `mwstPerioden`); Abrechnungsart vereinbart (Rechnungsdatum) oder vereinnahmt (bezahlte Rechnungen nach `paidDate`). Frist 60 Tage nach Periodenende. Felder liegen im `ui`-Blob der Studio-Einstellungen.
+- **Spesen** zählen alle mit Netto und Vorsteuer, auch die über den Lohn ausbezahlten; **Personalaufwand** = Bruttolohn Total + AG-Beiträge (AHV/IV/EO und ALV paritätisch = AN-Abzug, PK-AG, dazu FAK, Verwaltungskosten AK, UVG-BU, KTG-AG nach `lohnAGSaetze`), ohne Spesen und Familienzulagen.
+- **Lohn** (`calcLohn`): Ein- und Austritt anteilig nach Kalendertagen; AHV-Rentner:innen (ab Monat nach dem 65. Geburtstag oder `ahvRentner`) mit Freibetrag 1'400/Monat, ohne ALV/BVG; unter 18 keine AHV/ALV; ALV/NBU bis Höchstlohn 148'200 kumuliert; PK laut PK-Ausweis (`pkBeitragAN/AG`, CHF/Monat) vor %-Satz, unter der BVG-Eintrittsschwelle (22'680) keine PK; Hinweis, wenn PK unter dem BVG-Minimum liegt oder AG < AN. Familienzulagen in der Auszahlung (nicht AHV-pflichtig). Grenzwerte als Konstanten in utils.ts (Stand 2025/26).
+- **Lohnlauf:** mit dem Lohn ausbezahlt werden nur genehmigte Spesen («genehmigt», «auf nächsten Lohn») bis und mit dem Monat (`spesenFuerLohn`); «offen» erscheint als Hinweis (`spesenWartend`). Ausgetretene erscheinen nur bis zum Austrittsmonat bzw. mit bestehender Abrechnung.
+- **Interne Ausgaben:** wiederkehrende werden als einzelne Buchungen bis heute bzw. bis `recurringUntil` aufgelöst (`expandInternalExpenses`) — in Buchhaltung, PDF, CSV und auf der Ausgaben-Seite gleich.
 
 ## 6. utils.ts — Business-Logik-Bibliothek
 

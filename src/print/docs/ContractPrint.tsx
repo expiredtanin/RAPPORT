@@ -5,7 +5,10 @@ import { StudioLogo } from "../../components/UI";
 import type { Project, Settings, Contract } from "../../types";
 import { HEADING, type Client } from "./shared";
 
-export function VertragPrint({ vertrag, client, project, settings }: { vertrag: Contract; client: Client; project?: Project; settings: Settings }) {
+export function VertragPrint({ vertrag, amounts, client, project, settings }: { vertrag: Contract; amounts?: { net: number; rate: number; tax: number; gross: number }; client: Client; project?: Project; settings: Settings }) {
+  // Honorar exkl. MWST, MWST separat (SIA 1001/1); ohne `amounts` (ältere Aufrufe) Betrag als netto zum Normalsatz
+  const a = amounts || { net: vertrag.amount || 0, rate: settings.mwstRate ?? 8.1, tax: Math.round((vertrag.amount || 0) * (settings.mwstRate ?? 8.1)) / 100, gross: 0 };
+  const gross = a.gross || Math.round((a.net + a.tax) * 100) / 100;
   const isUnterauftrag = vertrag.contractType === "unterauftrag";
   const partnerLabel = isUnterauftrag ? "AUFTRAGNEHMER (FACHPLANER)" : "AUFTRAGGEBER";
 
@@ -60,8 +63,11 @@ export function VertragPrint({ vertrag, client, project, settings }: { vertrag: 
           <tr style={{ borderBottom: "1px solid #f0f0f0" }}>
             <td style={{ padding: "7px 0", color: "#888" }}>Vergütung</td>
             <td style={{ padding: "7px 0", fontWeight: 600 }}>
-              {vertrag.billingType === "stundensatz" ? `${formatCHF(vertrag.hourlyRate)}/h` : formatCHF(vertrag.amount)}
-              {vertrag.billingType === "stundensatz" && <span style={{ fontWeight: 400, color: "#888" }}> (nach effektivem Aufwand)</span>}
+              {vertrag.billingType === "stundensatz" ? `${formatCHF(vertrag.hourlyRate)}/h exkl. MWST` : `${formatCHF(a.net)} exkl. MWST`}
+              {vertrag.billingType === "stundensatz" && <span style={{ fontWeight: 400, color: "#888" }}> (nach effektivem Aufwand{a.rate > 0 ? `, zuzüglich MWST ${a.rate} %` : ""})</span>}
+              {vertrag.billingType !== "stundensatz" && a.rate > 0 && (
+                <div style={{ fontWeight: 400, color: "#555", marginTop: 3 }}>zuzüglich MWST {a.rate} % {formatCHF(a.tax)} · total {formatCHF(gross)}</div>
+              )}
             </td>
           </tr>
           {vertrag.paymentTerms && (

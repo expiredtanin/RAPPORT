@@ -76,8 +76,54 @@ export function StudioTab({ s, setField, data }: DraftProps & { data: AppData })
               <input type="number" value={s.defaultHourlyRate} onChange={e => setField({ defaultHourlyRate: +e.target.value })} />
             </FormField>
           </div>
+          <div className="form-row">
+            <FormField label="MWST-Abrechnungsmethode">
+              <select value={s.mwstMethode || "effektiv"} onChange={e => setField({ mwstMethode: e.target.value as "effektiv" | "saldo" })}>
+                <option value="effektiv">Effektiv</option>
+                <option value="saldo">Saldosteuersatz</option>
+              </select>
+              <div style={{ fontSize: 10, color: "var(--text5)", marginTop: 3 }}>{s.mwstMethode === "saldo" ? "halbjährlich, ohne Vorsteuerabzug" : "vierteljährlich, mit Vorsteuerabzug"}</div>
+            </FormField>
+            <FormField label="Abrechnungsart">
+              <select value={s.mwstAbrechnungsart || "vereinbart"} onChange={e => setField({ mwstAbrechnungsart: e.target.value as "vereinbart" | "vereinnahmt" })}>
+                <option value="vereinbart">Vereinbarte Entgelte</option>
+                <option value="vereinnahmt">Vereinnahmte Entgelte</option>
+              </select>
+              <div style={{ fontSize: 10, color: "var(--text5)", marginTop: 3 }}>{s.mwstAbrechnungsart === "vereinnahmt" ? "nach Zahlungseingang (Bewilligung ESTV)" : "nach Rechnungsdatum (Standard)"}</div>
+            </FormField>
+          </div>
+          {s.mwstMethode === "saldo" && (
+            <FormField label="Saldosteuersatz (%)">
+              <input type="number" step="0.1" min={0} value={s.mwstSaldoSatz ?? ""} placeholder="laut Bewilligung der ESTV" onChange={e => setField({ mwstSaldoSatz: e.target.value === "" ? undefined : +e.target.value })} style={{ maxWidth: 160 }} />
+              <div style={{ fontSize: 11, color: "var(--text4)", marginTop: 4 }}>Den Satz aus der Bewilligung der ESTV eintragen. Rechnungen weisen weiterhin den Normalsatz aus; abgerechnet wird Entgelt inkl. MWST × Saldosteuersatz, ohne Vorsteuerabzug.</div>
+            </FormField>
+          )}
         </Section>
       </div>
+    </div>
+
+    <div className="card" style={{ marginTop: 20 }}>
+      <Section title="LOHNKOSTEN ARBEITGEBER">
+        <div style={{ fontSize: 11, color: "var(--text5)", marginBottom: 12 }}>Zusätzlich zu AHV/IV/EO, ALV (paritätisch) und Pensionskasse. Sätze laut Ausgleichskasse und Versicherern; sie gelten für neue Lohnabrechnungen.</div>
+        <div className="form-row">
+          <FormField label="Familienausgleichskasse FAK (%)">
+            <input type="number" step="0.01" min={0} value={s.lohnFakSatz ?? 1.0} onChange={e => setField({ lohnFakSatz: +e.target.value })} />
+            <div style={{ fontSize: 10, color: "var(--text5)", marginTop: 3 }}>der AHV-Lohnsumme, kantonal</div>
+          </FormField>
+          <FormField label="Verwaltungskosten AK (%)">
+            <input type="number" step="0.1" min={0} value={s.lohnVkSatz ?? 3.0} onChange={e => setField({ lohnVkSatz: +e.target.value })} />
+            <div style={{ fontSize: 10, color: "var(--text5)", marginTop: 3 }}>der AHV/IV/EO-Beiträge</div>
+          </FormField>
+          <FormField label="Berufsunfall UVG-BU (%)">
+            <input type="number" step="0.01" min={0} value={s.lohnBuSatz ?? 0.1} onChange={e => setField({ lohnBuSatz: +e.target.value })} />
+            <div style={{ fontSize: 10, color: "var(--text5)", marginTop: 3 }}>der UVG-Lohnsumme, trägt AG</div>
+          </FormField>
+          <FormField label="Krankentaggeld AG (%)">
+            <input type="number" step="0.01" min={0} value={s.lohnKtgAGSatz ?? ""} placeholder="= AN-Satz" onChange={e => setField({ lohnKtgAGSatz: e.target.value === "" ? undefined : +e.target.value })} />
+            <div style={{ fontSize: 10, color: "var(--text5)", marginTop: 3 }}>leer = paritätisch</div>
+          </FormField>
+        </div>
+      </Section>
     </div>
 
     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20, marginTop: 20 }} className="responsive-grid-2">

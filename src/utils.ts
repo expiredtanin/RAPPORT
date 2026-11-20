@@ -17,7 +17,7 @@ import { DEFAULT_ABSENZ_TYPES, NON_BILLING_CATEGORIES } from "./constants";
 import type {
   AbsenzType, AppData, ContactCategory, DashboardRow, ProtocolApproval, ProtocolParticipant, DateStr, DeliveryNote, Employee, Feiertag, Id,
   Invoice, LohnResult, ManualPhase, Person, Project, ProjectUsage, Protocol, Quote, Role, Settings, SiaItem, SiaPhase,
-  TimeEntry, User,
+  TimeEntry, User, Contract,
 } from "./types";
 
 export interface SiaCalcItem extends SiaItem { hours: number }
@@ -882,15 +882,104 @@ export const HOECHSTLOHN_ALV_UVG = 148_200;
  * (31 Tage) → 17/31. Vor dem Eintrittsmonat 0, danach 1. Ohne Eintrittsdatum oder Monat 1.
  * @param monat `YYYY-MM`
  */
-export function monatsAnteilNachEintritt(eintrittsdatum: string | undefined, monat: string | undefined): number {
-  if (!eintrittsdatum || !monat || !/^\d{4}-\d{2}$/.test(monat)) return 1;
-  const entryMonth = eintrittsdatum.slice(0, 7);
-  if (entryMonth < monat) return 1;
-  if (entryMonth > monat) return 0;
+export function monatsAnteilNachEintritt(eintrittsdatum: string | undefined, monat: string | undefined, austrittsdatum?: string | null): number {
+  if (!monat || !/^\d{4}-\d{2}$/.test(monat)) return 1;
   const [y, m] = monat.split("-").map(Number);
   const tage = new Date(y, m, 0).getDate();
-  const tag = Math.min(Math.max(parseInt(eintrittsdatum.slice(8, 10), 10) || 1, 1), tage);
-  return (tage - tag + 1) / tage;
+  const tagOf = (d: string) => Math.min(Math.max(parseInt(d.slice(8, 10), 10) || 1, 1), tage);
+  let von = 1, bis = tage;
+  if (eintrittsdatum) {
+    const em = eintrittsdatum.slice(0, 7);
+    if (em > monat) return 0;
+    if (em === monat) von = tagOf(eintrittsdatum);
+  }
+  if (austrittsdatum) {
+    const am = austrittsdatum.slice(0, 7);
+    if (am < monat) return 0;
+    if (am === monat) bis = tagOf(austrittsdatum);
+  }
+  return Math.max(0, bis - von + 1) / tage;
+}
+
+// ─── Verträge ──────────────────────────────────────────────────────────────────
+/**
+ * Vertragssumme netto (exkl. MWST, wie SIA 1001/1 «Honorar exkl. MWST») und der MWST-Satz.
+ * Bis 26.11 übernahm die App aus einer Offerte den Bruttobetrag (`q.total`): entspricht `amount`
+ * genau dem Offert-Total, gilt der Nettobetrag der Offerte (`q.sub`).
+ */
+export function contractAmounts(c: Pick<Contract, "amount" | "quoteId">, quotes: Pick<Quote, "id" | "total" | "sub" | "mwst" | "mwstRate">[] | undefined, defaultRate: number): { net: number; rate: number; tax: number; gross: number } {
+  const q = c.quoteId ? (quotes || []).find(x => x.id === c.quoteId) : undefined;
+  const legacyBrutto = !!q && q.mwst !== false && Math.abs((c.amount || 0) - (q.total || 0)) < 0.005 && Math.abs((q.total || 0) - (q.sub || 0)) > 0.005;
+  const net = legacyBrutto ? (q!.sub || 0) : (c.amount || 0);
+  const rate = q && q.mwst === false ? 0 : (q?.mwstRate ?? defaultRate);
+  const tax = Math.round(net * rate) / 100;
+  return { net, rate, tax, gross: Math.round((net + tax) * 100) / 100 };
+}
+
+// ─── Sozialversicherungen: Grenzwerte (Stand 2025/2026, BSV) ───────────────────
+/** AHV-Freibetrag für erwerbstätige Rentner:innen pro Monat (Art. 6quater AHVV) */
+export const AHV_RENTNER_FREIBETRAG = 1400;
+/** BVG-Eintrittsschwelle pro Jahr (Art. 2 BVG, Art. 5 BVV 2) */
+export const BVG_EINTRITTSSCHWELLE = 22680;
+/** BVG-Koordinationsabzug pro Jahr (Art. 8 BVG) */
+export const BVG_KOORDINATIONSABZUG = 26460;
+/** Oberer Grenzbetrag BVG pro Jahr */
+export const BVG_OBERER_GRENZBETRAG = 90720;
+/** Minimaler koordinierter Lohn pro Jahr */
+export const BVG_MIN_KOORDINIERT = 3780;
+
+/**
+ * AHV-Status in einem Monat aus dem Geburtsdatum: «jung» bis Ende des Jahres, in dem 17 erreicht
+ * wird (keine AHV/ALV-Beiträge auf dem Lohn, Art. 3 AHVG), «rentner» ab dem Monat nach dem
+ * 65. Geburtstag (Referenzalter; Übergangsjahrgänge der Frauen über `Employee.ahvRentner`).
+ */
+export function ahvStatus(geburtsdatum: string | undefined, monat: string | undefined, rentnerFlag?: boolean): "jung" | "aktiv" | "rentner" {
+  if (rentnerFlag) return "rentner";
+  if (!geburtsdatum || !monat || !/^\d{4}-\d{2}/.test(geburtsdatum) || !/^\d{4}-\d{2}$/.test(monat)) return "aktiv";
+  const gy = Number(geburtsdatum.slice(0, 4)), gm = Number(geburtsdatum.slice(5, 7));
+  const y = Number(monat.slice(0, 4)), m = Number(monat.slice(5, 7));
+  if (y - gy < 18) return "jung";
+  // Monat nach dem 65. Geburtstag
+  if ((y - gy) * 12 + (m - gm) > 65 * 12) return "rentner";
+  return "aktiv";
+}
+
+/** BVG-Altersgutschrift in % des koordinierten Lohns nach Alter (Kalenderjahr − Geburtsjahr, Art. 16 BVG); unter 25 nur Risiko. */
+export function bvgAltersgutschriftSatz(alter: number): number {
+  if (alter < 25) return 0;
+  if (alter <= 34) return 7;
+  if (alter <= 44) return 10;
+  if (alter <= 54) return 15;
+  if (alter <= 65) return 18;
+  return 0;
+}
+
+/** Koordinierter Jahreslohn nach BVG (Minimum); unter der Eintrittsschwelle 0. */
+export function bvgKoordinierterLohn(jahreslohn: number): number {
+  if (jahreslohn < BVG_EINTRITTSSCHWELLE) return 0;
+  return Math.max(BVG_MIN_KOORDINIERT, Math.min(jahreslohn, BVG_OBERER_GRENZBETRAG) - BVG_KOORDINATIONSABZUG);
+}
+
+/** Weitere Arbeitgeber-Sätze in % (aus den Einstellungen, `lohnAGSaetze`). */
+export interface LohnAGSaetze {
+  /** Familienausgleichskasse, % der AHV-Lohnsumme */
+  fak: number;
+  /** Verwaltungskosten Ausgleichskasse, % der AHV/IV/EO-Beiträge (AN + AG) */
+  vk: number;
+  /** Berufsunfall UVG, % der UVG-Lohnsumme (bis Höchstlohn) */
+  bu: number;
+  /** KTG-Anteil Arbeitgeber, % des Bruttolohns; `null` = gleich wie der AN-Satz (paritätisch) */
+  ktgAG: number | null;
+}
+
+/** AG-Sätze aus den Einstellungen mit branchenüblichen Vorgaben (FAK 1.0 %, VK 3 %, BU 0.1 %, KTG paritätisch). */
+export function lohnAGSaetze(settings: Partial<Pick<Settings, "lohnFakSatz" | "lohnVkSatz" | "lohnBuSatz" | "lohnKtgAGSatz">> | undefined): LohnAGSaetze {
+  return {
+    fak: settings?.lohnFakSatz ?? 1.0,
+    vk: settings?.lohnVkSatz ?? 3.0,
+    bu: settings?.lohnBuSatz ?? 0.1,
+    ktgAG: settings?.lohnKtgAGSatz ?? null,
+  };
 }
 
 /**
@@ -937,36 +1026,82 @@ export function calcLohn(
   spesen?: { amount?: number }[],
   bonus?: number,
   vorperioden?: LohnVorperioden,
+  agSaetze?: LohnAGSaetze,
 ): LohnResult {
   const r2 = (n: number) => Math.round(n * 100) / 100;
+  const hinweise: string[] = [];
   const pensumFactor = (emp.pensum || 100) / 100;
   const bruttoBase = emp.monatslohn || 0;
-  const brutto = r2(bruttoBase * pensumFactor * monatsAnteilNachEintritt(emp.eintrittsdatum, monat));
+  const anteil = monatsAnteilNachEintritt(emp.eintrittsdatum, monat, emp.austrittsdatum);
+  const brutto = r2(bruttoBase * pensumFactor * anteil);
+  if (anteil > 0 && anteil < 1) hinweise.push(`Monatslohn anteilig (${Math.round(anteil * 1000) / 10} % des Monats, Ein-/Austritt)`);
   // 13. Monatslohn: 1/12 pro Monat
   const dreizehnter = emp.dreizehnterLohn ? r2(brutto / 12) : 0;
   const bonusBetrag = r2(bonus || 0);
   const bruttoTotal = r2(brutto + dreizehnter + bonusBetrag); // Bonus ist AHV-pflichtig
 
+  const status = ahvStatus(emp.geburtsdatum, monat, emp.ahvRentner);
+  // AHV-pflichtiger Lohn: Jugendliche bis 17 beitragsfrei, Rentner mit Freibetrag 1'400/Monat
+  const ahvBasis = status === "jung" ? 0 : status === "rentner" ? r2(Math.max(0, bruttoTotal - AHV_RENTNER_FREIBETRAG)) : bruttoTotal;
+  if (status === "rentner") hinweise.push(`AHV-Rentner:in: Freibetrag CHF ${AHV_RENTNER_FREIBETRAG.toLocaleString("de-CH")}, keine ALV`);
+  if (status === "jung") hinweise.push("Unter 18: keine AHV/IV/EO- und ALV-Beiträge");
+
   // ALV/UVG: kumulierte Methode — Lohnsumme bis und mit diesem Monat, gedeckelt auf den Höchstlohn
   // der Beschäftigungsmonate, minus bereits abgerechnete Basis (holt Überschüsse früherer Monate nach)
   const bisher = vorperioden || { bruttoBisher: 0, alvBasisBisher: 0 };
   const cap = hoechstlohnKumuliert(emp.eintrittsdatum, monat);
-  const alvBasis = r2(Math.max(0, Math.min(bisher.bruttoBisher + bruttoTotal, cap) - bisher.alvBasisBisher));
+  // alvBasis = UVG-/ALV-pflichtiger Teil bis Höchstlohn (bleibt für die Kumulation auch bei Rentnern erhalten)
+  const uvgBasis = r2(Math.max(0, Math.min(bisher.bruttoBisher + bruttoTotal, cap) - bisher.alvBasisBisher));
+  const alvBasis = uvgBasis;
 
-  const ahv    = r2(bruttoTotal * ((emp.ahvSatz  ?? 5.3)  / 100));
-  const alv    = r2(alvBasis    * ((emp.alvSatz  ?? 1.1)  / 100));
-  const bvg    = r2(bruttoTotal * ((emp.bvgSatz  ?? 8.0)  / 100));
-  const nbu    = r2(alvBasis    * ((emp.nbuSatz  ?? 1.5)  / 100));
+  const ahv    = r2(ahvBasis    * ((emp.ahvSatz  ?? 5.3)  / 100));
+  const alv    = status === "aktiv" ? r2(alvBasis * ((emp.alvSatz ?? 1.1) / 100)) : 0;
+  const nbu    = r2(uvgBasis    * ((emp.nbuSatz  ?? 1.5)  / 100));
   const ktg    = r2(bruttoTotal * ((emp.ktgSatz  ?? 0.5)  / 100));
   const qst    = emp.quellensteuerPflichtig ? r2(bruttoTotal * ((emp.quellensteuerSatz ?? 10) / 100)) : 0;
-  const bvgAG  = r2(bruttoTotal * ((emp.pkAGSatz ?? 8.0)  / 100));
+
+  // Pensionskasse: Beträge laut PK-Ausweis haben Vorrang; sonst % vom Bruttolohn. Unter der
+  // BVG-Eintrittsschwelle und für Rentner keine Pflicht (dann 0, ausser PK-Ausweis-Beträge).
+  const jahreslohn = bruttoBase * pensumFactor * (emp.dreizehnterLohn ? 13 : 12);
+  const pkAusweis = (emp.pkBeitragAN ?? 0) > 0 || (emp.pkBeitragAG ?? 0) > 0;
+  let bvg = 0, bvgAG = 0;
+  if (pkAusweis) {
+    bvg = r2((emp.pkBeitragAN || 0) * anteil);
+    bvgAG = r2((emp.pkBeitragAG || 0) * anteil);
+  } else if (status === "rentner") {
+    hinweise.push("Keine BVG-Beiträge (Rentner:in)");
+  } else if (jahreslohn > 0 && jahreslohn < BVG_EINTRITTSSCHWELLE) {
+    hinweise.push(`Jahreslohn unter der BVG-Eintrittsschwelle (CHF ${BVG_EINTRITTSSCHWELLE.toLocaleString("de-CH")}): keine PK-Beiträge`);
+  } else {
+    bvg = r2(bruttoTotal * ((emp.bvgSatz ?? 8.0) / 100));
+    bvgAG = r2(bruttoTotal * ((emp.pkAGSatz ?? 8.0) / 100));
+  }
+  if (bvgAG < bvg) hinweise.push("PK: Der Arbeitgeber muss mindestens gleich viel zahlen wie der Arbeitnehmer (Art. 66 BVG)");
+  // Prüfung gegen das BVG-Minimum (Altersgutschriften), wenn das Geburtsdatum bekannt ist
+  if (emp.geburtsdatum && monat && status === "aktiv" && anteil === 1) {
+    const alter = Number(monat.slice(0, 4)) - Number(emp.geburtsdatum.slice(0, 4));
+    const minMonat = r2(bvgKoordinierterLohn(jahreslohn) * bvgAltersgutschriftSatz(alter) / 100 / 12);
+    if (minMonat > 0 && bvg + bvgAG + 0.005 < minMonat) hinweise.push(`PK-Beiträge unter dem BVG-Minimum (Altersgutschrift ${bvgAltersgutschriftSatz(alter)} % ≈ CHF ${minMonat.toFixed(2)}/Monat): Beträge laut PK-Ausweis erfassen`);
+  }
 
   const totalAbzuege = r2(ahv + alv + bvg + nbu + ktg + qst);
   const netto = r2(bruttoTotal - totalAbzuege);
+  const familienzulagen = anteil > 0 ? r2(emp.familienzulagen || 0) : 0;
   const spesenTotal = r2((spesen || []).reduce((s, e) => s + (e.amount || 0), 0));
-  const auszahlung = r2(netto + spesenTotal);
+  const auszahlung = r2(netto + familienzulagen + spesenTotal);
 
-  return { brutto, bruttoBase, dreizehnter, bonusBetrag, bruttoTotal, alvBasis, ahv, alv, bvg, nbu, ktg, qst, totalAbzuege, netto, spesenTotal, auszahlung, bvgAG };
+  // Weitere Arbeitgeberkosten (nur mit Sätzen; ältere Aufrufe ohne → 0)
+  const ag = agSaetze;
+  const agFak = ag ? r2(ahvBasis * ag.fak / 100) : 0;
+  const agVk = ag ? r2(ahv * 2 * ag.vk / 100) : 0;
+  const agBu = ag ? r2(uvgBasis * ag.bu / 100) : 0;
+  const agKtg = ag ? r2(bruttoTotal * (ag.ktgAG ?? (emp.ktgSatz ?? 0.5)) / 100) : 0;
+
+  return {
+    brutto, bruttoBase, dreizehnter, bonusBetrag, bruttoTotal, alvBasis, ahvBasis,
+    ahv, alv, bvg, nbu, ktg, qst, totalAbzuege, netto, familienzulagen, spesenTotal, auszahlung, bvgAG,
+    agFak, agVk, agBu, agKtg, ...(hinweise.length ? { hinweise } : {}),
+  };
 }
 
 // ─── Dashboard layout helpers ──────────────────────────────────────────────────

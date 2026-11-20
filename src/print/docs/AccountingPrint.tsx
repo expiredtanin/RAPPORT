@@ -15,8 +15,7 @@ export function BuchhaltungPrint({ data, filterYear, settings }: { data: AppData
   const sum = accountingSummary(data, filterYear || "");
   const totalInvoicedNet = sum.revenueNet;
   const totalInvoicedTax = sum.taxTotal;
-  const akontoTax = sum.akontoTax;
-  const taxWithoutAkonto = sum.taxWithoutAkonto;
+  const saldo = sum.mwstMethode === "saldo";
   // Spesen: alle Zeilen (auch über Lohn ausbezahlte) — Tabelle und Zusammenfassung gehen auf
   const tableExpBrutto = sum.expGross;
   const tableExpNet = sum.expNet;
@@ -54,8 +53,8 @@ export function BuchhaltungPrint({ data, filterYear, settings }: { data: AppData
           <div style={{ fontSize: 8, letterSpacing: "0.12em", color: "#888", marginBottom: 8 }}>EINNAHMEN</div>
           {[
             { label: "Umsatz (Netto)", value: totalInvoicedNet },
-            { label: `MWST ${mwstRate}% (excl. Akonto)`, value: taxWithoutAkonto, small: true },
-            ...(akontoTax > 0 ? [{ label: "↳ Akonto-MWST ausstehend (bei Schlussrechn.)", value: akontoTax, small: true }] : []),
+            { label: `MWST ${mwstRate}% (fakturiert)`, value: totalInvoicedTax, small: true },
+            ...(sum.akontoTax > 0 ? [{ label: "davon auf Akontorechnungen", value: sum.akontoTax, small: true }] : []),
             { label: "Umsatz (Brutto)", value: totalInvoicedNet + totalInvoicedTax, bold: true },
           ].map((r, i) => (
             <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "2px 0", borderTop: r.bold ? "1px solid #ccc" : "none", marginTop: r.bold ? 4 : 0 }}>
@@ -69,10 +68,10 @@ export function BuchhaltungPrint({ data, filterYear, settings }: { data: AppData
           {[
             { label: "Spesen (Netto)", value: totalExpNet },
             { label: "Interne Ausgaben (Netto)", value: totalIntExpNet },
-            { label: "Vorsteuer", value: sum.vorsteuer, small: true },
+            ...(saldo ? [] : [{ label: "Vorsteuer", value: sum.vorsteuer, small: true }]),
             { label: `Personalaufwand (${loehne.length} Löhne, Brutto + AG-Beiträge)`, value: sum.personalaufwand },
             { label: "Ergebnis (Netto)", value: totalInvoicedNet - totalAusgaben, bold: true },
-            { label: "MWST-Schuld (excl. Akonto)", value: sum.mwstSchuld, bold: true, small: true },
+            { label: saldo ? `MWST-Schuld (Saldosteuersatz ${settings.mwstSaldoSatz ?? 0} %${sum.mwstArt === "vereinnahmt" ? ", vereinnahmt" : ""})` : `MWST-Schuld (effektiv${sum.mwstArt === "vereinnahmt" ? ", vereinnahmt" : ""})`, value: sum.mwstSchuld, bold: true, small: true },
           ].map((r, i) => (
             <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "2px 0", borderTop: r.bold && !r.small ? "1px solid #ccc" : "none", marginTop: r.bold && !r.small ? 4 : 0 }}>
               <span style={{ fontSize: r.small ? 8 : 9, color: r.small ? "#888" : "#555" }}>{r.label}</span>

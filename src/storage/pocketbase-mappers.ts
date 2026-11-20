@@ -188,6 +188,12 @@ export const fromDB = {
       // utils.js lesen/schreiben ausschliesslich "emp.pkAGSatz". "pkAgSatz"
       // bleibt der PocketBase-Feldname.
       pkAGSatz: row.pkAgSatz ?? null,
+      // Lohn nach Gesetz (PB-Migration payroll_legal)
+      austrittsdatum: row.austrittsdatum ? row.austrittsdatum.slice(0, 10) : "",
+      pkBeitragAN: row.pkBeitragAN ?? null,
+      pkBeitragAG: row.pkBeitragAG ?? null,
+      familienzulagen: row.familienzulagen ?? null,
+      ahvRentner: !!row.ahvRentner,
       ferienUebertragVorjahr: row.ferienUebertragVorjahr || {},
       appUserId: row.appUser || null,
       active: row.active !== false,
@@ -327,6 +333,7 @@ export const fromDB = {
       inclMwst: row.inclMwst !== false,
       recurring: !!row.recurring,
       recurringInterval: row.recurringInterval || "",
+      recurringUntil: row.recurringUntil ? row.recurringUntil.slice(0, 10) : null,
       // Wie expense.receiptData: Base64-Data-URL, kein echter PocketBase-File-
       // Upload — InternalExpenses.jsx liest/schreibt ausschliesslich diese Namen.
       receiptData: row.receiptData || "",
@@ -525,6 +532,9 @@ export const toDB = {
         protokollApproval: rest.protokollApproval, protokollApprovalHours: rest.protokollApprovalHours,
         // Dokument-Design (Schriften/Farben/eigenes CSS) — Dateien liegen separat in docAssets
         docDesign: rest.docDesign,
+        // MWST-Methode und weitere AG-Sätze (Buchhaltung/Löhne, Stand 26.11) — ohne eigene Spalte
+        mwstMethode: rest.mwstMethode, mwstSaldoSatz: rest.mwstSaldoSatz, mwstAbrechnungsart: rest.mwstAbrechnungsart,
+        lohnFakSatz: rest.lohnFakSatz, lohnVkSatz: rest.lohnVkSatz, lohnBuSatz: rest.lohnBuSatz, lohnKtgAGSatz: rest.lohnKtgAGSatz,
       },
       protokollTypeAbbr: rest.protokollTypeAbbreviations || {},
     };
@@ -579,6 +589,9 @@ export const toDB = {
       ahvSatz: e.ahvSatz, alvSatz: e.alvSatz, bvgSatz: e.bvgSatz, nbuSatz: e.nbuSatz, ktgSatz: e.ktgSatz,
       quellensteuerPflichtig: !!e.quellensteuerPflichtig, quellensteuerSatz: e.quellensteuerSatz,
       pkAgSatz: e.pkAGSatz,
+      austrittsdatum: e.austrittsdatum || null,
+      pkBeitragAN: e.pkBeitragAN ?? null, pkBeitragAG: e.pkBeitragAG ?? null,
+      familienzulagen: e.familienzulagen ?? null, ahvRentner: !!e.ahvRentner,
       ferienUebertragVorjahr: e.ferienUebertragVorjahr || {},
       appUser: e.appUserId || null,
       active: e.active !== false,
@@ -652,7 +665,7 @@ export const toDB = {
       id: e.id, studio: studioId,
       date: e.date, category: e.category, description: e.description, amount: e.amount,
       mwstRate: e.mwstRate, inclMwst: e.inclMwst !== false,
-      recurring: !!e.recurring, recurringInterval: e.recurringInterval || null,
+      recurring: !!e.recurring, recurringInterval: e.recurringInterval || null, recurringUntil: e.recurringUntil || null,
       receiptData: e.receiptData || "", receiptName: e.receiptName || "",
     };
   },

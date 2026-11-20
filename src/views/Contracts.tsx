@@ -11,7 +11,7 @@
 // Status: entwurf → unterzeichnet → beendet.
 
 import React, { useState, useEffect } from "react";
-import { generateId, formatCHF, formatDate, calcManualHours, localISODate } from "../utils";
+import { generateId, formatCHF, formatDate, calcManualHours, localISODate, contractAmounts } from "../utils";
 import { Header, Modal, FormField, StatusSelect, DateInput, SortTh, RowMenu, EmptyState } from "../components/UI";
 import { removeWithUndo } from "../undo";
 import type { Contract, ViewProps } from "../types";
@@ -88,7 +88,7 @@ function Contracts({ data, saveAll, modal, setModal, setPrintContent }: Pick<Vie
     if (modal?.type === "newVertrag" && modal.quoteId) {
       const q = (data.quotes || []).find(x => x.id === modal.quoteId);
       if (q) {
-        // Vertragssumme bleibt immer die Offertsumme (amount = q.total) und
+        // Vertragssumme = Offertsumme netto exkl. MWST (amount = q.sub, seit 26.11) und
         // damit sichtbar/massgeblich — billingType "pauschal" unabhängig vom
         // Offert-Modus. hourlyRate wird trotzdem als Referenzwert mitgegeben
         // (Blend-Satz aus Gesamtbetrag/Gesamtstunden, nicht der Satz der
@@ -108,7 +108,8 @@ function Contracts({ data, saveAll, modal, setModal, setPrintContent }: Pick<Vie
           quoteId: q.id,
           contractType: "haupt",
           billingType: "pauschal",
-          amount: q.total || 0,
+          // Honorar exkl. MWST (SIA 1001/1); die MWST kommt im Vertrag separat dazu
+          amount: q.sub || 0,
           hourlyRate,
         });
         setFormModal("new");
@@ -209,12 +210,12 @@ function Contracts({ data, saveAll, modal, setModal, setPrintContent }: Pick<Vie
                       {v.contractType === "unterauftrag" ? "Unterauftrag" : "Hauptauftrag"}
                     </span>
                   </td>
-                  <td>{formatCHF(v.billingType === "stundensatz" ? v.hourlyRate : v.amount)}{v.billingType === "stundensatz" ? "/h" : ""}</td>
+                  <td className="num">{formatCHF(v.billingType === "stundensatz" ? v.hourlyRate : contractAmounts(v, data.quotes, data.settings.mwstRate ?? 8.1).net)}{v.billingType === "stundensatz" ? "/h" : ""} <span style={{ fontSize: 11, color: "var(--text4)" }}>exkl. MWST</span></td>
                   <td><StatusSelect value={v.status} options={["entwurf", "unterzeichnet", "beendet"]} onChange={st => saveAll({ ...data, contracts: contracts.map(x => x.id === v.id ? { ...x, status: st } : x) })} /></td>
                   <td className="row-actions" onClick={e => e.stopPropagation()}>
                     <RowMenu items={[
                       { label: "Bearbeiten", icon: "edit", onClick: () => openEdit(v) },
-                      { label: "PDF", icon: "picture_as_pdf", onClick: () => setPrintContent({ type: "vertrag", vertrag: v, client: (data.persons || []).find(p => p.id === v.clientId), project: data.projects.find(p => p.id === v.projectId), settings: data.settings }) },
+                      { label: "PDF", icon: "picture_as_pdf", onClick: () => setPrintContent({ type: "vertrag", vertrag: v, amounts: contractAmounts(v, data.quotes, data.settings.mwstRate ?? 8.1), client: (data.persons || []).find(p => p.id === v.clientId), project: data.projects.find(p => p.id === v.projectId), settings: data.settings }) },
                       { label: "Löschen", icon: "delete", danger: true, onClick: () => del(v.id) },
                     ]} />
                   </td>
@@ -281,11 +282,11 @@ function Contracts({ data, saveAll, modal, setModal, setPrintContent }: Pick<Vie
               </select>
             </FormField>
             {form.billingType === "pauschal" ? (
-              <FormField label="Vertragssumme (CHF)">
+              <FormField label="Vertragssumme exkl. MWST (CHF)">
                 <input type="number" min={0} step="0.01" value={form.amount} onChange={e => setForm({ ...form, amount: +e.target.value })} />
               </FormField>
             ) : (
-              <FormField label="Stundenansatz (CHF)">
+              <FormField label="Stundenansatz exkl. MWST (CHF)">
                 <input type="number" min={0} step="0.01" value={form.hourlyRate} onChange={e => setForm({ ...form, hourlyRate: +e.target.value })} />
               </FormField>
             )}

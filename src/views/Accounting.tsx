@@ -9,7 +9,7 @@
 
 import React, { useState } from "react";
 import { formatCHF, formatDate, localISODate, invoiceNet } from "../utils";
-import { accountingSummary, exportBuchhaltungCSV, inPeriod, mwstDueDate, periodLabel } from "../accounting";
+import { accountingSummary, exportBuchhaltungCSV, inPeriod, mwstPerioden, periodLabel } from "../accounting";
 import { Header, StatusBadge, ShareButton } from "../components/UI";
 import { MahnModal } from "../components/MahnModal";
 import { addDays } from "../schedule";
@@ -38,7 +38,8 @@ function Accounting({ data, update, setView, setModal, setPrintContent }: Pick<V
 
   // Einnahmen
   const totalInvoiced = sum.revenueNet;
-  const { akontoTax, taxWithoutAkonto } = sum;
+  const { akontoTax } = sum;
+  const saldo = sum.mwstMethode === "saldo";
   const totalPaid = sum.paidTotal;
   // Entwürfe sind noch nicht verschickt, also keine offene Forderung.
   const totalOpen = sum.openTotal;
@@ -89,25 +90,22 @@ function Accounting({ data, update, setView, setModal, setPrintContent }: Pick<V
   const lohnEmps = (data.employees || []).filter(e => e.active !== false && (e.monatslohn || 0) > 0);
   const lohnDone = lohnEmps.filter(e => (data.lohnEntries || []).some(l => l.employeeId === e.id && l.monat === thisMonth)).length;
   const monthName = new Date(`${thisMonth}-15T12:00:00`).toLocaleDateString("de-CH", { month: "long" });
+  // Letzte abgeschlossene MWST-Periode (effektiv: Quartal, Saldosteuersatz: Halbjahr) und ihre Frist
+  const methode = data.settings.mwstMethode === "saldo" ? "saldo" : "effektiv";
   const nowY = Number(today.slice(0, 4));
-  const curQ = Math.ceil(Number(today.slice(5, 7)) / 3);
-  const prevQ = curQ === 1 ? { y: nowY - 1, q: 4 as const } : { y: nowY, q: (curQ - 1) as 1 | 2 | 3 };
-  const prevQDue = mwstDueDate(prevQ.y, prevQ.q);
-  const prevQSum = accountingSummary(data, `${prevQ.y}-Q${prevQ.q}`);
+  const prevPer = [...mwstPerioden(nowY - 1, methode), ...mwstPerioden(nowY, methode)].filter(p => p.end < thisMonth).pop();
+  const prevPerSum = prevPer ? accountingSummary(data, prevPer.period) : null;
   const todos: { key: string; icon: string; label: string; meta: string; late?: boolean; onClick: () => void }[] = [
     ...(overdueInvoices.length ? [{ key: "mahn", icon: "notification_important", label: `${overdueInvoices.length} ${overdueInvoices.length === 1 ? "Rechnung" : "Rechnungen"} überfällig`, meta: `${formatCHF(overdueInvoices.reduce((s, i) => s + (i.total || 0), 0))} · mahnen`, late: true, onClick: () => document.getElementById("mahnwesen")?.scrollIntoView({ behavior: "smooth" }) }] : []),
     ...(drafts.length ? [{ key: "draft", icon: "draft", label: `${drafts.length} ${drafts.length === 1 ? "Rechnungsentwurf" : "Rechnungsentwürfe"} versenden`, meta: formatCHF(drafts.reduce((s, i) => s + invoiceNet(i), 0)) + " netto", onClick: () => setView("invoices") }] : []),
     ...(spesenOffen.length ? [{ key: "spesen", icon: "receipt_long", label: `${spesenOffen.length} ${spesenOffen.length === 1 ? "Spese" : "Spesen"} genehmigen`, meta: formatCHF(spesenOffen.reduce((s, e) => s + (e.amount || 0), 0)), onClick: () => setView("expenses") }] : []),
     ...(lohnEmps.length && lohnDone < lohnEmps.length ? [{ key: "lohn", icon: "payments", label: `Löhne ${monthName} abrechnen`, meta: `${lohnDone} von ${lohnEmps.length} erstellt`, onClick: () => setView("loehne") }] : []),
-    ...(prevQDue >= today && prevQSum.issuedCount + prevQSum.expCount > 0 ? [{ key: "mwst", icon: "account_balance", label: `MWST ${prevQ.q}. Quartal ${prevQ.y} abrechnen`, meta: `${mwst(prevQSum.mwstSchuld)} · bis ${formatDate(prevQDue)}`, late: prevQDue <= addDays(today, 10), onClick: () => setPeriod(`${prevQ.y}-Q${prevQ.q}`) }] : []),
+    ...(prevPer && prevPerSum && prevPer.due >= today && prevPerSum.issuedCount + prevPerSum.expCount > 0 ? [{ key: "mwst", icon: "account_balance", label: `MWST ${periodLabel(prevPer.period)} abrechnen`, meta: `${mwst(prevPerSum.mwstSchuld)} · bis ${formatDate(prevPer.due)}`, late: prevPer.due <= addDays(today, 10), onClick: () => setPeriod(prevPer.period) }] : []),
   ];
   const quarterYear = Number(filterYear || today.slice(0, 4));
-  const quarters = ([1, 2, 3, 4] as const).map(q => {
-    const qs = accountingSummary(data, `${quarterYear}-Q${q}`);
-    const started = `${quarterYear}-${String(q * 3 - 2).padStart(2, "0")}` <= thisMonth;
-    const ended = `${quarterYear}-${String(q * 3).padStart(2, "0")}` < thisMonth;
-    return { q, sum: qs, due: mwstDueDate(quarterYear, q), started, ended };
-  });
+  const quarters = mwstPerioden(quarterYear, methode).map(p => ({
+    ...p, sum: accountingSummary(data, p.period), started: p.start <= thisMonth, ended: p.end < thisMonth,
+  }));
   const minus = (v: number) => v === 0 ? formatCHF(0) : `− ${formatCHF(Math.abs(v))}`;
 
   return (
@@ -119,7 +117,7 @@ function Accounting({ data, update, setView, setModal, setPrintContent }: Pick<V
             {availableYears.map(y => (
               <optgroup key={y} label={y}>
                 <option value={y}>{y} ganzes Jahr</option>
-                {[1, 2, 3, 4].map(q => <option key={q} value={`${y}-Q${q}`}>{q}. Quartal {y}</option>)}
+                {mwstPerioden(Number(y), data.settings.mwstMethode).map(p => <option key={p.period} value={p.period}>{periodLabel(p.period)}</option>)}
               </optgroup>
             ))}
           </select>
@@ -153,9 +151,14 @@ function Accounting({ data, update, setView, setModal, setPrintContent }: Pick<V
               <div className="total"><span>Ergebnis vor MWST</span><b className={`num${result < 0 ? " neg" : ""}`}>{formatCHF(result)}</b></div>
             </div>
             <div className="acc-lines acc-mwst">
-              <div><span>MWST auf Einnahmen <i>{mwstRate} %, ohne Akonto</i></span><b className="num">{formatCHF(taxWithoutAkonto)}</b></div>
-              {akontoTax > 0 && <div className="sub"><span>Akonto-MWST <i>fällig mit der Schlussrechnung</i></span><b className="num">{formatCHF(akontoTax)}</b></div>}
-              <div><span>Vorsteuer <i>Spesen und Büroausgaben</i></span><b className="num">{minus(sum.vorsteuer)}</b></div>
+              {saldo ? <>
+                <div><span>Entgelt inkl. MWST <i>{sum.mwstArt === "vereinnahmt" ? "eingegangen" : "fakturiert"}</i></span><b className="num">{formatCHF(sum.mwstEntgeltBrutto)}</b></div>
+                <div><span>Steuer zum Saldosteuersatz <i>{data.settings.mwstSaldoSatz ?? 0} %, ohne Vorsteuerabzug</i></span><b className="num">{formatCHF(sum.umsatzsteuer)}</b></div>
+              </> : <>
+                <div><span>Umsatzsteuer <i>{sum.mwstArt === "vereinnahmt" ? "bezahlte Rechnungen" : `gestellte Rechnungen, ${mwstRate} %`}</i></span><b className="num">{formatCHF(sum.umsatzsteuer)}</b></div>
+                {akontoTax > 0 && sum.mwstArt === "vereinbart" && <div className="sub"><span>davon auf Akontorechnungen</span><b className="num">{formatCHF(akontoTax)}</b></div>}
+                <div><span>Vorsteuer <i>Spesen und Büroausgaben</i></span><b className="num">{minus(sum.vorsteuer)}</b></div>
+              </>}
               <div className="total"><span>{sum.mwstSchuld < 0 ? "MWST-Guthaben" : "MWST-Schuld"}</span><b className="num">{formatCHF(Math.abs(sum.mwstSchuld))}</b></div>
             </div>
           </section>
@@ -213,17 +216,17 @@ function Accounting({ data, update, setView, setModal, setPrintContent }: Pick<V
             ))}
           </section>
           <section className="card">
-            <div className="today-k">MWST {quarterYear} <span>vierteljährlich</span></div>
+            <div className="today-k">MWST {quarterYear} <span>{saldo ? `Saldosteuersatz · halbjährlich` : "effektiv · vierteljährlich"}</span></div>
             {quarters.map(q => (
-              <button key={q.q} className={`agenda-row acc-q${period === `${quarterYear}-Q${q.q}` ? " on" : ""}`} disabled={!q.started} onClick={() => setPeriod(period === `${quarterYear}-Q${q.q}` ? String(quarterYear) : `${quarterYear}-Q${q.q}`)}>
-                <span className="acc-q-n">Q{q.q}</span>
+              <button key={q.period} className={`agenda-row acc-q${period === q.period ? " on" : ""}`} disabled={!q.started} onClick={() => setPeriod(period === q.period ? String(quarterYear) : q.period)}>
+                <span className="acc-q-n">{q.label}</span>
                 <span style={{ minWidth: 0, flex: 1 }}>
                   <span className="agenda-label num">{q.started ? mwst(q.sum.mwstSchuld) : "—"}</span>
                   <span className="today-meta">{!q.started ? "noch nicht begonnen" : !q.ended ? "läuft" : q.due >= today ? `abrechnen bis ${formatDate(q.due)}` : `Frist ${formatDate(q.due)}`}</span>
                 </span>
               </button>
             ))}
-            <div className="today-meta" style={{ marginTop: 8 }}>Antippen zeigt das Quartal oben. Frist 60 Tage nach Quartalsende.</div>
+            <div className="today-meta" style={{ marginTop: 8 }}>Antippen zeigt die Periode oben. Frist 60 Tage nach Periodenende (Art. 71 MWSTG). Methode in den Einstellungen.</div>
           </section>
         </div>
       </div>

@@ -2,8 +2,8 @@
 // Buchhaltungssummen (Jahresergebnis, MWST-Abrechnung, CSV) mit realistischen Schweizer Zahlen.
 
 import { describe, expect, it } from "vitest";
-import { calcLohn, hoechstlohnKumuliert, monatsAnteilNachEintritt } from "./utils";
-import { periodLabel, mwstDueDate,
+import { ahvStatus, bvgAltersgutschriftSatz, bvgKoordinierterLohn, calcLohn, contractAmounts, hoechstlohnKumuliert, monatsAnteilNachEintritt } from "./utils";
+import { periodLabel, mwstDueDate, mwstPerioden, expandInternalExpenses, spesenWartend,
   accountingSummary, buildBuchhaltungCSV, expenseNet, expenseTax, inPeriod, lohnAGBeitraege,
   lohnPersonalaufwand, lohnVorperioden, spesenFuerLohn,
 } from "./accounting";
@@ -24,7 +24,7 @@ describe("calcLohn — Schweizer Lohnabrechnung", () => {
     expect(r.totalAbzuege).toBe(1230);
     expect(r.netto).toBe(6270);
     // AG: AHV + ALV paritätisch, PK 8 %
-    expect(lohnAGBeitraege(r)).toEqual({ ahvAG: 397.5, alvAG: 82.5, bvgAG: 600, total: 1080 });
+    expect(lohnAGBeitraege(r)).toEqual({ ahvAG: 397.5, alvAG: 82.5, bvgAG: 600, weitere: 0, total: 1080 });
     // Personalaufwand = Brutto + AG (früher Auszahlung + PK-AG = 6'870: AN-Abzüge fehlten)
     expect(lohnPersonalaufwand(r)).toBe(8580);
   });
@@ -82,6 +82,55 @@ describe("calcLohn — Schweizer Lohnabrechnung", () => {
     expect(calcLohn(emp({ monatslohn: 15000, eintrittsdatum: "2026-07-01" }), "2026-07").alvBasis).toBe(12350);
   });
 
+  it("Austritt am 10. Juni: letzter Monat anteilig (10/30), danach nichts", () => {
+    const e = emp({ austrittsdatum: "2026-06-10" });
+    expect(calcLohn(e, "2026-06").brutto).toBe(2500);
+    expect(calcLohn(e, "2026-07").brutto).toBe(0);
+    expect(monatsAnteilNachEintritt("2026-06-05", "2026-06", "2026-06-10")).toBeCloseTo(6 / 30, 12);
+  });
+
+  it("AHV-Rentner:in: Freibetrag 1'400, keine ALV, keine BVG-Pflicht", () => {
+    const r = calcLohn(emp({ geburtsdatum: "1960-05-20", monatslohn: 5000 }), "2026-03");
+    expect(r.ahvBasis).toBe(3600);
+    expect(r.ahv).toBe(190.8);
+    expect(r.alv).toBe(0);
+    expect(r.bvg).toBe(0);
+    expect(r.nbu).toBe(75); // NBU bleibt
+    // mit 65 im Juni 2026: Rentner ab Juli
+    expect(ahvStatus("1961-06-15", "2026-06")).toBe("aktiv");
+    expect(ahvStatus("1961-06-15", "2026-07")).toBe("rentner");
+    expect(ahvStatus("2009-02-01", "2026-03")).toBe("jung");
+    expect(ahvStatus("1970-01-01", "2026-03", true)).toBe("rentner");
+  });
+
+  it("BVG: unter der Eintrittsschwelle keine PK, Beträge laut PK-Ausweis haben Vorrang", () => {
+    const klein = calcLohn(emp({ monatslohn: 1800 }), "2026-03"); // 21'600 < 22'680
+    expect(klein.bvg).toBe(0);
+    expect(klein.bvgAG).toBe(0);
+    expect(klein.hinweise?.some(h => h.includes("Eintrittsschwelle"))).toBe(true);
+    const pk = calcLohn(emp({ pkBeitragAN: 412.4, pkBeitragAG: 498.6 }), "2026-03");
+    expect(pk.bvg).toBe(412.4);
+    expect(pk.bvgAG).toBe(498.6);
+    expect(bvgKoordinierterLohn(90000)).toBe(63540);
+    expect(bvgAltersgutschriftSatz(40)).toBe(10);
+  });
+
+  it("Hinweis bei PK unter dem BVG-Minimum (Alter 50: 15 % vom koordinierten Lohn)", () => {
+    const r = calcLohn(emp({ geburtsdatum: "1976-01-01", bvgSatz: 2, pkAGSatz: 2 }), "2026-03");
+    expect(r.hinweise?.some(h => h.includes("BVG-Minimum"))).toBe(true);
+  });
+
+  it("Familienzulagen in der Auszahlung, nicht im Personalaufwand; weitere AG-Kosten", () => {
+    const r = calcLohn(emp({ familienzulagen: 215 }), "2026-03", [], 0, undefined, { fak: 1.0, vk: 3.0, bu: 0.1, ktgAG: null });
+    expect(r.familienzulagen).toBe(215);
+    expect(r.auszahlung).toBe(6270 + 215);
+    expect(r.agFak).toBe(75);
+    expect(r.agVk).toBe(23.85); // 3 % von 2 × 397.50
+    expect(r.agBu).toBe(7.5);
+    expect(r.agKtg).toBe(37.5); // paritätisch = AN-Satz 0.5 %
+    expect(lohnPersonalaufwand(r)).toBe(8580 + 75 + 23.85 + 7.5 + 37.5);
+  });
+
   it("Abrechnungen vor 26.11 ohne alvBasis zählen voll", () => {
     const vor = lohnVorperioden([{ employeeId: "e1", monat: "2026-01", bruttoTotal: 7500 } as LohnEntry, { employeeId: "e1", monat: "2025-12", bruttoTotal: 7500 } as LohnEntry, { employeeId: "e2", monat: "2026-01", bruttoTotal: 9000 } as LohnEntry], "e1", "2026-02");
     expect(vor).toEqual({ bruttoBisher: 7500, alvBasisBisher: 7500 });
@@ -92,16 +141,17 @@ describe("spesenFuerLohn", () => {
   const sp = (id: string, date: string, status: string, over: Partial<Expense> = {}): Expense =>
     ({ id, date, status, employeeId: "e1", category: "Reise", description: "", amount: 50, mwstRate: 8.1, inclMwst: true, ...over }) as Expense;
   const list = [
-    sp("a", "2026-03-10", "offen"),
+    sp("a", "2026-03-10", "offen"), // nicht genehmigt → nicht in den Lohn
     sp("b", "2026-03-11", "ausbezahlt"), // schon bar ausbezahlt → nicht nochmals
     sp("c", "2026-02-20", "auf nächsten Lohn"), // nachgereicht → mit dem März-Lohn
-    sp("d", "2026-02-21", "genehmigt"), // früherer Monat ohne «auf nächsten Lohn» → nicht
+    sp("d", "2026-02-21", "genehmigt"), // genehmigt, noch nicht ausbezahlt → mit dem März-Lohn
     sp("e", "2026-03-12", "offen", { lohnEntryId: "L0" }),
     sp("f", "2026-03-12", "offen", { employeeId: "e2" }),
     sp("g", "2026-04-01", "auf nächsten Lohn"), // späterer Monat → nicht
   ];
-  it("Monat + ältere «auf nächsten Lohn», ohne bereits ausbezahlte", () => {
-    expect(spesenFuerLohn(list, "e1", "2026-03").map(e => e.id)).toEqual(["a", "c"]);
+  it("nur genehmigte bis und mit Monat, ohne bereits ausbezahlte", () => {
+    expect(spesenFuerLohn(list, "e1", "2026-03").map(e => e.id)).toEqual(["c", "d"]);
+    expect(spesenWartend(list, "e1", "2026-03").map(e => e.id)).toEqual(["a"]);
   });
 });
 
@@ -150,40 +200,66 @@ describe("accountingSummary — Jahresergebnis und MWST-Abrechnung", () => {
     lohnEntries: [{ ...lohn, id: "L1", employeeId: "e1", monat: "2026-03", empSnapshot: { name: "Anna Muster" } }] as LohnEntry[],
   } as unknown as AppData;
 
-  it("Quartal 1: Einnahmen, MWST (Akonto getrennt), Vorsteuer inkl. Lohn-Spesen, Personalaufwand", () => {
-    const s = accountingSummary(data, "2026-Q1");
+  const END = "2026-12-31";
+  it("Quartal 1: Einnahmen, MWST inkl. Akonto (Art. 40 MWSTG), Vorsteuer inkl. Lohn-Spesen, Miete monatlich", () => {
+    const s = accountingSummary(data, "2026-Q1", END);
     expect(s.revenueNet).toBe(15000);
     expect(s.draftNet).toBe(3000);
     expect(s.taxTotal).toBe(1215);
     expect(s.akontoTax).toBe(405);
-    expect(s.taxWithoutAkonto).toBe(810);
+    expect(s.umsatzsteuer).toBe(1215); // Akonto-MWST wird mit der Akontorechnung abgerechnet
     expect(s.expNet).toBe(150);
     expect(s.expTax).toBe(12.15); // vorher 4.05: Vorsteuer der über Lohn bezahlten Spese fehlte
-    expect(s.intNet).toBe(3500);
+    expect(s.intNet).toBe(8500); // Miete Jan, Feb, Mär (je 2'500) + CAD 1'000
     expect(s.intTax).toBe(81);
     expect(s.vorsteuer).toBe(93.15);
-    expect(s.mwstSchuld).toBe(716.85);
+    expect(s.mwstSchuld).toBe(1121.85);
     expect(s.lohnBrutto).toBe(7500);
     expect(s.lohnAG).toBe(1080);
     expect(s.personalaufwand).toBe(8580); // vorher 6'978.10 (Auszahlung inkl. Spesen + PK-AG)
-    expect(s.ausgabenTotal).toBe(12230);
-    expect(s.ergebnis).toBe(2770);
+    expect(s.ausgabenTotal).toBe(17230);
+    expect(s.ergebnis).toBe(-2230);
     expect(s.openTotal).toBe(10810);
     expect(s.paidTotal).toBe(5405);
   });
 
   it("Jahr 2026", () => {
-    const s = accountingSummary(data, "2026");
+    const s = accountingSummary(data, "2026", END);
     expect(s.revenueNet).toBe(17000);
-    expect(s.taxWithoutAkonto).toBe(972);
-    expect(s.mwstSchuld).toBe(878.85);
+    expect(s.umsatzsteuer).toBe(1377);
+    expect(s.mwstSchuld).toBe(1283.85);
+    expect(s.intNet).toBe(31000); // 12 × Miete + CAD
     expect(s.paidTotal).toBe(7567);
+  });
+
+  it("Wiederkehrende Ausgaben nur bis heute bzw. bis «Ende»", () => {
+    expect(accountingSummary(data, "2026", "2026-02-28").intNet).toBe(6000); // Jan + Feb Miete + CAD
+    const mitEnde = { ...data, internalExpenses: [{ ...data.internalExpenses[0], recurringUntil: "2026-03-01" }] } as unknown as AppData;
+    expect(accountingSummary(mitEnde, "2026", END).intNet).toBe(7500);
+    const ex = expandInternalExpenses(data.internalExpenses, "2026-04-30").filter(e => e.occurrenceOf === "x1").map(e => e.date);
+    expect(ex).toEqual(["2026-02-28", "2026-03-31", "2026-04-30"]); // Monatsende bleibt Monatsende
+  });
+
+  it("Saldosteuersatz: Bruttoentgelt × Satz, keine Vorsteuer, halbjährlich", () => {
+    const saldo = { ...data, settings: { mwstRate: 8.1, mwstMethode: "saldo", mwstSaldoSatz: 6.2 } } as unknown as AppData;
+    const s = accountingSummary(saldo, "2026-H1", END);
+    expect(s.mwstEntgeltBrutto).toBe(18377); // 10'810 + 5'405 + 2'162
+    expect(s.umsatzsteuer).toBe(1139.37);
+    expect(s.vorsteuer).toBe(0);
+    expect(s.mwstSchuld).toBe(1139.37);
+    expect(mwstPerioden(2026, "saldo").map(p => [p.period, p.due])).toEqual([["2026-H1", "2026-08-29"], ["2026-H2", "2027-03-01"]]);
+  });
+
+  it("Vereinnahmte Entgelte: nur bezahlte Rechnungen nach Zahlungsdatum", () => {
+    const d2 = { ...data, settings: { mwstAbrechnungsart: "vereinnahmt" },
+      invoices: data.invoices.map(i => i.id === "r2" ? { ...i, paidDate: "2026-04-02" } : i) } as unknown as AppData;
+    expect(accountingSummary(d2, "2026-Q1", END).umsatzsteuer).toBe(0); // r2 erst im April bezahlt
+    expect(accountingSummary(d2, "2026-Q2", END).umsatzsteuer).toBe(567); // r2 405 + r3 162
   });
 
   it("CSV-Zusammenfassung = Ansicht", () => {
     const csv = buildBuchhaltungCSV(data, "2026-Q1");
-    expect(csv).toContain('"Ergebnis (Netto)";"2770.00"');
-    expect(csv).toContain('"MWST-Schuld (excl. Akonto)";"";"";"716.85"');
+    expect(csv).toContain('"MWST-Schuld";"";"";"1121.85"');
     expect(csv).toContain('"Personalaufwand (Bruttolohn + AG-Beiträge)";"8580.00"');
     // Spesen-Tabelle: TOTAL über alle Zeilen, Lohn-Spese mit Monat markiert
     expect(csv).toContain('"TOTAL";"150.00";"";"12.15";"162.15"');
@@ -204,5 +280,18 @@ describe("Periode und MWST-Frist", () => {
     expect(mwstDueDate(2026, 1)).toBe("2026-05-30");
     expect(mwstDueDate(2026, 3)).toBe("2026-11-29");
     expect(mwstDueDate(2026, 4)).toBe("2027-03-01");
+  });
+});
+
+describe("Vertragssumme exkl. MWST (SIA 1001/1)", () => {
+  const q = { id: "q1", sub: 10000, total: 10810, mwst: true, mwstRate: 8.1 };
+  it("netto aus der Offerte, MWST separat", () => {
+    expect(contractAmounts({ amount: 10000, quoteId: "q1" }, [q], 8.1)).toEqual({ net: 10000, rate: 8.1, tax: 810, gross: 10810 });
+  });
+  it("alte Verträge mit Bruttobetrag der Offerte werden als netto gelesen", () => {
+    expect(contractAmounts({ amount: 10810, quoteId: "q1" }, [q], 8.1).net).toBe(10000);
+  });
+  it("Offerte ohne MWST", () => {
+    expect(contractAmounts({ amount: 5000, quoteId: "q2" }, [{ id: "q2", sub: 5000, total: 5000, mwst: false, mwstRate: 8.1 }], 8.1)).toEqual({ net: 5000, rate: 0, tax: 0, gross: 5000 });
   });
 });

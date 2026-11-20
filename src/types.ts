@@ -56,6 +56,20 @@ export interface Settings {
   blockMaiTag: boolean;
   roles: Role[];
   defaultPkAGSatz?: number;
+  /** MWST-Abrechnungsmethode (Art. 36/37 MWSTG): effektiv (Vorsteuerabzug, vierteljährlich) oder Saldosteuersatz (halbjährlich, ohne Vorsteuer). Ohne Angabe: effektiv. */
+  mwstMethode?: "effektiv" | "saldo";
+  /** Saldosteuersatz in % (von der ESTV bewilligt), nur bei `mwstMethode: "saldo"` */
+  mwstSaldoSatz?: number;
+  /** Abrechnungsart (Art. 39 MWSTG): nach vereinbarten (Rechnungsdatum, Standard) oder vereinnahmten Entgelten (Zahlungseingang) */
+  mwstAbrechnungsart?: "vereinbart" | "vereinnahmt";
+  /** Weitere Arbeitgeberbeiträge in % der AHV-Lohnsumme: Familienausgleichskasse (kantonal) */
+  lohnFakSatz?: number;
+  /** Verwaltungskosten der AHV-Ausgleichskasse in % der AHV/IV/EO-Beiträge (AN + AG) */
+  lohnVkSatz?: number;
+  /** Berufsunfallversicherung (UVG-BU, trägt der AG) in % der UVG-Lohnsumme */
+  lohnBuSatz?: number;
+  /** Anteil des Arbeitgebers an der Krankentaggeldprämie in % (bei paritätischer Teilung = AN-Satz) */
+  lohnKtgAGSatz?: number;
   quoteNumberFormat?: string;
   /** Vorgabe für den Genehmigungsvermerk im Protokolldruck (pro Protokoll übersteuerbar). Standard «unterschrift». */
   protokollApproval?: ProtocolApproval;
@@ -487,6 +501,8 @@ export interface InternalExpense {
   inclMwst: boolean;
   recurring?: boolean;
   recurringInterval?: string;
+  /** Letzter Monat einer wiederkehrenden Ausgabe (leer = läuft weiter) */
+  recurringUntil?: DateStr | null;
   receiptData?: string | null;
   receiptName?: string | null;
 }
@@ -594,6 +610,16 @@ export interface Employee {
   pkAGSatz?: number;
   quellensteuerPflichtig?: boolean;
   quellensteuerSatz?: number;
+  /** Austritt: der letzte Monat wird anteilig nach Kalendertagen abgerechnet */
+  austrittsdatum?: DateStr;
+  /** Pensionskasse laut PK-Ausweis, CHF pro Monat (Arbeitnehmer); gesetzt → ersetzt den %-Satz */
+  pkBeitragAN?: number | null;
+  /** Pensionskasse laut PK-Ausweis, CHF pro Monat (Arbeitgeber) */
+  pkBeitragAG?: number | null;
+  /** Familienzulagen (Kinder-/Ausbildungszulagen) CHF pro Monat; nicht AHV-pflichtig, von der FAK rückvergütet */
+  familienzulagen?: number | null;
+  /** AHV-Rentner:in (Referenzalter erreicht): Freibetrag CHF 1'400/Monat, keine ALV, keine BVG-Pflicht. Wird ab 65 auch aus dem Geburtsdatum erkannt. */
+  ahvRentner?: boolean;
   ferienUebertragVorjahr?: Record<string, number>;
   /** Cloud-User, der diesem Mitarbeiter entspricht (Self-Service-Ansichten) */
   appUserId?: Id | null;
@@ -677,6 +703,17 @@ export interface LohnResult {
   auszahlung: number;
   /** Arbeitgeberanteil Pensionskasse (nicht Teil der Abzüge) */
   bvgAG: number;
+  /** AHV-pflichtiger Lohn nach Rentnerfreibetrag (fehlt bei Abrechnungen vor 26.11 = bruttoTotal) */
+  ahvBasis?: number;
+  /** Familienzulagen (in der Auszahlung, nicht AHV-pflichtig) */
+  familienzulagen?: number;
+  /** Weitere AG-Kosten (ab 26.11; fehlen bei älteren Abrechnungen): FAK, AHV-Verwaltungskosten, UVG-BU, KTG-AG */
+  agFak?: number;
+  agVk?: number;
+  agBu?: number;
+  agKtg?: number;
+  /** Hinweise zur Abrechnung (z.B. BVG unter Eintrittsschwelle, Rentnerfreibetrag) */
+  hinweise?: string[];
 }
 
 /** Zum Abschluss eingefrorene Sätze: spätere Änderungen am Mitarbeiter ändern alte Abrechnungen nicht. */
@@ -689,6 +726,12 @@ export interface SaetzeSnapshot {
   pensum: number;
   eintrittsdatum: DateStr;
   pkAGSatz: number;
+  /** ab 26.11 */
+  austrittsdatum?: DateStr;
+  pkBeitragAN?: number | null;
+  pkBeitragAG?: number | null;
+  ahvRentner?: boolean;
+  agSaetze?: { fak: number; vk: number; bu: number; ktgAG: number | null };
 }
 
 /** Abgeschlossene Lohnabrechnung (ein Monat, ein Mitarbeiter): Berechnung plus eingefrorene Stamm- und Satzdaten. */
