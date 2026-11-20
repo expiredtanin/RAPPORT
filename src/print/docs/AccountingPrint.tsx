@@ -3,7 +3,7 @@
 import React from "react";
 import { STATUS_COLORS } from "../../constants";
 import { formatCHF, formatDate, formatSenderAddress, invoiceNet } from "../../utils";
-import { accountingRows, accountingSummary, lohnAGBeitraege } from "../../accounting";
+import { accountingRows, accountingSummary, expenseNet, lohnAGBeitraege } from "../../accounting";
 import { StudioLogo } from "../../components/UI";
 import type { AppData, Settings } from "../../types";
 import { HEADING } from "./shared";
@@ -149,7 +149,7 @@ export function BuchhaltungPrint({ data, filterYear, settings }: { data: AppData
           <tbody>
             {expenses.map(e => {
               const proj = data.projects.find(p => p.id === e.projectId);
-              const net = e.inclMwst ? e.amount / (1 + (e.mwstRate || 0) / 100) : e.amount;
+              const net = expenseNet(e);
               const tax = e.amount - net;
               return (
                 <tr key={e.id}>
@@ -194,7 +194,7 @@ export function BuchhaltungPrint({ data, filterYear, settings }: { data: AppData
             </thead>
             <tbody>
               {internalExpenses.map(e => {
-                const net = e.inclMwst ? e.amount / (1 + (e.mwstRate || 0) / 100) : e.amount;
+                const net = expenseNet(e);
                 const tax = e.amount - net;
                 return (
                   <tr key={e.id}>

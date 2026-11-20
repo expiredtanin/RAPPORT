@@ -9,10 +9,10 @@ import { isLocalBackend } from "../storage/adapter";
 import { ExpenseFigures } from "../components/ExpenseFigures";
 import { TableToolbar, Header, Modal, FormField, DateInput, SortTh, RowMenu, EmptyState } from "../components/UI";
 import { removeWithUndo } from "../undo";
-import { expandInternalExpenses } from "../accounting";
+import { expandInternalExpenses, expenseNet, expenseTax } from "../accounting";
 import { showToast } from "../toast";
 import { extractReceiptText, parseReceiptFields } from "../ocr";
-import type { Expense, InternalExpense, ViewProps } from "../types";
+import type { InternalExpense, ViewProps } from "../types";
 import { ReceiptViewer, type ReceiptTarget } from "../components/ReceiptViewer";
 
 type InternalForm = Omit<InternalExpense, "id"> & { id?: string };
@@ -93,8 +93,9 @@ function InternalExpenses({ data, update }: Pick<ViewProps, "data" | "update" | 
     }
   };
 
-  const getNet = (e: Pick<Expense, "amount" | "inclMwst" | "mwstRate">) => e.inclMwst ? e.amount / (1 + (e.mwstRate || 0) / 100) : e.amount;
-  const getTax = (e: Pick<Expense, "amount" | "inclMwst" | "mwstRate">) => e.amount - getNet(e);
+  // Netto/Vorsteuer pro Beleg auf Rappen (accounting.ts) — Zeilen und Summen stimmen überein
+  const getNet = expenseNet;
+  const getTax = expenseTax;
 
   const allFiltered = bookings.filter(e => {
     if (filter.year && !(e.date || "").startsWith(filter.year)) return false;

@@ -113,15 +113,20 @@ export function expandInternalExpenses(list: InternalExpense[], today: string): 
   return out;
 }
 
-/** Netto einer Spese/Ausgabe (ungerundet): bei `inclMwst` der Betrag ohne den enthaltenen MWST-Anteil. */
-export function expenseNet(e: Pick<Expense, "amount" | "inclMwst" | "mwstRate">): number {
+/**
+ * Vorsteuer (enthaltener MWST-Anteil) einer Spese/Ausgabe, pro Beleg auf Rappen gerundet — wie sie
+ * auf der Quittung steht; Summen sind die Summe dieser Beträge (vorher wurde erst die Summe gerundet,
+ * Zeilen und Total wichen um Rappen ab). 0 ohne `inclMwst`.
+ */
+export function expenseTax(e: Pick<Expense, "amount" | "inclMwst" | "mwstRate">): number {
   const amount = e.amount || 0;
-  return e.inclMwst ? amount / (1 + (e.mwstRate || 0) / 100) : amount;
+  if (!e.inclMwst || !e.mwstRate) return 0;
+  return roundCHF(amount - amount / (1 + e.mwstRate / 100));
 }
 
-/** Vorsteuer (enthaltener MWST-Anteil) einer Spese/Ausgabe, ungerundet; 0 ohne `inclMwst`. */
-export function expenseTax(e: Pick<Expense, "amount" | "inclMwst" | "mwstRate">): number {
-  return (e.amount || 0) - expenseNet(e);
+/** Netto einer Spese/Ausgabe = Betrag minus Vorsteuer (pro Beleg auf Rappen). */
+export function expenseNet(e: Pick<Expense, "amount" | "inclMwst" | "mwstRate">): number {
+  return roundCHF((e.amount || 0) - expenseTax(e));
 }
 
 /** Arbeitgeberbeiträge einer Lohnabrechnung. */

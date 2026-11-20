@@ -19,6 +19,7 @@
 
 import React, { useState } from "react";
 import { generateId, formatCHF, invoiceNet } from "../utils";
+import { expenseNet } from "../accounting";
 import { Header, FormField, ShareButton } from "../components/UI";
 import type { Employee, StudioBudgetState, StudioBudgetVersion, ViewProps } from "../types";
 
@@ -82,7 +83,7 @@ function StudioBudget({ data, update, setPrintContent }: Pick<ViewProps, "data" 
     const rows: { id: string; label: string; cat: string; amount: number }[] = [];
     internalExpenses.forEach(e => {
       const year = (e.date || "").slice(0, 4);
-      const net = e.inclMwst ? e.amount / (1 + (e.mwstRate || 0) / 100) : e.amount;
+      const net = expenseNet(e);
       let annualized = net;
       if (e.recurring) {
         if (e.recurringInterval === "monatlich") annualized = net * 12;

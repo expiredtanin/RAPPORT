@@ -295,3 +295,13 @@ describe("Vertragssumme exkl. MWST (SIA 1001/1)", () => {
     expect(contractAmounts({ amount: 5000, quoteId: "q2" }, [{ id: "q2", sub: 5000, total: 5000, mwst: false, mwstRate: 8.1 }], 8.1)).toEqual({ net: 5000, rate: 0, tax: 0, gross: 5000 });
   });
 });
+
+describe("Vorsteuer pro Beleg gerundet", () => {
+  it("Summe = Summe der Zeilen (wie auf den Quittungen)", () => {
+    const belege = [18.4, 186, 74.9, 132.5, 420].map(amount => ({ amount, inclMwst: true, mwstRate: 8.1 }));
+    expect(belege.map(expenseTax)).toEqual([1.38, 13.94, 5.61, 9.93, 31.47]);
+    // Netto + Vorsteuer = Betrag, pro Zeile exakt
+    for (const b of belege) expect(Math.round((expenseNet(b) + expenseTax(b)) * 100) / 100).toBe(b.amount);
+    expect(expenseTax({ amount: 50, inclMwst: false, mwstRate: 8.1 })).toBe(0);
+  });
+});

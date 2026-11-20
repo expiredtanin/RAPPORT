@@ -17,6 +17,7 @@ import React, { useState, useRef } from "react";
 import { EXPENSE_CATEGORIES } from "../constants";
 import { generateId, formatCHF, formatDate, receiptToDataUrl, checkLocalBudget, localISODate } from "../utils";
 import { isLocalBackend } from "../storage/adapter";
+import { expenseNet, expenseTax } from "../accounting";
 import { ExpenseFigures } from "../components/ExpenseFigures";
 import { TableToolbar, Header, Modal, FormField, StatusSelect, DateInput, SortTh, RowMenu, EmptyState } from "../components/UI";
 import { removeWithUndo } from "../undo";
@@ -151,8 +152,9 @@ function Expenses({ data, update, standalone }: Pick<ViewProps, "data" | "update
   const toggleSort = (col: string) => setSort(s => ({ col, dir: s.col === col ? -s.dir : -1 }));
 
   // Gruppieren
-  const getNet = (e: Pick<Expense, "amount" | "inclMwst" | "mwstRate">) => e.inclMwst ? e.amount / (1 + (e.mwstRate || 0) / 100) : e.amount;
-  const getTax = (e: Pick<Expense, "amount" | "inclMwst" | "mwstRate">) => e.amount - getNet(e);
+  // Netto/Vorsteuer pro Beleg auf Rappen (accounting.ts) — Zeilen und Summen stimmen überein
+  const getNet = expenseNet;
+  const getTax = expenseTax;
 
   const groupedData = (() => {
     if (groupBy === "date") {
