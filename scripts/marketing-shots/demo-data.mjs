@@ -222,7 +222,69 @@ const zollEntries = [
 // Ohne das zeigte die Demo Saldi von −1'000 h und mehr. Soll je Tag = Wochenstunden × Pensum / 5;
 // eine leichte Schwankung ergibt ein kleines Plus über das Jahr. Nur vergangene Wochen, Feiertage hat
 // die Demo keine. Diese Woche bleibt von Hand gesetzt (Wochenansicht der Screenshots).
-const DAY_SOLL = { [E_JULIAN]: 41 / 5, [E_LAURA]: 41 / 5, [E_NINA]: 41 * 0.8 / 5, [E_MARC]: 42 / 5, [E_PETER]: 42 * 0.4 / 5, [E_SARA]: 42 * 0.9 / 5 };
+// ── Kalender des Jahres: Feiertage ZH, Ferien, Absenzen, Pensumwechsel, Stichtage ─────────────────
+// Sonderfälle zum Nachrechnen (Lohn, Soll, Saldo, Ferien): Pensumwechsel mitten im Monat (Laura 15.8.),
+// im Austrittsmonat (Sara 1.11., Austritt 15.11.), über dem ALV-Höchstlohn (Marc 1.4.), mit neuen
+// Wochenstunden (Nina 1.3.); Umstieg mitten im Jahr (Peter, Stichtag 1.6.) mit Ferien über den Stichtag.
+const Y = MONDAY.getFullYear();
+function easter(y) {   // Gauss/Meeus, gregorianisch
+  const a = y % 19, b = Math.floor(y / 100), c = y % 100, d = Math.floor(b / 4), e = b % 4, f = Math.floor((b + 8) / 25);
+  const g = Math.floor((b - f + 1) / 3), h = (19 * a + b - d - g + 15) % 30, i = Math.floor(c / 4), k = c % 4;
+  const l = (32 + 2 * e + 2 * i - h - k) % 7, m = Math.floor((a + 11 * h + 22 * l) / 451);
+  const month = Math.floor((h + l - 7 * m + 114) / 31), day = ((h + l - 7 * m + 114) % 31) + 1;
+  return new Date(Date.UTC(y, month - 1, day));
+}
+const isoUTC = d => d.toISOString().slice(0, 10);
+const plusDays = (ds, n) => { const d = new Date(`${ds}T00:00:00Z`); d.setUTCDate(d.getUTCDate() + n); return isoUTC(d); };
+const FEIERTAGE = [Y - 1, Y, Y + 1].flatMap(y => {
+  const e = isoUTC(easter(y));
+  return [
+    ["Neujahr", `${y}-01-01`, 0], ["Berchtoldstag", `${y}-01-02`, 0], ["Karfreitag", plusDays(e, -2), 0], ["Ostermontag", plusDays(e, 1), 0],
+    ["Tag der Arbeit", `${y}-05-01`, 0], ["Auffahrt Vortag (Halbtag)", plusDays(e, 38), -3.5], ["Auffahrt", plusDays(e, 39), 0],
+    ["Pfingstmontag", plusDays(e, 50), 0], ["Nationalfeiertag", `${y}-08-01`, 0], ["Heiligabend (Halbtag)", `${y}-12-24`, -3.5],
+    ["Weihnachten", `${y}-12-25`, 0], ["Stephanstag", `${y}-12-26`, 0], ["Silvester (Halbtag)", `${y}-12-31`, -3.5],
+  ].map(([label, date, stundenDelta], i) => ({ id: `ft-${y}-${i}`, label, date, stundenDelta, repeatsYearly: false }));
+});
+const FERIEN = [
+  [E_JULIAN, `${Y}-02-16`, `${Y}-02-20`, "approved"], [E_JULIAN, `${Y}-07-20`, `${Y}-08-07`, "approved"], [E_JULIAN, `${Y}-12-21`, `${Y}-12-31`, "approved"],
+  [E_LAURA, `${Y}-04-07`, `${Y}-04-17`, "approved"], [E_LAURA, `${Y}-07-13`, `${Y}-07-24`, "approved"], [E_LAURA, `${Y}-10-12`, `${Y}-10-16`, "approved"],
+  [E_NINA, `${Y}-05-18`, `${Y}-05-22`, "approved"], [E_NINA, `${Y}-08-10`, `${Y}-08-21`, "approved"],
+  [E_MARC, `${Y}-03-02`, `${Y}-03-06`, "approved"], [E_MARC, `${Y}-08-03`, `${Y}-08-21`, "approved"], [E_MARC, `${Y}-12-28`, `${Y}-12-31`, "pending"],
+  [E_PETER, `${Y}-05-25`, `${Y}-06-05`, "approved"], [E_PETER, `${Y}-09-14`, `${Y}-09-25`, "approved"],   // über den Stichtag 1.6.
+  [E_SARA, `${Y}-06-22`, `${Y}-07-03`, "approved"], [E_SARA, `${Y}-10-05`, `${Y}-10-09`, "approved"],
+].map(([employeeId, dateFrom, dateTo, status], i) => ({ id: `fe-${i}`, employeeId, dateFrom, dateTo, status, seen: true }));
+const ABSENZEN = [
+  { id: "ab-1", employeeId: E_JULIAN, type: "krankheit", dateFrom: `${Y}-03-10`, dateTo: `${Y}-03-12`, status: "approved" },
+  { id: "ab-2", employeeId: E_LAURA, type: "militaer", dateFrom: `${Y}-06-15`, dateTo: `${Y}-06-19`, status: "approved" },
+  { id: "ab-3", employeeId: E_NINA, type: "intern", date: `${Y}-09-08`, startTime: "13:00", endTime: "17:00", status: "approved" },
+  { id: "ab-4", employeeId: E_SARA, type: "unfall", dateFrom: `${Y}-02-23`, dateTo: `${Y}-02-24`, status: "approved" },
+  { id: "ab-5", employeeId: E_MARC, type: "weiterbildung", date: `${Y}-05-06`, startTime: "08:00", endTime: "12:00", status: "approved" },
+];
+const PENSUM_VERLAUF = {
+  [E_LAURA]: [{ ab: `${Y}-08-15`, pensum: 80 }],
+  [E_SARA]: [{ ab: `${Y}-11-01`, pensum: 60 }],
+  [E_MARC]: [{ ab: `${Y}-04-01`, pensum: 90 }],
+  [E_NINA]: [{ ab: `${Y}-03-01`, pensum: 100, wochenstunden: 42 }],
+};
+const STICHTAG = { [E_PETER]: `${Y}-06-01` };
+const BASIS = { [E_JULIAN]: [100, 41], [E_LAURA]: [100, 41], [E_NINA]: [80, 41], [E_MARC]: [100, 42], [E_PETER]: [40, 42], [E_SARA]: [90, 42] };
+/** Soll in Stunden an einem Werktag (Pensum am Tag, Halbfeiertage anteilig; Ferien, ganze Absenzen, Feiertage 0). */
+function sollAm(emp, date) {
+  let [pensum, wh] = BASIS[emp];
+  for (const v of PENSUM_VERLAUF[emp] || []) if (date >= v.ab) { pensum = v.pensum; wh = v.wochenstunden ?? wh; }
+  const ft = FEIERTAGE.find(f => f.date === date);
+  if (ft && ft.stundenDelta === 0) return 0;
+  if (FERIEN.some(f => f.employeeId === emp && f.status === "approved" && date >= f.dateFrom && date <= f.dateTo)) return 0;
+  if (ABSENZEN.some(a => a.employeeId === emp && a.dateFrom && date >= a.dateFrom && date <= a.dateTo)) return 0;
+  let h = wh / 5 * pensum / 100;
+  if (ft) h += ft.stundenDelta * pensum / 100;
+  const teil = ABSENZEN.find(a => a.employeeId === emp && a.date === date);
+  if (teil) h -= (parseInt(teil.endTime) - parseInt(teil.startTime)) * pensum / 100;
+  return Math.max(0, h);
+}
+const DAY_SOLL = BASIS;
+const TEAM = { [P_LIM]: [E_JULIAN, E_LAURA], [P_HARD]: [E_LAURA, E_JULIAN], [P_REB]: [E_LAURA, E_NINA], [P_WIE]: [E_MARC, E_SARA],
+  [P_LETZI]: [E_PETER, E_JULIAN], [P_BINZ]: [E_NINA, E_LAURA], [P_ZOLL]: [E_JULIAN, E_MARC] };
 const INTERN_DESC = ["Akquise und Offertwesen", "Büroorganisation", "Teamsitzung", "Weiterbildung, Normen", "Wettbewerbsvorbereitung", "Administration Projekte"];
 const SARA_END = `${MONDAY.getFullYear()}-11-15`;
 function layoutDays(entries) {
@@ -235,6 +297,33 @@ function layoutDays(entries) {
     if (!byDay.has(k)) byDay.set(k, []);
     byDay.get(k).push(e);
   }
+  // Projektzeit an Ferien-, Feier- und Absenztagen auf den nächsten Arbeitstag verschieben (nach dem Austritt
+  // auf den letzten davor), damit Phasen- und Rechnungsstunden gleich bleiben
+  const workday = (emp, ds) => { const wd = new Date(`${ds}T00:00:00Z`).getUTCDay(); return wd >= 1 && wd <= 5 && sollAm(emp, ds) > 0 && !(emp === E_SARA && ds > SARA_END); };
+  for (const [k, list] of [...byDay]) {
+    const [emp, date] = k.split("|");
+    if (workday(emp, date)) continue;
+    const back = emp === E_SARA && date > SARA_END;
+    byDay.delete(k);
+    for (const e of list) {
+      // zuerst übernimmt jemand aus dem Projektteam am selben Tag, sonst …
+      const load0 = (em, d) => (byDay.get(`${em}|${d}`) || []).reduce((s2, x) => s2 + x.minutes, 0);
+      const mate = (TEAM[e.projectId] || []).find(m => m !== emp && workday(m, date) && load0(m, date) + e.minutes <= 540);
+      if (mate) { e.employeeId = mate; byDay.set(`${mate}|${date}`, [...(byDay.get(`${mate}|${date}`) || []), e]); continue; }
+      // … erster Arbeitstag mit Platz (≤ 9 h), vorwärts; nach dem Austritt oder ab dieser Woche rückwärts
+      const cands = [];
+      for (let i = 1; i <= 40 && cands.length < 15; i++) {
+        const d = plusDays(date, back ? -i : i);
+        if (!back && d >= thisWeek) break;
+        if (workday(emp, d)) cands.push(d);
+      }
+      if (!cands.length) for (let i = 1; i <= 40 && cands.length < 15; i++) { const d = plusDays(date, -i); if (workday(emp, d)) cands.push(d); }
+      const load = d => (byDay.get(`${emp}|${d}`) || []).reduce((s2, x) => s2 + x.minutes, 0);
+      const d = cands.find(c => load(c) + e.minutes <= 540) || cands.sort((a, b2) => load(a) - load(b2))[0];
+      e.date = d;
+      byDay.set(`${emp}|${d}`, [...(byDay.get(`${emp}|${d}`) || []), e]);
+    }
+  }
   // Tage über 9.5 h: überzählige Einträge auf den Wochentag mit der kleinsten Last verschieben
   for (const [k, list] of [...byDay]) {
     const [emp, date] = k.split("|");
@@ -244,7 +333,8 @@ function layoutDays(entries) {
       const monday = new Date(`${date}T00:00:00`); monday.setDate(monday.getDate() - ((monday.getDay() + 6) % 7));
       const days = [0, 1, 2, 3, 4].map(i => { const d = new Date(monday); d.setDate(d.getDate() + i); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; });
       const load = d => (byDay.get(`${emp}|${d}`) || []).reduce((s, x) => s + x.minutes, 0);
-      const target = days.filter(d => d !== date).sort((a, b) => load(a) - load(b))[0];
+      const target = days.filter(d => d !== date && (d < yearStart || workday(emp, d))).sort((a, b) => load(a) - load(b))[0] || date;
+      if (target === date) { list.push(e); total += e.minutes; break; }
       e.date = target;
       if (!byDay.has(`${emp}|${target}`)) byDay.set(`${emp}|${target}`, []);
       byDay.get(`${emp}|${target}`).push(e);
@@ -253,10 +343,12 @@ function layoutDays(entries) {
   // Interne Zeit bis zum Soll, ab Jahresbeginn (frühere Jahre: Saldo-Übertrag per Stichtag)
   const filler = [];
   let f = 0;
-  for (const [emp, soll] of Object.entries(DAY_SOLL)) {
+  for (const emp of Object.keys(DAY_SOLL)) {
     for (let w = -60; w < 0; w++) for (let day = 0; day < 5; day++) {
       const date = dateAt(w, day);
-      if (date < yearStart || (emp === E_SARA && date > SARA_END)) continue;
+      if (date < yearStart || (emp === E_SARA && date > SARA_END) || (STICHTAG[emp] && date < STICHTAG[emp])) continue;
+      const soll = sollAm(emp, date);
+      if (soll === 0) continue;
       const k = `${emp}|${date}`;
       const booked = (byDay.get(k) || []).reduce((s, e) => s + e.minutes, 0);
       const target = Math.round((soll * 60 + [0, 15, -15, 30, 0][(((day + w + emp.length) % 5) + 5) % 5]) / 15) * 15;
@@ -635,17 +727,19 @@ export const demoData = {
   ],
   employees: [
     { id: E_JULIAN, saldoStichtag: `${MONDAY.getFullYear()}-01-01`, saldoUebertragStunden: 14.5, name: "Julian Roth", role: "Bauleiter", pensum: 100, monatslohn: 8200, wochenstunden: 41, ferienWochen: 5, personalNr: "101", geburtsdatum: "1990-04-18", eintrittsdatum: dateAt(-250), ferienUebertragVorjahr: {} },
-    { id: E_LAURA, saldoStichtag: `${MONDAY.getFullYear()}-01-01`, saldoUebertragStunden: -6, name: "Laura Meier", role: "Architektin", pensum: 100, monatslohn: 7600, wochenstunden: 41, ferienWochen: 5, personalNr: "102", geburtsdatum: "1984-09-03", eintrittsdatum: dateAt(-380), ferienUebertragVorjahr: {} },
-    { id: E_NINA, saldoStichtag: `${MONDAY.getFullYear()}-01-01`, saldoUebertragStunden: 3.5, name: "Nina Baumgartner", role: "Praktikantin", pensum: 80, monatslohn: 3800, wochenstunden: 41, ferienWochen: 5, personalNr: "103", geburtsdatum: "2000-02-11", eintrittsdatum: dateAt(-58), ferienUebertragVorjahr: {} },
+    { id: E_LAURA, pensumVerlauf: PENSUM_VERLAUF[E_LAURA], saldoStichtag: `${MONDAY.getFullYear()}-01-01`, saldoUebertragStunden: -6, name: "Laura Meier", role: "Architektin", pensum: 100, monatslohn: 7600, wochenstunden: 41, ferienWochen: 5, personalNr: "102", geburtsdatum: "1984-09-03", eintrittsdatum: dateAt(-380), ferienUebertragVorjahr: {} },
+    { id: E_NINA, pensumVerlauf: PENSUM_VERLAUF[E_NINA], saldoStichtag: `${MONDAY.getFullYear()}-01-01`, saldoUebertragStunden: 3.5, name: "Nina Baumgartner", role: "Praktikantin", pensum: 80, monatslohn: 3800, wochenstunden: 41, ferienWochen: 5, personalNr: "103", geburtsdatum: "2000-02-11", eintrittsdatum: dateAt(-58), ferienUebertragVorjahr: {} },
     // Saldo-Übertrag per 1.1.: Überstunden aus der Zeit vor RAPPORT (frühere Jahre sind nicht erfasst)
     // Sonderfälle für Buchhaltung/Löhne (Nachrechnung in scripts/demo-check): Partner über dem ALV-Höchstlohn
     // mit 13. Monatslohn und PK laut Ausweis, Rentner mit Freibetrag, Austritt im laufenden Monat mit Familienzulagen
-    { id: E_MARC, saldoStichtag: `${MONDAY.getFullYear()}-01-01`, saldoUebertragStunden: 42, name: "Marc Amrein", role: "Partner", pensum: 100, monatslohn: 14500, dreizehnterLohn: true, pkBeitragAN: 1180, pkBeitragAG: 1420, wochenstunden: 42, ferienWochen: 5, personalNr: "100", geburtsdatum: "1968-05-30", eintrittsdatum: "2010-01-01", ferienUebertragVorjahr: {} },
-    { id: E_PETER, saldoStichtag: `${MONDAY.getFullYear()}-01-01`, saldoUebertragStunden: 0, name: "Peter Keller", role: "Kostenplaner", pensum: 40, monatslohn: 9000, wochenstunden: 42, ferienWochen: 5, personalNr: "104", geburtsdatum: "1958-03-12", eintrittsdatum: "2024-01-01", ferienUebertragVorjahr: {} },
-    { id: E_SARA, saldoStichtag: `${MONDAY.getFullYear()}-01-01`, saldoUebertragStunden: 8, name: "Sara Weber", role: "Architektin", pensum: 90, monatslohn: 8400, familienzulagen: 215, wochenstunden: 42, ferienWochen: 5, personalNr: "105", geburtsdatum: "1991-06-02", eintrittsdatum: "2023-04-01", austrittsdatum: `${new Date().getFullYear()}-11-15`, ferienUebertragVorjahr: {} },
+    { id: E_MARC, pensumVerlauf: PENSUM_VERLAUF[E_MARC], saldoStichtag: `${MONDAY.getFullYear()}-01-01`, saldoUebertragStunden: 42, name: "Marc Amrein", role: "Partner", pensum: 100, monatslohn: 14500, dreizehnterLohn: true, pkBeitragAN: 1180, pkBeitragAG: 1420, wochenstunden: 42, ferienWochen: 5, personalNr: "100", geburtsdatum: "1968-05-30", eintrittsdatum: "2010-01-01", ferienUebertragVorjahr: {} },
+    { id: E_PETER, saldoStichtag: STICHTAG[E_PETER], saldoUebertragStunden: -4.5, name: "Peter Keller", role: "Kostenplaner", pensum: 40, monatslohn: 9000, wochenstunden: 42, ferienWochen: 5, personalNr: "104", geburtsdatum: "1958-03-12", eintrittsdatum: "2024-01-01", ferienUebertragVorjahr: {} },
+    { id: E_SARA, pensumVerlauf: PENSUM_VERLAUF[E_SARA], saldoStichtag: `${MONDAY.getFullYear()}-01-01`, saldoUebertragStunden: 8, name: "Sara Weber", role: "Architektin", pensum: 90, monatslohn: 8400, familienzulagen: 215, wochenstunden: 42, ferienWochen: 5, personalNr: "105", geburtsdatum: "1991-06-02", eintrittsdatum: "2023-04-01", austrittsdatum: `${new Date().getFullYear()}-11-15`, ferienUebertragVorjahr: {} },
   ],
-  feiertage: [], absences: [], ferienEntries: [], absenzTypes: [],
-  lohnEntries: [], uberstundenAbschluss: [],
+  feiertage: FEIERTAGE, absences: ABSENZEN, ferienEntries: FERIEN, absenzTypes: [],
+  lohnEntries: [],
+  // Marc: 20 Überstunden aus dem Vorjahr ausbezahlt (nach dem Stichtag → mindert den Saldo)
+  uberstundenAbschluss: [{ id: "ua-1", empId: E_MARC, year: Y - 1, date: `${Y}-01-30`, type: "payout", hoursSettled: 20, zuschlagPercent: 25, stundenlohn: 80, auszahlungBetrag: 2000 }],
   dashboardTemplates: [
     { id: "tpl-admin", name: "Administrator", isPublic: true, layout: [
       { id: "dw-a1", cols: 4, minH: 0, widgets: ["kpi-projekte", "kpi-stunden", "kpi-ausstehend", "kpi-umsatz"] },

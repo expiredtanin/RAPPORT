@@ -46,10 +46,11 @@ describe("Zeiterfassung = Mitarbeiter", () => {
     const f = calcFerienSaldo(data, emp, new Date(2026, 5, 1))!, g = calc.calcFerienYear(emp, 2026);
     expect([f.anspruch, f.bezogen, f.geplant, f.rest]).toEqual([g.anspruchH, g.bezogenH, g.zukunftH, g.restH]);
   });
-  it("Austritt (Sara 15.11.): kein Soll im Dezember, Anspruch anteilig", () => {
+  it("Austritt (Sara 15.11.) mit Pensumwechsel im Austrittsmonat: kein Soll im Dezember, Anspruch anteilig", () => {
     const sara = emps.find(e => e.id === "emp-sara")!;
     expect(calc.calcEmpMonth(sara, 2026, 11).notStarted).toBe(true);
-    expect(calc.calcFerienYear(sara, 2026).anspruchH).toBe(165.4);
+    // 5 Wo × 42 h: Jan–Okt 90 % = 10/12 × 189 = 157.5; 1.–15.11. 60 % = 15/30 × 126/12 = 5.25 → 162.75
+    expect(calc.calcFerienYear(sara, 2026).anspruchH).toBe(162.8);
     // Änderungsantrag pendent: die bisher genehmigten 5 Tage (28.9.–2.10.) gelten als bezogen
     expect(calc.calcFerienYear(sara, 2026).bezogenH).toBeCloseTo(5 * 42 * 0.9 / 5, 1);
   });
