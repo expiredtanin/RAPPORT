@@ -1,11 +1,12 @@
 // Briefe: Vorlage wählen, Empfänger/Projekt einsetzen, Text im Rich-Text-Editor
 // bearbeiten, drucken/als PDF speichern. Vorlagen liegen in `data.letterTemplates`;
 // im Vorlagentext ersetzen die Platzhalter {{client}} und {{project}} Kunden- und
-// Projektnamen. Der Brieftext selbst wird nicht gespeichert, nur als Vorlage
+// Projektnamen; beim Speichern werden die eingesetzten Namen wieder zu Platzhaltern (letterToTemplate). Der Brieftext selbst wird nicht gespeichert, nur als Vorlage
 // («Überschreiben» / «Neu speichern»).
 
 import { useState } from "react";
-import { generateId, textToHtml } from "../utils";
+import { generateId, textToHtml, fillLetterTemplate, letterToTemplate } from "../utils";
+import { showToast } from "../toast";
 import { Header, FormField, RichEditor } from "../components/UI";
 import LivePreview from "../components/LivePreview";
 import { useConfirm } from "../hooks/useConfirm";
@@ -26,11 +27,8 @@ function Letters({ data, update, setPrintContent }: Pick<ViewProps, "data" | "up
     if (!tpl) return;
     const client = (data.persons || []).find(c => c.id === cId);
     const proj = data.projects.find(p => p.id === pId);
-    // Namen landen im HTML des Editors: «&», «<» usw. maskieren (z.B. «Müller & Partner»)
-    const esc = (v: string) => v.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-    const text = (tpl.body || "")
-      .replace(/\{\{client\}\}/g, () => esc(client?.name || "[Kunde]"))
-      .replace(/\{\{project\}\}/g, () => esc(proj?.name || "[Projekt]"));
+    // Namen landen im HTML des Editors: fillLetterTemplate maskiert «&», «<» usw. (z.B. «Müller & Partner»)
+    const text = fillLetterTemplate(tpl.body || "", { client: client?.name, project: proj?.name });
     setBody(textToHtml(text));
     setSubject(tpl.name);
   };
@@ -42,15 +40,21 @@ function Letters({ data, update, setPrintContent }: Pick<ViewProps, "data" | "up
   const saveAsTemplate = () => {
     const name = (newName || "").trim();
     if (!name) return;
-    const tpl = { id: generateId(), name, body };
+    const tpl = { id: generateId(), name, body: asTemplate() };
     update("letterTemplates", [...data.letterTemplates, tpl]);
     setSelectedTemplate(tpl.id);
     setSubject(name);
     setNewName(null);
   };
 
+  // Gespeichert wird mit Platzhaltern statt der eingesetzten Namen (sonst wäre die Vorlage an einen Kunden gebunden)
+  const asTemplate = () => letterToTemplate(body, {
+    client: (data.persons || []).find(c => c.id === clientId)?.name,
+    project: data.projects.find(p => p.id === projectId)?.name,
+  });
   const updateTemplate = () => {
-    update("letterTemplates", data.letterTemplates.map(t => t.id === selectedTemplate ? { ...t, body } : t));
+    update("letterTemplates", data.letterTemplates.map(t => t.id === selectedTemplate ? { ...t, body: asTemplate() } : t));
+    showToast("Vorlage überschrieben — Kunden- und Projektname als Platzhalter gespeichert.");
   };
 
   const deleteTemplate = async () => {
@@ -85,9 +89,9 @@ function Letters({ data, update, setPrintContent }: Pick<ViewProps, "data" | "up
               {data.letterTemplates.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
             </select>
             <div style={{ display: "flex", gap: 6 }}>
-              <button className="btn btn-ghost" style={{ flex: 1, fontSize: 11, padding: "5px 8px" }} onClick={updateTemplate}>Überschreiben</button>
-              <button className="btn btn-ghost" style={{ flex: 1, fontSize: 11, padding: "5px 8px" }} onClick={() => setNewName(subject || "")}>Neu speichern</button>
-              <button className="btn btn-ghost" style={{ padding: "5px 8px", fontSize: 11 }} onClick={deleteTemplate}><span className="msr" style={{ fontSize: 16 }}>close</span></button>
+              <button className="btn btn-ghost" style={{ flex: 1, minWidth: 0, fontSize: 11, padding: "5px 6px" }} onClick={updateTemplate}>Überschreiben</button>
+              <button className="btn btn-ghost" style={{ flex: 1, minWidth: 0, fontSize: 11, padding: "5px 6px" }} onClick={() => setNewName(subject || "")}>Neu speichern</button>
+              <button className="btn btn-ghost" style={{ flex: "none", padding: "5px 6px", fontSize: 11 }} title="Vorlage löschen" aria-label="Vorlage löschen" onClick={deleteTemplate}><span className="msr" style={{ fontSize: 16 }}>close</span></button>
             </div>
             {newName !== null && (
               <div style={{ display: "flex", gap: 6, marginTop: 8 }}>

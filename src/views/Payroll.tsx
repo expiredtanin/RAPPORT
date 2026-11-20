@@ -16,7 +16,7 @@
 // Fachliche Details der Abzüge: utils.ts `calcLohn`, docs/FACHLOGIK.md.
 
 import React, { useState } from "react";
-import { generateId, formatCHF, calcLohn, lohnAGSaetze } from "../utils";
+import { generateId, formatCHF, calcLohn, lohnAGSaetze, pensumImMonat } from "../utils";
 import { lohnAGBeitraege, lohnPersonalaufwand, lohnVorperioden, spesenFuerLohn, spesenWartend } from "../accounting";
 import { Header, NavArrows, ShareButton, EmptyState } from "../components/UI";
 import { useConfirm } from "../hooks/useConfirm";
@@ -67,13 +67,15 @@ function Payroll({ data, saveAll, setPrintContent, setView }: Pick<ViewProps, "d
   };
 
   const getEffBrutto = (emp: Employee) => bruttoOverride[emp.id] != null ? bruttoOverride[emp.id] : (emp.monatslohn || 0);
-  const getEffPensum = (emp: Employee) => pensumOverride[emp.id] != null ? pensumOverride[emp.id] : (emp.pensum || 100);
+  // Ohne Übersteuerung das Pensum des Monats (bei einem Pensumwechsel tagesgenau gewichtet, s. pensumImMonat)
+  const monthPensum = (emp: Employee) => Math.round(pensumImMonat(emp, monatStr) * 100) / 100;
+  const getEffPensum = (emp: Employee) => pensumOverride[emp.id] != null ? pensumOverride[emp.id] : monthPensum(emp);
 
   const offeneSpesen = (empId: string) => spesenFuerLohn(data.expenses || [], empId, monatStr);
   const findEntry = (empId: string) => lohnEntries.find(l => l.monat === monatStr && l.employeeId === empId);
   /** Vorschau/Abschluss mit den Overrides dieses Laufs und den früheren Abrechnungen des Jahres. */
   const calcFor = (emp: Employee, spesen: { amount?: number }[]) =>
-    calcLohn({ ...emp, monatslohn: getEffBrutto(emp), pensum: getEffPensum(emp) }, monatStr, spesen, (bonusOverride[emp.id] as number) || 0, lohnVorperioden(lohnEntries, emp.id, monatStr), lohnAGSaetze(data.settings));
+    calcLohn({ ...emp, monatslohn: getEffBrutto(emp), ...(pensumOverride[emp.id] != null ? { pensum: pensumOverride[emp.id], pensumVerlauf: undefined } : {}) }, monatStr, spesen, (bonusOverride[emp.id] as number) || 0, lohnVorperioden(lohnEntries, emp.id, monatStr), lohnAGSaetze(data.settings));
 
   const abschliessen = (emp: Employee) => {
     if (findEntry(emp.id)) return;
@@ -188,16 +190,16 @@ function Payroll({ data, saveAll, setPrintContent, setView }: Pick<ViewProps, "d
             <input type="number" min={10} max={100} step={5}
               value={getEffPensum(emp)}
               onChange={e => setPensumOverride(o => ({ ...o, [emp.id]: +e.target.value }))}
-              style={{ width: 72, height: 32, fontSize: 13, textAlign: "right", border: pensumOverride[emp.id] != null && pensumOverride[emp.id] !== (emp.pensum || 100) ? "1.5px solid var(--warning)" : "1px solid var(--border3)" }} />
+              style={{ width: 72, height: 32, fontSize: 13, textAlign: "right", border: pensumOverride[emp.id] != null && pensumOverride[emp.id] !== monthPensum(emp) ? "1.5px solid var(--warning)" : "1px solid var(--border3)" }} />
             <span style={{ fontSize: 11, color: "var(--text4)" }}>%</span>
-            {pensumOverride[emp.id] != null && pensumOverride[emp.id] !== (emp.pensum || 100) && (
+            {pensumOverride[emp.id] != null && pensumOverride[emp.id] !== monthPensum(emp) && (
               <button onClick={() => setPensumOverride(o => { const n={...o}; delete n[emp.id]; return n; })}
                 title="Stammdaten-Wert wiederherstellen"
                 style={{ fontSize: 11, color: "var(--text4)", background: "none", border: "1px solid var(--border3)", borderRadius: 20, cursor: "pointer", padding: "2px 8px" }}>↺ Reset</button>
             )}
           </div>
-          {pensumOverride[emp.id] != null && pensumOverride[emp.id] !== (emp.pensum || 100) && (
-            <div style={{ fontSize: 10, color: "var(--warning)", marginBottom: 4 }}>Abweichend von Stammdaten ({emp.pensum || 100}%)</div>
+          {pensumOverride[emp.id] != null && pensumOverride[emp.id] !== monthPensum(emp) && (
+            <div style={{ fontSize: 10, color: "var(--warning)", marginBottom: 4 }}>Abweichend von Stammdaten ({monthPensum(emp)}%)</div>
           )}
           <div style={{ fontSize: 10, letterSpacing: "0.08em", color: "var(--text4)", margin: "10px 0 6px", paddingTop: 8, borderTop: "1px solid var(--border)" }}>EINMALZAHLUNG / BONUS (AHV-pflichtig)</div>
           <div style={{ display: "flex", gap: 8 }}>

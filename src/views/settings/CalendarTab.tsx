@@ -1,16 +1,21 @@
-// Reiter «Feiertage & Absenzen»: Feiertage (auch jährlich wiederkehrend, CH-Vorlage mit
-// beweglichen Feiertagen) und Absenzarten. Speichert sofort, nicht über den Entwurf `s`.
+// Reiter «Feiertage & Absenzen»: Feiertage (auch jährlich wiederkehrend, Vorlage je Kanton mit
+// beweglichen Feiertagen) und Absenzarten. Speichert sofort, nicht über den Entwurf `s`; die Kantonswahl
+// (`settings.kanton`) geht direkt in die Einstellungen und über `onSettingsSaved` auch in den Entwurf.
 
 import { useState } from "react";
 import { DEFAULT_ABSENZ_TYPES } from "../../constants";
 import { generateId, getAbsenzTypes } from "../../utils";
-import { swissHolidayTemplate } from "../../worktime";
+import { KANTON_FEIERTAGE, KANTONE, replaceHolidayTemplate, swissHolidayTemplate } from "../../worktime";
+import { useConfirm } from "../../hooks/useConfirm";
 import { showToast } from "../../toast";
 import { FormField, Modal, DateInput } from "../../components/UI";
-import type { AbsenzType, Feiertag, ViewProps } from "../../types";
+import type { AbsenzType, Feiertag, Kanton, Settings, ViewProps } from "../../types";
 
-/** Feiertage und Absenztypen bearbeiten. */
-export function CalendarTab({ data, update }: Pick<ViewProps, "data" | "update">) {
+/** Feiertage und Absenztypen bearbeiten; `onSettingsSaved` hält den Einstellungs-Entwurf mit der Kantonswahl gleich. */
+export function CalendarTab({ data, update, onSettingsSaved }: Pick<ViewProps, "data" | "update"> & { onSettingsSaved?: (changes: Partial<Settings>) => void }) {
+  const { askConfirm, ConfirmModalEl } = useConfirm();
+  const kanton: Kanton = data.settings.kanton && KANTON_FEIERTAGE[data.settings.kanton] ? data.settings.kanton : "ZH";
+  const kantonName = KANTON_FEIERTAGE[kanton].name;
   const [ftForm, setFtForm] = useState<Partial<Feiertag>>({ date: "", label: "", stundenDelta: 0, repeatsYearly: true });
   const [absenzTypeForm, setAbsenzTypeForm] = useState<Partial<AbsenzType>>({ label: "", color: "#555" });
   const [kalModal, setKalModal] = useState<"ft" | "absenztype" | null>(null);
@@ -28,6 +33,18 @@ export function CalendarTab({ data, update }: Pick<ViewProps, "data" | "update">
     setKalModal(null);
   };
   const delFt = (id: string) => update("feiertage", feiertage.filter(f => f.id !== id));
+
+  /** Kanton wählen; bestehende Vorlagen-Feiertage auf Wunsch durch die des neuen Kantons ersetzen (eigene bleiben). */
+  const changeKanton = async (k: Kanton) => {
+    update("settings", prev => ({ ...prev, kanton: k }));
+    onSettingsSaved?.({ kanton: k });
+    if (feiertage.length === 0) return;
+    const ok = await askConfirm(`Feiertage auf die Vorlage Kanton ${KANTON_FEIERTAGE[k].name} umstellen? Feiertage der bisherigen Vorlage ab ${new Date().getFullYear()} werden ersetzt; selbst erfasste (andere Bezeichnung) und frühere Jahre bleiben.`, "Umstellen");
+    if (!ok) return;
+    const yr = new Date().getFullYear();
+    update("feiertage", prev => replaceHolidayTemplate(prev, yr, yr + 3, k).map(f => f.id ? f : { ...f, id: generateId() }));
+    showToast(`Feiertage Kanton ${KANTON_FEIERTAGE[k].name} geladen`);
+  };
 
   const saveAbsenzType = () => {
     const t = { ...absenzTypeForm, id: absenzTypeForm.id || generateId() } as AbsenzType;
@@ -50,6 +67,7 @@ export function CalendarTab({ data, update }: Pick<ViewProps, "data" | "update">
 
   return (
     <>
+      {ConfirmModalEl}
       {/* Feiertage / Absenztypen Modals */}
       {kalModal === "ft" && (
         <Modal title={ftForm.id ? "Feiertag bearbeiten" : "Neuer Feiertag"} onClose={() => setKalModal(null)} onSave={saveFt}>
@@ -92,7 +110,13 @@ export function CalendarTab({ data, update }: Pick<ViewProps, "data" | "update">
             <div style={{ fontSize: 10, letterSpacing: "0.12em", color: "var(--text5)", fontWeight: 600 }}>FEIERTAGE</div>
             <button className="btn btn-ghost" style={{ padding: "3px 10px", fontSize: 11 }} onClick={() => { setFtForm({ date: "", label: "", stundenDelta: 0, repeatsYearly: true }); setKalModal("ft"); }}>+ Feiertag</button>
           </div>
+          <FormField label="Kanton (Vorlage)">
+            <select value={kanton} onChange={e => changeKanton(e.target.value as Kanton)}>
+              {KANTONE.map(k => <option key={k} value={k}>{KANTON_FEIERTAGE[k].name} ({k})</option>)}
+            </select>
+          </FormField>
           <div style={{ fontSize: 11, color: "var(--text5)", marginBottom: 14, lineHeight: 1.6 }}>
+            Vorlage: gesetzliche bzw. üblicherweise arbeitsfreie Tage des Kantons (bei Unterschieden nach Gemeinde oder Konfession die Regel des Hauptorts) — eigene Tage ergänzen oder streichen.
             Gelten für alle Mitarbeiter. Jährlich wiederkehrende werden automatisch übertragen. Mit «Stunden-Delta» lassen sich Halbfeiertage definieren (z.B. −3.5h für den 24.12.; gilt für 100 %, bei Teilzeit anteilig). Am Werktag vor einem ganzen Feiertag zählt das Soll 1 h weniger.
           </div>
           <div className="card" style={{ padding: 0, marginBottom: feiertage.length === 0 ? 12 : 0 }}>
@@ -115,13 +139,13 @@ export function CalendarTab({ data, update }: Pick<ViewProps, "data" | "update">
             </table>
           </div>
           {(() => {
-            // Vorlage Kanton Zürich: fehlende feste Feiertage und die beweglichen (Ostern-abhängigen) für dieses
-            // und die nächsten drei Jahre ergänzen. Bewegliche gibt es nur pro Jahr — der Knopf bleibt deshalb
+            // Vorlage des gewählten Kantons: fehlende feste Feiertage und die beweglichen (Ostern-abhängigen u.a.)
+            // für dieses und die nächsten drei Jahre ergänzen. Bewegliche gibt es nur pro Jahr — der Knopf bleibt deshalb
             // sichtbar, solange für eines der Jahre etwas fehlt (vorher nur bei leerer Liste, danach nie mehr).
             const yr = new Date().getFullYear();
-            const missing = swissHolidayTemplate(feiertage, yr, yr + 3);
+            const missing = swissHolidayTemplate(feiertage, yr, yr + 3, kanton);
             if (missing.length === 0) return null;
-            const label = feiertage.length === 0 ? "↓ Feiertage Kanton Zürich laden (inkl. Ostern, Auffahrt, Pfingsten …)" : `↓ Fehlende Feiertage ${yr}–${yr + 3} ergänzen (${missing.length})`;
+            const label = feiertage.length === 0 ? `↓ Feiertage Kanton ${kantonName} laden (inkl. Ostern, Auffahrt, Pfingsten …)` : `↓ Fehlende Feiertage ${yr}–${yr + 3} ergänzen (${missing.length})`;
             return (
               <button className="btn btn-ghost" style={{ fontSize: 11, width: "100%", marginTop: feiertage.length === 0 ? 0 : 12 }}
                 onClick={() => update("feiertage", [...feiertage, ...missing.map(f => ({ ...f, id: generateId() }))])}>{label}</button>

@@ -2,7 +2,7 @@
 // «seit Eintritt» (nach Abzug ausbezahlter Überstunden, mit Hinweis bei unplausibel grossem Minus) und darunter
 // der Ferienrest in Tagen.
 
-import { formatDays } from "../../utils";
+import { arbeitszeitAm, formatDays } from "../../utils";
 import type { Employee } from "../../types";
 import type { calcTotalSaldo, calcMonthSaldo, calcFerienSaldo } from "./timeUtils";
 
@@ -35,11 +35,15 @@ export function SaldoCards({ selectedEmp, currentDate, totalSaldo, monthSaldo, f
   const year = currentDate.slice(0, 4);
   const ferienTotal = ferienSaldo ? ferienSaldo.anspruch + ferienSaldo.ubertrag : 0;
   const ferienUsed = ferienSaldo ? ferienSaldo.bezogen + ferienSaldo.geplant : 0;
-  const days = (h: number) => formatDays(h, selectedEmp);
+  // Tage und Pensum mit den Werten am angezeigten Datum (Pensumwechsel)
+  const az = arbeitszeitAm(selectedEmp, currentDate);
+  const days = (h: number) => formatDays(h, az);
+  const stichtag = selectedEmp.saldoStichtag;
+  const deDate = (ds: string) => new Date(ds + "T12:00:00").toLocaleDateString("de-CH");
 
   return (
     <div className="card">
-      <div className="zeit-k">Saldo <span>in Stunden · Pensum {selectedEmp.pensum || 100} %</span></div>
+      <div className="zeit-k">Saldo <span>in Stunden · Pensum {az.pensum} %</span></div>
       <div className="zeit-saldo">
         <span className="h l" />
         <span className="h">Ist</span>
@@ -55,15 +59,15 @@ export function SaldoCards({ selectedEmp, currentDate, totalSaldo, monthSaldo, f
         )}
         {totalSaldo && (
           <>
-            <span className="l" title={selectedEmp.eintrittsdatum ? `seit ${new Date(selectedEmp.eintrittsdatum + "T12:00:00").toLocaleDateString("de-CH")}` : undefined}>Seit Eintritt</span>
+            <span className="l" title={stichtag ? `seit ${deDate(stichtag)}, mit Übertrag ${fh(totalSaldo.uebertrag, true)}` : selectedEmp.eintrittsdatum ? `seit ${deDate(selectedEmp.eintrittsdatum)}` : undefined}>{stichtag ? "Seit Stichtag" : "Seit Eintritt"}</span>
             <span className="num" title={totalSaldo.absenz > 0 ? `inkl. ${fh(totalSaldo.absenz)} Absenzen` : undefined}>{fh(totalSaldo.ist + totalSaldo.absenz, false, false)}</span>
             <span className="num">{fh(totalSaldo.soll, false, false)}</span>
-            <span className={`num s${suspectSaldo ? "" : saldoCls(totalSaldo.saldo)}`} title={totalSaldo.paidOut ? `nach Abzug von ${fh(totalSaldo.paidOut)} ausbezahlten Überstunden` : undefined}>{fh(totalSaldo.saldo, true, false)}</span>
+            <span className={`num s${suspectSaldo ? "" : saldoCls(totalSaldo.saldo)}`} title={[stichtag ? `inkl. Übertrag ${fh(totalSaldo.uebertrag, true)} per ${deDate(stichtag)}` : "", totalSaldo.paidOut ? `nach Abzug von ${fh(totalSaldo.paidOut)} ausbezahlten Überstunden` : ""].filter(Boolean).join(", ") || undefined}>{fh(totalSaldo.saldo, true, false)}</span>
           </>
         )}
       </div>
       {suspectSaldo && (
-        <div className="zeit-hint">Sehr grosser Minussaldo — fehlen ältere Einträge? Eintrittsdatum unter Mitarbeiter → Personen prüfen.</div>
+        <div className="zeit-hint">Sehr grosser Minussaldo — fehlen ältere Einträge? Unter Mitarbeiter → Personen einen Saldo-Stichtag mit Übertrag setzen (Umstieg von Excel) oder das Eintrittsdatum prüfen.</div>
       )}
 
       {ferienSaldo && (

@@ -1,7 +1,7 @@
 // Reiter «Mitarbeiter»: Stammdaten-Liste mit Anlegen, Bearbeiten und Löschen.
 
 import React from "react";
-import { formatDate } from "../../utils";
+import { arbeitszeitAm, formatDate, localISODate } from "../../utils";
 import type { Employee, ViewProps } from "../../types";
 import { RowMenu } from "../../components/UI";
 import type { EmpForm, ModalKind } from "./types";
@@ -33,11 +33,11 @@ export default function StaffListTab({ data, employees, nextPersonalNr, setEmpFo
           <thead><tr><th>Name</th><th>Pensum</th><th>Wochenstunden</th><th>Ferien (Wo)</th><th>Eintritt</th><th></th></tr></thead>
           <tbody>
             {employees.length === 0 && <tr><td colSpan={6} className="empty-state">Noch keine Mitarbeiter erfasst</td></tr>}
-            {employees.map(emp => (
+            {employees.map(emp => { const az = arbeitszeitAm(emp, localISODate()); return (
               <tr key={emp.id} className="row-link" onClick={() => openEmp(emp)}>
                 <td><strong>{emp.name}</strong>{emp.role && <div style={{ fontSize: 11, color: "var(--text4)" }}>{emp.role}</div>}</td>
-                <td>{emp.pensum || 100}%</td>
-                <td>{((emp.wochenstunden || 35) * (emp.pensum || 100) / 100).toFixed(1)}h <span style={{ fontSize: 11, color: "var(--text4)" }}>({emp.wochenstunden || 35}h @ 100%)</span></td>
+                <td>{az.pensum}%{(emp.pensumVerlauf || []).length > 0 && <span className="msr" title="Pensum mit Wechseln — Wert von heute" style={{ fontSize: 13, color: "var(--text5)", marginLeft: 4, verticalAlign: "middle" }}>history</span>}</td>
+                <td>{(az.wochenstunden * az.pensum / 100).toFixed(1)}h <span style={{ fontSize: 11, color: "var(--text4)" }}>({az.wochenstunden}h @ 100%)</span></td>
                 <td>{emp.ferienWochen || 4} Wo</td>
                 <td style={{ color: "var(--text4)" }}>{emp.eintrittsdatum ? formatDate(emp.eintrittsdatum) : "—"}</td>
                 <td className="row-actions" onClick={e => e.stopPropagation()}>
@@ -47,7 +47,7 @@ export default function StaffListTab({ data, employees, nextPersonalNr, setEmpFo
                   ]} />
                 </td>
               </tr>
-            ))}
+            ); })}
           </tbody>
         </table>
       </div>

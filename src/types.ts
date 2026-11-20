@@ -19,6 +19,9 @@ export interface Role {
   sort?: number;
 }
 
+/** Kantonskürzel (Feiertags-Vorlagen in worktime.ts). */
+export type Kanton = "AG" | "AI" | "AR" | "BE" | "BL" | "BS" | "FR" | "GE" | "GL" | "GR" | "JU" | "LU" | "NE" | "NW" | "OW" | "SG" | "SH" | "SO" | "SZ" | "TG" | "TI" | "UR" | "VD" | "VS" | "ZG" | "ZH";
+
 export interface Settings {
   setupCompleted: boolean;
   name: string;
@@ -76,6 +79,16 @@ export interface Settings {
   protokollApproval?: ProtocolApproval;
   /** Frist in Stunden für die stillschweigende Genehmigung. Standard 24. */
   protokollApprovalHours?: number;
+  /** Mahnwesen: Verzugszins in Mahnungen ausweisen (OR 104). Standard aus. */
+  verzugszinsAktiv?: boolean;
+  /** Verzugszins in % p.a.; Standard 5 (gesetzlicher Satz). */
+  verzugszinsSatz?: number;
+  /** Mahnwesen: Mahngebühren verlangen (nur wenn mit dem Kunden vereinbart). Standard aus. */
+  mahngebuehrAktiv?: boolean;
+  /** Mahngebühr je Stufe in CHF (Index 0 = Zahlungserinnerung); Standard [0, 20, 30]. */
+  mahngebuehren?: number[];
+  /** Kanton für die Feiertags-Vorlage (Einstellungen → Feiertage); ohne Angabe Zürich. */
+  kanton?: Kanton;
   /** CRM: wählbare Herkunftsquellen für Leads/Personen; Rückfall `DEFAULT_LEAD_SOURCES` (constants.ts). */
   leadSources?: string[];
   deliveryNoteNumberFormat?: string;
@@ -357,6 +370,12 @@ export interface InvoiceReminder {
   sentDate?: DateStr;
   /** Tage, die die Rechnung beim Auslösen überfällig war */
   daysPast?: number;
+  /** Verzugszins im Schreiben (CHF), Zinstage und Satz — damit ein Nachdruck denselben Betrag zeigt */
+  zins?: number;
+  zinsTage?: number;
+  zinsSatz?: number;
+  /** Mahngebühren bis und mit dieser Stufe (CHF) */
+  gebuehr?: number;
 }
 
 export interface InvoiceItem {
@@ -626,7 +645,20 @@ export interface Employee {
   familienzulagen?: number | null;
   /** AHV-Rentner:in (Referenzalter erreicht): Freibetrag CHF 1'400/Monat, keine ALV, keine BVG-Pflicht. Wird ab 65 auch aus dem Geburtsdatum erkannt. */
   ahvRentner?: boolean;
+  /**
+   * Ferien-Übertrag in Stunden je Jahr (Schlüssel = Jahr, in das übertragen wird). Mit `saldoStichtag`
+   * gilt der Wert des Stichtag-Jahres als Ferienguthaben per Stichtag (Anspruch und Bezug zählen ab dann).
+   */
   ferienUebertragVorjahr?: Record<string, number>;
+  /**
+   * Stichtag für den Saldo-Übertrag (Umstieg von Excel o.ä.): Soll, Ist, Ferien und Absenzen vor diesem
+   * Datum zählen nicht; der Überstundensaldo startet mit `saldoUebertragStunden`.
+   */
+  saldoStichtag?: DateStr;
+  /** Überstundensaldo per `saldoStichtag` in Stunden (negativ = Minusstunden). */
+  saldoUebertragStunden?: number | null;
+  /** Pensumwechsel: ab einem Datum gilt ein anderes Pensum (und ggf. andere Wochenstunden). Vor dem ersten Eintrag gelten `pensum`/`wochenstunden`. */
+  pensumVerlauf?: PensumWechsel[];
   /** Cloud-User, der diesem Mitarbeiter entspricht (Self-Service-Ansichten) */
   appUserId?: Id | null;
   active?: boolean;
@@ -634,6 +666,14 @@ export interface Employee {
   street?: string;
   zip?: string;
   city?: string;
+}
+
+/** Ein Pensumwechsel: ab `ab` (einschliesslich) gilt `pensum` (%), optional mit neuen Wochenstunden (100-%-Basis). */
+export interface PensumWechsel {
+  ab: DateStr;
+  pensum: number;
+  /** leer = Wochenstunden laufen weiter wie zuvor */
+  wochenstunden?: number | null;
 }
 
 export interface Absence {

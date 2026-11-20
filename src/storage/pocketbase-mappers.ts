@@ -202,6 +202,10 @@ export const fromDB = {
       familienzulagen: row.familienzulagen ?? null,
       ahvRentner: !!row.ahvRentner,
       ferienUebertragVorjahr: row.ferienUebertragVorjahr || {},
+      // Saldo-Übertrag per Stichtag und Pensumwechsel (PB-Migration worktime_history)
+      saldoStichtag: row.saldoStichtag ? row.saldoStichtag.slice(0, 10) : "",
+      saldoUebertragStunden: row.saldoUebertragStunden ?? null,
+      pensumVerlauf: Array.isArray(row.pensumVerlauf) ? row.pensumVerlauf : [],
       appUserId: row.appUser || null,
       active: row.active !== false,
     };
@@ -536,11 +540,15 @@ export const toDB = {
         closedMonths: rest.closedMonths || [], blockMaiTag: rest.blockMaiTag !== false,
         // Protokoll-Genehmigung: ohne eigene Spalte im ui-Blob (fromDB übernimmt ...row.ui)
         protokollApproval: rest.protokollApproval, protokollApprovalHours: rest.protokollApprovalHours,
+        // Mahnwesen (Verzugszins, Mahngebühren) — ohne eigene Spalte
+        verzugszinsAktiv: rest.verzugszinsAktiv, verzugszinsSatz: rest.verzugszinsSatz, mahngebuehrAktiv: rest.mahngebuehrAktiv, mahngebuehren: rest.mahngebuehren,
         // Dokument-Design (Schriften/Farben/eigenes CSS) — Dateien liegen separat in docAssets
         docDesign: rest.docDesign,
         // MWST-Methode und weitere AG-Sätze (Buchhaltung/Löhne, Stand 26.11) — ohne eigene Spalte
         mwstMethode: rest.mwstMethode, mwstSaldoSatz: rest.mwstSaldoSatz, mwstAbrechnungsart: rest.mwstAbrechnungsart,
         lohnFakSatz: rest.lohnFakSatz, lohnVkSatz: rest.lohnVkSatz, lohnBuSatz: rest.lohnBuSatz, lohnKtgAGSatz: rest.lohnKtgAGSatz,
+        // Kanton der Feiertags-Vorlage — ohne eigene Spalte
+        kanton: rest.kanton,
       },
       protokollTypeAbbr: rest.protokollTypeAbbreviations || {},
     };
@@ -599,6 +607,9 @@ export const toDB = {
       pkBeitragAN: e.pkBeitragAN ?? null, pkBeitragAG: e.pkBeitragAG ?? null,
       familienzulagen: e.familienzulagen ?? null, ahvRentner: !!e.ahvRentner,
       ferienUebertragVorjahr: e.ferienUebertragVorjahr || {},
+      saldoStichtag: e.saldoStichtag || null,
+      saldoUebertragStunden: e.saldoUebertragStunden ?? null,
+      pensumVerlauf: e.pensumVerlauf || [],
       appUser: e.appUserId || null,
       active: e.active !== false,
     };

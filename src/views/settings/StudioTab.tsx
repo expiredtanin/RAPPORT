@@ -4,7 +4,7 @@
 import { DEFAULT_LEAD_SOURCES } from "../../constants";
 import { showToast } from "../../toast";
 import { isLocalBackend } from "../../storage/adapter";
-import { formatIban, isQRIban, readAsDataUrl, checkLocalBudget } from "../../utils";
+import { formatIban, isQRIban, readAsDataUrl, checkLocalBudget, DEFAULT_MAHNGEBUEHREN } from "../../utils";
 import { FormField } from "../../components/UI";
 import { Section, type DraftProps } from "./shared";
 import type { AppData } from "../../types";
@@ -123,6 +123,41 @@ export function StudioTab({ s, setField, data }: DraftProps & { data: AppData })
             <input type="number" step="0.01" min={0} value={s.lohnKtgAGSatz ?? ""} placeholder="= AN-Satz" onChange={e => setField({ lohnKtgAGSatz: e.target.value === "" ? undefined : +e.target.value })} />
             <div style={{ fontSize: 10, color: "var(--text5)", marginTop: 3 }}>leer = paritätisch</div>
           </FormField>
+        </div>
+      </Section>
+    </div>
+
+    <div className="card" style={{ marginTop: 20 }}>
+      <Section title="MAHNWESEN">
+        <div style={{ fontSize: 11, color: "var(--text5)", marginBottom: 12 }}>Beträge erscheinen in Zahlungserinnerung und Mahnungen. Ohne MWST und nicht in der Buchhaltung gebucht — erfasst wird erst der Zahlungseingang.</div>
+        <div className="responsive-grid-4" style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: "4px 16px", alignItems: "start" }}>
+          <FormField label="Verzugszins">
+            <label style={{ display: "flex", alignItems: "center", gap: 8, textTransform: "none", fontSize: 13, color: "var(--text2)" }}>
+              <input type="checkbox" checked={!!s.verzugszinsAktiv} onChange={e => setField({ verzugszinsAktiv: e.target.checked })} style={{ width: "auto" }} />
+              ab dem Tag nach der Fälligkeit verlangen
+            </label>
+            <div style={{ fontSize: 10, color: "var(--text5)", marginTop: 3 }}>gesetzlich 5 % p.a. (OR 104), tagesgenau</div>
+          </FormField>
+          {s.verzugszinsAktiv && (
+            <FormField label="Zinssatz (% p.a.)">
+              <input type="number" step="0.25" min={0} value={s.verzugszinsSatz ?? 5} onChange={e => setField({ verzugszinsSatz: Math.max(0, +e.target.value) })} style={{ maxWidth: 120 }} />
+              <div style={{ fontSize: 10, color: "var(--text5)", marginTop: 3 }}>höher nur, wenn vertraglich vereinbart</div>
+            </FormField>
+          )}
+          {s.verzugszinsAktiv ? <div style={{ gridColumn: "span 2" }} /> : <div style={{ gridColumn: "span 3" }} />}
+          <FormField label="Mahngebühren">
+            <label style={{ display: "flex", alignItems: "center", gap: 8, textTransform: "none", fontSize: 13, color: "var(--text2)" }}>
+              <input type="checkbox" checked={!!s.mahngebuehrAktiv} onChange={e => setField({ mahngebuehrAktiv: e.target.checked })} style={{ width: "auto" }} />
+              je Mahnstufe verlangen
+            </label>
+            <div style={{ fontSize: 10, color: "var(--text5)", marginTop: 3 }}>nur zulässig, wenn mit dem Kunden vereinbart (AGB, Vertrag)</div>
+          </FormField>
+          {s.mahngebuehrAktiv && ["Zahlungserinnerung", "2. Mahnung", "ab 3. Mahnung"].map((label, i) => (
+            <FormField key={label} label={`${label} (CHF)`}>
+              <input type="number" step="5" min={0} value={(s.mahngebuehren?.length ? s.mahngebuehren : DEFAULT_MAHNGEBUEHREN)[i] ?? 0}
+                onChange={e => { const list = [...(s.mahngebuehren?.length ? s.mahngebuehren : DEFAULT_MAHNGEBUEHREN)]; list[i] = Math.max(0, +e.target.value); setField({ mahngebuehren: list }); }} style={{ maxWidth: 120 }} />
+            </FormField>
+          ))}
         </div>
       </Section>
     </div>

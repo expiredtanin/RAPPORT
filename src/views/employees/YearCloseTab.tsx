@@ -1,7 +1,7 @@
 // Reiter «Jahresabschluss»: Ferienübertrag ins Folgejahr bestätigen und Überstunden auszahlen.
 
 import React from "react";
-import { formatCHF } from "../../utils";
+import { arbeitszeitAm, formatCHF, localISODate } from "../../utils";
 import { overtimeHourlyRate } from "../../worktime";
 import type { Employee, ViewProps } from "../../types";
 import type { EmployeeCalc } from "./calc";
@@ -44,7 +44,8 @@ export default function YearCloseTab({ data, employees, abschlussYear, setAbschl
         const formDef = { ferienUebertrag: fs.restH > 0 ? fs.restH : 0, ubHours: ubSaldo > 0 ? ubSaldo : 0, ubZuschlag: 25 };
         const form = { ...formDef, ...(abschlussForm[emp.id] || {}) };
         const setForm = (val: Partial<AbschlussForm>) => setAbschlussForm(prev => ({ ...prev, [emp.id]: { ...form, ...val } }));
-        const stundenlohn = overtimeHourlyRate(emp);
+        const stundenlohn = overtimeHourlyRate(emp, localISODate());
+        const az = arbeitszeitAm(emp, `${abschlussYear}-12-31`);
         const auszahlungBetrag = Math.round(form.ubHours * stundenlohn * (1 + form.ubZuschlag / 100) * 100) / 100;
         const existingPayouts = (data.uberstundenAbschluss || []).filter(a => a.empId === emp.id && a.year === abschlussYear);
 
@@ -55,7 +56,7 @@ export default function YearCloseTab({ data, employees, abschlussYear, setAbschl
                 <strong style={{ fontSize: 14 }}>{emp.name}</strong>
                 {emp.role && <span style={{ fontSize: 12, color: "var(--text4)", marginLeft: 10 }}>{emp.role}</span>}
               </div>
-              <span style={{ fontSize: 11, color: "var(--text4)" }}>{emp.pensum || 100}% · {((emp.wochenstunden || 35) * (emp.pensum || 100) / 100).toFixed(1)}h/Wo</span>
+              <span style={{ fontSize: 11, color: "var(--text4)" }}>{az.pensum}% · {(az.wochenstunden * az.pensum / 100).toFixed(1)}h/Wo</span>
             </div>
 
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 32 }}>
@@ -76,7 +77,9 @@ export default function YearCloseTab({ data, employees, abschlussYear, setAbschl
                   <span style={{ color: fs.restH > 0 ? "var(--positive)" : fs.restH < 0 ? "var(--negative)" : "var(--text4)" }}>{fs.restH}h</span>
                 </div>
 
-                {fs.restH > 0 ? (
+                {emp.saldoStichtag && Number(emp.saldoStichtag.slice(0, 4)) > abschlussYear ? (
+                  <div style={{ fontSize: 11, color: "var(--text4)", marginTop: 12 }}>Vor dem Saldo-Stichtag ({emp.saldoStichtag.split("-").reverse().join(".")}) — Ferienguthaben im Mitarbeiterformular erfassen</div>
+                ) : fs.restH > 0 ? (
                   <div style={{ marginTop: 16 }}>
                     <div style={{ fontSize: 11, color: "var(--text4)", marginBottom: 6 }}>Übertrag ins {abschlussYear + 1}</div>
                     <div style={{ display: "flex", gap: 8, alignItems: "center" }}>

@@ -769,8 +769,9 @@ export function buildReminderLetter(
   nr: number,
   sentDate: DateStr | undefined,
   clients: Person[],
-  settings: Pick<Settings, "iban" | "name">,
-): { client: Person | undefined; subject: string; body: string } {
+  settings: Pick<Settings, "iban" | "name"> & MahnSettings,
+  kosten?: MahnKosten,
+): { client: Person | undefined; subject: string; body: string; kosten: MahnKosten } {
   const client = clients.find(c => c.id === inv.clientId);
   // Nur die früheren Stufen: beim Nachdrucken steht die gedruckte Mahnung selbst schon in `reminders`.
   const existingReminders = (inv.reminders || []).filter((r, i) => (r.nr || i + 1) < nr);
@@ -783,9 +784,71 @@ export function buildReminderLetter(
     : nr === 2
     ? `Leider mussten wir feststellen, dass unsere Zahlungserinnerung vom ${formatDate(existingReminders[0]?.sentDate || existingReminders[0]?.date)} bezüglich Rechnung Nr. ${inv.number} über ${formatCHF(inv.total)} bisher ohne Reaktion geblieben ist.\n\nWir fordern Sie hiermit auf, den ausstehenden Betrag innert 7 Tagen zu begleichen.`
     : `Trotz unserer Zahlungserinnerungen vom ${existingReminders.map(r => formatDate(r.sentDate || r.date)).join(", ").replace(/, ([^,]*)$/, " und $1")} ist die Rechnung Nr. ${inv.number} über ${formatCHF(inv.total)} nach wie vor unbeglichen.\n\nWir sehen uns gezwungen, bei weiterem Ausbleiben der Zahlung innerhalb von 5 Tagen rechtliche Schritte einzuleiten.`;
-  const body = `Sehr geehrte/r ${client?.name || "[Kunde]"}\n\n${intro}\n\nIBAN: ${formatIban(settings.iban)}\nReferenz: ${ref.display}\n\nFreundliche Grüsse\n${settings.name}`;
+  const k = kosten || mahnKosten(inv, nr, refDate, settings);
+  const kostenText = k.zins > 0 || k.gebuehr > 0
+    ? `\n\nOffener Rechnungsbetrag: ${formatCHF(k.offen)}`
+      + (k.zins > 0 ? `\nVerzugszins ${k.zinsSatz} % ab ${formatDate(addDaysISO(inv.dueDate || refDate, 1))} bis ${formatDate(refDate)} (${k.zinsTage} ${k.zinsTage === 1 ? "Tag" : "Tage"}): ${formatCHF(k.zins)}` : "")
+      + (k.gebuehr > 0 ? `\nMahngebühr${nr > 1 ? "en" : ""}: ${formatCHF(k.gebuehr)}` : "")
+      + `\nTotal zu bezahlen: ${formatCHF(k.total)}`
+    : "";
+  const body = `Sehr geehrte/r ${client?.name || "[Kunde]"}\n\n${intro}${kostenText}\n\nIBAN: ${formatIban(settings.iban)}\nReferenz: ${ref.display}\n\nFreundliche Grüsse\n${settings.name}`;
   const subject = nr === 1 ? `Zahlungserinnerung – Rechnung Nr. ${inv.number}` : `${nr}. Mahnung – Rechnung Nr. ${inv.number}`;
-  return { client, subject, body };
+  return { client, subject, body, kosten: k };
+}
+
+/** Einstellungen für Verzugszins und Mahngebühren (Einstellungen → Studio → Mahnwesen). */
+export type MahnSettings = Partial<Pick<Settings, "verzugszinsAktiv" | "verzugszinsSatz" | "mahngebuehrAktiv" | "mahngebuehren">>;
+
+/** Standard-Mahngebühren je Stufe (Zahlungserinnerung gratis, 2. Mahnung 20, ab 3. Mahnung 30). */
+export const DEFAULT_MAHNGEBUEHREN = [0, 20, 30];
+
+/** Offener Betrag, Verzugszins und Mahngebühren einer Mahnung. */
+export interface MahnKosten {
+  /** offener Rechnungsbetrag (inkl. MWST) */
+  offen: number;
+  /** Verzugstage ab dem Tag nach der Fälligkeit bis zum Versanddatum */
+  zinsTage: number;
+  /** Zinssatz in % p.a. (0 = kein Verzugszins) */
+  zinsSatz: number;
+  /** Verzugszins in CHF, auf Rappen gerundet */
+  zins: number;
+  /** Mahngebühren bis und mit dieser Stufe */
+  gebuehr: number;
+  /** offen + zins + gebuehr */
+  total: number;
+}
+
+/** Datum + n Tage (UTC-Arithmetik auf «YYYY-MM-DD»). */
+function addDaysISO(d: DateStr, n: number): DateStr {
+  const t = new Date(`${d}T00:00:00Z`); t.setUTCDate(t.getUTCDate() + n);
+  return t.toISOString().slice(0, 10);
+}
+
+/**
+ * Verzugszins und Mahngebühren einer Mahnung (Stufe `nr`) am Versanddatum `stichtag`.
+ *
+ * - Verzugszins (OR 104 Abs. 1: 5 % p.a., sofern nichts anderes vereinbart): nur wenn eingeschaltet.
+ *   Die Rechnung nennt ein Zahlungsziel (Verfalltag, OR 102 Abs. 2), Verzug beginnt also am Tag danach.
+ *   Zins = offen × Satz × Tage / 365, kaufmännisch auf Rappen.
+ * - Mahngebühren sind gesetzlich nicht geschuldet (nur Verzugsschaden, OR 106) — nur wenn mit dem Kunden
+ *   vereinbart (AGB/Vertrag) einschalten. Gefordert werden die Gebühren aller Stufen bis `nr`
+ *   (fehlt eine Stufe in der Liste, gilt der letzte Betrag).
+ * - Zins und Gebühren sind kein Entgelt für eine Leistung: ohne MWST (MWSTG Art. 18 Abs. 2 lit. i) und
+ *   nicht in der Buchhaltung gebucht (erst der Zahlungseingang wird erfasst).
+ */
+export function mahnKosten(inv: Pick<Invoice, "total" | "dueDate">, nr: number, stichtag: DateStr, settings: MahnSettings): MahnKosten {
+  const offen = roundCHF(inv.total || 0);
+  const zinsSatz = settings.verzugszinsAktiv ? (settings.verzugszinsSatz ?? 5) : 0;
+  const tage = inv.dueDate ? Math.max(0, Math.round((Date.parse(`${stichtag}T00:00:00Z`) - Date.parse(`${inv.dueDate}T00:00:00Z`)) / 86400000)) : 0;
+  const zinsTage = zinsSatz > 0 ? tage : 0;
+  const zins = zinsSatz > 0 ? roundCHF(offen * zinsSatz / 100 * zinsTage / 365) : 0;
+  let gebuehr = 0;
+  if (settings.mahngebuehrAktiv) {
+    const list = settings.mahngebuehren?.length ? settings.mahngebuehren : DEFAULT_MAHNGEBUEHREN;
+    for (let i = 0; i < nr; i++) gebuehr += Math.max(0, list[Math.min(i, list.length - 1)] || 0);
+  }
+  gebuehr = roundCHF(gebuehr);
+  return { offen, zinsTage, zinsSatz, zins, gebuehr, total: roundCHF(offen + zins + gebuehr) };
 }
 
 /** Kalenderwoche als «KW 42» (ISO 8601). */
@@ -967,6 +1030,36 @@ export function textToHtml(text?: string | null): string {
     .split("\n\n")
     .map(para => `<p>${para.replace(/\n/g, "<br>")}</p>`)
     .join("");
+}
+
+/** Für HTML maskieren («Müller & Partner» → «Müller &amp; Partner»). */
+function escHtml(v: string): string {
+  return v.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+/** Briefvorlage füllen: {{client}} und {{project}} durch die (maskierten) Namen ersetzen, ohne Auswahl «[Kunde]»/«[Projekt]». */
+export function fillLetterTemplate(body: string, names: { client?: string; project?: string }): string {
+  return body
+    .replace(/\{\{client\}\}/g, () => escHtml(names.client || "[Kunde]"))
+    .replace(/\{\{project\}\}/g, () => escHtml(names.project || "[Projekt]"));
+}
+
+/**
+ * Gegenstück zu `fillLetterTemplate` beim Speichern als Vorlage: die eingesetzten Namen (und die
+ * Lückenfüller «[Kunde]»/«[Projekt]») werden wieder zu {{client}}/{{project}}, damit «Überschreiben»
+ * die Platzhalter nicht verliert. Ersetzt nur ganze Wörter; der längere Name zuerst.
+ */
+export function letterToTemplate(body: string, names: { client?: string; project?: string }): string {
+  const reEsc = (v: string) => v.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const pairs: [string, string][] = [["[Kunde]", "{{client}}"], ["[Projekt]", "{{project}}"]];
+  if (names.client?.trim()) pairs.push([escHtml(names.client.trim()), "{{client}}"]);
+  if (names.project?.trim()) pairs.push([escHtml(names.project.trim()), "{{project}}"]);
+  pairs.sort((a, b) => b[0].length - a[0].length);
+  let out = body;
+  for (const [name, ph] of pairs) {
+    out = out.replace(new RegExp(`(^|[^\\p{L}\\p{N}])${reEsc(name)}(?![\\p{L}\\p{N}])`, "gu"), (_m, pre: string) => pre + ph);
+  }
+  return out;
 }
 
 /** HTML zurück in Klartext (Druck-Fallback). Braucht das DOM. */
@@ -1177,6 +1270,8 @@ export interface LohnVorperioden {
  * (inkl. 13. Lohn und Bonus); fehlen Sätze am Mitarbeiter, gelten die Standardwerte
  * (AHV 5.3, ALV 1.1, BVG 8.0, NBU 1.5, KTG 0.5, PK-AG 8.0, QST 10).
  * - Eintritt im Monat: Monatslohn anteilig nach Kalendertagen (`monatsAnteilNachEintritt`).
+ * - Pensumwechsel im Monat (`pensumVerlauf`): Pensum tagesgenau gewichtet (`pensumImMonat`); für einen
+ *   Lauf mit fest übersteuertem Pensum `pensumVerlauf` leeren.
  * - ALV und NBU nur bis zum Höchstlohn 148'200/Jahr, kumuliert über das Jahr (`vorperioden`
  *   = frühere Abrechnungen desselben Jahres); darüber kein Abzug.
  * Jeder Posten wird einzeln auf Rappen gerundet, damit die Summen auf dem Beleg aufgehen.
@@ -1196,7 +1291,8 @@ export function calcLohn(
 ): LohnResult {
   const r2 = (n: number) => Math.round(n * 100) / 100;
   const hinweise: string[] = [];
-  const pensumFactor = (emp.pensum || 100) / 100;
+  // Pensum des Monats: mit Pensumwechsel tagesgenau gewichtet (wie Ein-/Austritt nach Kalendertagen)
+  const pensumFactor = pensumImMonat(emp, monat) / 100;
   const bruttoBase = emp.monatslohn || 0;
   const anteil = monatsAnteilNachEintritt(emp.eintrittsdatum, monat, emp.austrittsdatum);
   const brutto = r2(bruttoBase * pensumFactor * anteil);
@@ -1502,3 +1598,54 @@ export const invoicesForQuote = (q: Pick<Quote, "id" | "projectId">, invoices: I
 };
 
 
+
+// ─── Pensum über die Zeit ──────────────────────────────────────────────────────
+
+/** Felder eines Mitarbeiters, aus denen Pensum und Wochenstunden zu einem Datum folgen. */
+export type ArbeitszeitFelder = Partial<Pick<Employee, "pensum" | "wochenstunden" | "pensumVerlauf">>;
+
+/**
+ * Pensum (%) und Wochenstunden (100-%-Basis) an einem Datum: der letzte Eintrag aus `pensumVerlauf` mit
+ * `ab` ≤ Datum, sonst `pensum`/`wochenstunden` (Grundwerte ab Eintritt). Pensum 0/leer gilt als 100 %,
+ * Wochenstunden leer als 35 — wie überall in der App; ein Wechsel ohne Wochenstunden übernimmt die bisherigen.
+ * Einträge ohne gültiges Datum oder Pensum werden übergangen.
+ */
+export function arbeitszeitAm(emp: ArbeitszeitFelder, ds: string): { pensum: number; wochenstunden: number } {
+  let pensum = Number(emp.pensum) || 100;
+  let wochenstunden = Number(emp.wochenstunden) || 35;
+  const verlauf = emp.pensumVerlauf;
+  if (!verlauf || verlauf.length === 0) return { pensum, wochenstunden };
+  const day = ds.slice(0, 10);
+  const sorted = verlauf.filter(v => v && /^\d{4}-\d{2}-\d{2}/.test(v.ab || "") && Number(v.pensum) > 0)
+    .slice().sort((a, b) => a.ab.localeCompare(b.ab));
+  for (const v of sorted) {
+    if (v.ab.slice(0, 10) > day) break;
+    pensum = Number(v.pensum);
+    if (Number(v.wochenstunden) > 0) wochenstunden = Number(v.wochenstunden);
+  }
+  return { pensum, wochenstunden };
+}
+
+/**
+ * Durchschnittliches Pensum (%) eines Monats `YYYY-MM` über die angestellten Tage, tagesgenau gewichtet
+ * (Kalendertage, wie Ein-/Austritt im Lohn). Ohne Wechsel im Monat genau das gültige Pensum; ohne angestellte
+ * Tage das Pensum am Monatsende. `Monatslohn × Pensum ÷ 100 × monatsAnteilNachEintritt` ergibt so den
+ * tagesgenau anteiligen Lohn (z.B. 1.–15. 80 %, 16.–30. 100 % → 90 %).
+ */
+export function pensumImMonat(emp: ArbeitszeitFelder & Partial<Pick<Employee, "eintrittsdatum" | "austrittsdatum">>, monat: string | undefined): number {
+  if (!monat || !/^\d{4}-\d{2}$/.test(monat)) return Number(emp.pensum) || 100;
+  const [y, m] = monat.split("-").map(Number);
+  const tage = new Date(y, m, 0).getDate();
+  const last = `${monat}-${String(tage).padStart(2, "0")}`;
+  if (!emp.pensumVerlauf || emp.pensumVerlauf.length === 0) return arbeitszeitAm(emp, last).pensum;
+  let sum = 0, n = 0;
+  for (let d = 1; d <= tage; d++) {
+    const ds = `${monat}-${String(d).padStart(2, "0")}`;
+    if ((emp.eintrittsdatum && ds < emp.eintrittsdatum) || (emp.austrittsdatum && ds > emp.austrittsdatum)) continue;
+    sum += arbeitszeitAm(emp, ds).pensum; n++;
+  }
+  if (n === 0) return arbeitszeitAm(emp, last).pensum;
+  // Gleiches Pensum an allen Tagen → exakt dieser Wert (keine Gleitkomma-Reste in der Lohnrechnung)
+  const first = arbeitszeitAm(emp, emp.eintrittsdatum && emp.eintrittsdatum > `${monat}-01` ? emp.eintrittsdatum : `${monat}-01`).pensum;
+  return sum === first * n ? first : sum / n;
+}

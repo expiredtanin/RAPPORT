@@ -18,7 +18,7 @@
 // `settings.studioBudgetVersions` ab (auch Grundlage des PDFs).
 
 import React, { useState } from "react";
-import { generateId, formatCHF, lohnAGSaetze } from "../utils";
+import { arbeitszeitAm, generateId, formatCHF, lohnAGSaetze } from "../utils";
 import { budgetEinnahmen, budgetFixkosten, jahresLohnkosten } from "../budget";
 import { Header, ShareButton } from "../components/UI";
 import type { Employee, StudioBudgetState, StudioBudgetVersion, ViewProps } from "../types";
@@ -63,7 +63,8 @@ function StudioBudget({ data, update, setPrintContent }: Pick<ViewProps, "data" 
   const agSaetze = lohnAGSaetze(data.settings);
   /** Lohnkosten und Jahresstunden einer Person — Kosten wie die Lohnläufe (budget.ts). */
   const calcEmpAuto = (emp: Employee) => {
-    const pensum = (emp.pensum || 100) / 100;
+    // Pensum zur Jahresmitte des Budgetjahrs (Pensumwechsel); Lohnkosten rechnen je Monat (calcLohn)
+    const pensum = arbeitszeitAm(emp, `${currentYear}-07-01`).pensum / 100;
     const lk = jahresLohnkosten(emp, currentYear, agSaetze);
     const ferienWochen = emp.ferienWochen || data.settings.defaultFerienWochen || 5;
     const wochenstunden = (emp.wochenstunden || data.settings.defaultWochenstunden || 35) * pensum;

@@ -67,7 +67,7 @@ export const calcTotalSaldo = (data: AppData, emp: Employee | null) => {
   if (!emp) return null;
   const o = createWorktime(data, localISODate()).overtime(emp);
   const r = (n: number) => Math.round(n * 10) / 10;
-  return { soll: r(o.soll), ist: r(o.ist), absenz: r(o.absenz), paidOut: r(o.paidOut), saldo: r(o.balance) };
+  return { soll: r(o.soll), ist: r(o.ist), absenz: r(o.absenz), paidOut: r(o.paidOut), uebertrag: r(o.uebertrag), saldo: r(o.balance) };
 };
 
 /** Feriensaldo (Anspruch, Übertrag, bezogen, geplant, beantragt, Rest) des Jahres von `viewDate2`. */

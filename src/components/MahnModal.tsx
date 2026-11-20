@@ -1,7 +1,7 @@
 // Dialog «Mahnung» für Rechnungen (Buchhaltung und Rechnungen): Zahlungserinnerung/Mahnung
 // auslösen oder eine frühere nochmals drucken. Lag früher in views/Protocols.tsx.
 
-import { formatCHF, formatDate, buildReminderLetter, localISODate } from "../utils";
+import { formatCHF, formatDate, buildReminderLetter, localISODate, mahnKosten, roundCHF } from "../utils";
 import { DateInput } from "./UI";
 import type { Invoice, InvoiceReminder, ViewProps } from "../types";
 
@@ -28,12 +28,18 @@ export function MahnModal({ inv, data, update, setPrintContent, onClose, mahnMod
     if (mahnMode.startsWith("reprint-")) {
       const idx = parseInt(mahnMode.split("-")[1]);
       const r = reminders[idx];
-      const { client, subject, body } = buildReminderLetter(inv, r.nr, r.sentDate || r.date, (data.persons||[]), data.settings);
+      // Nachdruck mit den damals gespeicherten Beträgen (Einstellungen können sich seither geändert haben)
+      const stored = r.zins != null || r.gebuehr != null
+        ? { offen: roundCHF(inv.total), zins: r.zins || 0, zinsTage: r.zinsTage || 0, zinsSatz: r.zinsSatz || 0, gebuehr: r.gebuehr || 0, total: roundCHF(inv.total + (r.zins || 0) + (r.gebuehr || 0)) }
+        : undefined;
+      const { client, subject, body } = buildReminderLetter(inv, r.nr, r.sentDate || r.date, (data.persons||[]), data.settings, stored);
       setPrintContent({ type: "letter", client, subject, body, settings: data.settings });
     } else {
-      const { client, subject, body } = buildReminderLetter(inv, nextNr, mahnSentDate, (data.persons||[]), data.settings);
+      const { client, subject, body, kosten } = buildReminderLetter(inv, nextNr, mahnSentDate, (data.persons||[]), data.settings);
       setPrintContent({ type: "letter", client, subject, body, settings: data.settings });
-      const newReminder: InvoiceReminder = { nr: nextNr, date: localISODate(), sentDate: mahnSentDate, daysPast: Math.floor((new Date(`${mahnSentDate || localISODate()}T00:00:00Z`).getTime() - new Date(`${inv.dueDate}T00:00:00Z`).getTime()) / 86400000) };
+      const newReminder: InvoiceReminder = { nr: nextNr, date: localISODate(), sentDate: mahnSentDate, daysPast: Math.floor((new Date(`${mahnSentDate || localISODate()}T00:00:00Z`).getTime() - new Date(`${inv.dueDate}T00:00:00Z`).getTime()) / 86400000),
+        ...(kosten.zins > 0 ? { zins: kosten.zins, zinsTage: kosten.zinsTage, zinsSatz: kosten.zinsSatz } : {}),
+        ...(kosten.gebuehr > 0 ? { gebuehr: kosten.gebuehr } : {}) };
       update("invoices", data.invoices.map(i => i.id === inv.id
         ? { ...i, status: "überfällig", reminders: [...reminders, newReminder] }
         : i
@@ -64,7 +70,7 @@ export function MahnModal({ inv, data, update, setPrintContent, onClose, mahnMod
             const rMode = `reprint-${i}`;
             return (
               <label key={i} style={{ display: "flex", gap: 12, padding: "11px 14px", borderRadius: 6, border: `1.5px solid ${mahnMode === rMode ? "var(--text)" : "var(--border)"}`, cursor: "pointer", textTransform: "none", fontSize: 13, color: "var(--text)" }}>
-                <input type="radio" checked={mahnMode === rMode} onChange={() => setMahnMode(rMode)} style={{ width: "auto", marginTop: 2 }} />
+                <input type="radio" checked={mahnMode === rMode} onChange={() => setMahnMode(rMode)} style={{ width: "auto", height: "auto", flex: "none", alignSelf: "flex-start", marginTop: 2 }} />
                 <div>
                   <div style={{ fontWeight: 500 }}>{rLabel} nochmals drucken</div>
                   <div style={{ fontSize: 11, color: "var(--text4)", marginTop: 2 }}>Gesendet am {formatDate(r.sentDate || r.date)} · kein neuer Eintrag</div>
@@ -73,7 +79,7 @@ export function MahnModal({ inv, data, update, setPrintContent, onClose, mahnMod
             );
           })}
           <label style={{ display: "flex", gap: 12, padding: "11px 14px", borderRadius: 6, border: `1.5px solid ${mahnMode === "new" ? "var(--text)" : "var(--border)"}`, cursor: "pointer", textTransform: "none", fontSize: 13, color: "var(--text)" }}>
-            <input type="radio" checked={mahnMode === "new"} onChange={() => setMahnMode("new")} style={{ width: "auto", marginTop: 2 }} />
+            <input type="radio" checked={mahnMode === "new"} onChange={() => setMahnMode("new")} style={{ width: "auto", height: "auto", flex: "none", alignSelf: "flex-start", marginTop: 2 }} />
             <div style={{ flex: 1 }}>
               <div style={{ fontWeight: 500, color: nextColor }}>{nextLabel} auslösen</div>
               <div style={{ fontSize: 11, color: "var(--text4)", marginTop: 2 }}>Wird als neuer Eintrag gespeichert</div>
@@ -83,6 +89,18 @@ export function MahnModal({ inv, data, update, setPrintContent, onClose, mahnMod
                   <DateInput value={mahnSentDate} onChange={e => setMahnSentDate(e.target.value)} style={{ flex: 1, height: 32, fontSize: 12 }} />
                 </div>
               )}
+              {mahnMode === "new" && (() => {
+                const k = mahnKosten(inv, nextNr, mahnSentDate || localISODate(), data.settings);
+                if (!k.zins && !k.gebuehr) return null;
+                return (
+                  <div className="num" style={{ marginTop: 10, fontSize: 12, color: "var(--text3)", display: "grid", gridTemplateColumns: "1fr auto", gap: "2px 12px" }}>
+                    <span>Offen</span><span>{formatCHF(k.offen)}</span>
+                    {k.zins > 0 && <><span>Verzugszins {k.zinsSatz} % · {k.zinsTage} Tage</span><span>{formatCHF(k.zins)}</span></>}
+                    {k.gebuehr > 0 && <><span>Mahngebühren</span><span>{formatCHF(k.gebuehr)}</span></>}
+                    <span style={{ fontWeight: 600, color: "var(--text)" }}>Total</span><span style={{ fontWeight: 600, color: "var(--text)" }}>{formatCHF(k.total)}</span>
+                  </div>
+                );
+              })()}
             </div>
           </label>
         </div>

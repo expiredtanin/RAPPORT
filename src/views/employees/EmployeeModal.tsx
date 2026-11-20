@@ -1,9 +1,9 @@
 // Modal «Mitarbeiter»: Personalien, Arbeitszeit, Lohn/Sozialabzüge und optionaler App-Zugang.
 
 import React from "react";
-import { formatIban, formatCHF } from "../../utils";
+import { arbeitszeitAm, formatIban, formatCHF, localISODate } from "../../utils";
 import { Modal, FormField, DateInput, DatePicker } from "../../components/UI";
-import type { ViewProps } from "../../types";
+import type { PensumWechsel, ViewProps } from "../../types";
 import type { EmpForm } from "./types";
 
 interface EmployeeModalProps {
@@ -17,6 +17,12 @@ interface EmployeeModalProps {
 
 /** Formular-Modal zum Anlegen/Bearbeiten eines Mitarbeiters. */
 export default function EmployeeModal({ data, empForm, setEmpForm, nextPersonalNr, onClose, onSave }: EmployeeModalProps) {
+  const verlauf = empForm.pensumVerlauf || [];
+  const setVerlauf = (list: PensumWechsel[]) => setEmpForm({ ...empForm, pensumVerlauf: list });
+  const heute = arbeitszeitAm(empForm, localISODate());
+  const stichtagJahr = (empForm.saldoStichtag || "").slice(0, 4);
+  const ferienStichtag = stichtagJahr ? (empForm.ferienUebertragVorjahr || {})[stichtagJahr] : undefined;
+  const hint = { fontSize: 10, color: "var(--text5)", marginTop: 3 } as const;
   return (
     <Modal title={empForm.id ? "Mitarbeiter bearbeiten" : "Neuer Mitarbeiter"} onClose={onClose} onSave={onSave} wide>
       <div style={{ fontSize: 11, letterSpacing: "0.08em", color: "var(--text4)", marginBottom: 10 }}>PERSONALIEN</div>
@@ -53,24 +59,66 @@ export default function EmployeeModal({ data, empForm, setEmpForm, nextPersonalN
       </div>
       <div style={{ fontSize: 11, letterSpacing: "0.08em", color: "var(--text4)", margin: "14px 0 10px", paddingTop: 12, borderTop: "1px solid var(--border2)" }}>ARBEITSZEIT & FERIEN</div>
       <div className="form-row">
-        <FormField label="Pensum %">
+        <FormField label={verlauf.length ? "Pensum % (ab Eintritt)" : "Pensum %"}>
           <input type="number" min={10} max={100} step={5} value={empForm.pensum || 100} onChange={e => setEmpForm({ ...empForm, pensum: +e.target.value })} />
         </FormField>
         <FormField label="Wochenstunden (100%)">
           <input type="number" min={1} max={50} step={0.5} value={empForm.wochenstunden || data.settings.defaultWochenstunden || 35} onChange={e => setEmpForm({ ...empForm, wochenstunden: +e.target.value })} />
-          <div style={{ fontSize: 11, color: "var(--text4)", marginTop: 4 }}>Effektiv: {(((empForm.wochenstunden || 35) * (empForm.pensum || 100)) / 100).toFixed(1)}h/Wo</div>
+          <div style={{ fontSize: 11, color: "var(--text4)", marginTop: 4 }}>Effektiv{verlauf.length ? " heute" : ""}: {((heute.wochenstunden * heute.pensum) / 100).toFixed(1)}h/Wo{verlauf.length ? ` (${heute.pensum} %)` : ""}</div>
         </FormField>
         <FormField label="Ferien (Wochen/Jahr)">
           <input type="number" min={4} max={10} step={0.5} value={empForm.ferienWochen || data.settings.defaultFerienWochen || 5} onChange={e => setEmpForm({ ...empForm, ferienWochen: +e.target.value })} />
           <div style={{ fontSize: 11, color: "var(--text4)", marginTop: 4 }}>Minimum: 4 Wochen (OR)</div>
         </FormField>
       </div>
+      {/* Pensumwechsel: ab einem Datum gilt ein anderes Pensum (Soll, Ferienanspruch, Lohn tagesgenau) */}
+      <div style={{ fontSize: 11, color: "var(--text4)", margin: "4px 0 8px" }}>
+        Pensumwechsel <span style={{ color: "var(--text5)" }}>— Soll, Ferienanspruch und Lohn rechnen ab dem Datum mit dem neuen Pensum (im Wechselmonat tagesgenau anteilig)</span>
+      </div>
+      {verlauf.map((v, i) => (
+        <div key={i} className="form-row" style={{ alignItems: "flex-end" }}>
+          <FormField label="Ab"><DatePicker value={v.ab || ""} onChange={e => setVerlauf(verlauf.map((x, j) => j === i ? { ...x, ab: e.target.value } : x))} style={!v.ab ? { borderColor: "var(--warning)" } : {}} /></FormField>
+          <FormField label="Pensum %"><input type="number" min={5} max={100} step={5} value={v.pensum || ""} onChange={e => setVerlauf(verlauf.map((x, j) => j === i ? { ...x, pensum: +e.target.value } : x))} /></FormField>
+          <FormField label="Wochenstunden (100%)"><input type="number" min={1} max={50} step={0.5} value={v.wochenstunden ?? ""} placeholder="wie bisher" onChange={e => setVerlauf(verlauf.map((x, j) => j === i ? { ...x, wochenstunden: e.target.value === "" ? null : +e.target.value } : x))} /></FormField>
+          <div style={{ flex: "0 0 auto", paddingBottom: 6 }}>
+            <button type="button" className="btn-icon danger" title="Wechsel entfernen" aria-label="Wechsel entfernen" onClick={() => setVerlauf(verlauf.filter((_, j) => j !== i))}><span className="msr" style={{ fontSize: 16 }}>close</span></button>
+          </div>
+        </div>
+      ))}
+      <button type="button" className="btn btn-ghost" style={{ fontSize: 11, padding: "3px 10px", marginBottom: 6 }}
+        onClick={() => setVerlauf([...verlauf, { ab: "", pensum: heute.pensum }])}>+ Pensum ab …</button>
+
+      <div style={{ fontSize: 11, letterSpacing: "0.08em", color: "var(--text4)", margin: "14px 0 10px", paddingTop: 12, borderTop: "1px solid var(--border2)" }}>SALDO-ÜBERTRAG (UMSTIEG)</div>
+      <div style={{ fontSize: 11, color: "var(--text5)", marginBottom: 10, lineHeight: 1.5 }}>
+        Für den Wechsel von Excel oder einem anderen Programm: Ab dem Stichtag rechnet RAPPORT Soll, Ist und Ferien selbst; alles davor zählt nicht. Überstunden und Ferienguthaben per Stichtag aus der bisherigen Abrechnung übernehmen (z.B. Stand am Morgen des 1. Januar).
+      </div>
+      <div className="form-row">
+        <FormField label="Stichtag">
+          <DatePicker value={empForm.saldoStichtag || ""} onChange={e => setEmpForm({ ...empForm, saldoStichtag: e.target.value })} />
+          <div style={hint}>leer = Saldo seit Eintritt</div>
+        </FormField>
+        <FormField label="Überstunden per Stichtag (h)">
+          <input type="number" step={0.25} value={empForm.saldoUebertragStunden ?? ""} placeholder="0" disabled={!empForm.saldoStichtag}
+            onChange={e => setEmpForm({ ...empForm, saldoUebertragStunden: e.target.value === "" ? null : +e.target.value })} />
+          <div style={hint}>Minusstunden mit «−»</div>
+        </FormField>
+        <FormField label={`Ferienguthaben per Stichtag (h)`}>
+          <input type="number" step={0.5} value={ferienStichtag ?? ""} placeholder="0" disabled={!stichtagJahr}
+            onChange={e => {
+              const rest = { ...(empForm.ferienUebertragVorjahr || {}) };
+              if (e.target.value === "") delete rest[stichtagJahr]; else rest[stichtagJahr] = +e.target.value;
+              setEmpForm({ ...empForm, ferienUebertragVorjahr: rest });
+            }} />
+          <div style={hint}>{stichtagJahr ? `= Ferienübertrag ${stichtagJahr}; Anspruch ${stichtagJahr} zählt ab Stichtag` : "Stunden; Tage × Tagessoll"}</div>
+        </FormField>
+      </div>
+
       <div style={{ fontSize: 11, letterSpacing: "0.08em", color: "var(--text4)", margin: "14px 0 10px", paddingTop: 12, borderTop: "1px solid var(--border2)" }}>LOHN & AUSZAHLUNG</div>
       <div className="form-row">
         <FormField label="Monatslohn Brutto CHF (100% Basis)">
           <input type="number" min={0} step={100} value={empForm.monatslohn || ""} onChange={e => setEmpForm({ ...empForm, monatslohn: +e.target.value })} placeholder="z.B. 7000" />
-          {(empForm.pensum || 100) < 100 && (empForm.monatslohn || 0) > 0 && (
-            <div style={{ fontSize: 11, color: "var(--text4)", marginTop: 3 }}>Effektiv bei {empForm.pensum}%: {formatCHF(Math.round((empForm.monatslohn as number) * ((empForm.pensum as number) / 100) * 100) / 100)}</div>
+          {heute.pensum < 100 && (empForm.monatslohn || 0) > 0 && (
+            <div style={{ fontSize: 11, color: "var(--text4)", marginTop: 3 }}>Effektiv bei {heute.pensum}%: {formatCHF(Math.round((empForm.monatslohn as number) * (heute.pensum / 100) * 100) / 100)}</div>
           )}
         </FormField>
         <FormField label="IBAN Lohnkonto">

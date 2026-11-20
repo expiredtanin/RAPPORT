@@ -18,7 +18,7 @@
 import React, { useState, useRef, useEffect } from "react";
 import { SIA_PHASES, DASHBOARD_WIDGETS, LEAD_STAGES } from "../constants";
 import { dueFollowUps, isOpenLead, pipelineValue } from "../crm";
-import { formatCHF, formatDate, formatHours, migrateDashboardLayout, widgetsToRows, generateId, getFeiertageForYear, localISODate, invoiceNet, yearRevenue, dailySollHours, getWeekNumber } from "../utils";
+import { formatCHF, formatDate, formatHours, migrateDashboardLayout, widgetsToRows, generateId, getFeiertageForYear, localISODate, invoiceNet, yearRevenue, dailySollHours, getWeekNumber, arbeitszeitAm } from "../utils";
 import { createWorktime } from "../worktime";
 import { KpiCard } from "../components/UI";
 import type { AppData, Employee, DashboardRow, DashboardTemplate, TimeEntry, ViewProps } from "../types";
@@ -413,7 +413,7 @@ export default function Dashboard({ data, setView, currentUser, userPermissions,
       if(!myEmpId||!myEmp) return <div className="card" style={{height:"100%",boxSizing:"border-box",display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,color:"var(--text5)"}}>Kein Mitarbeiterprofil verknüpft</div>;
       // Gleiche Rechnung wie Zeiterfassung und Mitarbeiter (worktime.ts): anteiliger Anspruch, Übertrag, Halbtage
       const fy=createWorktime(data, today).vacationYear(myEmp, parseInt(thisYear,10));
-      const perDay=dailySollHours(myEmp)||1;
+      const perDay=dailySollHours(arbeitszeitAm(myEmp,today))||1;
       const toDays=(h: number)=>Math.round(h/perDay*10)/10;
       const anspruchTage=toDays(fy.anspruch+fy.ubertrag);
       const bezogenTage=toDays(fy.bezogen+fy.geplant);
@@ -487,8 +487,8 @@ export default function Dashboard({ data, setView, currentUser, userPermissions,
     "stunden-woche": () => {
       if (!myEmpId && !canSeeAllEmp) return <div className="card" style={{height:"100%",boxSizing:"border-box",display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,color:"var(--text5)"}}>Kein Mitarbeiterprofil verknüpft</div>;
       const myEmp=(data.employees||[]).find(e=>e.id===myEmpId);
-      const pensum=(myEmp?.pensum||100)/100;
-      const sollH=(myEmp?.wochenstunden||35)*pensum;
+      const az=myEmp?arbeitszeitAm(myEmp,today):{pensum:100,wochenstunden:35};
+      const sollH=az.wochenstunden*(az.pensum/100);
       // Reine UTC-Arithmetik — lokale getDay()/setDate() gemischt mit den
       // daraus abgeleiteten toISOString()-Datumsstrings driftete um die
       // Sommerzeit-Umstellung im Oktober auseinander (falsche Wochenfenster).
@@ -586,8 +586,8 @@ export default function Dashboard({ data, setView, currentUser, userPermissions,
       // undefined !== false = true), aber divergiert sobald ein Deaktivieren-
       // Toggle dazukommt.
       const activeEmps=(data.employees||[]).filter(e=>e.active!==false);
-      const pensum=(e: Employee)=>(e.pensum||100)/100;
-      const sollH=(e: Employee)=>((e.wochenstunden||35)*pensum(e))/5*(() => {
+      const pensum=(e: Employee)=>arbeitszeitAm(e,today).pensum/100;
+      const sollH=(e: Employee)=>((arbeitszeitAm(e,today).wochenstunden)*pensum(e))/5*(() => {
         // Reine UTC-Arithmetik — "end" wurde bisher lokal konstruiert, "dd"
         // UTC-verankert, wodurch der letzte Tag jedes Monats in den meisten
         // Monaten verloren ging (nicht nur bei DST-Umstellungen).

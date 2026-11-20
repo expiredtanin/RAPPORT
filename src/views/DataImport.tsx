@@ -221,6 +221,9 @@ const EMPLOYEE_FIELDS: ImportField[] = [
   { key: "ktgSatz", label: "KTG-Satz (%)", aliases: ["ktgsatz"], numeric: true },
   { key: "quellensteuerPflichtig", label: "Quellensteuerpflichtig", aliases: ["quellensteuerpflichtig"], boolLike: true },
   { key: "quellensteuerSatz", label: "Quellensteuer-Satz (%)", aliases: ["quellensteuersatz"], numeric: true },
+  // Umstieg: Überstundensaldo per Stichtag (worktime.ts zählt erst ab dem Stichtag)
+  { key: "saldoStichtag", label: "Saldo-Stichtag", aliases: ["saldostichtag", "stichtag"], date: true },
+  { key: "saldoUebertragStunden", label: "Überstunden per Stichtag (h)", aliases: ["saldouebertragstunden", "ueberstunden", "uberstunden", "ueberstundensaldo"], numeric: true },
 ];
 
 const TIME_FIELDS: ImportField[] = [

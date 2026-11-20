@@ -3,6 +3,7 @@
 
 import React from "react";
 import { monthEnd, monthStart, shiftDate } from "../../worktime";
+import { arbeitszeitAm } from "../../utils";
 import type { Absence, AbsenzType, Employee, ViewProps } from "../../types";
 import { MONTHS as months, type EmployeeCalc } from "./calc";
 
@@ -71,7 +72,7 @@ export default function OverviewTab({ data, employees, absences, absenzTypes, cl
                     <tr key={emp.id}>
                       <td>
                         <div style={{ fontWeight: 500 }}>{emp.name}</div>
-                        <div style={{ fontSize: 10, color: "var(--text5)" }}>{emp.pensum || 100}% · {emp.role || ""}</div>
+                        <div style={{ fontSize: 10, color: "var(--text5)" }}>{arbeitszeitAm(emp, monthEnd(viewYear, viewMonth)).pensum}% · {emp.role || ""}</div>
                       </td>
                       <td style={{ textAlign: "right", color: "var(--text4)" }}>{s.sollTotal}h</td>
                       <td style={{ textAlign: "right", fontWeight: 500 }}>{s.istH}h</td>

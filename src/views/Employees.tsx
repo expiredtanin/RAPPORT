@@ -13,7 +13,8 @@
 //   Saldo = Ist + Absenzen (Teilabsenzen mit ihrer Dauer) + Ferien − Soll.
 // Überstundensaldo = Saldo seit Eintritt − ausbezahlte Stunden (`uberstundenAbschluss`, Typ «payout»;
 // Stundenlohn inkl. 13. Monatslohn). Ferienanspruch = Wochen (mind. 4, bis 20 J. 5) × Wochenstunden × Pensum,
-// anteilig bei Ein-/Austritt; Übertrag aus dem Vorjahr in `ferienUebertragVorjahr`.
+// anteilig bei Ein-/Austritt; Übertrag aus dem Vorjahr in `ferienUebertragVorjahr`. Pensumwechsel
+// (`pensumVerlauf`) und Saldo-Übertrag per Stichtag (`saldoStichtag`) rechnet worktime.ts.
 // Passwörter werden beim Speichern gehasht (`hashPassword`), nie im Klartext abgelegt.
 
 import React, { useState } from "react";
@@ -66,7 +67,7 @@ function Employees({ data, update, saveAll, setPrintContent }: Pick<ViewProps, "
   };
 
   const saveUbAbschluss = (emp: Employee, form: AbschlussForm) => {
-    const stundenlohn = overtimeHourlyRate(emp);
+    const stundenlohn = overtimeHourlyRate(emp, localISODate());
     if (!stundenlohn || !(form.ubHours > 0)) return;
     const auszahlungBetrag = Math.round(form.ubHours * stundenlohn * (1 + form.ubZuschlag / 100) * 100) / 100;
     const entry: OvertimeClosing = {
@@ -101,7 +102,11 @@ function Employees({ data, update, saveAll, setPrintContent }: Pick<ViewProps, "
     const isNew = !empForm.id;
     const { _appAccess, _appUsername, _appPassword, _appRoleId, _appUserId, ...empData } = empForm;
     const empId = empData.id || generateId();
-    const emp = { ...empData, id: empId } as Employee;
+    // Pensumwechsel ohne Datum/Pensum verwerfen und nach Datum ordnen; Übertrag nur mit Stichtag
+    const pensumVerlauf = (empData.pensumVerlauf || []).filter(v => v.ab && Number(v.pensum) > 0).sort((a, b) => a.ab.localeCompare(b.ab));
+    if ((empData.pensumVerlauf || []).length !== pensumVerlauf.length) showToast("Pensumwechsel ohne Datum oder Pensum wurden nicht übernommen.");
+    if (empData.saldoStichtag && empData.eintrittsdatum && empData.saldoStichtag < empData.eintrittsdatum) { showToast("Der Saldo-Stichtag liegt vor dem Eintritt."); return; }
+    const emp = { ...empData, id: empId, pensumVerlauf, ...(empData.saldoStichtag ? {} : { saldoUebertragStunden: null }) } as Employee;
 
     const existingUserId = _appUserId;
     let updatedUsers = data.users || [];

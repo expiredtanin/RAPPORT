@@ -19,7 +19,7 @@
 // aufgelöst); der Tag vor einem Feiertag zählt 1 h weniger Soll. Alle Soll-/Saldo-/Ferienregeln: worktime.ts.
 
 import { useState, useRef, useEffect } from "react";
-import { generateId, localISODate, getKW } from "../utils";
+import { arbeitszeitAm, generateId, localISODate, getKW } from "../utils";
 import { Header, NavArrows, CalendarPopup, ShareButton } from "../components/UI";
 import { readTimer, TIMER_KEY, type RunningTimer } from "../today";
 import { useCalendarNav } from "../hooks/useCalendarNav";
@@ -245,7 +245,7 @@ function Time({ data, update, currentUser, userPermissions, setPrintContent }: P
       <span className="zeit-avatar" aria-hidden="true">{selectedEmp ? initials(selectedEmp.name) : <span className="msr" style={{ fontSize: 16 }}>group</span>}</span>
       <select value={selectedEmpId} onChange={e => setSelectedEmpId(e.target.value)} aria-label="Person">
         {isAdmin && <option value="">Alle Personen</option>}
-        {employees.map(e => <option key={e.id} value={e.id}>{e.name}{(e.pensum || 100) !== 100 ? ` · ${e.pensum} %` : ""}</option>)}
+        {employees.map(e => { const p = arbeitszeitAm(e, localISODate()).pensum; return <option key={e.id} value={e.id}>{e.name}{p !== 100 ? ` · ${p} %` : ""}</option>; })}
       </select>
     </label>
   ) : (

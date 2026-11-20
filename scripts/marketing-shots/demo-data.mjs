@@ -31,6 +31,13 @@ export const E_NINA = "emp-nina";
 export const E_MARC = "emp-marc";
 export const E_PETER = "emp-peter";
 export const E_SARA = "emp-sara";
+export const P_WIE = "proj-wiedikon";
+export const P_LETZI = "proj-letzi";
+export const P_BINZ = "proj-binz";
+export const P_ZOLL = "proj-zollikon";
+const CL_ZOLL = "firma-wyss";
+const CL_SIHL = "firma-sihltal";
+const CL_BINZ = "firma-binz";
 
 let n = 0;
 const id = (p) => `${p}-${(n++).toString(36)}`;
@@ -61,17 +68,23 @@ function te(date, employeeId, projectId, phaseId, startTime, durationMin, descri
   };
 }
 
-/** Einträge für eine Phase, die zusammen exakt `targetH` Stunden ergeben. */
+/**
+ * Einträge für eine Phase, die zusammen exakt `targetH` Stunden ergeben: je Woche gleich viel, auf
+ * Halbtage (≤ 4 h) über die Wochentage verteilt. Uhrzeiten setzt `layoutDays` am Schluss.
+ */
 function phaseEntries({ projectId, phaseId, targetH, startWeeks, weeks, employees, descPool }) {
   const out = [];
   let rest = Math.round(targetH * 60);
   const slot = Math.round(rest / weeks / 30) * 30;
   for (let i = 0; i < weeks && rest > 0; i++) {
-    const mins = (i === weeks - 1) ? rest : Math.min(slot, rest);
-    if (mins <= 0) break;
-    out.push(te(dateAt(startWeeks + i, i % 5), employees[i % employees.length],
-      projectId, phaseId, "08:00", mins, descPool[i % descPool.length]));
-    rest -= mins;
+    let week = (i === weeks - 1) ? rest : Math.min(slot, rest);
+    rest -= week;
+    for (let k = 0; week > 0; k++) {
+      const mins = Math.min(240, week);
+      out.push(te(dateAt(startWeeks + i, (i + k) % 5), employees[(i + k) % employees.length],
+        projectId, phaseId, "08:00", mins, descPool[(i + k) % descPool.length]));
+      week -= mins;
+    }
   }
   return out;
 }
@@ -136,7 +149,139 @@ const rebCurrent = [
   te(dateAt(0, 3), E_LAURA, P_REB, "32", "08:00", 300, "Kostenvoranschlag mit Kostenplaner abgeglichen"),
 ];
 
-const timeEntries = [...limHistorical, ...limCurrent, ...hardHistorical, ...rebHistorical, ...rebCurrent];
+// ── Weitere laufende Mandate (damit Umsatz und Auslastung zu einem 6-Personen-Büro passen) ──────────
+// Ein Büro mit rund 5 Vollzeitstellen setzt in der Schweiz etwa CHF 130–160k pro Stelle um. Ohne diese
+// Mandate zeigte das Budget nur ~87k Einnahmen gegen ~700k Lohn- und Fixkosten.
+// Stunden: höchstens 4 h pro Eintrag; Uhrzeiten und Tagesverteilung macht `layoutDays` für alle Projekte gemeinsam.
+
+/** Wochenweise Einträge mit `hPerWeek` Stunden, auf Halbtage (≤ 4 h) verteilt; Uhrzeiten setzt `layoutDays`. */
+function weeklyEntries({ projectId, phaseId, hPerWeek, startWeeks, weeks, employee, descPool, dayOffset = 0 }) {
+  const out = [];
+  for (let w = 0; w < weeks; w++) {
+    let rest = Math.round(hPerWeek * 60);
+    for (let k = 0; rest > 0 && k < 10; k++) {
+      const mins = Math.min(240, rest);
+      out.push(te(dateAt(startWeeks + w, (dayOffset + w + k) % 5), employee, projectId, phaseId, "08:00", mins, descPool[(w + k) % descPool.length]));
+      rest -= mins;
+    }
+  }
+  return out;
+}
+
+// Neubau MFH Wiedikon (Pauschalhonorar SIA, Marc und Sara): Bauprojekt bis Ausschreibung im laufenden Jahr
+const WIE_SUB = 412000;
+const wieEntries = [
+  ...weeklyEntries({ projectId: P_WIE, phaseId: "32", hPerWeek: 20, startWeeks: -46, weeks: 18, employee: E_SARA,
+    descPool: ["Bauprojekt Grundrisse Regelgeschoss", "Fassadenstudie Strassenseite", "Kostenvoranschlag ±10 % erarbeitet"] }),
+  ...weeklyEntries({ projectId: P_WIE, phaseId: "33", hPerWeek: 16, startWeeks: -28, weeks: 4, employee: E_SARA,
+    descPool: ["Baugesuchspläne 1:100 bereinigt", "Brandschutzkonzept mit Fachplaner abgestimmt"] }),
+  ...weeklyEntries({ projectId: P_WIE, phaseId: "41", hPerWeek: 24, startWeeks: -24, weeks: 18, employee: E_SARA,
+    descPool: ["Ausschreibung Baumeister und Rohbau", "Leistungsverzeichnisse NPK", "Offertvergleich Fenster"] }),
+  ...weeklyEntries({ projectId: P_WIE, phaseId: "32", hPerWeek: 8, startWeeks: -46, weeks: 22, employee: E_MARC, dayOffset: 1,
+    descPool: ["Projektleitung, Sitzung mit Bauherrschaft", "Entwurfsbesprechung im Team"] }),
+  ...weeklyEntries({ projectId: P_WIE, phaseId: "41", hPerWeek: 8, startWeeks: -24, weeks: 23, employee: E_MARC, dayOffset: 1,
+    descPool: ["Vergabegespräche mit Unternehmern", "Projektleitung, Kostenkontrolle"] }),
+];
+
+// Gesamtsanierung Schulhaus Letzi (Stadt, Pauschalhonorar, Peter Kostenplanung, Julian nachmittags)
+const LETZI_SUB = 356000;
+const letziEntries = [
+  ...weeklyEntries({ projectId: P_LETZI, phaseId: "31", hPerWeek: 12, startWeeks: -44, weeks: 12, employee: E_PETER,
+    descPool: ["Grobkostenschätzung Sanierungsvarianten", "Zustandsanalyse Gebäudetechnik"] }),
+  ...weeklyEntries({ projectId: P_LETZI, phaseId: "32", hPerWeek: 12, startWeeks: -30, weeks: 28, employee: E_PETER,
+    descPool: ["Kostenvoranschlag nach eBKP-H", "Mengenermittlung Fassade und Dach"] }),
+  ...weeklyEntries({ projectId: P_LETZI, phaseId: "32", hPerWeek: 8, startWeeks: -30, weeks: 28, employee: E_JULIAN,
+    descPool: ["Bauprojekt Etappierung im laufenden Schulbetrieb", "Provisorien Schulbetrieb geplant"] }),
+];
+
+// Umbau Gewerbehaus Binz (Stundensatz, Nina und Laura nachmittags), quartalsweise nach Aufwand verrechnet
+const rateBinz = 160;
+const binzQuarter = (q, startWeeks) => [
+  ...weeklyEntries({ projectId: P_BINZ, phaseId: "51", hPerWeek: 10, startWeeks, weeks: 12, employee: E_NINA,
+    descPool: ["Ausführungspläne Mieterausbau", "Detailpläne Sanitärkern"] }),
+  ...weeklyEntries({ projectId: P_BINZ, phaseId: "52", hPerWeek: 8, startWeeks, weeks: 12, employee: E_LAURA, dayOffset: 2,
+    descPool: ["Bauleitung Mieterausbau, Baubesprechung", "Abnahme Etappe mit Mieterschaft"] }),
+].map(e => ({ ...e, _q: q }));
+const binzEntries = [...binzQuarter(1, -46), ...binzQuarter(2, -33), ...binzQuarter(3, -20)];
+const INV_BINZ = [id("inv"), id("inv"), id("inv")];
+binzEntries.forEach(e => { e.invoiceId = INV_BINZ[e._q - 1]; delete e._q; });
+const binzH = (q) => sumH(binzEntries.filter(e => e.invoiceId === INV_BINZ[q - 1]));
+
+// Umbau und Erweiterung Villa Zollikon (Pauschal, Ausführung; Julian nachmittags, Marc Gestaltung)
+const ZOLL_SUB = 214000;
+const zollEntries = [
+  ...weeklyEntries({ projectId: P_ZOLL, phaseId: "51", hPerWeek: 12, startWeeks: -46, weeks: 14, employee: E_JULIAN, dayOffset: 1,
+    descPool: ["Ausführungspläne Anbau", "Werkverträge Holzbau vorbereitet"] }),
+  ...weeklyEntries({ projectId: P_ZOLL, phaseId: "52", hPerWeek: 12, startWeeks: -32, weeks: 31, employee: E_JULIAN, dayOffset: 1,
+    descPool: ["Bauleitung Villa, Baubesprechung", "Kostenkontrolle und Rechnungsprüfung", "Abnahme Holzbau"] }),
+  ...weeklyEntries({ projectId: P_ZOLL, phaseId: "52", hPerWeek: 4, startWeeks: -32, weeks: 31, employee: E_MARC, dayOffset: 3,
+    descPool: ["Gestalterische Leitung, Materialbemusterung", "Bemusterung Küche mit Bauherrschaft"] }),
+];
+
+// ── Arbeitstage: Projektzeit ordnen, Rest mit interner Zeit bis zum Soll auffüllen ─────────────────
+// Ohne das zeigte die Demo Saldi von −1'000 h und mehr. Soll je Tag = Wochenstunden × Pensum / 5;
+// eine leichte Schwankung ergibt ein kleines Plus über das Jahr. Nur vergangene Wochen, Feiertage hat
+// die Demo keine. Diese Woche bleibt von Hand gesetzt (Wochenansicht der Screenshots).
+const DAY_SOLL = { [E_JULIAN]: 41 / 5, [E_LAURA]: 41 / 5, [E_NINA]: 41 * 0.8 / 5, [E_MARC]: 42 / 5, [E_PETER]: 42 * 0.4 / 5, [E_SARA]: 42 * 0.9 / 5 };
+const INTERN_DESC = ["Akquise und Offertwesen", "Büroorganisation", "Teamsitzung", "Weiterbildung, Normen", "Wettbewerbsvorbereitung", "Administration Projekte"];
+const SARA_END = `${MONDAY.getFullYear()}-11-15`;
+function layoutDays(entries) {
+  const thisWeek = dateAt(0);
+  const yearStart = `${MONDAY.getFullYear() - 1}-12-29`;
+  const byDay = new Map();
+  for (const e of entries) {
+    if (e.date >= thisWeek) continue;
+    const k = `${e.employeeId}|${e.date}`;
+    if (!byDay.has(k)) byDay.set(k, []);
+    byDay.get(k).push(e);
+  }
+  // Tage über 9.5 h: überzählige Einträge auf den Wochentag mit der kleinsten Last verschieben
+  for (const [k, list] of [...byDay]) {
+    const [emp, date] = k.split("|");
+    let total = list.reduce((s, e) => s + e.minutes, 0);
+    while (total > 570 && list.length > 1) {
+      const e = list.pop(); total -= e.minutes;
+      const monday = new Date(`${date}T00:00:00`); monday.setDate(monday.getDate() - ((monday.getDay() + 6) % 7));
+      const days = [0, 1, 2, 3, 4].map(i => { const d = new Date(monday); d.setDate(d.getDate() + i); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; });
+      const load = d => (byDay.get(`${emp}|${d}`) || []).reduce((s, x) => s + x.minutes, 0);
+      const target = days.filter(d => d !== date).sort((a, b) => load(a) - load(b))[0];
+      e.date = target;
+      if (!byDay.has(`${emp}|${target}`)) byDay.set(`${emp}|${target}`, []);
+      byDay.get(`${emp}|${target}`).push(e);
+    }
+  }
+  // Interne Zeit bis zum Soll, ab Jahresbeginn (frühere Jahre: Saldo-Übertrag per Stichtag)
+  const filler = [];
+  let f = 0;
+  for (const [emp, soll] of Object.entries(DAY_SOLL)) {
+    for (let w = -60; w < 0; w++) for (let day = 0; day < 5; day++) {
+      const date = dateAt(w, day);
+      if (date < yearStart || (emp === E_SARA && date > SARA_END)) continue;
+      const k = `${emp}|${date}`;
+      const booked = (byDay.get(k) || []).reduce((s, e) => s + e.minutes, 0);
+      const target = Math.round((soll * 60 + [0, 15, -15, 30, 0][(((day + w + emp.length) % 5) + 5) % 5]) / 15) * 15;
+      if (target - booked < 30) continue;
+      const e = te(date, emp, "", "", "08:00", target - booked, INTERN_DESC[f++ % INTERN_DESC.length]);
+      filler.push(e);
+      if (!byDay.has(k)) byDay.set(k, []);
+      byDay.get(k).push(e);
+    }
+  }
+  // Uhrzeiten: ab 08:00 der Reihe nach, Mittag 12:00–13:00 frei
+  const hm = m => `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
+  for (const list of byDay.values()) {
+    let t = 8 * 60;
+    for (const e of list) {
+      if (t < 12 * 60 && t + e.minutes > 12 * 60 && e.minutes <= 240) t = 13 * 60;   // nicht über Mittag
+      else if (t >= 12 * 60 && t < 13 * 60) t = 13 * 60;
+      e.startTime = hm(t); t += e.minutes; e.endTime = hm(t);
+      e.createdAt = new Date(`${e.date}T${e.startTime}:00`).toISOString();
+    }
+  }
+  return [...entries, ...filler];
+}
+
+const timeEntries = layoutDays([...limHistorical, ...limCurrent, ...hardHistorical, ...rebHistorical, ...rebCurrent, ...wieEntries, ...letziEntries, ...binzEntries, ...zollEntries]);
 
 // ── Honorare ──────────────────────────────────────────────────────────────
 const SIA_HOURS = 1197.1;
@@ -217,6 +362,21 @@ function quoteTotals(sub) {
   return { sub, tax, total: round2(sub + tax) };
 }
 
+/**
+ * Rechnungsnummern JJJJ-NNN fortlaufend nach Datum (≈ 40 Rechnungen im Jahr), weil die Demo relativ zu
+ * heute datiert ist. Hardau behält seine Nummern (die Schlussrechnung nennt sie im Text).
+ */
+const numberUsed = new Set(), numberLast = {};
+const numberByDate = (inv) => {
+  if ([INV_HARD_1, INV_HARD_2, INV_HARD_S].includes(inv.id)) return inv;
+  const y = inv.date.slice(0, 4);
+  const dayOfYear = (Date.parse(`${inv.date}T00:00:00Z`) - Date.parse(`${y}-01-01T00:00:00Z`)) / 86400000;
+  let seq = Math.max((numberLast[y] || 0) + 1, Math.round(dayOfYear / 365 * 40) + 1);
+  while (numberUsed.has(`${y}-${seq}`) || ["2024-41", "2024-90", "2024-112", "2025-112"].includes(`${y}-${seq}`)) seq++;
+  numberUsed.add(`${y}-${seq}`); numberLast[y] = seq;
+  return { ...inv, number: `${y}-${String(seq).padStart(3, "0")}` };
+};
+
 /** Bezahlte Rechnungen bekommen ein Zahldatum (wie die App es seit dem CRM-Update setzt). */
 const withPaidDate = (inv, i) => {
   if (inv.status !== "bezahlt") return inv;
@@ -273,6 +433,18 @@ export const demoData = {
       email: "praxis@haas.example", phone: "+41 00 000 14 14", website: "", note: "",
       contacts: [{ id: id("c"), name: "Dr. Sabine Haas", position: "Praxisinhaberin", phone: "+41 00 000 14 14", email: "praxis@haas.example" }],
       honorarOffers: [], isAuftraggeber: true, isPartner: true, category: "unternehmer", source: "Website" },
+    { id: CL_SIHL, name: "Sihltal Immobilien AG", type: "", street: "Manessestrasse 85", zip: "8045", city: "Zürich", country: "CH",
+      email: "bau@sihltal-immo.example", phone: "+41 00 000 31 70", website: "sihltal-immo.example", note: "",
+      contacts: [{ id: id("c"), name: "Daniel Frick", position: "Leiter Bau", phone: "+41 00 000 31 72", email: "d.frick@sihltal-immo.example" }],
+      honorarOffers: [], isAuftraggeber: true, isPartner: true, category: "unternehmer", source: "Wiederkehrender Kunde", tags: ["Weihnachtskarte"] },
+    { id: CL_ZOLL, name: "Andreas und Claudia Wyss", type: "", street: "Rietstrasse 7", zip: "8702", city: "Zollikon", country: "CH",
+      email: "wyss@privat.example", phone: "+41 00 000 52 30", website: "", note: "",
+      contacts: [{ id: id("c"), name: "Claudia Wyss", position: "", phone: "+41 00 000 52 30", email: "wyss@privat.example" }],
+      honorarOffers: [], isAuftraggeber: true, isPartner: true, category: "person", source: "Empfehlung Kunde", referredById: CL_KELLER },
+    { id: CL_BINZ, name: "Gewerbehaus Binz AG", type: "", street: "Binzstrasse 23", zip: "8045", city: "Zürich", country: "CH",
+      email: "verwaltung@binz-gewerbe.example", phone: "+41 00 000 46 10", website: "", note: "",
+      contacts: [{ id: id("c"), name: "Monika Arnold", position: "Bewirtschafterin", phone: "+41 00 000 46 11", email: "m.arnold@binz-gewerbe.example" }],
+      honorarOffers: [], isAuftraggeber: true, isPartner: true, category: "unternehmer", source: "Empfehlung Partner", referredById: CL_ING },
   ],
   // Drei Offerten in drei Modi — die Liste zeigt SIA 102 / Aufwand / Freie Positionen
   quotes: [
@@ -328,6 +500,34 @@ export const demoData = {
                      { id: "41", hours: 110 }, { id: "51", hours: 98 }, { id: "52", hours: 177 }, { id: "53", hours: 27 }],
       linkedQuotes: [], positions: [], customPhases: [],
       projectContacts: [], internalMembers: [E_LAURA, E_JULIAN] },
+    { id: P_WIE, number: `${dateAt(-46).slice(0, 4)}/04`, name: "Neubau Mehrfamilienhaus Wiedikon", clientId: CL_SIHL,
+      category: "Direktauftrag", billingType: "pauschal", hourlyRate: rateLim,
+      budget: WIE_SUB, budgetHours: 2650, status: "aktiv",
+      description: "Ersatzneubau mit 18 Mietwohnungen und Gewerbe im Erdgeschoss.",
+      startDate: dateAt(-48), enabledPhases: ["31", "32", "33", "41", "51", "52", "53"],
+      linkedQuotes: [], positions: [], customPhases: [],
+      projectContacts: [{ contactId: CL_ING, role: "Tragwerksplaner" }], internalMembers: [E_MARC, E_SARA] },
+    { id: P_LETZI, number: `${dateAt(-44).slice(0, 4)}/05`, name: "Gesamtsanierung Schulhaus Letzi", clientId: CL_HARD,
+      category: "Wettbewerb", billingType: "pauschal", hourlyRate: rateLim,
+      budget: LETZI_SUB, budgetHours: 2300, status: "aktiv",
+      description: "Sanierung und Erdbebenertüchtigung im laufenden Schulbetrieb, drei Etappen.",
+      startDate: dateAt(-45), enabledPhases: ["31", "32", "33", "41", "51", "52", "53"],
+      linkedQuotes: [], positions: [], customPhases: [],
+      projectContacts: [], internalMembers: [E_PETER, E_JULIAN] },
+    { id: P_ZOLL, number: `${dateAt(-50).slice(0, 4)}/09`, name: "Umbau und Erweiterung Villa Zollikon", clientId: CL_ZOLL,
+      category: "Direktauftrag", billingType: "pauschal", hourlyRate: rateLim,
+      budget: ZOLL_SUB, budgetHours: 1350, status: "aktiv",
+      description: "Sanierung Villa von 1932 mit Anbau in Holzbauweise, Ausführung läuft.",
+      startDate: dateAt(-70), enabledPhases: ["51", "52", "53"],
+      linkedQuotes: [], positions: [], customPhases: [],
+      projectContacts: [], internalMembers: [E_JULIAN, E_MARC] },
+    { id: P_BINZ, number: `${dateAt(-47).slice(0, 4)}/02`, name: "Umbau Gewerbehaus Binz", clientId: CL_BINZ,
+      category: "Direktauftrag", billingType: "stundensatz", hourlyRate: rateBinz,
+      budget: 0, budgetHours: 900, status: "aktiv",
+      description: "Mieterausbauten in drei Etappen, Abrechnung nach Aufwand.",
+      startDate: dateAt(-47), enabledPhases: ["51", "52"],
+      linkedQuotes: [], positions: [], customPhases: [],
+      projectContacts: [], internalMembers: [E_NINA, E_LAURA] },
   ],
   timeEntries,
   invoices: [
@@ -352,7 +552,30 @@ export const demoData = {
     hourInvoice({ invId: INV_REB, seq: 14, weeks: -3, clientId: CL_REB, projectId: P_REB,
       qty: rebBilledH, rate: rateReb, status: "gesendet",
       desc: "Teilrechnung – Architekturleistungen Vorprojekt bis Baubewilligung" }),
-  ].map(withPaidDate),
+    // Wiedikon — Akonto nach Leistungsstand, etwa alle 6 Wochen 7 % des Pauschalhonorars
+    ...[-44, -38, -32, -26, -20, -14, -8, -2].map((weeks, i) => invoice({ invId: id("inv"), seq: 20 + i * 9, weeks, clientId: CL_SIHL, projectId: P_WIE,
+      kind: "akonto", amount: round2(WIE_SUB * 0.07), status: weeks > -6 ? "gesendet" : "bezahlt",
+      desc: `Akontorechnung ${i + 1} – 7 % des Pauschalhonorars (Leistungsstand ${i < 4 ? "Bauprojekt" : "Ausschreibung"})` })),
+    // Letzi — Akonto nach Phasenabschluss
+    invoice({ invId: id("inv"), seq: 31, weeks: -32, clientId: CL_HARD, projectId: P_LETZI, kind: "akonto",
+      amount: round2(LETZI_SUB * 0.09), status: "bezahlt", desc: "Akontorechnung 9 % – Vorprojekt (Phase 31)" }),
+    ...[-24, -16, -8, -1].map((weeks, i) => invoice({ invId: id("inv"), seq: 52 + i * 11, weeks, clientId: CL_HARD, projectId: P_LETZI,
+      kind: "akonto", amount: round2(LETZI_SUB * 0.08), status: weeks > -4 ? "gesendet" : "bezahlt",
+      desc: `Akontorechnung ${i + 2} – 8 % Bauprojekt nach Leistungsstand` })),
+    // Binz — quartalsweise nach Aufwand
+    ...[[1, -34], [2, -21], [3, -8]].map(([q, weeks]) => hourInvoice({ invId: INV_BINZ[q - 1], seq: 24 + q * 13, weeks, clientId: CL_BINZ, projectId: P_BINZ,
+      qty: binzH(q), rate: rateBinz, status: weeks > -6 ? "gesendet" : "bezahlt",
+      desc: `Architekturleistungen Mieterausbau, Etappe ${q} (nach Aufwand)` })),
+    // Zollikon — Akonto nach Baufortschritt
+    ...[-40, -30, -20, -11, -2].map((weeks, i) => invoice({ invId: id("inv"), seq: 1, weeks, clientId: CL_ZOLL, projectId: P_ZOLL,
+      kind: "akonto", amount: round2(ZOLL_SUB * 0.14), status: weeks > -6 ? "gesendet" : "bezahlt",
+      desc: `Akontorechnung ${i + 1} – 14 % des Pauschalhonorars nach Baufortschritt` })),
+    // Kleinmandate: Gutachten und Bauberatung
+    invoice({ invId: id("inv"), seq: 47, weeks: -29, clientId: CL_KELLER, projectId: "", kind: "voll", amount: 6800, status: "bezahlt",
+      desc: "Zustandsgutachten Wohnhaus Seestrasse, inkl. Begehung und Bericht" }),
+    invoice({ invId: id("inv"), seq: 88, weeks: -15, clientId: CL_HAAS, projectId: "", kind: "voll", amount: 9400, status: "bezahlt",
+      desc: "Bauberatung Mietvertrag und Ausbauvarianten Praxisräume" }),
+  ].sort((a, b) => a.date.localeCompare(b.date)).map(numberByDate).map(withPaidDate),
   contracts: [], deliveryNotes: [],
   // Spesen und Büroausgaben, damit die Buchhaltung (Vorsteuer, Jahresergebnis, Budget-Fixkosten) etwas zeigt
   expenses: [
@@ -411,14 +634,15 @@ export const demoData = {
       ] },
   ],
   employees: [
-    { id: E_JULIAN, name: "Julian Roth", role: "Bauleiter", pensum: 100, monatslohn: 8200, wochenstunden: 41, ferienWochen: 5, personalNr: "101", geburtsdatum: "1990-04-18", eintrittsdatum: dateAt(-250), ferienUebertragVorjahr: {} },
-    { id: E_LAURA, name: "Laura Meier", role: "Architektin", pensum: 100, monatslohn: 7600, wochenstunden: 41, ferienWochen: 5, personalNr: "102", geburtsdatum: "1984-09-03", eintrittsdatum: dateAt(-380), ferienUebertragVorjahr: {} },
-    { id: E_NINA, name: "Nina Baumgartner", role: "Praktikantin", pensum: 80, monatslohn: 3800, wochenstunden: 41, ferienWochen: 5, personalNr: "103", geburtsdatum: "2000-02-11", eintrittsdatum: dateAt(-58), ferienUebertragVorjahr: {} },
+    { id: E_JULIAN, saldoStichtag: `${MONDAY.getFullYear()}-01-01`, saldoUebertragStunden: 14.5, name: "Julian Roth", role: "Bauleiter", pensum: 100, monatslohn: 8200, wochenstunden: 41, ferienWochen: 5, personalNr: "101", geburtsdatum: "1990-04-18", eintrittsdatum: dateAt(-250), ferienUebertragVorjahr: {} },
+    { id: E_LAURA, saldoStichtag: `${MONDAY.getFullYear()}-01-01`, saldoUebertragStunden: -6, name: "Laura Meier", role: "Architektin", pensum: 100, monatslohn: 7600, wochenstunden: 41, ferienWochen: 5, personalNr: "102", geburtsdatum: "1984-09-03", eintrittsdatum: dateAt(-380), ferienUebertragVorjahr: {} },
+    { id: E_NINA, saldoStichtag: `${MONDAY.getFullYear()}-01-01`, saldoUebertragStunden: 3.5, name: "Nina Baumgartner", role: "Praktikantin", pensum: 80, monatslohn: 3800, wochenstunden: 41, ferienWochen: 5, personalNr: "103", geburtsdatum: "2000-02-11", eintrittsdatum: dateAt(-58), ferienUebertragVorjahr: {} },
+    // Saldo-Übertrag per 1.1.: Überstunden aus der Zeit vor RAPPORT (frühere Jahre sind nicht erfasst)
     // Sonderfälle für Buchhaltung/Löhne (Nachrechnung in scripts/demo-check): Partner über dem ALV-Höchstlohn
     // mit 13. Monatslohn und PK laut Ausweis, Rentner mit Freibetrag, Austritt im laufenden Monat mit Familienzulagen
-    { id: E_MARC, name: "Marc Amrein", role: "Partner", pensum: 100, monatslohn: 14500, dreizehnterLohn: true, pkBeitragAN: 1180, pkBeitragAG: 1420, wochenstunden: 42, ferienWochen: 5, personalNr: "100", geburtsdatum: "1968-05-30", eintrittsdatum: "2010-01-01", ferienUebertragVorjahr: {} },
-    { id: E_PETER, name: "Peter Keller", role: "Kostenplaner", pensum: 40, monatslohn: 9000, wochenstunden: 42, ferienWochen: 5, personalNr: "104", geburtsdatum: "1958-03-12", eintrittsdatum: "2024-01-01", ferienUebertragVorjahr: {} },
-    { id: E_SARA, name: "Sara Weber", role: "Architektin", pensum: 90, monatslohn: 8400, familienzulagen: 215, wochenstunden: 42, ferienWochen: 5, personalNr: "105", geburtsdatum: "1991-06-02", eintrittsdatum: "2023-04-01", austrittsdatum: `${new Date().getFullYear()}-11-15`, ferienUebertragVorjahr: {} },
+    { id: E_MARC, saldoStichtag: `${MONDAY.getFullYear()}-01-01`, saldoUebertragStunden: 42, name: "Marc Amrein", role: "Partner", pensum: 100, monatslohn: 14500, dreizehnterLohn: true, pkBeitragAN: 1180, pkBeitragAG: 1420, wochenstunden: 42, ferienWochen: 5, personalNr: "100", geburtsdatum: "1968-05-30", eintrittsdatum: "2010-01-01", ferienUebertragVorjahr: {} },
+    { id: E_PETER, saldoStichtag: `${MONDAY.getFullYear()}-01-01`, saldoUebertragStunden: 0, name: "Peter Keller", role: "Kostenplaner", pensum: 40, monatslohn: 9000, wochenstunden: 42, ferienWochen: 5, personalNr: "104", geburtsdatum: "1958-03-12", eintrittsdatum: "2024-01-01", ferienUebertragVorjahr: {} },
+    { id: E_SARA, saldoStichtag: `${MONDAY.getFullYear()}-01-01`, saldoUebertragStunden: 8, name: "Sara Weber", role: "Architektin", pensum: 90, monatslohn: 8400, familienzulagen: 215, wochenstunden: 42, ferienWochen: 5, personalNr: "105", geburtsdatum: "1991-06-02", eintrittsdatum: "2023-04-01", austrittsdatum: `${new Date().getFullYear()}-11-15`, ferienUebertragVorjahr: {} },
   ],
   feiertage: [], absences: [], ferienEntries: [], absenzTypes: [],
   lohnEntries: [], uberstundenAbschluss: [],
