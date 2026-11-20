@@ -2,6 +2,7 @@
 // Bearbeitet den Entwurf `s`; gespeichert wird mit «Speichern» in Settings.tsx.
 
 import { DEFAULT_LEAD_SOURCES } from "../../constants";
+import { showToast } from "../../toast";
 import { isLocalBackend } from "../../storage/adapter";
 import { formatIban, isQRIban, readAsDataUrl, checkLocalBudget } from "../../utils";
 import { FormField } from "../../components/UI";
@@ -27,7 +28,7 @@ export function StudioTab({ s, setField, data }: DraftProps & { data: AppData })
                   if (!file) return;
                   const logo = await readAsDataUrl(file);
                   const problem = isLocalBackend ? checkLocalBudget(data, logo.length, s.logo?.length || 0) : null;
-                  if (problem) { alert(problem); return; }
+                  if (problem) { showToast(problem); return; }
                   setField({ logo });
                 }} />
               </label>

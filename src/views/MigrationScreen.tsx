@@ -4,6 +4,7 @@
 // ihn, wenn alte Daten ohne `setupCompleted` erkannt werden.
 
 import React, { useState } from "react";
+import { showToast } from "../toast";
 import Setup from "./Setup";
 import type { AppData } from "../types";
 import { localISODate } from "../utils";
@@ -40,7 +41,7 @@ export default function MigrationScreen({ data, onComplete }: {
       setBacked(true);
     } catch (e) {
       // Nicht als gesichert markieren, sonst glaubt man, ein Backup zu haben
-      alert("Backup konnte nicht erstellt werden: " + ((e as Error).message || e));
+      showToast("Backup konnte nicht erstellt werden: " + ((e as Error).message || e));
     }
   };
 

@@ -1,6 +1,7 @@
 // Zeiterfassung: Spesen des gewählten Tages (anlegen, ändern, löschen) samt Beleg-Upload und Beleg-Ansicht.
 
 import React, { useState, useRef } from "react";
+import { showToast } from "../../toast";
 import { EXPENSE_CATEGORIES } from "../../constants";
 import { generateId, receiptToDataUrl, checkLocalBudget } from "../../utils";
 import { isLocalBackend } from "../../storage/adapter";
@@ -34,10 +35,10 @@ export function useExpenses(data: AppData, update: UpdateFn, currentDate: string
       const receiptData = await receiptToDataUrl(file);
       const old = (data.expenses || []).find(e => e.id === expId)?.receiptData;
       const problem = isLocalBackend ? checkLocalBudget(data, receiptData.length, old?.length || 0) : null;
-      if (problem) { alert(problem); return; }
+      if (problem) { showToast(problem); return; }
       updateExp(expId, { receiptData, receiptName: file.name });
     } catch (err) {
-      alert((err as Error).message || "Der Beleg konnte nicht gelesen werden.");
+      showToast((err as Error).message || "Der Beleg konnte nicht gelesen werden.");
     }
   };
   return { dayExpenses, addExp, updateExp, delExp, receiptView, setReceiptView, setUploadingExpId, expReceiptInputRef, handleExpReceiptUpload };

@@ -3,6 +3,7 @@
 // Navigations-Ids, siehe constants.ts NAV_ITEMS). App-Rollen und Einladungen speichern sofort.
 
 import { useState } from "react";
+import { showToast } from "../../toast";
 import { storage, isCloudBackend } from "../../storage/adapter";
 import type { PocketBaseAdapter } from "../../storage/pocketbase-adapter";
 import { generateId } from "../../utils";
@@ -248,7 +249,7 @@ export function TeamTab({ s, setField, data, update, isAdmin }: DraftProps & Pic
                   setInviteResult({ ok: true, email: m.email.trim(), tempPassword: m.tempPassword });
                   setInviteModal(null);
                 } else {
-                  alert("Einladen fehlgeschlagen: " + (res?.error || "unbekannt"));
+                  showToast("Einladen fehlgeschlagen: " + (res?.error || "unbekannt"));
                 }
               }}
             >

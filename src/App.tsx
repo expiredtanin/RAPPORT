@@ -339,7 +339,7 @@ export default function App() {
   }
 
   if (!isCloudBackend && !localStorage.getItem("rapport_v0_5_migrated")) {
-    return <><MigrationScreen data={data} onComplete={handleSetupComplete} /><UpdateNotifier /></>;
+    return <><MigrationScreen data={data} onComplete={handleSetupComplete} /><UpdateNotifier /><Toaster /></>;
   }
 
   // Passwort-Reset hat höchste Priorität — User kommt von Mail-Link.
