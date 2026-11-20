@@ -241,6 +241,13 @@ function StudioBudget({ data, update, setPrintContent }: Pick<ViewProps, "data" 
   const manualIncomeTotal = (b.extraIncome || []).filter(r => r.aktiv).reduce((s, r) => s + (r.amount || 0), 0);
   const totalRevenue = autoRevenue + manualIncomeTotal;
   const ergebnis = totalRevenue - gesamtKosten;
+  // Einnahmen laufen bis heute auf, die Kosten gelten fürs ganze Jahr: zum Vergleich anteilig bis heute
+  const nowD = new Date();
+  const yearFraction = nowD.getFullYear() === currentYear
+    ? Math.min(1, (nowD.getTime() - new Date(currentYear, 0, 1).getTime()) / (new Date(currentYear + 1, 0, 1).getTime() - new Date(currentYear, 0, 1).getTime()))
+    : 1;
+  const kostenBisHeute = gesamtKosten * yearFraction;
+  const ergebnisBisHeute = totalRevenue - kostenBisHeute;
 
   // ── IST-Daten aus Zeiterfassung ───────────────────────────────
   const NON_BILLING_CATEGORIES = ["Wettbewerb"];
@@ -394,53 +401,20 @@ function StudioBudget({ data, update, setPrintContent }: Pick<ViewProps, "data" 
         </div>
       )}
 
-      {/* ── ANALYSE — full width, ganz oben ── */}
-      <div className="card" style={{ marginBottom: 20 }}>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr auto", gap: 0, alignItems: "stretch" }}>
-          <div style={{ padding: "14px 20px 14px 0", borderRight: "1px solid var(--border2)" }}>
-            <div style={{ fontSize: 10, color: "var(--text4)", letterSpacing: "0.1em", marginBottom: 8 }}>SELBSTKOSTENSATZ</div>
-            <div style={{ fontSize: 32, fontFamily: "var(--font-ui)", fontWeight: 700, lineHeight: 1 }}>{formatCHF(Math.round(selbstkosten))}</div>
-            <div style={{ fontSize: 10, color: "var(--text4)", marginTop: 6 }}>pro produktive Stunde</div>
+      {/* ── Kennzahlen als Band (wie Projekt-Arbeitsraum) ── */}
+      <div className="ws-figs" style={{ marginBottom: 20 }}>
+        <div><small>Selbstkostensatz</small><strong className="num">{formatCHF(Math.round(selbstkosten))}</strong><em>pro produktive Stunde</em></div>
+        <div><small>Ziel-Honorar</small><strong className="num">{formatCHF(Math.round(zielHonorar))}</strong><em>inkl. {b.zielMarge} % Marge</em></div>
+        <div><small>Gesamtkosten / Jahr</small><strong className="num">{formatCHF(gesamtKosten)}</strong><em>{produktivStunden} h produktiv von {jahresStundenFallback} h</em></div>
+        {gesamtKosten <= 0 ? (
+          <div><small>Aktueller Ansatz</small><strong className="warn">noch offen</strong><em>{personalKosten <= 0 ? "Löhne bei den Mitarbeitenden erfassen oder unten übersteuern" : "keine Kosten erfasst"}</em></div>
+        ) : (
+          <div title={`Break-even bei ${Math.ceil(gesamtKosten / currentRate)} h zum aktuellen Ansatz`}>
+            <small>Aktueller Ansatz</small>
+            <strong className={`num${rateOk ? "" : " neg"}`}>{formatCHF(currentRate)}</strong>
+            <em>{rateOk ? `${formatCHF(Math.round(rateDiff))} über Ziel` : `${formatCHF(Math.round(-rateDiff))} unter Ziel`}</em>
           </div>
-          <div style={{ padding: "14px 20px", borderRight: "1px solid var(--border2)" }}>
-            <div style={{ fontSize: 10, color: "var(--text4)", letterSpacing: "0.1em", marginBottom: 8 }}>ZIEL-HONORAR</div>
-            <div style={{ fontSize: 32, fontFamily: "var(--font-ui)", fontWeight: 700, color: "var(--accent)", lineHeight: 1 }}>{formatCHF(Math.round(zielHonorar))}</div>
-            <div style={{ fontSize: 10, color: "var(--text4)", marginTop: 6 }}>inkl. {b.zielMarge}% Marge</div>
-          </div>
-          <div style={{ padding: "14px 20px", borderRight: "1px solid var(--border2)" }}>
-            <div style={{ fontSize: 10, color: "var(--text4)", letterSpacing: "0.1em", marginBottom: 8 }}>GESAMTKOSTEN / JAHR</div>
-            <div style={{ fontSize: 32, fontFamily: "var(--font-ui)", fontWeight: 700, lineHeight: 1 }}>{formatCHF(gesamtKosten)}</div>
-            <div style={{ fontSize: 10, color: "var(--text4)", marginTop: 6 }}>{jahresStundenFallback}h verfügbar · {produktivStunden}h produktiv</div>
-          </div>
-          <div style={{ padding: "14px 0 14px 20px", display: "flex", flexDirection: "column", justifyContent: "center", minWidth: 180 }}>
-            {gesamtKosten <= 0 ? (
-              <div style={{ padding: "10px 14px", borderRadius: 10, border: "1px solid color-mix(in srgb, var(--warning) 35%, transparent)", background: "var(--warning-bg)", maxWidth: 220 }}>
-                <div style={{ fontSize: 12, fontWeight: 600, color: "var(--warning)", marginBottom: 4 }}>Noch nicht berechenbar</div>
-                <div style={{ fontSize: 12, color: "var(--text2)", lineHeight: 1.45 }}>
-                  {personalKosten <= 0 ? "Es sind keine Löhne hinterlegt. Bei den Mitarbeitenden den Lohn erfassen oder unten «übersteuern»." : "Es sind keine Kosten erfasst."}
-                </div>
-              </div>
-            ) : (
-            <div style={{ padding: "10px 14px", borderRadius: 10, border: `1px solid ${rateOk ? "color-mix(in srgb, var(--positive) 35%, transparent)" : "color-mix(in srgb, var(--negative) 35%, transparent)"}`, background: rateOk ? "var(--positive-bg)" : "var(--negative-bg)" }}>
-              <div style={{ fontSize: 11, fontWeight: 600, color: rateOk ? "var(--positive)" : "var(--negative)", marginBottom: 4 }}>
-                {rateOk ? "✓ Ansatz ausreichend" : "⚠ Ansatz zu tief"}
-              </div>
-              <div style={{ fontSize: 20, fontWeight: 700, fontFamily: "var(--font-ui)", color: rateOk ? "var(--positive)" : "var(--negative)" }}>
-                {rateOk ? "+" : ""}{formatCHF(Math.round(rateDiff))}
-              </div>
-              <div style={{ fontSize: 10, color: "var(--text4)", marginTop: 3 }}>Aktuell {formatCHF(currentRate)}/h</div>
-            </div>
-            )}
-            {selbstkosten > 0 && (
-              <div style={{ marginTop: 10 }}>
-                <div style={{ height: 4, background: "var(--border)", borderRadius: 2, overflow: "hidden" }}>
-                  <div style={{ width: `${Math.min((produktivStunden / Math.ceil(gesamtKosten / currentRate)) * 100, 100)}%`, height: "100%", background: rateOk ? "var(--positive)" : "var(--warning)", borderRadius: 2 }} />
-                </div>
-                <div style={{ fontSize: 10, color: "var(--text4)", marginTop: 3 }}>Break-even: {Math.ceil(gesamtKosten / currentRate)}h</div>
-              </div>
-            )}
-          </div>
-        </div>
+        )}
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "3fr 2fr", gap: 20, alignItems: "start" }}>
@@ -453,7 +427,7 @@ function StudioBudget({ data, update, setPrintContent }: Pick<ViewProps, "data" 
             <SectionLabel>PERSONALKOSTEN / JAHR</SectionLabel>
             <div style={{ marginBottom: 12 }}>
               <FormField label="AG-Sozialleistungen %">
-                <input type="number" step="0.5" min={0} max={50} value={b.agZuschlag}
+                <input type="number" step="0.5" min={0} max={50} value={b.agZuschlag} style={{ width: 100 }}
                   onChange={e => { const v = +e.target.value; setField("agZuschlag", v); setB(prev => ({ ...prev, agZuschlag: v })); }} />
                 <div style={{ fontSize: 11, color: "var(--text4)", marginTop: 3 }}>AHV, UVG, BVG, KTG AG-Anteil (typisch 18–22%)</div>
               </FormField>
@@ -733,40 +707,29 @@ function StudioBudget({ data, update, setPrintContent }: Pick<ViewProps, "data" 
 
           {/* Kostenstruktur */}
           <div className="card">
-            <SectionLabel>KOSTENSTRUKTUR / JAHR</SectionLabel>
-            {[
-              { label: "Personalkosten", value: personalKosten },
-              { label: "Fixkosten", value: fixKosten + extraKosten },
-              { label: "Basiskosten", value: basisKosten, bold: true },
-              { label: `+ Reserve (${b.reserve}%)`, value: reserve, indent: true },
-              { label: "Gesamtkosten", value: gesamtKosten, total: true },
-            ].map((r, i) => (
-              <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: r.total ? "8px 0 2px" : r.indent ? "2px 0 2px 12px" : "4px 0", borderTop: r.total ? "2px solid var(--text)" : "none", borderBottom: r.total ? "none" : "1px solid var(--border2)", marginTop: r.total ? 4 : 0 }}>
-                <span style={{ fontSize: r.total ? 13 : r.indent ? 11 : 12, fontWeight: r.total || r.bold ? 700 : 400, color: r.total || r.bold ? "var(--text)" : "var(--text2)" }}>{r.label}</span>
-                <span style={{ fontSize: r.total ? 15 : 12, fontWeight: r.total || r.bold ? 700 : 400, fontFamily: r.total || r.bold ? "var(--font-ui)" : "inherit" }}>{formatCHF(r.value)}</span>
-              </div>
-            ))}
+            <div className="today-k">Kostenstruktur / Jahr</div>
+            <div className="acc-lines">
+              <div><span>Personalkosten</span><b className="num">{formatCHF(personalKosten)}</b></div>
+              <div><span>Fixkosten</span><b className="num">{formatCHF(fixKosten + extraKosten)}</b></div>
+              <div><span>Basiskosten</span><b className="num">{formatCHF(basisKosten)}</b></div>
+              <div className="sub"><span>dazu Reserve <i>{b.reserve} %</i></span><b className="num">{formatCHF(reserve)}</b></div>
+              <div className="total"><span>Gesamtkosten</span><b className="num">{formatCHF(gesamtKosten)}</b></div>
+            </div>
             {totalRevenue > 0 && (
-              <>
-                <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 0 4px", marginTop: 8, borderTop: "1px dashed var(--border)" }}>
-                  <span style={{ fontSize: 12, color: "var(--text2)" }}>
-                    Einnahmen
-                    {b.inkludiereEntwuerfe && draftRevenue > 0 && b.inkludiereRechnungen && (
-                      <span style={{ fontSize: 10, color: "var(--warning)", marginLeft: 5 }}>inkl. {formatCHF(draftRevenue)} erwartet (Rechnungen)</span>
-                    )}
-                    {b.inkludiereOffertEntwuerfe && draftQuoteRevenue > 0 && b.inkludiereOfferten && (
-                      <span style={{ fontSize: 10, color: "var(--warning)", marginLeft: 5 }}>inkl. {formatCHF(draftQuoteRevenue)} erwartet (Offerten)</span>
-                    )}
-                  </span>
-                  <span style={{ fontSize: 12, fontWeight: 600, color: "var(--positive)" }}>{formatCHF(totalRevenue)}</span>
-                </div>
-                <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 0 2px", borderTop: "2px solid var(--text)", marginTop: 4 }}>
-                  <span style={{ fontSize: 13, fontWeight: 700 }}>Ergebnis</span>
-                  <span style={{ fontSize: 15, fontWeight: 700, fontFamily: "var(--font-ui)", color: ergebnis >= 0 ? "var(--positive)" : "var(--negative)" }}>
-                    {ergebnis >= 0 ? "+" : ""}{formatCHF(ergebnis)}
-                  </span>
-                </div>
-              </>
+              <div className="acc-lines acc-mwst">
+                <div><span>Einnahmen
+                  {b.inkludiereEntwuerfe && draftRevenue > 0 && b.inkludiereRechnungen && <i>inkl. {formatCHF(draftRevenue)} erwartet (Rechnungen)</i>}
+                  {b.inkludiereOffertEntwuerfe && draftQuoteRevenue > 0 && b.inkludiereOfferten && <i>inkl. {formatCHF(draftQuoteRevenue)} erwartet (Offerten)</i>}
+                </span><b className="num">{formatCHF(totalRevenue)}</b></div>
+                {yearFraction < 1 ? <>
+                  <div><span>Kosten bis heute <i>{Math.round(yearFraction * 100)} % des Jahres</i></span><b className="num">− {formatCHF(kostenBisHeute)}</b></div>
+                  <div className="total"><span>Ergebnis bis heute</span><b className={`num${ergebnisBisHeute < 0 ? " neg" : ""}`}>{ergebnisBisHeute < 0 ? `− ${formatCHF(-ergebnisBisHeute)}` : formatCHF(ergebnisBisHeute)}</b></div>
+                  <div className="sub"><span>mit vollen Jahreskosten</span><b className="num">{ergebnis < 0 ? `− ${formatCHF(-ergebnis)}` : formatCHF(ergebnis)}</b></div>
+                </> : <>
+                  <div><span>Gesamtkosten</span><b className="num">− {formatCHF(gesamtKosten)}</b></div>
+                  <div className="total"><span>Ergebnis</span><b className={`num${ergebnis < 0 ? " neg" : ""}`}>{ergebnis < 0 ? `− ${formatCHF(-ergebnis)}` : formatCHF(ergebnis)}</b></div>
+                </>}
+              </div>
             )}
           </div>
 
@@ -884,7 +847,7 @@ function StudioBudget({ data, update, setPrintContent }: Pick<ViewProps, "data" 
                       <span style={{ fontSize: 10, color: "var(--text4)", marginLeft: 6 }}>{formatCHF(role.rate)}/h</span>
                     </div>
                     <span style={{ fontSize: 12, fontWeight: 600, color: ok ? "var(--positive)" : "var(--negative)" }}>
-                      {ok ? "+" : ""}{formatCHF(Math.round(diff))} {ok ? "▲" : "▼"}
+                      {ok ? "+ " : "− "}{formatCHF(Math.abs(Math.round(diff)))}
                     </span>
                   </div>
                 );

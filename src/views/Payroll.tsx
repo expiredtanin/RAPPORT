@@ -18,12 +18,12 @@
 import React, { useState } from "react";
 import { generateId, formatCHF, formatDate, calcLohn, monatsAnteilNachEintritt } from "../utils";
 import { lohnAGBeitraege, lohnPersonalaufwand, lohnVorperioden, spesenFuerLohn } from "../accounting";
-import { Header, NavArrows, ShareButton } from "../components/UI";
+import { Header, NavArrows, ShareButton, EmptyState } from "../components/UI";
 import { useConfirm } from "../hooks/useConfirm";
 import type { Employee, LohnEntry, LohnResult, SaetzeSnapshot, ViewProps } from "../types";
 
 export default
-function Payroll({ data, saveAll, setPrintContent }: Pick<ViewProps, "data" | "update" | "saveAll" | "setPrintContent" | "setView">) {
+function Payroll({ data, saveAll, setPrintContent, setView }: Pick<ViewProps, "data" | "update" | "saveAll" | "setPrintContent" | "setView">) {
   const now = new Date();
   const [selYear, setSelYear] = useState(now.getFullYear());
   const [selMonth, setSelMonth] = useState(now.getMonth());
@@ -129,18 +129,26 @@ function Payroll({ data, saveAll, setPrintContent }: Pick<ViewProps, "data" | "u
     }
   };
 
-  const selectedEmp = employees.find(e => e.id === selEmpId);
-  const previewSpesen = selEmpId ? offeneSpesen(selEmpId) : [];
-  const previewCalc = selectedEmp ? calcFor(selectedEmp, previewSpesen) : null;
-  const existingEntry = selEmpId ? findEntry(selEmpId) : null;
   const monatEntries = lohnEntries.filter(l => l.monat === monatStr);
   // Mit Monatslohn; ausgetretene (active === false) nur, wenn für den Monat schon abgerechnet
   const payrollEmployees = employees.filter(e => (e.monatslohn || 0) > 0 && (e.active !== false || !!findEntry(e.id)));
+  // Ohne Auswahl zeigt die Detailspalte die erste Person, die abgerechnet werden kann
+  const effEmpId = selEmpId || payrollEmployees.find(isMonatAvailable)?.id || "";
+  const selectedEmp = employees.find(e => e.id === effEmpId);
+  const previewSpesen = effEmpId ? offeneSpesen(effEmpId) : [];
+  const previewCalc = selectedEmp ? calcFor(selectedEmp, previewSpesen) : null;
+  const existingEntry = effEmpId ? findEntry(effEmpId) : null;
+  // Monatssummen (abgeschlossen oder Vorschau) für das Kennzahlen-Band
+  const monthRows = payrollEmployees.filter(isMonatAvailable).map(emp => {
+    const entry = findEntry(emp.id);
+    return { entry, calc: entry ? entry : calcFor(emp, offeneSpesen(emp.id)) };
+  });
+  const monthSum = monthRows.reduce((t, r) => ({ brutto: t.brutto + r.calc.bruttoTotal, aus: t.aus + r.calc.auszahlung, aufwand: t.aufwand + lohnPersonalaufwand(r.calc), done: t.done + (r.entry ? 1 : 0) }), { brutto: 0, aus: 0, aufwand: 0, done: 0 });
   const cardPensum = existingEntry ? (existingEntry.saetzeSnapshot?.pensum || 100) : (selectedEmp ? getEffPensum(selectedEmp) : 100);
 
   const LohnRow = ({ label, value, bold, color, indent }: { label: string; value: number; bold?: boolean; color?: string; indent?: boolean }) => (
     <div style={{ display: "flex", justifyContent: "space-between", padding: "3px 0", fontSize: indent ? 11 : 12, color: color || (indent ? "var(--text4)" : "var(--text2)"), paddingLeft: indent ? 12 : 0 }}>
-      <span>{label}</span><span style={{ fontWeight: bold ? 700 : 400 }}>{formatCHF(value)}</span>
+      <span>{label}</span><span className="num" style={{ fontWeight: bold ? 700 : 400 }}>{value < 0 ? `− ${formatCHF(-value)}` : formatCHF(value)}</span>
     </div>
   );
 
@@ -219,12 +227,12 @@ function Payroll({ data, saveAll, setPrintContent }: Pick<ViewProps, "data" | "u
       {(() => {
         const s = emp.saetzeSnapshot || emp; // abgeschlossen: snapshot, preview: live emp
         return <>
-          <LohnRow label={`AHV/IV/EO (${s.ahvSatz ?? 5.3}%)`} value={-calc.ahv} indent color="var(--negative)" />
-          <LohnRow label={`ALV (${s.alvSatz ?? 1.1}%)`} value={-calc.alv} indent color="var(--negative)" />
-          <LohnRow label={`BVG/PK (${s.bvgSatz ?? 8.0}%)`} value={-calc.bvg} indent color="var(--negative)" />
-          <LohnRow label={`NBU (${s.nbuSatz ?? 1.5}%)`} value={-calc.nbu} indent color="var(--negative)" />
-          <LohnRow label={`KTG (${s.ktgSatz ?? 0.5}%)`} value={-calc.ktg} indent color="var(--negative)" />
-          {calc.qst > 0 && <LohnRow label={`Quellensteuer (${s.quellensteuerSatz ?? 10}%)`} value={-calc.qst} indent color="var(--negative)" />}
+          <LohnRow label={`AHV/IV/EO (${s.ahvSatz ?? 5.3}%)`} value={-calc.ahv} indent />
+          <LohnRow label={`ALV (${s.alvSatz ?? 1.1}%)`} value={-calc.alv} indent />
+          <LohnRow label={`BVG/PK (${s.bvgSatz ?? 8.0}%)`} value={-calc.bvg} indent />
+          <LohnRow label={`NBU (${s.nbuSatz ?? 1.5}%)`} value={-calc.nbu} indent />
+          <LohnRow label={`KTG (${s.ktgSatz ?? 0.5}%)`} value={-calc.ktg} indent />
+          {calc.qst > 0 && <LohnRow label={`Quellensteuer (${s.quellensteuerSatz ?? 10}%)`} value={-calc.qst} indent />}
         </>;
       })()}
       <div style={{ borderTop: "1.5px solid var(--text)", marginTop: 8, paddingTop: 8 }}>
@@ -243,9 +251,9 @@ function Payroll({ data, saveAll, setPrintContent }: Pick<ViewProps, "data" | "u
         return (
           <div style={{ marginTop: 14, paddingTop: 10, borderTop: "1px dashed #c8c0b8" }}>
             <div style={{ fontSize: 10, letterSpacing: "0.08em", color: "var(--text4)", marginBottom: 4 }}>LOHNKOSTEN ARBEITGEBER</div>
-            <LohnRow label={`AHV/IV/EO AG-Anteil (${s.ahvSatz ?? 5.3}%)`} value={ag.ahvAG} indent color="var(--warning)" />
-            <LohnRow label={`ALV AG-Anteil (${s.alvSatz ?? 1.1}%)`} value={ag.alvAG} indent color="var(--warning)" />
-            {ag.bvgAG > 0 && <LohnRow label={`PK / BVG AG-Anteil (${s.pkAGSatz ?? 8.0}%)`} value={ag.bvgAG} indent color="var(--warning)" />}
+            <LohnRow label={`AHV/IV/EO AG-Anteil (${s.ahvSatz ?? 5.3}%)`} value={ag.ahvAG} indent />
+            <LohnRow label={`ALV AG-Anteil (${s.alvSatz ?? 1.1}%)`} value={ag.alvAG} indent />
+            {ag.bvgAG > 0 && <LohnRow label={`PK / BVG AG-Anteil (${s.pkAGSatz ?? 8.0}%)`} value={ag.bvgAG} indent />}
             <LohnRow label="Gesamtlohnkosten (Brutto + AG-Beiträge, ohne Spesen)" value={lohnPersonalaufwand(calc)} bold />
           </div>
         );
@@ -256,62 +264,65 @@ function Payroll({ data, saveAll, setPrintContent }: Pick<ViewProps, "data" | "u
   return (
     <div>
       {ConfirmModalEl}
-      <Header title="Löhne" />
-      {employees.length === 0 ? (
-        <div className="card" style={{ padding: 0 }}>
-          <table>
-            <thead><tr><th>Name</th><th style={{ textAlign: "right" }}>Brutto</th><th style={{ textAlign: "right" }}>Netto</th><th style={{ textAlign: "right" }}>Spesen</th><th style={{ textAlign: "right" }}>Auszahlung</th><th>Status</th><th></th></tr></thead>
-            <tbody><tr><td colSpan={7} className="empty-state">Noch keine Mitarbeiter erfasst</td></tr></tbody>
-          </table>
+      <Header title="Löhne" action={
+        <div className="month-nav">
+          <NavArrows onPrev={goPrev} onNext={goNext} disabledNext={isAtFuture} />
+          <span>{months[selMonth]} {selYear}</span>
         </div>
-      ) : (
-        <div className="responsive-grid-2" style={{ display: "grid", gridTemplateColumns: "1fr 340px", gap: 20, alignItems: "start" }}>
+      } />
+      {employees.length === 0 || payrollEmployees.length === 0 ? (
+        <div className="card" style={{ padding: 0 }}>
+          <EmptyState icon="payments" title={employees.length === 0 ? "Noch keine Mitarbeitenden" : "Noch kein Monatslohn hinterlegt"}
+            text="Löhne rechnen sich aus Monatslohn, Pensum und Sozialversicherungssätzen am Mitarbeitenden. Erfasse diese unter Mitarbeiter → Lohn."
+            action={setView ? <button className="btn btn-primary" onClick={() => setView("mitarbeiter")}>Zu den Mitarbeitenden</button> : undefined} />
+        </div>
+      ) : (<>
+        <div className="ws-figs" style={{ marginBottom: 20 }}>
+          <div><small>Brutto {months[selMonth]}</small><strong className="num">{formatCHF(monthSum.brutto)}</strong><em>{monthRows.length} {monthRows.length === 1 ? "Person" : "Personen"}</em></div>
+          <div><small>Auszahlung</small><strong className="num">{formatCHF(monthSum.aus)}</strong><em>netto inkl. Spesen</em></div>
+          <div><small>Personalaufwand</small><strong className="num">{formatCHF(monthSum.aufwand)}</strong><em>Brutto + AG-Beiträge</em></div>
+          <div><small>Abgeschlossen</small><strong className={`num${monthSum.done < monthRows.length ? " warn" : ""}`}>{monthSum.done} / {monthRows.length}</strong><em>{monthSum.done < monthRows.length ? "noch offen" : "alle abgerechnet"}</em></div>
+        </div>
+        <div className="acc-grid">
           <div>
-            <div className="card" style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 20px", marginBottom: 16 }}>
-              <NavArrows onPrev={goPrev} onNext={goNext} disabledNext={isAtFuture} />
-              <div style={{ flex: 1, textAlign: "center", fontFamily: "var(--font-ui)", fontSize: 18 }}>{months[selMonth]} {selYear}</div>
-            </div>
             <div className="card" style={{ padding: 0 }}>
-              <div className="panel-label">MITARBEITER</div>
+
               <table>
                 <thead><tr>
                   <th>Name</th>
                   <th style={{ textAlign: "right" }}>Brutto</th>
-                  <th style={{ textAlign: "right" }}>Netto</th>
-                  <th style={{ textAlign: "right" }}>Spesen</th>
+                  <th className="hide-mid" style={{ textAlign: "right" }}>Netto</th>
+                  <th className="hide-mid" style={{ textAlign: "right" }}>Spesen</th>
                   <th style={{ textAlign: "right" }}>Auszahlung</th>
                   <th>Status</th>
                   <th></th>
                 </tr></thead>
                 <tbody>
-                  {payrollEmployees.length === 0 && (
-                    <tr><td colSpan={7} className="empty-state">Noch kein Monatslohn hinterlegt.</td></tr>
-                  )}
                   {payrollEmployees.map(emp => {
                     const available = isMonatAvailable(emp);
                     const entry = findEntry(emp.id);
                     const spesen = entry ? (data.expenses || []).filter(e => e.lohnEntryId === entry.id) : offeneSpesen(emp.id);
                     const calc = entry ? entry : calcFor(emp, spesen);
                     return (
-                      <tr key={emp.id} onClick={() => available && setSelEmpId(emp.id)}
-                        style={{ cursor: available ? "pointer" : "default", background: selEmpId === emp.id ? "var(--surface2)" : "", opacity: available ? 1 : 0.35 }}>
+                      <tr key={emp.id} className={available ? "row-link" : ""} onClick={() => available && setSelEmpId(emp.id)}
+                        style={{ background: effEmpId === emp.id ? "var(--surface2)" : "", opacity: available ? 1 : 0.4 }}>
                         <td>
                           <strong>{emp.name}</strong>
                           {emp.role && <div style={{ fontSize: 11, color: "var(--text4)" }}>{emp.role}</div>}
                           {!available && <div style={{ fontSize: 10, color: "var(--text5)" }}>vor Eintritt</div>}
                         </td>
                         <td style={{ textAlign: "right" }}>{available ? formatCHF(calc.bruttoTotal) : "—"}</td>
-                        <td style={{ textAlign: "right" }}>{available ? formatCHF(calc.netto) : "—"}</td>
-                        <td style={{ textAlign: "right", color: calc.spesenTotal > 0 ? "var(--warning)" : "var(--text5)" }}>{available && calc.spesenTotal > 0 ? formatCHF(calc.spesenTotal) : "—"}</td>
+                        <td className="hide-mid" style={{ textAlign: "right" }}>{available ? formatCHF(calc.netto) : "—"}</td>
+                        <td className="hide-mid" style={{ textAlign: "right", color: calc.spesenTotal > 0 ? "var(--warning)" : "var(--text5)" }}>{available && calc.spesenTotal > 0 ? formatCHF(calc.spesenTotal) : "—"}</td>
                         <td style={{ textAlign: "right", fontWeight: 600 }}>{available ? formatCHF(calc.auszahlung) : "—"}</td>
                         <td>{!available ? null : entry
-                          ? <span style={{ fontSize: 10, color: "var(--positive)", background: "var(--positive-bg)", border: "1px solid #b0d8c0", borderRadius: 20, padding: "2px 10px", fontWeight: 600 }}>Abgeschlossen</span>
-                          : <span style={{ fontSize: 10, color: "var(--warning)", background: "#fff8f0", border: "1px solid #f0d0a0", borderRadius: 20, padding: "2px 10px", fontWeight: 600 }}>Offen</span>}
+                          ? <span className="today-pill ok">abgeschlossen</span>
+                          : <span className="today-pill soon">offen</span>}
                         </td>
-                        <td style={{ textAlign: "right" }}>
+                        <td style={{ textAlign: "right", paddingRight: 14, whiteSpace: "nowrap" }}>
                           {available && (entry
-                            ? <button className="btn btn-ghost" style={{ fontSize: 11, padding: "2px 8px" }} onClick={e => { e.stopPropagation(); stornieren(entry.id); }}>Stornieren</button>
-                            : <button className="btn btn-primary" style={{ fontSize: 11, padding: "2px 10px" }} onClick={e => { e.stopPropagation(); abschliessen(emp); }}>Abschliessen</button>
+                            ? <button className="btn btn-quiet btn-sm" onClick={e => { e.stopPropagation(); stornieren(entry.id); }}>Stornieren</button>
+                            : <button className="btn btn-ghost btn-sm" onClick={e => { e.stopPropagation(); abschliessen(emp); }}>Abschliessen</button>
                           )}
                         </td>
                       </tr>
@@ -325,8 +336,8 @@ function Payroll({ data, saveAll, setPrintContent }: Pick<ViewProps, "data" | "u
                       <tr style={{ borderTop: "1.5px solid var(--text)", fontWeight: 600 }}>
                         <td>Total</td>
                         <td style={{ textAlign: "right" }}>{formatCHF(t.b)}</td>
-                        <td style={{ textAlign: "right" }}>{formatCHF(t.n)}</td>
-                        <td style={{ textAlign: "right" }}>{formatCHF(t.sp)}</td>
+                        <td className="hide-mid" style={{ textAlign: "right" }}>{formatCHF(t.n)}</td>
+                        <td className="hide-mid" style={{ textAlign: "right" }}>{formatCHF(t.sp)}</td>
                         <td style={{ textAlign: "right" }}>{formatCHF(t.a)}</td>
                         <td colSpan={2}></td>
                       </tr>
@@ -340,8 +351,8 @@ function Payroll({ data, saveAll, setPrintContent }: Pick<ViewProps, "data" | "u
           <div>
             {selectedEmp && isMonatAvailable(selectedEmp) ? (
               <div className="card">
-                <div className="section-label" style={{ marginBottom: 4 }}>LOHNABRECHNUNG</div>
-                <div style={{ fontFamily: "var(--font-ui)", fontSize: 18, marginBottom: 2 }}>{selectedEmp.name}</div>
+                <div className="today-k">Lohnabrechnung</div>
+                <div style={{ fontSize: 17, fontWeight: 600, marginBottom: 2 }}>{selectedEmp.name}</div>
                 <div style={{ fontSize: 11, color: "var(--text4)", marginBottom: 16 }}>{[selectedEmp.role, `${months[selMonth]} ${selYear}`, cardPensum < 100 ? `${cardPensum}%` : null].filter(Boolean).join(" · ")}</div>
                 {existingEntry
                   ? renderCalc(existingEntry, { ...selectedEmp, ...existingEntry.empSnapshot, saetzeSnapshot: existingEntry.saetzeSnapshot } as Employee & { saetzeSnapshot?: SaetzeSnapshot }, false, existingEntry.saetzeSnapshot?.pensum || 100)
@@ -380,13 +391,13 @@ function Payroll({ data, saveAll, setPrintContent }: Pick<ViewProps, "data" | "u
                 )}
               </div>
             ) : (
-              <div className="card" style={{ color: "var(--text5)", textAlign: "center", padding: 40, fontSize: 13 }}>
-                Mitarbeiter auswählen für Detailansicht
+              <div className="card today-meta" style={{ textAlign: "center", padding: 32 }}>
+                Für diesen Monat ist niemand abzurechnen.
               </div>
             )}
           </div>
         </div>
-      )}
+      </>)}
     </div>
   );
 }
