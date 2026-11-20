@@ -299,24 +299,43 @@ export function DocPreview({ settings, assets, sample, width, content }: {
   const scale = width / (210 * 96 / 25.4);
   const mTop = settings.pageMarginTop ?? 20, mBottom = settings.pageMarginBottom ?? 20, mLeft = settings.pageMarginLeft ?? 20, mRight = settings.pageMarginRight ?? 20;
   const sheet: React.CSSProperties = { position: "relative", width: "210mm", height: "297mm", overflow: "hidden", background: "#fff", fontSize: 11, lineHeight: 1.6, color: "var(--doc-ink)", fontFamily: "var(--doc-font-body)", textAlign: "left" };
-  // Live-Vorschau: Blatt wächst mit dem Inhalt (gemessen), Rahmen skaliert mit
-  const sheetRef = useRef<HTMLDivElement>(null);
-  const [sheetH, setSheetH] = useState(0);
+  // Live-Vorschau mit Seitenumbrüchen: React rendert das Blatt unsichtbar (`srcRef`); nach jedem Rendern wird
+  // es in `hostRef` kopiert und dort mit paginate() wie im Druck auf Seiten verteilt (die Kopie gehört nicht React,
+  // deshalb dürfen die Abstandselemente dort eingefügt werden). Zwischen den Seiten zeigt ein Band die Trennung.
+  const srcRef = useRef<HTMLDivElement>(null);
+  const hostRef = useRef<HTMLDivElement>(null);
+  const [pages, setPages] = useState(1);
   useLayoutEffect(() => {
-    if (!content || !sheetRef.current) return;
-    const el = sheetRef.current;
-    const measure = () => setSheetH(el.scrollHeight);
-    measure();
-    const ro = new ResizeObserver(measure);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, [content]);
+    if (!content) return;
+    const layout = () => {
+      const src = srcRef.current?.firstElementChild as HTMLElement | null, host = hostRef.current;
+      if (!src || !host) return;
+      const sheetEl = src.cloneNode(true) as HTMLElement;
+      host.replaceChildren(sheetEl);
+      const body = sheetEl.querySelector(".doc-content") as HTMLElement | null;
+      if (!body) return;
+      const { pages: n } = paginate(sheetEl, body, { firstBottom: mBottom, followTop: design.followTop, followBottom: design.followBottom });
+      sheetEl.style.height = `${n * PAGE_HEIGHT_MM}mm`;
+      for (let k = 1; k < n; k++) {
+        const band = document.createElement("div");
+        band.className = "doc-page-gap";
+        band.style.top = `${k * PAGE_HEIGHT_MM}mm`;
+        band.textContent = `Seite ${k + 1}`;
+        sheetEl.appendChild(band);
+      }
+      setPages(n);
+    };
+    layout();
+    let alive = true;
+    document.fonts?.ready.then(() => { if (alive) layout(); });
+    return () => { alive = false; };
+  }, [content, settings, assets, design, mBottom]);
   const a4px = 297 * 96 / 25.4;
   const frame = (children: React.ReactNode, label: string) => (
     <div>
       {label && <div style={{ fontSize: 11, color: "var(--text4)", marginBottom: 4 }}>{label}</div>}
-      <div style={{ width, height: (content ? Math.max(a4px, sheetH) : a4px) * scale, overflow: "hidden", boxShadow: "0 2px 10px rgba(0,0,0,0.15)", border: "1px solid var(--border2)", background: "#fff" }}>
-        <div style={{ transform: `scale(${scale})`, transformOrigin: "0 0" }}>{children}</div>
+      <div style={{ width, height: (content ? pages * a4px : a4px) * scale, overflow: "hidden", boxShadow: "0 2px 10px rgba(0,0,0,0.15)", border: "1px solid var(--border2)", background: "#fff" }}>
+        <div style={{ transform: `scale(${scale})`, transformOrigin: "0 0" }}>{content ? <div ref={hostRef} /> : children}</div>
       </div>
     </div>
   );
@@ -331,12 +350,22 @@ export function DocPreview({ settings, assets, sample, width, content }: {
       {fontFaces && <style>{fontFaces}</style>}
       <style>{`.doc-preview .print-page.hide-sender .doc-sender { visibility: hidden; } .doc-preview .print-page * { text-align: left; } .doc-preview .print-page .align-right, .doc-preview .print-page .align-right * { text-align: right; }`}</style>
       <style>{docCss.css}</style>
+      {content && (
+        // unsichtbare Quelle in Druckbreite; sichtbar ist die paginierte Kopie im Rahmen
+        <div ref={srcRef} aria-hidden style={{ position: "absolute", left: -20000, top: 0, visibility: "hidden", pointerEvents: "none", width: "210mm" }}>
+          <div className={sheetClass(design, false)} data-doc={content.type} style={{ ...sheet, height: "auto", minHeight: "297mm", padding: `${mTop}mm ${mRight}mm ${mBottom}mm ${mLeft}mm` }}>
+            <LetterheadLayers design={design} />
+            <div className="doc-content" style={{ position: "relative", zIndex: 1 }}>
+              {content.type === "invoice" && <InvoicePrint inv={content.inv} client={content.client} settings={settings} />}
+              {content.type === "quote" && <QuotePrint quote={content.quote} client={content.client} settings={settings} />}
+            </div>
+          </div>
+        </div>
+      )}
       {frame(
-        <div ref={sheetRef} className={sheetClass(design, false)} data-doc={content ? content.type : sample} style={{ ...sheet, ...(content ? { height: "auto", minHeight: "297mm" } : {}), padding: `${mTop}mm ${mRight}mm ${mBottom}mm ${mLeft}mm` }}>
+        <div className={sheetClass(design, false)} data-doc={sample} style={{ ...sheet, padding: `${mTop}mm ${mRight}mm ${mBottom}mm ${mLeft}mm` }}>
           <LetterheadLayers design={design} />
           <div className="doc-content" style={{ position: "relative", zIndex: 1 }}>
-            {content?.type === "invoice" && <InvoicePrint inv={content.inv} client={content.client} settings={settings} />}
-            {content?.type === "quote" && <QuotePrint quote={content.quote} client={content.client} settings={settings} />}
             {!content && sample === "invoice" && <InvoicePrint inv={PREVIEW_INVOICE} client={PREVIEW_CLIENT} settings={settings} />}
             {sample === "letter" && <LetterPrint client={PREVIEW_CLIENT} subject="Neubau Wohnhaus Seefeld — Baubesprechung" body={PREVIEW_LETTER} settings={settings} />}
             {sample === "protokoll" && <ProtokollPrint protokoll={PREVIEW_PROTOCOL} data={{ projects: [] } as unknown as AppData} settings={settings} />}
