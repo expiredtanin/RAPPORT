@@ -125,6 +125,26 @@ export const generateSequentialNumbers = (invoices: Pick<Invoice, "number">[], f
 export const billedNetForProject = (invoices: Invoice[], projectId: string) =>
   roundCHF(invoices.filter(i => i.projectId === projectId && i.status !== "entwurf").reduce((s, i) => s + roundCHF((i.sub || 0) - (i.globalDisc || 0)), 0));
 
+/**
+ * Stand der Verrechnung eines Projekts für den Dialog «Neue Rechnung»: Honorar (`fee`), bisher gestellt
+ * (ohne Entwürfe, netto nach Rabatt wie `billedNetForProject`) in CHF und %, Rest, offene Entwürfe und der
+ * Stand nach der vorgeschlagenen Rechnung (`thisNet`, netto). `over`: der Vorschlag führt über 100 % des
+ * Honorars; `overWithDrafts`: erst zusammen mit den offenen Entwürfen (z.B. aus dem Akonto-Planer).
+ * Prozente sind 0, wenn kein Honorar erfasst ist.
+ */
+export const projectBillingStatus = (invoices: Invoice[], projectId: string, fee: number, thisNet: number) => {
+  const billed = billedNetForProject(invoices, projectId);
+  const drafts = roundCHF(invoices.filter(i => i.projectId === projectId && i.status === "entwurf").reduce((s, i) => s + roundCHF((i.sub || 0) - (i.globalDisc || 0)), 0));
+  const pct = (x: number) => fee > 0 ? x / fee * 100 : 0;
+  const after = roundCHF(billed + thisNet);
+  return {
+    fee, billed, billedPct: pct(billed), rest: roundCHF(fee - billed), drafts,
+    after, afterPct: pct(after),
+    over: fee > 0 && after > fee,
+    overWithDrafts: fee > 0 && after <= fee && roundCHF(after + drafts) > fee,
+  };
+};
+
 /** Baut aus den Raten des Akonto-Plans die Entwurfs-Rechnungen (Akonto, 30 Tage Zahlungsfrist). */
 export const buildAkontoInvoices = (rows: { id: string; date: string; amt: number }[], ap: AkontoPlan, data: AppData, invoices: Invoice[]) => {
   const proj = data.projects.find(p => p.id === ap.projectId);

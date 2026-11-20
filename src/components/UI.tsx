@@ -150,6 +150,10 @@ export interface ModalProps {
   preview?: ReactNode;
   /** links im Fuss, z.B. Summe oder Hinweis */
   footerStart?: ReactNode;
+  /** Speichern-Knopf (und Enter) gesperrt, z.B. solange eine Pflichtwahl fehlt */
+  saveDisabled?: boolean;
+  /** Fensterbreite in px, ab der die Vorschau beim Öffnen sichtbar ist (Standard 1200) */
+  previewFrom?: number;
 }
 
 /**
@@ -158,10 +162,10 @@ export interface ModalProps {
  * immer nur der oberste). Enter in einem einzeiligen Feld oder ⌘↩ speichert. Mit `preview` wird der Dialog
  * zum Editor mit Vorschau rechts (ab 1200 px Fensterbreite sichtbar, sonst per Knopf «Vorschau»).
  */
-export function Modal({ title, onClose, onSave, saveLabel, hideSave, hideFooter, children, wide, overflow, drawer, preview, footerStart }: ModalProps) {
-  const [showPreview, setShowPreview] = useState(() => typeof window === "undefined" || window.innerWidth >= 1200);
+export function Modal({ title, onClose, onSave, saveLabel, hideSave, hideFooter, children, wide, overflow, drawer, preview, footerStart, saveDisabled, previewFrom = 1200 }: ModalProps) {
+  const [showPreview, setShowPreview] = useState(() => typeof window === "undefined" || window.innerWidth >= previewFrom);
   const onKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key !== "Enter" || !onSave || hideSave || hideFooter || e.nativeEvent.isComposing) return;
+    if (e.key !== "Enter" || !onSave || hideSave || hideFooter || saveDisabled || e.nativeEvent.isComposing) return;
     const t = e.target as HTMLElement;
     const singleLine = t.tagName === "INPUT" && !["checkbox", "radio", "button", "submit", "file"].includes((t as HTMLInputElement).type);
     if (e.metaKey || e.ctrlKey || (singleLine && !e.shiftKey)) { e.preventDefault(); onSave(); }
@@ -188,7 +192,7 @@ export function Modal({ title, onClose, onSave, saveLabel, hideSave, hideFooter,
             <div className="modal-foot">
               <div style={{ flex: 1, minWidth: 0 }}>{footerStart}</div>
               <button className="btn btn-ghost" onClick={onClose}>Abbrechen</button>
-              {!hideSave && <button className="btn btn-primary" onClick={onSave}>{saveLabel || "Speichern"}</button>}
+              {!hideSave && <button className="btn btn-primary" onClick={onSave} disabled={saveDisabled}>{saveLabel || "Speichern"}</button>}
             </div>
           )}
         </div>

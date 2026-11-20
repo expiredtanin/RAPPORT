@@ -45,7 +45,7 @@ export function NewInvoiceQuotePane({ ni, setNi, data, invoices, q }: {
             }} style={{
               flex: 1, padding: "10px 8px", border: `2px solid ${active ? color : "var(--border)"}`,
               borderRadius: 8, background: active ? color : "transparent",
-              color: active ? "#fff" : "var(--text3)", fontFamily: "inherit", fontSize: 12,
+              color: active ? "var(--surface)" : "var(--text3)", fontFamily: "inherit", fontSize: 12,
               fontWeight: 600, cursor: "pointer", letterSpacing: "0.03em",
             }}>{label}</button>
           );
@@ -58,9 +58,9 @@ export function NewInvoiceQuotePane({ ni, setNi, data, invoices, q }: {
               ? (id === "percent" ? "akonto-percent" : "akonto-amount")
               : (id === "percent" ? "teilrechnung-percent" : "teilrechnung-amount")
             }))} style={{
-              padding: "5px 12px", border: `1.5px solid ${active ? "#1a1a18" : "var(--border)"}`,
-              borderRadius: 20, background: active ? "#1a1a18" : "transparent",
-              color: active ? "#f0ede8" : "var(--text3)", fontFamily: "inherit",
+              padding: "5px 12px", border: `1.5px solid ${active ? "var(--text)" : "var(--border)"}`,
+              borderRadius: 20, background: active ? "var(--text)" : "transparent",
+              color: active ? "var(--surface)" : "var(--text3)", fontFamily: "inherit",
               fontSize: 11, cursor: "pointer",
             }}>{label}</button>
           );
@@ -80,7 +80,7 @@ export function NewInvoiceQuotePane({ ni, setNi, data, invoices, q }: {
             <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
               <QKindBtn id="akonto" label="Akonto" color="var(--accent)" />
               <QKindBtn id="teilrechnung" label="Teilrechnung" color="var(--info)" />
-              <QKindBtn id="schluss" label="Schlussrechnung" color="#1a1a18" />
+              <QKindBtn id="schluss" label="Schlussrechnung" color="var(--text)" />
             </div>
 
             {/* Ebene 2: Sub-Optionen */}
@@ -93,13 +93,13 @@ export function NewInvoiceQuotePane({ ni, setNi, data, invoices, q }: {
 
             {/* Inputs */}
             {qKind !== "schluss" && qSubMode === "percent" && (
-              <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", background: qKind === "akonto" ? "var(--warning-bg)" : "var(--info-bg)", borderRadius: 6, border: `1px solid ${qKind === "akonto" ? "#f0e4c4" : "#c4d4ea"}`, marginBottom: 10 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", background: qKind === "akonto" ? "var(--warning-bg)" : "var(--info-bg)", borderRadius: 6, border: "1px solid var(--border2)", marginBottom: 10 }}>
                 <input type="number" min={1} max={100} step="1" value={ni.pct} onChange={e => setNi(n => ({ ...n, pct: Math.max(0, Math.min(100, +e.target.value || 0)) }))} style={{ width: 80, textAlign: "right", background: "var(--surface)" }} />
                 <span style={{ fontSize: 13, color: "var(--text3)" }}>% von {formatCHF(q.sub || 0)} = <strong>{formatCHF((q.sub || 0) * ni.pct / 100)}</strong></span>
               </div>
             )}
             {qKind !== "schluss" && qSubMode === "amount" && (
-              <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", background: qKind === "akonto" ? "var(--warning-bg)" : "var(--info-bg)", borderRadius: 6, border: `1px solid ${qKind === "akonto" ? "#f0e4c4" : "#c4d4ea"}`, marginBottom: 10 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", background: qKind === "akonto" ? "var(--warning-bg)" : "var(--info-bg)", borderRadius: 6, border: "1px solid var(--border2)", marginBottom: 10 }}>
                 <span style={{ fontSize: 13, color: "var(--text3)" }}>CHF</span>
                 <input type="number" min={0} step="50" value={ni.amt} onChange={e => setNi(n => ({ ...n, amt: Math.max(0, +e.target.value || 0) }))} style={{ width: 140, textAlign: "right", background: "var(--surface)" }} />
               </div>

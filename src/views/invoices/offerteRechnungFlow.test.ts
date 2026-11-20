@@ -6,7 +6,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { calcManualHours, calcSIAHours, deriveQuoteBudget, generateQRReference, invoiceNet, lineAmount, mod10, projectFee, quoteBudgetFields, roundCHF, yearRevenue } from "../../utils";
 import { SIA_PHASE_WEIGHTS } from "../../constants";
-import { akontoPlanRows, applyEntryHours, billedNetForProject, buildAkontoInvoices, calcTotal, defaultInvoiceMode, entrySelectionsForEdit, generateSequentialNumbers, invoicesForQuote, isInvoiceNumberTaken, nextInvoiceNumber, selectedEntrySelections } from "./invoiceHelpers";
+import { akontoPlanRows, applyEntryHours, billedNetForProject, buildAkontoInvoices, calcTotal, defaultInvoiceMode, entrySelectionsForEdit, generateSequentialNumbers, invoicesForQuote, isInvoiceNumberTaken, nextInvoiceNumber, projectBillingStatus, selectedEntrySelections } from "./invoiceHelpers";
 import type { AkontoPlan, InvoiceForm, NewInvoiceState } from "./invoiceHelpers";
 import { buildNewInvoiceForm } from "./newInvoiceForm";
 import type { AppData, Invoice, Project, Quote, TimeEntry } from "../../types";
@@ -450,5 +450,37 @@ describe("Rundung und Grenzfälle", () => {
     const f = buildNewInvoiceForm(ni({ mode: "schluss" }), data, [ak, s1], "2026-003", noEntries)!.form!;
     expect(f.items.map(it => it.price)).toEqual([110_000, -100_000]);
     expect(saveInvoice(f, "s2").sub).toBe(10_000);
+  });
+});
+
+describe("Dialog «Neue Rechnung»: Stand der Verrechnung", () => {
+  const p = { id: "p1", name: "Atelier", billingType: "pauschal", budget: 100_000 } as Project;
+  const data = mkData([p], []);
+  // gestellt: 40'000 mit 1'000 Gesamtrabatt (netto 39'000); Entwurf aus dem Akonto-Planer: 20'000; fremdes Projekt zählt nicht
+  const gestellt = saveInvoice({ items: [{ id: "1", desc: "Akonto", qty: 1, price: 40_000 }], mwst: true, mwstRate: MWST, projectId: "p1", invoiceKind: "akonto", discountType: "amount", discountValue: 1_000 }, "a1");
+  const entwurf = saveInvoice({ items: [{ id: "1", desc: "Akonto", qty: 1, price: 20_000 }], mwst: true, mwstRate: MWST, projectId: "p1", invoiceKind: "akonto" }, "a2", "entwurf");
+  const fremd = saveInvoice({ items: [{ id: "1", desc: "X", qty: 1, price: 99_000 }], mwst: true, mwstRate: MWST, projectId: "p2" }, "x1");
+  const invs = [gestellt, entwurf, fremd];
+  /** Status mit dem Netto des Formulars, das «Weiter» erzeugen würde (wie der Dialog). */
+  const status = (pct: number) => {
+    const f = buildNewInvoiceForm(ni({ mode: "akonto-percent", pct }), data, invs, "", noEntries)!.form!;
+    return projectBillingStatus(invs, "p1", projectFee(p), calcTotal(f.items, f.mwst, MWST).subAfterDisc);
+  };
+
+  it("bisher gestellt netto nach Rabatt ohne Entwürfe, Rest und Entwürfe getrennt", () => {
+    const s = status(30);
+    expect([s.fee, s.billed, s.billedPct, s.rest, s.drafts]).toEqual([100_000, 39_000, 39, 61_000, 20_000]);
+    expect([s.after, s.afterPct, s.over, s.overWithDrafts]).toEqual([69_000, 69, false, false]);
+  });
+
+  it("über 100 % des Honorars: Warnung; nur mit den Entwürfen darüber: eigener Hinweis", () => {
+    expect(status(62)).toMatchObject({ after: 101_000, over: true, overWithDrafts: false });
+    expect(status(61)).toMatchObject({ after: 100_000, over: false, overWithDrafts: true });
+    expect(status(41)).toMatchObject({ after: 80_000, over: false, overWithDrafts: false });
+  });
+
+  it("ohne Honorar keine Prozente und keine Warnung", () => {
+    const s = projectBillingStatus(invs, "p1", 0, 5_000);
+    expect([s.billedPct, s.afterPct, s.over, s.overWithDrafts]).toEqual([0, 0, false, false]);
   });
 });
