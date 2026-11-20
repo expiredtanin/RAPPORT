@@ -167,7 +167,7 @@ label { font-size: 12px; color: var(--text3); font-weight: 500; }
 .sidebar { background: var(--side-bg); color: var(--side-text); display: flex; flex-direction: column; flex-shrink: 0; align-self: stretch; transition: width 0.2s ease; overflow: hidden; border-right: 1px solid var(--side-line); }
 .side-head { padding: 26px 20px 20px; display: flex; align-items: flex-start; justify-content: space-between; flex-shrink: 0; }
 .sidebar.collapsed .side-head { padding: 26px 0 20px; justify-content: center; }
-/* macOS-App ohne Titelleiste: Platz für die Fensterknöpfe (trafficLightPosition 20/24) oben in der Seitenleiste */
+/* macOS-App ohne Titelleiste: Platz für die Fensterknöpfe (trafficLightPosition 14/24: Gruppe ≈ 14–66 px, mittig in der eingeklappten 80-px-Leiste) */
 .side-titlebar { height: 38px; flex-shrink: 0; }
 .mac-app .side-head { padding-top: 6px; }
 .mac-app .sidebar.collapsed .side-head { padding-top: 6px; }

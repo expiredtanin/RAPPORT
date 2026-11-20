@@ -67,7 +67,7 @@ APP/
 │   ├── src/main.rs               6 Zeilen — delegiert zu app_lib::run()
 │   ├── src/lib.rs                ~185 Zeilen — Tray, App-Menü, Beenden mit Speichern, Window-Events, Plugins
 │   ├── Cargo.toml                tauri, plugin-updater, plugin-process, plugin-log, serde
-│   ├── tauri.conf.json           Updater-URL, Public-Key, CSP (connect-src http:/https: — Server-Adresse frei wählbar, Skripte nur 'self'), Bundle-Targets, Fenster ohne System-Titelleiste (macOS `titleBarStyle: Overlay`, `hiddenTitle`, `trafficLightPosition` 20/24 — Fensterknöpfe oben in der Seitenleiste; `main.tsx` setzt dafür die Klasse `mac-app`, Sidebar-Kopf und Seitenkopf sind `data-tauri-drag-region`, Capability `core:window:allow-start-dragging`)
+│   ├── tauri.conf.json           Updater-URL, Public-Key, CSP (connect-src http:/https: — Server-Adresse frei wählbar, Skripte nur 'self'), Bundle-Targets, Fenster ohne System-Titelleiste (macOS `titleBarStyle: Overlay`, `hiddenTitle`, `trafficLightPosition` 14/24 — Fensterknöpfe oben in der Seitenleiste, mittig in der eingeklappten 80-px-Leiste; `main.tsx` setzt dafür die Klasse `mac-app`, Sidebar-Kopf und Seitenkopf sind `data-tauri-drag-region`, Capability `core:window:allow-start-dragging`)
 │   ├── capabilities/default.json core:default, core:webview:allow-print, updater:default, process:allow-restart, dialog/fs (Datenordner; fest erlaubt nur $DOCUMENT/Rapport)
 │   ├── icons/                    .icns, .ico, mehrere PNGs (icon.png = Quelle)
 │   ├── gen/                      AUTO-GENERIERT — nie editieren
