@@ -66,7 +66,7 @@ export default function OverviewTab({ data, employees, absences, absenzTypes, cl
                 {employees.map(emp => {
                   const s = calcEmpMonth(emp, viewYear, viewMonth);
                   const fs = calcFerienYear(emp, viewYear);
-                  const saldoColor = s.saldo > 0.5 ? "var(--positive)" : s.saldo < -0.5 ? "var(--negative)" : "#888";
+                  const saldoColor = s.saldo > 0.5 ? "var(--positive)" : s.saldo < -0.5 ? "var(--negative)" : "var(--text4)";
                   return (
                     <tr key={emp.id}>
                       <td>
@@ -100,7 +100,7 @@ export default function OverviewTab({ data, employees, absences, absenzTypes, cl
                 <div style={{ padding: "12px 20px", fontSize: 11, letterSpacing: "0.1em", color: "var(--text4)", borderBottom: "1px solid var(--border2)" }}>
                   ÜBERSTUNDEN-KONTO {viewYear} — MONATSSALDO
                 </div>
-                <table style={{ width: "100%", fontSize: 11 }}>
+                <div className="table-scroll"><table style={{ width: "100%", fontSize: 11 }}>
                     <thead>
                       <tr>
                         <th style={{ minWidth: 140 }}>Mitarbeiter</th>
@@ -126,11 +126,11 @@ export default function OverviewTab({ data, employees, absences, absenzTypes, cl
                             <td style={{ fontWeight: 500, fontSize: 12 }}>{emp.name}</td>
                             {months.map((_, i) => {
                               const isFuture = viewYear > curYear || (viewYear === curYear && i > curMonth);
-                              if (isFuture) return <td key={i} style={{ textAlign: "right", color: "#ddd" }}>—</td>;
+                              if (isFuture) return <td key={i} style={{ textAlign: "right", color: "var(--text5)" }}>—</td>;
                               const s = calcEmpMonth(emp, viewYear, i);
-                              if (s.notStarted) return <td key={i} style={{ textAlign: "right", color: "#ddd" }}>—</td>;
+                              if (s.notStarted) return <td key={i} style={{ textAlign: "right", color: "var(--text5)" }}>—</td>;
                               ytd = Math.round((ytd + s.saldo) * 10) / 10;
-                              const color = s.saldo > 0.5 ? "var(--positive)" : s.saldo < -0.5 ? "var(--negative)" : "#888";
+                              const color = s.saldo > 0.5 ? "var(--positive)" : s.saldo < -0.5 ? "var(--negative)" : "var(--text4)";
                               return (
                                 <td key={i} style={{ textAlign: "right", fontWeight: 500, color }}>
                                   {s.saldo > 0 ? "+" : ""}{s.saldo}
@@ -144,7 +144,7 @@ export default function OverviewTab({ data, employees, absences, absenzTypes, cl
                         );
                       })}
                     </tbody>
-                  </table>
+                  </table></div>
               </div>
             );
           })()}
@@ -179,7 +179,7 @@ export default function OverviewTab({ data, employees, absences, absenzTypes, cl
                     <span>INTERN / ABSENZEN {viewYear}</span>
                     <span style={{ fontWeight: 400, letterSpacing: 0, color: "var(--text5)" }}>vs. {prevYear}</span>
                   </div>
-                  <table style={{ width: "100%", fontSize: 11 }}>
+                  <div className="table-scroll"><table style={{ width: "100%", fontSize: 11 }}>
                     <thead>
                       <tr>
                         <th style={{ minWidth: 140 }}>Mitarbeiter</th>
@@ -203,7 +203,7 @@ export default function OverviewTab({ data, employees, absences, absenzTypes, cl
                             <td style={{ fontWeight: 500, fontSize: 12 }}>{emp.name}</td>
                             {monthly.map((h, i) => {
                               const isFuture = viewYear > curYear || (viewYear === curYear && i > curMonth);
-                              return <td key={i} style={{ textAlign: "right", color: isFuture ? "#ddd" : h > 0 ? "var(--negative)" : "#ddd" }}>{h > 0 && !isFuture ? `${h}h` : "—"}</td>;
+                              return <td key={i} style={{ textAlign: "right", color: isFuture ? "var(--text5)" : h > 0 ? "var(--negative)" : "var(--text5)" }}>{h > 0 && !isFuture ? `${h}h` : "—"}</td>;
                             })}
                             <td style={{ textAlign: "right", fontWeight: 700, color: total > 0 ? "var(--negative)" : "var(--text4)" }}>{total > 0 ? `${total}h` : "—"}</td>
                             <td style={{ textAlign: "right", color: "var(--text5)" }}>{prevTotal > 0 ? `${prevTotal}h` : "—"}</td>
@@ -214,7 +214,7 @@ export default function OverviewTab({ data, employees, absences, absenzTypes, cl
                         );
                       })}
                     </tbody>
-                  </table>
+                  </table></div>
                 </div>
 
                 {/* Absenzen nach Kategorie */}
@@ -233,7 +233,7 @@ export default function OverviewTab({ data, employees, absences, absenzTypes, cl
                         <span>ABSENZEN NACH KATEGORIE {viewYear}</span>
                         <span style={{ fontWeight: 400, letterSpacing: 0, color: "var(--text5)" }}>vs. {prevYear}</span>
                       </div>
-                      <table style={{ width: "100%", fontSize: 11 }}>
+                      <div className="table-scroll"><table style={{ width: "100%", fontSize: 11 }}>
                         <thead>
                           <tr>
                             <th style={{ minWidth: 140 }}>Kategorie</th>
@@ -260,7 +260,7 @@ export default function OverviewTab({ data, employees, absences, absenzTypes, cl
                                 </td>
                                 {monthly.map((h, i) => {
                                   const isFuture = viewYear > curYear || (viewYear === curYear && i > curMonth);
-                                  return <td key={i} style={{ textAlign: "right", color: isFuture ? "#ddd" : h > 0 ? "var(--text2)" : "#ddd" }}>{h > 0 && !isFuture ? `${h}h` : "—"}</td>;
+                                  return <td key={i} style={{ textAlign: "right", color: isFuture ? "var(--text5)" : h > 0 ? "var(--text2)" : "var(--text5)" }}>{h > 0 && !isFuture ? `${h}h` : "—"}</td>;
                                 })}
                                 <td style={{ textAlign: "right", fontWeight: 700 }}>{total > 0 ? `${total}h` : "—"}</td>
                                 <td style={{ textAlign: "right", color: "var(--text5)" }}>{prevTotal > 0 ? `${prevTotal}h` : "—"}</td>
@@ -281,7 +281,7 @@ export default function OverviewTab({ data, employees, absences, absenzTypes, cl
                                 <td style={{ fontSize: 12 }}>Total</td>
                                 {monthlyTotals.map((h, i) => {
                                   const isFuture = viewYear > curYear || (viewYear === curYear && i > curMonth);
-                                  return <td key={i} style={{ textAlign: "right", color: isFuture ? "#ddd" : h > 0 ? "var(--text)" : "#ddd" }}>{h > 0 && !isFuture ? `${h}h` : "—"}</td>;
+                                  return <td key={i} style={{ textAlign: "right", color: isFuture ? "var(--text5)" : h > 0 ? "var(--text)" : "var(--text5)" }}>{h > 0 && !isFuture ? `${h}h` : "—"}</td>;
                                 })}
                                 <td style={{ textAlign: "right" }}>{grandTotal > 0 ? `${grandTotal}h` : "—"}</td>
                                 <td style={{ textAlign: "right", color: "var(--text5)", fontWeight: 400 }}>{prevGrand > 0 ? `${prevGrand}h` : "—"}</td>
@@ -292,7 +292,7 @@ export default function OverviewTab({ data, employees, absences, absenzTypes, cl
                             );
                           })()}
                         </tbody>
-                      </table>
+                      </table></div>
                     </div>
                   );
                 })()}
@@ -309,7 +309,7 @@ export default function OverviewTab({ data, employees, absences, absenzTypes, cl
                         <span>INTERNE STUNDEN {viewYear} — ohne Projektzuweisung</span>
                         <span style={{ fontWeight: 400, letterSpacing: 0, color: "var(--text5)" }}>vs. {prevYear}</span>
                       </div>
-                      <table style={{ width: "100%", fontSize: 11 }}>
+                      <div className="table-scroll"><table style={{ width: "100%", fontSize: 11 }}>
                         <thead>
                           <tr>
                             <th style={{ minWidth: 140 }}>Mitarbeiter</th>
@@ -334,7 +334,7 @@ export default function OverviewTab({ data, employees, absences, absenzTypes, cl
                                 <td style={{ fontWeight: 500, fontSize: 12 }}>{emp.name}</td>
                                 {monthly.map((h, i) => {
                                   const isFuture = viewYear > curYear || (viewYear === curYear && i > curMonth);
-                                  return <td key={i} style={{ textAlign: "right", color: isFuture ? "#ddd" : h > 0 ? "var(--info)" : "#ddd" }}>{h > 0 && !isFuture ? `${h}h` : "—"}</td>;
+                                  return <td key={i} style={{ textAlign: "right", color: isFuture ? "var(--text5)" : h > 0 ? "var(--info)" : "var(--text5)" }}>{h > 0 && !isFuture ? `${h}h` : "—"}</td>;
                                 })}
                                 <td style={{ textAlign: "right", fontWeight: 700, color: total > 0 ? "var(--info)" : "var(--text4)" }}>{total > 0 ? `${total}h` : "—"}</td>
                                 <td style={{ textAlign: "right", color: "var(--text5)" }}>{prevTotal > 0 ? `${prevTotal}h` : "—"}</td>
@@ -345,7 +345,7 @@ export default function OverviewTab({ data, employees, absences, absenzTypes, cl
                             );
                           })}
                         </tbody>
-                      </table>
+                      </table></div>
                     </div>
                   );
                 })()}

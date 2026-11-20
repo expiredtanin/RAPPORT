@@ -913,3 +913,15 @@ i.paid { background: var(--positive); } i.open { background: var(--accent); } i.
 @media (max-width: 1300px) { .ws-tabs { gap: 16px; } .ws-tabs button { font-size: 13px; } }
 .ws-tabs { scrollbar-width: none; mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent); }
 .ws-tabs::-webkit-scrollbar { display: none; }
+/* Breite Tabellen (Monatsmatrizen) scrollen in ihrer Karte statt abgeschnitten zu werden */
+.table-scroll { overflow-x: auto; }
+.table-scroll > table { min-width: 720px; }
+/* Übersicht (Dashboard): eine Reihe nur aus Kennzahlen erscheint als Band wie .ws-figs/.kpi-band */
+.dash-kpi-band { gap: 0 !important; background: var(--surface); border: 1px solid var(--border2); border-radius: var(--r-card); overflow: hidden; }
+.dash-kpi-band > div + div { border-left: 1px solid var(--border2); }
+.dash-kpi-band .kpi { border: none !important; box-shadow: none !important; background: transparent !important; border-radius: 0 !important; padding: 16px 18px !important; }
+.dash-kpi-band .kpi-dot { display: none; }
+.dash-kpi-band .kpi-label { color: var(--text4); margin-bottom: 6px; }
+.dash-kpi-band .kpi-value { font-size: 20px; font-weight: 620; }
+.dash-kpi-band .kpi-sub { margin-top: 3px; }
+@media (max-width: 760px) { .dash-kpi-band > div:nth-child(odd) { border-left: none; } .dash-kpi-band > div:nth-child(n+3) { border-top: 1px solid var(--border2); } }

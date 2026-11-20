@@ -25,7 +25,7 @@ export function InvoiceTable({ filtered, groupedInvoices, groupBy, sort, toggleS
   return (
     <div className="card" style={{ padding: 0 }}>
       <table>
-        <thead><tr><SortTh sort={sort} onSort={toggleSort} col="number" style={{ width: 100 }}>Nr.</SortTh><SortTh sort={sort} onSort={toggleSort} col="client">Kunde</SortTh><th className="hide-narrow">Art</th><SortTh sort={sort} onSort={toggleSort} col="date">Datum</SortTh><SortTh sort={sort} onSort={toggleSort} col="dueDate" className="hide-narrow">Fällig</SortTh><SortTh sort={sort} onSort={toggleSort} col="total" style={{ textAlign: "right" }}>Betrag</SortTh><SortTh sort={sort} onSort={toggleSort} col="status">Status</SortTh><th></th></tr></thead>
+        <thead><tr><SortTh sort={sort} onSort={toggleSort} col="number" style={{ width: 100 }}>Nr.</SortTh><SortTh sort={sort} onSort={toggleSort} col="client">Kunde</SortTh><th className="hide-mid">Art</th><SortTh sort={sort} onSort={toggleSort} col="date">Datum</SortTh><SortTh sort={sort} onSort={toggleSort} col="dueDate" className="hide-narrow">Fällig</SortTh><SortTh sort={sort} onSort={toggleSort} col="total" style={{ textAlign: "right" }}>Betrag</SortTh><SortTh sort={sort} onSort={toggleSort} col="status">Status</SortTh><th></th></tr></thead>
         <tbody>
           {filtered.length === 0 && <tr><td colSpan={9} className="empty-state">{invoiceCount === 0 ? "Noch keine Rechnungen" : "Keine Treffer"}</td></tr>}
           {groupedInvoices.map(group => (

@@ -675,7 +675,8 @@ export default function Dashboard({ data, setView, currentUser, userPermissions,
 
         {/* Row grid */}
         <div
-          className="dashboard-row" data-cols={row.cols}
+          // Reihe nur aus Kennzahlen: als ein Band wie auf den übrigen Seiten (nicht im Bearbeiten-Modus)
+          className={`dashboard-row${!editMode && row.widgets.length > 0 && row.widgets.every(w => w.startsWith("kpi-")) ? " dash-kpi-band" : ""}`} data-cols={row.cols}
           style={{
             display:"grid",
             gridTemplateColumns:`repeat(${row.cols},minmax(0,1fr))`,

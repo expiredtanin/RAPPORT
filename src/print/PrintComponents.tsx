@@ -67,6 +67,13 @@ const sheetClass = (design: ResolvedDocDesign, paged: boolean) =>
 
 /** Einstieg: wählt anhand von `content.type` das Dokument, bietet «Drucken»/«Schliessen» (nicht im Ausdruck). */
 export function PrintView({ content, onClose, settings, assets }: { content: Content; onClose: () => void; settings: Settings; assets?: DocAsset[] }) {
+  // Esc schliesst die Druckansicht (wie «Zurück»); die Druckansicht liegt über allem, die globale
+  // Esc-Behandlung für Dialoge greift hier nicht.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape" && !document.querySelector(".modal-overlay")) onClose(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
   const design = useMemo(() => resolveDocDesign(settings, assets), [settings, assets]);
   const docCss = useMemo(() => buildDocCss(design), [design]);
   const fontFaces = useMemo(() => buildFontFaces(assets), [assets]);
