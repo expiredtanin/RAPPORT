@@ -1,124 +1,64 @@
-// Erste-Hilfe-Aktionen — drei Eskalationsstufen.
+// Erste Hilfe: drei Stufen, wenn etwas klemmt — Diagnose sammeln, Container neu erstellen,
+// Daten zurücksetzen (mit Sicherheits-Backup und eingetipptem Bestätigungswort).
 import { useState } from 'react'
 import { api } from '../api.js'
+import { Icon, Note, PageHead, useConfirm } from './ui.jsx'
 
 export default function FirstAidPanel() {
   const [busy, setBusy] = useState(null)
-  const [result, setResult] = useState(null)
-  const [error, setError] = useState(null)
+  const [msg, setMsg] = useState(null)
+  const confirm = useConfirm()
 
-  async function runRecreate() {
-    if (!window.confirm(
-      'Container neu erstellen?\n\n' +
-      'Was passiert:\n' +
-      '  • docker compose down\n' +
-      '  • docker compose up -d --force-recreate\n\n' +
-      'Volumes bleiben → PocketBase-Daten + Storage-Files sind safe.\n' +
-      'Services sind ~30s nicht erreichbar.'
-    )) return
-    setBusy('recreate'); setError(null); setResult(null)
-    try {
-      const r = await api.firstaidRecreate()
-      setResult({ kind: 'recreate', msg: 'Container neu erstellt.', detail: r.log })
-    } catch (e) { setError(String(e)) }
+  async function run(kind, fn, okText) {
+    setBusy(kind); setMsg(null)
+    try { const r = await fn(); setMsg({ tone: 'ok', text: okText(r), detail: r?.log }) }
+    catch (e) { setMsg({ tone: 'neg', text: String(e) }) }
     finally { setBusy(null) }
   }
 
-  async function runReset() {
-    const word = window.prompt(
-      'Daten komplett zuruecksetzen?\n\n' +
-      'DESTRUKTIV: alle PocketBase-Inhalte gehen verloren.\n' +
-      'Was passiert:\n' +
-      '  1. Safety-Backup vom aktuellen Stand (automatisch)\n' +
-      '  2. docker compose down -v (Volumes weg!)\n' +
-      '  3. docker compose up -d (frisches Schema)\n\n' +
-      'Tippe LOESCHEN ein um zu bestaetigen:'
-    )
-    if (word !== 'LOESCHEN') {
-      if (word !== null) alert('Abgebrochen — du musst exakt LOESCHEN tippen.')
-      return
-    }
-    if (!window.confirm('Letzte Warnung: Alle Daten werden zurueckgesetzt. Wirklich?')) return
-    setBusy('reset'); setError(null); setResult(null)
-    try {
-      const r = await api.firstaidResetData()
-      setResult({
-        kind: 'reset',
-        msg: `Daten zurueckgesetzt. Safety-Backup: ${r.safety_backup.filename}`,
-        detail: r.log,
-      })
-    } catch (e) { setError(String(e)) }
-    finally { setBusy(null) }
+  async function recreate() {
+    const ok = await confirm({
+      title: 'Container neu erstellen?', confirmLabel: 'Neu erstellen',
+      body: <><p>Die Container werden gestoppt und frisch erstellt. Die Daten bleiben erhalten.</p><p style={{ marginTop: 8 }}>RAPPORT ist dabei etwa 30 Sekunden nicht erreichbar.</p></>,
+    })
+    if (ok) run('recreate', api.firstaidRecreate, () => 'Container neu erstellt.')
   }
 
-  async function runDiagnose() {
-    setBusy('diagnose'); setError(null); setResult(null)
-    try {
-      const r = await api.firstaidDiagnose()
-      setResult({
-        kind: 'diagnose',
-        msg: `Diagnose-Bundle geschrieben: ${r.filename} (${(r.bytes / 1024).toFixed(0)} KB)`,
-        detail: 'Unter ~/Library/Application Support/com.rapport.server-app/backups/',
-      })
-    } catch (e) { setError(String(e)) }
-    finally { setBusy(null) }
+  async function reset() {
+    const ok = await confirm({
+      title: 'Alle Daten zurücksetzen?', danger: true, confirmLabel: 'Endgültig zurücksetzen', typeWord: 'LÖSCHEN',
+      body: <>
+        <p><b>Alle Inhalte in der Datenbank gehen verloren</b> — Projekte, Rechnungen, Benutzer.</p>
+        <ol>
+          <li>Vom jetzigen Stand wird automatisch ein Sicherheits-Backup gemacht.</li>
+          <li>Die Datenbank wird gelöscht und leer neu aufgebaut.</li>
+        </ol>
+        <p style={{ marginTop: 8 }}>Nur als letzter Ausweg, wenn die Datenbank nicht mehr startet. Meist hilft vorher «Backup wiederherstellen».</p>
+      </>,
+    })
+    if (ok) run('reset', api.firstaidResetData, r => `Daten zurückgesetzt. Sicherheits-Backup: ${r.safety_backup?.filename}`)
   }
+
+  const steps = [
+    { id: 'diagnose', icon: 'assignment', title: 'Diagnose sammeln', text: 'Schreibt Logs, Docker-Zustand, Ereignisse und die Konfiguration (ohne Passwörter) in eine Textdatei im Backup-Ordner — zum Mitschicken bei Problemen.', btn: 'Diagnose erstellen', onClick: () => run('diagnose', api.firstaidDiagnose, r => `Diagnose gespeichert: ${r.filename} (${Math.round((r.bytes || 0) / 1024)} KB)`) },
+    { id: 'recreate', icon: 'restart_alt', title: 'Container neu erstellen', text: 'Wenn ein Dienst hängt oder nicht mehr reagiert. Die Daten bleiben erhalten.', btn: 'Neu erstellen', onClick: recreate },
+    { id: 'reset', icon: 'delete_forever', title: 'Daten zurücksetzen', text: 'Letzter Ausweg bei kaputter Datenbank. Löscht alle Inhalte (mit Sicherheits-Backup davor).', btn: 'Zurücksetzen …', onClick: reset, danger: true },
+  ]
 
   return (
-    <section className="panel">
-      <h2>Erste Hilfe</h2>
-      <p className="muted">
-        Drei Werkzeuge fuer Notfaelle. Reihenfolge der Eskalation: erst <em>Diagnose</em>,
-        dann <em>Neu erstellen</em>, dann <em>Daten-Reset</em>.
-      </p>
-
-      {error && <p className="error-text">{error}</p>}
-      {result && (
-        <div className="success-text" style={{ background: 'rgba(91, 208, 122, 0.08)', padding: 10, borderRadius: 12, border: '1px solid var(--green)' }}>
-          {result.msg}
-          {result.detail && (
-            <details style={{ marginTop: 6 }}>
-              <summary className="muted" style={{ cursor: 'pointer', fontSize: 12 }}>Details</summary>
-              <pre style={{ fontSize: 11, marginTop: 6, maxHeight: 200, overflow: 'auto' }}>{result.detail}</pre>
-            </details>
-          )}
-        </div>
-      )}
-
-      <div className="firstaid-card">
-        <h3><span className="material-symbols-outlined icon-heading">assignment</span>Diagnose-Bundle</h3>
-        <p className="muted">
-          Sammelt Container-Logs, docker version, ps -a, App-Events und (redacted)
-          Config in eine Text-Datei unter backups/. Kann als Bug-Report mitgeschickt werden.
-        </p>
-        <button onClick={runDiagnose} disabled={busy != null}>
-          {busy === 'diagnose' ? 'Sammle ...' : 'Diagnose erstellen'}
-        </button>
-      </div>
-
-      <div className="firstaid-card">
-        <h3><span className="material-symbols-outlined icon-heading">restart_alt</span>Container neu erstellen</h3>
-        <p className="muted">
-          Hilfsmittel wenn Container in komischen Zustaenden haengen (stuck, Memory-Leak, etc.).
-          <strong> Volumes bleiben</strong> — PocketBase-Daten sind safe. Ca. 30s Downtime.
-        </p>
-        <button onClick={runRecreate} disabled={busy != null}>
-          {busy === 'recreate' ? 'Erzeuge neu ...' : 'Container neu erstellen'}
-        </button>
-      </div>
-
-      <div className="firstaid-card firstaid-danger">
-        <h3><span className="material-symbols-outlined icon-heading" style={{ color: 'var(--red)' }}>delete_forever</span>Daten komplett zuruecksetzen</h3>
-        <p className="muted">
-          Letzter Ausweg wenn die Datenbank vermurkst ist (Schema-Korruption, PocketBase
-          startet nicht mehr). <strong>Alle Daten gehen verloren</strong> —
-          es wird automatisch ein Safety-Backup gemacht, das ist aber nur ein Snapshot
-          des aktuellen (kaputten?) Stands.
-        </p>
-        <button onClick={runReset} disabled={busy != null} className="danger">
-          {busy === 'reset' ? 'Loesche + initialisiere ...' : 'Daten zuruecksetzen'}
-        </button>
-      </div>
-    </section>
+    <>
+      <PageHead title="Erste Hilfe" sub="Der Reihe nach versuchen: erst Diagnose, dann neu erstellen, zuletzt zurücksetzen." />
+      {msg && <Note tone={msg.tone} detail={msg.detail}>{msg.text}</Note>}
+      <section className="card">
+        {steps.map((s, i) => (
+          <div key={s.id} className="row" style={{ padding: '16px 0' }}>
+            <span className="num" style={{ width: 24, color: 'var(--text4)', fontWeight: 600 }}>{i + 1}</span>
+            <Icon name={s.icon} style={{ color: s.danger ? 'var(--negative)' : 'var(--text3)' }} />
+            <div className="row-main"><div className="row-title">{s.title}</div><span className="meta" style={{ maxWidth: 560 }}>{s.text}</span></div>
+            <button className={`btn${s.danger ? ' btn-danger' : ''}`} disabled={busy != null} onClick={s.onClick}>{busy === s.id ? 'Läuft …' : s.btn}</button>
+          </div>
+        ))}
+      </section>
+    </>
   )
 }

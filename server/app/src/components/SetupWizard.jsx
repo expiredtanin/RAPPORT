@@ -1,25 +1,13 @@
-// Setup-Wizard: zeigt sich wenn Docker-Daemon nicht erreichbar ist.
-// Bietet einen einzigen Install-Knopf der von GitHub/docker.com direkt
-// nach ~/.rapport/bin/ herunterlaedt und Colima startet.
+// Einrichtungs-Assistent: erscheint, solange kein Docker-Daemon erreichbar ist. Ein Knopf lädt
+// Docker-CLI, Colima und Lima nach ~/.rapport/bin/ (ohne Homebrew, ohne sudo) bzw. startet Colima.
 import { useEffect, useState } from 'react'
 import { api } from '../api.js'
+import { Icon, Note } from './ui.jsx'
 
-const ACTION_INFO = {
-  none_ready: {
-    title: 'Alles bereit',
-    desc: 'Docker-Daemon laeuft.',
-    button: null,
-  },
-  start_colima: {
-    title: 'Colima starten',
-    desc: 'Docker, Colima und Lima sind installiert — der Daemon ist nur aus. Ein Klick reicht.',
-    button: 'Colima starten',
-  },
-  install_all: {
-    title: 'Alles automatisch installieren',
-    desc: 'Wir laden Docker-CLI, Colima und Lima direkt von docker.com und github.com nach ~/.rapport/bin/ herunter — keine externen Package-Manager, kein sudo. Dauert ca. 2-3 Minuten beim ersten Mal.',
-    button: 'Installieren und starten',
-  },
+const ACTION = {
+  none_ready: { title: 'Alles bereit', text: 'Docker läuft.', button: null },
+  start_colima: { title: 'Docker starten', text: 'Docker ist installiert, aber nicht gestartet. Ein Klick genügt.', button: 'Docker starten' },
+  install_all: { title: 'Docker einrichten', text: 'RAPPORT Server lädt die nötigen Werkzeuge (Docker-CLI, Colima, Lima) direkt von docker.com und github.com nach ~/.rapport/bin/ — ohne Homebrew, ohne Administrator-Passwort. Beim ersten Mal etwa 2–3 Minuten.', button: 'Einrichten und starten' },
 }
 
 export default function SetupWizard({ onReady }) {
@@ -29,15 +17,9 @@ export default function SetupWizard({ onReady }) {
   const [log, setLog] = useState(null)
 
   async function check() {
-    try {
-      const s = await api.setupStatus()
-      setStatus(s)
-      if (s.ready) onReady?.()
-    } catch (e) {
-      setError(String(e))
-    }
+    try { const s = await api.setupStatus(); setStatus(s); if (s.ready) onReady?.() }
+    catch (e) { setError(String(e)) }
   }
-
   useEffect(() => {
     check()
     const t = setInterval(check, 5000)
@@ -46,78 +28,31 @@ export default function SetupWizard({ onReady }) {
 
   async function install() {
     setBusy(true); setError(null); setLog(null)
-    try {
-      const res = await api.setupInstall()
-      setLog(res.log)
-      await check()
-    } catch (e) {
-      setError(String(e))
-    } finally {
-      setBusy(false)
-    }
+    try { const r = await api.setupInstall(); setLog(r?.log); await check() }
+    catch (e) { setError(String(e)) }
+    finally { setBusy(false) }
   }
 
-  if (!status) {
-    return (
-      <div className="setup-wizard">
-        <p className="muted">Pruefe Setup ...</p>
-      </div>
-    )
-  }
-
+  if (!status) return <div className="setup"><p className="muted">Prüfe Docker …</p></div>
   if (status.ready) return null
-
-  const info = ACTION_INFO[status.recommended_action]
+  const a = ACTION[status.recommended_action] || ACTION.install_all
 
   return (
-    <div className="setup-wizard">
-      <h1>Willkommen bei RAPPORT Server</h1>
-      <p className="muted">
-        Bevor die Server-App den Rapport-Stack verwalten kann, brauchen wir einen
-        laufenden Docker-Daemon auf diesem Mac.
-      </p>
-
-      <div className="setup-checks">
-        <Check label="Docker-CLI" ok={status.docker_cli} />
-        <Check label="Colima installiert" ok={status.colima_installed} />
-        <Check label="Lima installiert" ok={status.limactl_installed} />
-        <Check label="Daemon erreichbar" ok={status.daemon_running} />
-      </div>
-
-      <h2>{info.title}</h2>
-      <p>{info.desc}</p>
-
-      {error && <p className="error-text">{error}</p>}
-
-      {info.button && (
-        <button onClick={install} disabled={busy} className="setup-primary">
-          {busy ? 'Laeuft ...' : info.button}
-        </button>
-      )}
-
-      {busy && (
-        <p className="muted" style={{ marginTop: 12, fontSize: 12 }}>
-          Status live im Status-Tab unter "App-Events" (sobald das Dashboard kommt).
-          Dauert je nach Internet-Speed paar Minuten.
-        </p>
-      )}
-
-      {log && (
-        <details className="setup-log">
-          <summary>Install-Log anzeigen</summary>
-          <pre>{log}</pre>
-        </details>
-      )}
-    </div>
-  )
-}
-
-function Check({ label, ok }) {
-  const iconName = ok ? 'check_circle' : 'cancel'
-  return (
-    <div className="setup-check" data-ok={ok} data-optional="false">
-      <span className="material-symbols-outlined setup-check-icon">{iconName}</span>
-      <span>{label}</span>
+    <div className="setup">
+      <div className="side-wordmark" style={{ color: 'var(--text)', marginBottom: 28 }}>RAPPORT</div>
+      <h1>Server einrichten</h1>
+      <p className="hint" style={{ fontSize: 14, marginBottom: 22 }}>RAPPORT Server betreibt Datenbank und Web-App in Containern. Dafür braucht es Docker auf diesem Mac.</p>
+      <section className="card" style={{ marginBottom: 18 }}>
+        {[['Docker-CLI', status.docker_cli], ['Colima', status.colima_installed], ['Lima', status.limactl_installed], ['Docker läuft', status.daemon_running]].map(([l, ok]) => (
+          <div key={l} className="check" data-ok={!!ok}><Icon name={ok ? 'check_circle' : 'radio_button_unchecked'} />{l}</div>
+        ))}
+      </section>
+      <h2 style={{ fontSize: 17, fontWeight: 650, marginBottom: 6 }}>{a.title}</h2>
+      <p className="hint" style={{ fontSize: 13.5, marginBottom: 16 }}>{a.text}</p>
+      {error && <Note tone="neg">{error}</Note>}
+      {a.button && <button className="btn btn-primary" onClick={install} disabled={busy}><Icon name={busy ? 'progress_activity' : 'download'} />{busy ? 'Läuft …' : a.button}</button>}
+      {busy && <p className="hint" style={{ marginTop: 12 }}>Je nach Internetverbindung einige Minuten. Das Fenster kann offen bleiben.</p>}
+      {log && <details style={{ marginTop: 16 }}><summary>Protokoll anzeigen</summary><pre>{log}</pre></details>}
     </div>
   )
 }

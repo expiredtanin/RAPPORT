@@ -1,199 +1,133 @@
+// RAPPORT Server — Wurzel der Admin-Oberfläche (Tauri-WebView und Browser-WebUI teilen sie).
+// Hält Dienste und Auslastung (Polling), Navigation und die Sammelaktionen; die Seiten liegen in
+// components/. Ohne erreichbaren Docker-Daemon zeigt sie zuerst den Einrichtungs-Assistenten.
 import { useEffect, useState } from 'react'
 import { api, runtime, openExternal } from './api.js'
-import ServiceCard from './components/ServiceCard.jsx'
+import { ConfirmProvider, Icon, Note } from './components/ui.jsx'
+import Overview from './components/Overview.jsx'
 import LogViewer from './components/LogViewer.jsx'
 import BackupPanel from './components/BackupPanel.jsx'
 import SettingsPanel from './components/SettingsPanel.jsx'
 import FirstAidPanel from './components/FirstAidPanel.jsx'
 import AppUpdateBanner from './components/AppUpdateBanner.jsx'
-import EventFeed from './components/EventFeed.jsx'
 import SetupWizard from './components/SetupWizard.jsx'
 
-// "pocketbase" nur im Tauri-Runtime: das Embed ist ein natives Child-Webview,
-// das gibt es im Browser-WebUI-Modus (headless Mac Mini) nicht.
-// Settings bewusst zuletzt in der Liste — soll ganz unten in der Sidebar stehen.
-const TABS = ['status', 'logs', 'backup', 'firstaid', ...(runtime === 'tauri' ? ['pocketbase'] : []), 'settings']
-const TAB_LABELS = {
-  status: 'Status',
-  logs: 'Logs',
-  backup: 'Backup',
-  firstaid: 'Rescue',
-  settings: 'Einstellungen',
-  pocketbase: 'PocketBase',
-}
-const TAB_ICONS = {
-  status: 'dashboard',
-  logs: 'description',
-  backup: 'backup',
-  firstaid: 'medical_services',
-  settings: 'settings',
-  pocketbase: 'storage',
-}
+// «pocketbase» nur in der Tauri-App: die Verwaltung ist dort ein natives Child-Webview (pb_embed.rs).
+const NAV = [
+  { id: 'status', label: 'Übersicht', icon: 'dashboard' },
+  { id: 'backup', label: 'Backups & Updates', icon: 'backup' },
+  { id: 'logs', label: 'Logs', icon: 'subject' },
+  ...(runtime === 'tauri' ? [{ id: 'pocketbase', label: 'Datenbank', icon: 'database' }] : []),
+  { id: 'firstaid', label: 'Erste Hilfe', icon: 'medical_services' },
+]
 
 export default function App() {
-  const [tab, setTab] = useState('status')
+  return <ConfirmProvider><Shell /></ConfirmProvider>
+}
+
+function Shell() {
+  const [tab, setTabState] = useState('status')
+  const [logService, setLogService] = useState(null)
   const [services, setServices] = useState([])
-  const [stats, setStats] = useState({})  // service_id → ContainerStats
+  const [stats, setStats] = useState({})
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
-  const [setupReady, setSetupReady] = useState(null) // null = pruefe, true = bereit, false = Wizard
+  const [setupReady, setSetupReady] = useState(null) // null = prüfe, true = bereit, false = Assistent
+
+  const setTab = (t, service) => { setTabState(t); if (service) setLogService(service) }
 
   async function refresh() {
-    try {
-      setServices(await api.listServices())
-      setError(null)
-    } catch (e) {
-      setError(String(e))
-    }
+    try { setServices(await api.listServices() ?? []); setError(null) } catch (e) { setError(String(e)) }
   }
-
   async function refreshStats() {
     try {
-      const list = await api.listStats()
       const m = {}
-      for (const s of list ?? []) m[s.service_id] = s
+      for (const s of await api.listStats() ?? []) m[s.service_id] = s
       setStats(m)
-    } catch { /* leise — docker stats kann mal scheitern */ }
+    } catch { /* docker stats scheitert gelegentlich — leise */ }
   }
 
   useEffect(() => {
-    // Erst Setup-Status pruefen — wenn nicht ready, blockt der Wizard die UI.
     let cancelled = false
-    async function checkSetup() {
-      try {
-        const s = await api.setupStatus()
-        if (!cancelled) setSetupReady(s.ready)
-      } catch { if (!cancelled) setSetupReady(false) }
-    }
-    checkSetup()
+    api.setupStatus().then(s => { if (!cancelled) setSetupReady(!!s?.ready) }).catch(() => { if (!cancelled) setSetupReady(false) })
     return () => { cancelled = true }
   }, [])
 
   useEffect(() => {
     if (!setupReady) return
-    refresh()
-    const t = setInterval(refresh, 2000)
-    return () => clearInterval(t)
+    refresh(); refreshStats()
+    const a = setInterval(refresh, 2000)
+    const b = setInterval(refreshStats, 5000)
+    return () => { clearInterval(a); clearInterval(b) }
   }, [setupReady])
 
-  useEffect(() => {
-    if (!setupReady) return
-    refreshStats()
-    const t = setInterval(refreshStats, 5000)
-    return () => clearInterval(t)
-  }, [setupReady])
-
-  // PocketBase-Embed nur zeigen wenn der Tab aktiv ist — sonst wuerde die
-  // native Child-Webview permanent im Fenster liegen (auch hinter anderen Tabs).
+  // Das native PocketBase-Webview nur zeigen, solange sein Reiter offen ist.
   useEffect(() => {
     if (runtime !== 'tauri' || !setupReady) return
     if (tab === 'pocketbase') api.showPocketbaseEmbed().catch(e => setError(String(e)))
     else api.hidePocketbaseEmbed().catch(() => {})
   }, [tab, setupReady])
 
-  async function startAll() {
+  async function onAll(action) {
     setBusy(true)
-    try { await api.startAll() } catch (e) { setError(String(e)) }
+    try { await (action === 'start' ? api.startAll() : action === 'stop' ? api.stopAll() : api.restartAll()) }
+    catch (e) { setError(String(e)) }
     finally { setBusy(false); refresh() }
   }
-
-  async function stopAll() {
-    setBusy(true)
-    try { await api.stopAll() } catch (e) { setError(String(e)) }
-    finally { setBusy(false); refresh() }
+  async function onService(id, action) {
+    try { await (action === 'start' ? api.startService(id) : action === 'stop' ? api.stopService(id) : api.restartService(id)) }
+    catch (e) { setError(String(e)) }
+    finally { refresh() }
   }
 
-  async function restartAll() {
-    setBusy(true)
-    try { await api.restartAll() } catch (e) { setError(String(e)) }
-    finally { setBusy(false); refresh() }
-  }
-
-  const allRunning = services.length > 0 && services.every(s => s.state === 'running')
-  const anyRunning = services.some(s => s.state === 'running' || s.state === 'starting')
-  const frontendService = services.find(s => s.id === 'app')
-  const frontendUrl = frontendService?.state === 'running' ? `http://127.0.0.1:${frontendService.port}/` : null
-
-  // Setup blockt das normale Dashboard bis Docker-Daemon erreichbar ist.
-  if (setupReady === false) {
-    return (
-      <div className="app">
-        <SetupWizard onReady={() => setSetupReady(true)} />
-      </div>
-    )
-  }
-  if (setupReady === null) {
-    return <div className="app"><p className="muted" style={{ padding: 40 }}>Lade ...</p></div>
-  }
+  if (setupReady === false) return <div className="app"><main className="main"><div className="content"><SetupWizard onReady={() => setSetupReady(true)} /></div></main></div>
+  if (setupReady === null) return <div className="app"><Sidebar tab={tab} setTab={setTab} services={[]} /><main className="main"><div className="content"><p className="muted" style={{ padding: 40 }}>Verbinde …</p></div></main></div>
 
   return (
     <div className="app">
-      <div className="sidebar">
-        <div className="sidebar-logo">
-          <div className="sidebar-wordmark">RAPPORT</div>
-          <div className="sidebar-sub">SERVER</div>
-        </div>
-        <nav className="tabs">
-          {TABS.map(t => (
-            <button key={t}
-              className={t === tab ? 'tab active' : 'tab'}
-              onClick={() => setTab(t)}>
-              <span className="material-symbols-outlined tab-icon">{TAB_ICONS[t]}</span>
-              {TAB_LABELS[t] ?? t}
-            </button>
-          ))}
-        </nav>
-        {frontendUrl && (
-          <button className="sidebar-footer-link" onClick={() => openExternal(frontendUrl)} title={frontendUrl}>
-            <span className="material-symbols-outlined tab-icon">open_in_browser</span>
-            Im Browser öffnen
-          </button>
-        )}
-      </div>
-
+      <Sidebar tab={tab} setTab={setTab} services={services} />
       <div className="main">
-        <div className="content-header">
-          {tab !== 'pocketbase' && (
-            <div className="actions">
-              <button onClick={startAll} disabled={busy || allRunning}>Alle starten</button>
-              <button onClick={restartAll} disabled={busy || !anyRunning} title="Alle Container neu starten">Alle neu starten</button>
-              <button onClick={stopAll} disabled={busy || !anyRunning}>Alle stoppen</button>
-            </div>
-          )}
-        </div>
-
         {tab !== 'pocketbase' && <AppUpdateBanner />}
-        {error && <div className="error-banner">{error}</div>}
-
-        {/* Fuer "pocketbase" bleibt der Content-Bereich leer — das native
-            Child-Webview (siehe pb_embed.rs) liegt darueber und deckt ihn ab.
-            Kein eigenes Padding hier, sonst passt die Positions-Berechnung
-            in Rust (fixe 15px-Aussenabstaende) nicht mehr zum sichtbaren Rand. */}
+        {error && tab !== 'pocketbase' && <div style={{ margin: '16px 32px 0' }}><Note tone="neg">{error}</Note></div>}
+        {/* «pocketbase»: Inhalt leer — das native Child-Webview liegt darüber (feste Ränder in pb_embed.rs). */}
         <main className={tab === 'pocketbase' ? 'content content-embed' : 'content'}>
-          {tab === 'status' && (
-            <>
-              <div className="grid">
-                {services.length === 0 && <p className="muted">Keine Services registriert.</p>}
-                {services.map(s => (
-                  <ServiceCard
-                    key={s.id}
-                    service={s}
-                    stats={stats[s.id]}
-                    onStart={() => api.startService(s.id).then(refresh)}
-                    onStop={() => api.stopService(s.id).then(refresh)}
-                    onRestart={() => api.restartService(s.id).then(refresh)}
-                  />
-                ))}
-              </div>
-              <EventFeed limit={8} />
-            </>
-          )}
-          {tab === 'logs' && <LogViewer services={services} />}
+          {tab === 'status' && <Overview services={services} stats={stats} busy={busy} onAll={onAll} onService={onService} setTab={setTab} />}
+          {tab === 'logs' && <LogViewer services={services} initial={logService} />}
           {tab === 'backup' && <BackupPanel />}
           {tab === 'firstaid' && <FirstAidPanel />}
           {tab === 'settings' && <SettingsPanel />}
         </main>
       </div>
     </div>
+  )
+}
+
+/** Seitenleiste wie in der Haupt-App: Schriftzug, Navigation, unten Zustand, App öffnen, Einstellungen. */
+function Sidebar({ tab, setTab, services }) {
+  const running = services.filter(s => s.state === 'running').length
+  const err = services.some(s => s.state === 'error')
+  const state = !services.length ? '' : err ? 'error' : running === services.length ? 'ok' : running ? 'warn' : ''
+  const app = services.find(s => s.id === 'app')
+  const host = runtime === 'browser' ? window.location.hostname : '127.0.0.1'
+  const appUrl = app?.state === 'running' ? `http://${host}:${app.port}/` : null
+  return (
+    <aside className="sidebar">
+      <div className="side-head">
+        <div className="side-wordmark">RAPPORT</div>
+        <div className="side-sub">Server</div>
+      </div>
+      <nav className="side-nav">
+        {NAV.map(n => (
+          <button key={n.id} className={`side-link${tab === n.id ? ' on' : ''}`} onClick={() => setTab(n.id)} aria-current={tab === n.id ? 'page' : undefined}>
+            <Icon name={n.icon} /><span>{n.label}</span>
+          </button>
+        ))}
+      </nav>
+      <div className="side-foot">
+        <div className="side-health"><span className="dot" data-state={state} /><span>{!services.length ? 'keine Verbindung' : err ? 'Fehler' : running === services.length ? 'Server läuft' : running ? 'teilweise gestartet' : 'gestoppt'}</span></div>
+        {appUrl && <button className="side-link" onClick={() => openExternal(appUrl)} title={appUrl}><Icon name="open_in_new" /><span>RAPPORT öffnen</span></button>}
+        <button className={`side-link${tab === 'settings' ? ' on' : ''}`} onClick={() => setTab('settings')}><Icon name="settings" /><span>Einstellungen</span></button>
+      </div>
+    </aside>
   )
 }

@@ -1,7 +1,8 @@
-// Auto-Update-Banner. Pollt latest.json alle 6h.
-// Bei Klick: Modal-Overlay mit Live-Fortschritt + sichtbare Errors.
+// Hinweis auf ein Update der Server-App (Tauri-Updater, prüft alle 6 Std.). Installieren macht
+// zuerst ein Backup der Datenbank, dann Download + Signaturprüfung + Neustart, mit Fortschritt.
 import { useEffect, useState } from 'react'
 import { runtime, api } from '../api.js'
+import { Icon, Note } from './ui.jsx'
 
 const CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000
 
@@ -11,6 +12,7 @@ export default function AppUpdateBanner() {
   const [step, setStep] = useState('idle')          // idle|backup|download|install|done|error
   const [progress, setProgress] = useState({ downloaded: 0, total: 0 })
   const [error, setError] = useState(null)
+  const [failedAt, setFailedAt] = useState(null)
 
   useEffect(() => {
     if (runtime !== 'tauri') return
@@ -38,18 +40,16 @@ export default function AppUpdateBanner() {
     setError(null)
     setProgress({ downloaded: 0, total: 0 })
 
+    let cur = 'backup'
     try {
       setStep('backup')
-      console.log('[update] starting pre-backup')
-      const backup = await api.backupNow()
-      console.log('[update] backup ok:', backup)
+      await api.backupNow()
 
+      cur = 'download'
       setStep('download')
-      console.log('[update] starting download + install')
       let totalBytes = 0
       let downloaded = 0
       await update.downloadAndInstall((event) => {
-        console.log('[update] event:', event.event, event.data ?? '')
         if (event.event === 'Started') {
           totalBytes = event.data?.contentLength ?? 0
           setProgress({ downloaded: 0, total: totalBytes })
@@ -57,6 +57,7 @@ export default function AppUpdateBanner() {
           downloaded += event.data?.chunkLength ?? 0
           setProgress({ downloaded, total: totalBytes })
         } else if (event.event === 'Finished') {
+          cur = 'install'
           setStep('install')
           setProgress({ downloaded: totalBytes, total: totalBytes })
         }
@@ -65,6 +66,7 @@ export default function AppUpdateBanner() {
       setStep('done')
     } catch (e) {
       console.error('[update] failed:', e)
+      setFailedAt(cur)
       setStep('error')
       setError(String(e?.message ?? e))
     }
@@ -79,67 +81,52 @@ export default function AppUpdateBanner() {
   }
 
   if (!update) return null
+  const busy = step !== 'idle' && step !== 'error' && step !== 'done'
+  const pct = progress.total > 0 ? Math.floor((progress.downloaded / progress.total) * 100) : 0
+  const STEPS = [['backup', 'Backup der Datenbank'], ['download', 'Herunterladen und Signatur prüfen'], ['install', 'Installieren und neu starten']]
 
   return (
     <>
-      <div className="update-banner">
-        <span className="material-symbols-outlined update-bell">system_update</span>
-        <span className="update-text">
-          Update verfuegbar: <strong>v{update.version}</strong>
+      <div className="banner">
+        <Icon name="system_update" />
+        <span style={{ flex: 1, minWidth: 0 }}>
+          Neue Version der Server-App: <b>{update.version}</b>
           {update.body && <span className="muted"> · {update.body.split('\n')[0]}</span>}
         </span>
-        <button onClick={() => setShowModal(true)} disabled={showModal && step !== 'idle' && step !== 'error'}>
-          Backup + Installieren
-        </button>
+        <button className="btn btn-sm btn-primary" onClick={() => setShowModal(true)} disabled={busy}>Installieren …</button>
       </div>
 
       {showModal && (
-        <div className="update-modal-backdrop" onClick={step === 'idle' ? close : undefined}>
-          <div className="update-modal" onClick={e => e.stopPropagation()}>
-            <h2>Update auf v{update.version}</h2>
-
-            {step === 'idle' && (
-              <>
-                <p className="muted">Ablauf:</p>
-                <ol className="update-steps">
-                  <li>pg_dumpall Pre-Backup (~10 Sek)</li>
-                  <li>Neue Binary herunterladen + Signatur pruefen (~10-30 Sek)</li>
-                  <li>App-Restart mit neuer Version</li>
-                </ol>
-                <p className="muted">
-                  Container laufen waehrend Restart weiter — keine Downtime auf der
-                  Service-Seite. Admin-UI ist ~10s nicht verfuegbar.
-                </p>
-                <div className="row" style={{ marginTop: 20, justifyContent: 'flex-end' }}>
-                  <button onClick={close}>Abbrechen</button>
-                  <button onClick={install} className="setup-primary">Backup + Installieren</button>
+        <div className="overlay" onMouseDown={e => { if (e.target === e.currentTarget && !busy) close() }}>
+          <div className="dialog" role="dialog" aria-modal="true">
+            <div className="dialog-body">
+              <h2>Server-App auf {update.version} aktualisieren</h2>
+              {step === 'idle' && <>
+                <ol>{STEPS.map(([k, l]) => <li key={k}>{l}</li>)}</ol>
+                <p style={{ marginTop: 8 }}>Die Container laufen weiter — RAPPORT bleibt für alle erreichbar. Nur diese Verwaltung ist ein paar Sekunden weg.</p>
+              </>}
+              {step !== 'idle' && (
+                <div style={{ display: 'grid', gap: 8 }}>
+                  {STEPS.map(([k, l]) => {
+                    const st = stepState(k, step, failedAt)
+                    return (
+                      <div key={k} style={{ display: 'flex', gap: 10, alignItems: 'center', fontSize: 13.5, color: st === 'pending' ? 'var(--text4)' : 'var(--text)' }}>
+                        <Icon name={{ pending: 'radio_button_unchecked', active: 'progress_activity', done: 'check_circle', error: 'cancel' }[st]} size={18}
+                          style={{ color: st === 'done' ? 'var(--positive)' : st === 'error' ? 'var(--negative)' : st === 'active' ? 'var(--accent)' : 'var(--text5)' }} />
+                        {l}
+                      </div>
+                    )
+                  })}
+                  {step === 'download' && <div className="progress"><i style={{ width: `${pct}%` }} /></div>}
                 </div>
-              </>
-            )}
-
-            {step !== 'idle' && (
-              <div className="update-progress">
-                <Step name="Pre-Backup" state={stepState('backup', step)} />
-                <Step name="Download" state={stepState('download', step)} extra={progressLabel(progress, step)} />
-                <Step name="Installation" state={stepState('install', step)} />
-              </div>
-            )}
-
-            {step === 'error' && (
-              <>
-                <p className="error-text" style={{ marginTop: 16 }}>
-                  <strong>Fehler:</strong>
-                </p>
-                <pre className="update-error-pre">{error}</pre>
-                <div className="row" style={{ marginTop: 16, justifyContent: 'flex-end' }}>
-                  <button onClick={close}>Schliessen</button>
-                </div>
-              </>
-            )}
-
-            {step === 'done' && (
-              <p className="success-text">App restartet jetzt mit der neuen Version ...</p>
-            )}
+              )}
+              {step === 'error' && <div style={{ marginTop: 14 }}><Note tone="neg" detail={error}>Das Update ist fehlgeschlagen. Die bisherige Version läuft weiter.</Note></div>}
+              {step === 'done' && <div style={{ marginTop: 14 }}><Note tone="ok">Die App startet jetzt mit der neuen Version neu.</Note></div>}
+            </div>
+            <div className="dialog-foot">
+              {step === 'idle' && <><button className="btn btn-quiet" onClick={close}>Abbrechen</button><button className="btn btn-primary" onClick={install}>Mit Backup installieren</button></>}
+              {(step === 'error' || step === 'done') && <button className="btn" onClick={close}>Schliessen</button>}
+            </div>
           </div>
         </div>
       )}
@@ -147,36 +134,16 @@ export default function AppUpdateBanner() {
   )
 }
 
-function stepState(target, current) {
-  const order = ['idle', 'backup', 'download', 'install', 'done', 'error']
+/** Zustand eines Schritts im Fortschritt; bei Fehler ist der fehlgeschlagene Schritt rot, frühere erledigt. */
+function stepState(target, current, failedAt) {
+  const order = ['idle', 'backup', 'download', 'install', 'done']
   const ti = order.indexOf(target)
+  if (current === 'error') {
+    const fi = order.indexOf(failedAt || 'backup')
+    return ti < fi ? 'done' : ti === fi ? 'error' : 'pending'
+  }
   const ci = order.indexOf(current)
-  if (current === 'error' && ci > ti) return 'error'
   if (ci > ti) return 'done'
   if (ci === ti) return 'active'
   return 'pending'
-}
-
-function progressLabel(p, step) {
-  if (step !== 'download') return ''
-  if (p.total === 0) return 'startet ...'
-  const mb = (b) => (b / 1024 / 1024).toFixed(1) + ' MB'
-  const pct = p.total > 0 ? Math.floor((p.downloaded / p.total) * 100) : 0
-  return `${mb(p.downloaded)} / ${mb(p.total)}  (${pct}%)`
-}
-
-function Step({ name, state, extra }) {
-  const icon = {
-    pending: 'radio_button_unchecked',
-    active: 'progress_activity',
-    done: 'check_circle',
-    error: 'cancel',
-  }[state]
-  return (
-    <div className="update-step" data-state={state}>
-      <span className="material-symbols-outlined update-step-icon">{icon}</span>
-      <span className="update-step-name">{name}</span>
-      {extra && <span className="update-step-extra muted">{extra}</span>}
-    </div>
-  )
 }

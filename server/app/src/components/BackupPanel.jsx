@@ -1,282 +1,170 @@
+// Backups & Updates: Sicherungen der PocketBase-Daten (automatisch und von Hand), Wiederherstellen,
+// Speicherplatz und Container-Updates (immer mit Backup davor). Bestätigungen über useConfirm.
 import { useEffect, useState } from 'react'
 import { api } from '../api.js'
-
-function fmtBytes(n) {
-  if (n < 1024) return `${n} B`
-  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`
-  if (n < 1024 * 1024 * 1024) return `${(n / (1024 * 1024)).toFixed(1)} MB`
-  return `${(n / (1024 * 1024 * 1024)).toFixed(2)} GB`
-}
-
-function fmtDate(iso) {
-  try {
-    const d = new Date(iso)
-    return d.toLocaleString('de-CH', {
-      year: 'numeric', month: '2-digit', day: '2-digit',
-      hour: '2-digit', minute: '2-digit',
-    })
-  } catch { return iso }
-}
-
-function fmtAge(iso) {
-  const ms = Date.now() - new Date(iso).getTime()
-  const h = Math.floor(ms / 3_600_000)
-  if (h < 1) return `vor ${Math.floor(ms / 60_000)} min`
-  if (h < 48) return `vor ${h} h`
-  return `vor ${Math.floor(h / 24)} Tagen`
-}
+import { Icon, Note, PageHead, fmtAge, fmtBytes, fmtDateTime, useConfirm } from './ui.jsx'
 
 export default function BackupPanel() {
-  const [backups, setBackups] = useState([])
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState(null)
-  const [lastResult, setLastResult] = useState(null)
-  const [updateCheck, setUpdateCheck] = useState(null)
-  const [updateBusy, setUpdateBusy] = useState(false)
-  const [updateError, setUpdateError] = useState(null)
-  const [applyResult, setApplyResult] = useState(null)
+  const [backups, setBackups] = useState(null)
   const [disk, setDisk] = useState(null)
+  const [config, setConfig] = useState({})
+  const [busy, setBusy] = useState(null) // 'backup' | 'restore' | 'check' | 'apply'
+  const [msg, setMsg] = useState(null)   // { tone, text, detail }
+  const [updates, setUpdates] = useState(null)
+  const confirm = useConfirm()
 
   async function refresh() {
-    try {
-      const list = await api.listBackups()
-      setBackups(list ?? [])
-    } catch (e) {
-      setError(String(e))
-    }
+    try { setBackups(await api.listBackups() ?? []) } catch (e) { setMsg({ tone: 'neg', text: String(e) }); setBackups([]) }
+    try { setDisk(await api.diskUsage()) } catch { /* leise */ }
   }
-
   useEffect(() => {
     refresh()
+    api.getConfig().then(c => setConfig(c || {})).catch(() => {})
     const t = setInterval(refresh, 30000)
     return () => clearInterval(t)
   }, [])
 
-  useEffect(() => {
-    async function loadDisk() {
-      try { setDisk(await api.diskUsage()) } catch { /* leise */ }
-    }
-    loadDisk()
-    const t = setInterval(loadDisk, 60000)  // disk-Check teuer (psql + df), 1x/min reicht
-    return () => clearInterval(t)
-  }, [])
-
   async function runBackup() {
-    setBusy(true); setError(null); setLastResult(null)
+    setBusy('backup'); setMsg(null)
     try {
       const info = await api.backupNow()
-      setLastResult(info)
+      setMsg({ tone: 'ok', text: `Backup erstellt: ${info.filename} (${fmtBytes(info.bytes)})` })
       await refresh()
-    } catch (e) {
-      setError(String(e))
-    } finally {
-      setBusy(false)
-    }
+    } catch (e) { setMsg({ tone: 'neg', text: `Backup fehlgeschlagen: ${e}` }) }
+    finally { setBusy(null) }
+  }
+
+  async function runRestore(b) {
+    const ok = await confirm({
+      title: 'Backup wiederherstellen?',
+      danger: true, confirmLabel: 'Wiederherstellen',
+      body: <>
+        <p>Der aktuelle Datenstand wird durch das Backup vom <b>{fmtDateTime(b.created_iso)}</b> ersetzt.</p>
+        <ol>
+          <li>Vom jetzigen Stand wird zuerst automatisch ein Sicherheits-Backup gemacht.</li>
+          <li>Der Server wird kurz gestoppt (RAPPORT ist für alle ca. eine Minute weg).</li>
+          <li>Die Daten werden ersetzt, dann startet der Server wieder.</li>
+        </ol>
+        <p style={{ marginTop: 8 }}>Was seit dem Backup erfasst wurde, ist danach nur noch im Sicherheits-Backup.</p>
+      </>,
+    })
+    if (!ok) return
+    setBusy('restore'); setMsg(null)
+    try {
+      const res = await api.restoreBackup(b.filename)
+      setMsg({ tone: 'ok', text: `Wiederhergestellt aus ${res.restored_from}. Sicherheits-Backup vom vorherigen Stand: ${res.safety_backup} — damit lässt sich der Schritt rückgängig machen.` })
+      await refresh()
+    } catch (e) { setMsg({ tone: 'neg', text: `Wiederherstellen fehlgeschlagen: ${e}` }) }
+    finally { setBusy(null) }
   }
 
   async function checkUpdates() {
-    setUpdateBusy(true); setUpdateError(null); setApplyResult(null)
-    try {
-      const res = await api.checkContainerUpdates()
-      setUpdateCheck(res)
-    } catch (e) {
-      setUpdateError(String(e))
-    } finally {
-      setUpdateBusy(false)
-    }
-  }
-
-  async function runRestore(filename) {
-    const ok = window.confirm(
-      `Snapshot ${filename} wiederherstellen?\n\n` +
-      'Achtung — DESTRUKTIV:\n' +
-      '  1. Sicherheits-Backup vom aktuellen Stand wird automatisch erstellt\n' +
-      '  2. Stack (pb, app) wird gestoppt\n' +
-      '  3. Komplette PocketBase-Daten werden ueberschrieben mit dem Snapshot-Inhalt\n' +
-      '  4. Stack wird wieder gestartet\n\n' +
-      'Aktuelle Daten gehen verloren (sind aber im Safety-Backup gesichert).'
-    )
-    if (!ok) return
-    setBusy(true); setError(null); setLastResult(null)
-    try {
-      const res = await api.restoreBackup(filename)
-      setLastResult({
-        filename: `Restore aus ${res.restored_from}`,
-        bytes: 0,
-      })
-      // Auch das Safety-Backup im Banner anzeigen:
-      setTimeout(() => {
-        alert(
-          `Restore fertig.\n\n` +
-          `Safety-Backup vom alten Stand: ${res.safety_backup}\n\n` +
-          `Falls etwas nicht stimmt: das Safety-Backup wiederherstellen ` +
-          `bringt den Zustand vor dem Restore zurueck.`
-        )
-      }, 100)
-      await refresh()
-    } catch (e) {
-      setError(String(e))
-    } finally {
-      setBusy(false)
-    }
+    setBusy('check'); setMsg(null)
+    try { setUpdates(await api.checkContainerUpdates()) }
+    catch (e) { setMsg({ tone: 'neg', text: `Update-Prüfung fehlgeschlagen: ${e}` }) }
+    finally { setBusy(null) }
   }
 
   async function applyUpdates() {
-    const count = updateCheck?.updates?.length ?? 0
-    if (count > 0) {
-      const ok = window.confirm(
-        `${count} Container-Update(s) anwenden?\n\n` +
-        'Ablauf:\n' +
-        '  1. tar.gz-Backup von /pb/pb_data\n' +
-        '  2. docker compose up -d (recreate)\n\n' +
-        'Services sind waehrend Recreate kurz weg.'
-      )
-      if (!ok) return
-    }
-    setUpdateBusy(true); setUpdateError(null); setApplyResult(null)
+    const n = updates?.updates?.length ?? 0
+    const ok = await confirm({
+      title: `${n} ${n === 1 ? 'Update' : 'Updates'} installieren?`,
+      confirmLabel: 'Mit Backup installieren',
+      body: <>
+        <p>Zuerst wird ein Backup gemacht, dann werden die Container mit den neuen Images neu erstellt.</p>
+        <p style={{ marginTop: 8 }}>RAPPORT ist dabei kurz nicht erreichbar.</p>
+      </>,
+    })
+    if (!ok) return
+    setBusy('apply'); setMsg(null)
     try {
       const res = await api.applyContainerUpdates()
-      setApplyResult(res)
-      setUpdateCheck(null)
+      setUpdates(null)
+      setMsg(res.updated_services?.length
+        ? { tone: 'ok', text: `Aktualisiert: ${res.updated_services.join(', ')}${res.backup_filename ? ` · Backup ${res.backup_filename}` : ''}` }
+        : { tone: '', text: 'Nichts aktualisiert.', detail: res.recreate_log })
       await refresh()
-    } catch (e) {
-      setUpdateError(String(e))
-    } finally {
-      setUpdateBusy(false)
-    }
+    } catch (e) { setMsg({ tone: 'neg', text: `Update fehlgeschlagen: ${e}` }) }
+    finally { setBusy(null) }
   }
 
-  const usedPct = disk && disk.host_total_bytes > 0
-    ? (1 - disk.host_free_bytes / disk.host_total_bytes) * 100
-    : 0
-  const diskWarn = usedPct >= 80
-  const diskCrit = usedPct >= 90
+  const last = backups?.[0]
+  const total = backups?.reduce((s, b) => s + (b.bytes || 0), 0) ?? 0
+  const usedPct = disk && disk.host_total_bytes > 0 ? (1 - disk.host_free_bytes / disk.host_total_bytes) * 100 : null
+  const auto = config.BACKUP_ENABLED !== 'false'
+  const every = config.BACKUP_INTERVAL_HOURS || '24'
+  const keep = config.BACKUP_RETENTION_COUNT || '7'
 
   return (
-    <section className="panel">
-      <h2>Backup &amp; Restore</h2>
+    <>
+      <PageHead
+        title="Backups & Updates"
+        sub={Object.keys(config).length ? (auto ? `Automatisch alle ${every} Std., die letzten ${keep} werden behalten.` : 'Automatische Backups sind ausgeschaltet.') : 'Sicherungen der Datenbank und Updates der Container.'}
+        actions={<>
+          <button className="btn btn-primary" onClick={runBackup} disabled={!!busy}><Icon name="backup" />{busy === 'backup' ? 'Sichere …' : 'Backup jetzt'}</button>
+        </>}
+      />
 
-      {disk && (
-        <div className="disk-panel" data-state={diskCrit ? 'crit' : diskWarn ? 'warn' : 'ok'}>
-          <div className="disk-row">
-            <span className="disk-label">Festplatte ({fmtBytes(disk.host_free_bytes)} frei von {fmtBytes(disk.host_total_bytes)})</span>
-            <div className="disk-bar">
-              <div className="disk-bar-fill" style={{ width: `${usedPct}%` }} data-state={diskCrit ? 'crit' : diskWarn ? 'warn' : 'ok'} />
+      <div className="figs">
+        <div><small>Letztes Backup</small><strong>{backups == null ? '…' : last ? fmtAge(last.created_iso) : 'noch keines'}</strong><em>{last ? fmtDateTime(last.created_iso) : ''}</em></div>
+        <div><small>Gespeichert</small><strong className="num">{backups?.length ?? '…'}</strong><em>{fmtBytes(total)} zusammen</em></div>
+        <div><small>Datenbank</small><strong className="num">{disk ? fmtBytes(disk.pb_data_bytes) : '…'}</strong><em>Docker-Volumes {disk ? fmtBytes(disk.docker_volumes_bytes) : '…'}</em></div>
+        <div><small>Speicherplatz frei</small><strong className={`num ${usedPct >= 90 ? 'neg' : usedPct >= 80 ? 'warn' : ''}`}>{disk ? fmtBytes(disk.host_free_bytes) : '…'}</strong><em>{usedPct != null ? `${usedPct.toFixed(0)} % belegt` : ''}</em></div>
+      </div>
+
+      {msg && <Note tone={msg.tone} detail={msg.detail}>{msg.text}</Note>}
+      {busy === 'restore' && <Note icon="hourglass_top">Wiederherstellen läuft — Server wird gestoppt, Daten ersetzt und neu gestartet …</Note>}
+
+      <div className="cols">
+        <section className="card card-table">
+          <div className="k">Backups <span>{backups ? `${backups.length}` : ''}</span></div>
+          {backups && backups.length === 0
+            ? <div className="muted" style={{ padding: '4px 20px 20px' }}>Noch keine Backups. «Backup jetzt» erstellt das erste.</div>
+            : (
+              <table>
+                <thead><tr><th>Erstellt</th><th>Alter</th><th style={{ textAlign: 'right' }}>Grösse</th><th /></tr></thead>
+                <tbody>
+                  {(backups || []).map(b => (
+                    <tr key={b.filename} title={b.filename}>
+                      <td className="num">{fmtDateTime(b.created_iso)}</td>
+                      <td className="muted">{fmtAge(b.created_iso)}</td>
+                      <td className="num" style={{ textAlign: 'right' }}>{fmtBytes(b.bytes)}</td>
+                      <td style={{ textAlign: 'right' }}><button className="btn btn-sm btn-quiet" disabled={!!busy} onClick={() => runRestore(b)}><Icon name="settings_backup_restore" size={17} />Wiederherstellen</button></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+        </section>
+
+        <div className="stack">
+          <section className="card">
+            <div className="k">Container-Updates</div>
+            <p className="hint" style={{ marginBottom: 12 }}>Prüft, ob neuere Images für Datenbank und Web-App bereitliegen. Installiert wird immer mit Backup davor.</p>
+            {updates && updates.updates.length === 0 && <Note tone="ok">Alles aktuell.</Note>}
+            {updates && updates.updates.length > 0 && (
+              <div style={{ marginBottom: 12 }}>
+                {updates.updates.map(u => (
+                  <div key={u.service} className="row" style={{ padding: '8px 0' }}>
+                    <Icon name="upgrade" style={{ color: 'var(--accent)' }} />
+                    <div className="row-main"><div className="row-title">{u.service}</div><span className="meta mono">{u.image}</span></div>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <button className="btn" onClick={checkUpdates} disabled={!!busy}><Icon name="refresh" />{busy === 'check' ? 'Prüfe …' : 'Nach Updates suchen'}</button>
+              {updates?.updates?.length > 0 && <button className="btn btn-primary" onClick={applyUpdates} disabled={!!busy}>{busy === 'apply' ? 'Installiere …' : 'Installieren'}</button>}
             </div>
-            <span className="disk-pct mono">{usedPct.toFixed(0)}%</span>
-          </div>
-          <div className="disk-meta">
-            <span>PocketBase-Daten: <strong>{disk.pb_data_bytes != null ? fmtBytes(disk.pb_data_bytes) : '—'}</strong></span>
-            <span>Backups: <strong>{fmtBytes(disk.backups_total_bytes)}</strong> ({disk.backup_count} Dateien)</span>
-            <span>Docker-Volumes total: <strong>{disk.docker_volumes_bytes != null ? fmtBytes(disk.docker_volumes_bytes) : '—'}</strong></span>
-          </div>
-          {diskCrit && <p className="error-text"><span className="material-symbols-outlined icon-inline">error</span>Disk &gt; 90% voll — aelteste Backups manuell pruefen.</p>}
-          {diskWarn && !diskCrit && <p style={{ color: 'var(--amber)' }}><span className="material-symbols-outlined icon-inline">warning</span>Disk &gt; 80% voll.</p>}
+            {config.CONTAINER_AUTOUPDATE_ENABLED === 'true' && <p className="hint" style={{ marginTop: 10 }}>Automatische Updates sind eingeschaltet (alle {config.CONTAINER_AUTOUPDATE_INTERVAL_HOURS || 24} Std.).</p>}
+          </section>
+          <section className="card">
+            <div className="k">So funktionieren Backups</div>
+            <p className="hint">Gesichert werden alle PocketBase-Daten (Datenbank und Dateien) als Archiv auf diesem Mac. Für Ausfallsicherheit den Backup-Ordner zusätzlich extern sichern, z.B. mit Time Machine.</p>
+            <p className="hint" style={{ marginTop: 8 }}>Ablage: <span className="mono">~/Library/Application Support/com.rapport.server-app/backups/</span></p>
+          </section>
         </div>
-      )}
-      <p className="muted">
-        Snapshots werden automatisch alle <code>BACKUP_INTERVAL_HOURS</code> (Default 24h) erstellt
-        und nach <code>BACKUP_RETENTION_COUNT</code> (Default 7) aelteste-zuerst geprunet.
-        Speicherort: <code>~/Library/Application&nbsp;Support/com.rapport.server-app/backups/</code>.
-        Methode: tar.gz von <code>/pb/pb_data</code> via <code>docker compose exec pb</code>.
-      </p>
-
-      <div className="row">
-        <button onClick={runBackup} disabled={busy}>
-          {busy ? 'Backup laeuft ...' : 'Backup jetzt erstellen'}
-        </button>
-        <button onClick={refresh} disabled={busy} title="Liste neu laden">
-          Aktualisieren
-        </button>
       </div>
-
-      {lastResult && (
-        <p className="success-text">
-          Neues Backup: <code>{lastResult.filename}</code> ({fmtBytes(lastResult.bytes)})
-        </p>
-      )}
-      {error && <p className="error-text">{error}</p>}
-
-      <h3 style={{ marginTop: 32 }}>Container-Updates</h3>
-      <p className="muted">
-        Prueft ob neuere Image-Tags fuer die Compose-Services verfuegbar sind.
-        Anwenden macht erst Pre-Backup, dann <code>docker compose up -d</code> (recreate).
-        Auto-Update kontrolliert via <code>CONTAINER_AUTOUPDATE_ENABLED</code>.
-      </p>
-      <div className="row">
-        <button onClick={checkUpdates} disabled={updateBusy}>
-          {updateBusy && !applyResult ? 'Pruefe ...' : 'Auf Updates pruefen'}
-        </button>
-        {updateCheck && updateCheck.updates.length > 0 && (
-          <button onClick={applyUpdates} disabled={updateBusy}>
-            {updateBusy ? 'Anwenden ...' : `${updateCheck.updates.length} Update(s) mit Backup anwenden`}
-          </button>
-        )}
-      </div>
-      {updateError && <p className="error-text">{updateError}</p>}
-      {updateCheck && updateCheck.updates.length === 0 && (
-        <p className="success-text">Alle Images sind aktuell.</p>
-      )}
-      {updateCheck && updateCheck.updates.length > 0 && (
-        <ul className="muted" style={{ fontSize: 13 }}>
-          {updateCheck.updates.map(u => (
-            <li key={u.service}>
-              <strong>{u.service}</strong> ({u.image})
-              <span style={{ fontFamily: "'DM Mono', ui-monospace, monospace", fontSize: 11, marginLeft: 8 }}>
-                {u.old_id.slice(0, 19)} → {u.new_id.slice(0, 19)}
-              </span>
-            </li>
-          ))}
-        </ul>
-      )}
-      {applyResult && applyResult.updated_services.length > 0 && (
-        <p className="success-text">
-          Update angewendet: {applyResult.updated_services.join(', ')}
-          {applyResult.backup_filename && (
-            <> · Backup: <code>{applyResult.backup_filename}</code></>
-          )}
-        </p>
-      )}
-      {applyResult && applyResult.updated_services.length === 0 && (
-        <p className="muted">{applyResult.recreate_log}</p>
-      )}
-
-      <h3 style={{ marginTop: 24 }}>Vorhandene Snapshots ({backups.length})</h3>
-      {backups.length === 0 ? (
-        <p className="muted">Noch keine Backups vorhanden.</p>
-      ) : (
-        <table className="backup-table">
-          <thead>
-            <tr>
-              <th>Datei</th>
-              <th>Erstellt</th>
-              <th>Alter</th>
-              <th style={{ textAlign: 'right' }}>Groesse</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            {backups.map(b => (
-              <tr key={b.filename}>
-                <td className="mono">{b.filename}</td>
-                <td>{fmtDate(b.created_iso)}</td>
-                <td className="muted">{fmtAge(b.created_iso)}</td>
-                <td style={{ textAlign: 'right' }}>{fmtBytes(b.bytes)}</td>
-                <td style={{ textAlign: 'right' }}>
-                  <button
-                    className="reveal-toggle"
-                    onClick={() => runRestore(b.filename)}
-                    disabled={busy}
-                    title="Diesen Snapshot wiederherstellen"
-                  >
-                    Wiederherstellen
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-    </section>
+    </>
   )
 }
