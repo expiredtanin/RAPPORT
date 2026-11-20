@@ -249,6 +249,8 @@ export function deriveQuoteBudget(
   budgetHours: number;
   budgetAmount: number;
   phasesBudget: { id: string; hours: number }[];
+  /** offerierter Betrag je Phase (SIA: Phasenstunden × Stundenansatz, Aufwand: Stunden × Satz der Rolle), auf Rappen */
+  phasesAmount: { id: string; amount: number }[];
   enabledPhases: string[];
   hasFreeQuotes: boolean;
   hasHourQuotes: boolean;
@@ -261,6 +263,7 @@ export function deriveQuoteBudget(
   let totalHours = 0;
   let totalAmount = 0;
   const phaseMap: Record<string, number> = {}; // phaseId -> hours (summed)
+  const phaseAmountMap: Record<string, number> = {}; // phaseId -> offerierter Betrag (summed)
   const enabledSet = new Set<string>(); // phases enabled in quotes even with 0 hours
 
   quotes.forEach(q => {
@@ -270,7 +273,10 @@ export function deriveQuoteBudget(
       totalHours += calc.total || 0;
       totalAmount += (calc.total || 0) * (q.sia?.stundenansatz || 0);
       (calc.phases || []).forEach(ph => {
-        if (ph.hours > 0) phaseMap[ph.id] = (phaseMap[ph.id] || 0) + ph.hours;
+        if (ph.hours > 0) {
+          phaseMap[ph.id] = (phaseMap[ph.id] || 0) + ph.hours;
+          phaseAmountMap[ph.id] = (phaseAmountMap[ph.id] || 0) + ph.hours * (q.sia?.stundenansatz || 0);
+        }
       });
     } else if (q.mode === "manual") {
       const calc = calcManualHours(q.manualPhases || [], roles);
@@ -279,7 +285,10 @@ export function deriveQuoteBudget(
       (q.manualPhases || []).filter(ph => ph.enabled).forEach(ph => {
         enabledSet.add(ph.id);
         const h = roles.reduce((s, r) => s + (ph.hoursByRole?.[r.id] || 0), 0);
-        if (h > 0) phaseMap[ph.id] = (phaseMap[ph.id] || 0) + h;
+        if (h > 0) {
+          phaseMap[ph.id] = (phaseMap[ph.id] || 0) + h;
+          phaseAmountMap[ph.id] = (phaseAmountMap[ph.id] || 0) + roles.reduce((s, r) => s + (ph.hoursByRole?.[r.id] || 0) * r.rate, 0);
+        }
       });
     } else if (q.mode === "free") {
       totalAmount += (q.freeItems || []).reduce((s, it) => s + (it.qty * it.price), 0);
@@ -290,12 +299,70 @@ export function deriveQuoteBudget(
   const enabledPhases = [...new Set([...phasesBudget.map(p => p.id), ...enabledSet])];
   return {
     budgetHours: Math.round(totalHours * 10) / 10,
-    budgetAmount: Math.round(totalAmount),
+    // auf Rappen wie das Netto der Offerte (`Quote.sub`) — sonst weicht das Pauschalhonorar und damit
+    // die Schlussrechnung um Rappenbeträge vom offerierten Betrag ab
+    budgetAmount: roundCHF(totalAmount),
     phasesBudget,
+    phasesAmount: Object.entries(phaseAmountMap).map(([id, amount]) => ({ id, amount: roundCHF(amount) })),
     enabledPhases,
     hasFreeQuotes: quotes.some(q => q.mode === "free"),
     hasHourQuotes: quotes.some(q => q.mode === "sia" || q.mode === "manual"),
   };
+}
+
+/** true, wenn das Projekt Offerten mit Auftragsvolumen verknüpft hat (Hauptofferte/Nachtrag, nicht nur Referenzen). */
+export function hasQuoteBudget(project: { linkedQuotes?: { quoteId: Id; role: string }[]; sourceQuoteId?: Id }): boolean {
+  return migrateLinkedQuotes(project).some(lq => lq.role !== "Referenz");
+}
+
+/**
+ * Pauschalhonorar (netto) eines Projekts — die eine Quelle für Akonto %, Akonto-Planer, Schlussrechnung
+ * und Anzeigen. Mit verknüpften Offerten: Summe Hauptofferte + Nachträge (`budgetAmount`, von
+ * `deriveQuoteBudget` nachgeführt); ohne Offerten: der von Hand gesetzte Pauschalpreis (`budget`).
+ * Fallback für alte Daten: fehlt der eine Wert, gilt der andere.
+ */
+export function projectFee(project: Pick<Project, "budget" | "budgetAmount" | "linkedQuotes"> & { sourceQuoteId?: Id }): number {
+  if (hasQuoteBudget(project) && (project.budgetAmount || 0) > 0) return project.budgetAmount || 0;
+  return project.budget || project.budgetAmount || 0;
+}
+
+/**
+ * Aus den verknüpften Offerten abgeleitete Projektfelder (Stunden, Betrag, Phasenbudget) für Verknüpfen,
+ * Entkoppeln und das Speichern einer verknüpften Offerte. Bei Pauschalprojekten mit Offerten wird der
+ * Pauschalpreis (`budget`) mitgeführt, damit Einstellungen und Rechnungen denselben Betrag zeigen; ohne
+ * verbleibende Offerte bleibt ein von Hand gesetzter Pauschalpreis stehen.
+ */
+export function quoteBudgetFields(
+  project: Pick<Project, "billingType" | "budget">,
+  linkedQuotes: { quoteId: Id; role: string }[],
+  allQuotes: Quote[],
+  settingsRoles?: Role[],
+): Pick<Project, "budgetHours" | "budgetAmount" | "phasesBudget" | "budget"> & { enabledPhases: string[] } {
+  const d = deriveQuoteBudget(linkedQuotes, allQuotes, settingsRoles);
+  const withBudget = linkedQuotes.some(lq => lq.role !== "Referenz");
+  return {
+    budgetHours: d.budgetHours,
+    budgetAmount: d.budgetAmount,
+    phasesBudget: d.phasesBudget,
+    enabledPhases: d.enabledPhases,
+    budget: withBudget && project.billingType === "pauschal" ? d.budgetAmount : project.budget,
+  };
+}
+
+/**
+ * Netto einer Rechnung nach Gesamtrabatt (Basis der MWST). Aus `sub − globalDisc` statt `subAfterDisc`,
+ * weil ältere bzw. aus der Cloud geladene Rechnungen `subAfterDisc` als 0 tragen können.
+ */
+export function invoiceNet(inv: Pick<Invoice, "sub" | "globalDisc">): number {
+  return roundCHF((inv.sub || 0) - (inv.globalDisc || 0));
+}
+
+/**
+ * Umsatz netto eines Jahres: alle gestellten Rechnungen (ohne Entwürfe), zugeordnet nach Rechnungsdatum.
+ * Gemeinsame Regel für Buchhaltung, Übersicht und «Heute».
+ */
+export function yearRevenue(invoices: Pick<Invoice, "status" | "date" | "sub" | "globalDisc">[], year: string): number {
+  return roundCHF(invoices.filter(i => i.status !== "entwurf" && (!year || (i.date || "").startsWith(year))).reduce((s, i) => s + invoiceNet(i), 0));
 }
 
 /** Neue eindeutige ID (UUID; Fallbacks für Umgebungen ohne `crypto.randomUUID`). */
@@ -613,7 +680,8 @@ export function exportBuchhaltungCSV(data: AppData, year = ""): void {
   // Einnahmen
   rows.push(["EINNAHMEN", "", "", "", "", "", "", ""].map(q).join(sep));
   rows.push(["Datum", "Rechnungs-Nr.", "Kunde", "Beschreibung", "Netto CHF", "MWST-Satz %", "MWST CHF", "Brutto CHF"].map(q).join(sep));
-  const paidInvoices = [...data.invoices].filter(i => !year || (i.date || "").startsWith(year)).sort((a, b) => (a.date || "").localeCompare(b.date || ""));
+  // Nur gestellte Rechnungen (ohne Entwürfe), nach Rechnungsdatum — gleiche Regel wie Accounting.tsx (yearRevenue)
+  const paidInvoices = [...data.invoices].filter(i => i.status !== "entwurf" && (!year || (i.date || "").startsWith(year))).sort((a, b) => (a.date || "").localeCompare(b.date || ""));
   paidInvoices.forEach(inv => {
     const client = (data.persons||[]).find(c => c.id === inv.clientId);
     const desc = (inv.items || []).map(it => it.desc).filter(Boolean).join(", ");
@@ -623,10 +691,10 @@ export function exportBuchhaltungCSV(data: AppData, year = ""): void {
     // falschen (aktuellen) Satz, obwohl die MWST-Spalte daneben (inv.tax)
     // korrekt den damals berechneten Betrag zeigt.
     const taxRate = inv.mwst ? (inv.mwstRate ?? mwstRate) : 0;
-    rows.push([inv.date, inv.number, client?.name || "", desc, (inv.sub || 0).toFixed(2), taxRate, (inv.tax || 0).toFixed(2), (inv.total || 0).toFixed(2)].map(q).join(sep));
+    rows.push([inv.date, inv.number, client?.name || "", desc, invoiceNet(inv).toFixed(2), taxRate, (inv.tax || 0).toFixed(2), (inv.total || 0).toFixed(2)].map(q).join(sep));
   });
-  const totalNet = paidInvoices.reduce((s, i) => s + (i.sub || 0), 0);
-  // Roh-Summe über exakt die oben aufgelisteten Zeilen (inkl. Entwürfe) —
+  const totalNet = paidInvoices.reduce((s, i) => s + invoiceNet(i), 0);
+  // Roh-Summe über exakt die oben aufgelisteten Zeilen —
   // die TOTAL-Zeile muss auf die sichtbaren Zeilen aufgehen.
   const tableTax = paidInvoices.reduce((s, i) => s + (i.tax || 0), 0);
   const totalGross = paidInvoices.reduce((s, i) => s + (i.total || 0), 0);

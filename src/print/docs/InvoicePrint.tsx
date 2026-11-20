@@ -2,7 +2,7 @@
 // Der Zahlteil kommt als SVG von swissqrbill (lazy geladen) und ist pixelgenau — Änderungen im Druck prüfen.
 
 import { useState, useEffect } from "react";
-import { formatCHF, formatDate, formatSenderAddress, isQRIban, generateQRReference } from "../../utils";
+import { formatCHF, formatDate, formatSenderAddress, isQRIban, generateQRReference, invoiceNet } from "../../utils";
 import { StudioLogo } from "../../components/UI";
 import type { Data } from "swissqrbill/types";
 import type { Invoice, Settings } from "../../types";
@@ -83,7 +83,7 @@ export function InvoicePrint({ inv, client, settings }: { inv: Invoice; client: 
             <div style={{ display: "flex", justifyContent: "space-between", padding: "4px 0", color: "#b5621e" }}><span>{inv.discountLabel || "Rabatt"}</span><span>−{formatCHF(inv.globalDisc)}</span></div>
           </>}
           {inv.mwst && <>
-            <div style={{ display: "flex", justifyContent: "space-between", padding: "4px 0" }}><span style={{ color: "#666" }}>Netto</span><span>{formatCHF(inv.sub)}</span></div>
+            <div style={{ display: "flex", justifyContent: "space-between", padding: "4px 0" }}><span style={{ color: "#666" }}>Netto</span><span>{formatCHF(invoiceNet(inv))}</span></div>
             <div style={{ display: "flex", justifyContent: "space-between", padding: "4px 0" }}><span style={{ color: "#666" }}>MWST {inv.mwstRate ?? settings.mwstRate}%</span><span>{formatCHF(inv.tax)}</span></div>
           </>}
           <div className="doc-heading" style={{ display: "flex", justifyContent: "space-between", padding: "10px 0", borderTop: "2px solid var(--doc-accent)", marginTop: 6, ...HEADING, fontSize: 16, fontWeight: 700 }}>

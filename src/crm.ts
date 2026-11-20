@@ -5,12 +5,13 @@
 // Wird von CrmPipeline, CrmAuswertung, Persons und dem Dashboard benutzt.
 //
 // Konventionen:
-//  - Beträge sind **netto** (`Invoice.sub`, `Lead.estimatedValue`), wie in Dashboard/Accounting.
-//  - «Umsatz» = verrechnet, also jede Rechnung ausser Entwurf (gesendet, bezahlt, überfällig).
-//    Das Dashboard zählt dagegen nur «bezahlt»; hier zählt der Auftrag, nicht der Zahlungseingang.
+//  - Beträge sind **netto** nach Rabatt (`invoiceNet`, `Lead.estimatedValue`), wie in Dashboard/Accounting.
+//  - «Umsatz» = verrechnet, also jede Rechnung ausser Entwurf (gesendet, bezahlt, überfällig),
+//    nach Rechnungsdatum — dieselbe Regel wie Dashboard, «Heute» und Buchhaltung (`yearRevenue`).
 //  - Jahresfilter wie überall: `date.startsWith("2026")`; leerer Filter = alle Jahre.
 //  - Datumsangaben sind `YYYY-MM-DD`-Strings (`DateStr`).
 
+import { invoiceNet } from "./utils";
 import type { Activity, AppData, Id, Invoice, Lead, LeadStage, Person } from "./types";
 
 /** Gewichtung der offenen Stufen für den gewichteten Pipeline-Wert (Schätzung, keine Statistik). */
@@ -71,7 +72,7 @@ function group(data: AppData, year: string, keyOf: (inv: Invoice) => string | un
     const key = keyOf(inv);
     if (!key) continue;
     const row = rows.get(key) || { key, label: labelOf(key), revenue: 0, count: 0 };
-    row.revenue += inv.sub || 0;
+    row.revenue += invoiceNet(inv);
     row.count += 1;
     rows.set(key, row);
   }
@@ -97,12 +98,12 @@ export function referredLeadCount(data: AppData, personId: Id): number {
 
 /** Summe des netto verrechneten Umsatzes, der über `personId` vermittelt wurde (alle Jahre oder `year`). */
 export function referredRevenue(data: AppData, personId: Id, year = ""): number {
-  return billedInvoices(data, year).filter(i => attribution(data, i).referrerId === personId).reduce((s, i) => s + (i.sub || 0), 0);
+  return billedInvoices(data, year).filter(i => attribution(data, i).referrerId === personId).reduce((s, i) => s + invoiceNet(i), 0);
 }
 
 /** Gesamter verrechneter Netto-Umsatz eines Auftraggebers (alle Jahre oder `year`). */
 export function clientRevenue(data: AppData, personId: Id, year = ""): number {
-  return billedInvoices(data, year).filter(i => i.clientId === personId).reduce((s, i) => s + (i.sub || 0), 0);
+  return billedInvoices(data, year).filter(i => i.clientId === personId).reduce((s, i) => s + invoiceNet(i), 0);
 }
 
 /** Trefferquote einer Gruppe; `rate` ist `null`, solange noch nichts entschieden wurde. */

@@ -18,7 +18,7 @@
 import React, { useState, useRef, useEffect } from "react";
 import { SIA_PHASES, DASHBOARD_WIDGETS, LEAD_STAGES } from "../constants";
 import { dueFollowUps, isOpenLead, pipelineValue } from "../crm";
-import { formatCHF, formatDate, formatHours, migrateDashboardLayout, widgetsToRows, generateId, getFeiertageForYear, localISODate } from "../utils";
+import { formatCHF, formatDate, formatHours, migrateDashboardLayout, widgetsToRows, generateId, getFeiertageForYear, localISODate, invoiceNet, yearRevenue } from "../utils";
 import { KpiCard } from "../components/UI";
 import type { AppData, Employee, DashboardRow, DashboardTemplate, TimeEntry, ViewProps } from "../types";
 
@@ -87,7 +87,8 @@ export default function Dashboard({ data, setView, currentUser, userPermissions,
   const openInvoices     = data.invoices.filter(i => i.status==="gesendet"||i.status==="überfällig");
   const overdueInvoices  = data.invoices.filter(i => i.status==="überfällig");
   const openAmount       = openInvoices.reduce((s,i)=>s+(i.total||0),0);
-  const paidThisYear     = data.invoices.filter(i=>i.status==="bezahlt"&&(i.date||"").startsWith(thisYear)).reduce((s,i)=>s+(i.sub||0),0);
+  // Umsatz wie Buchhaltung und «Heute»: gestellte Rechnungen (ohne Entwürfe) nach Rechnungsdatum, netto nach Rabatt
+  const paidThisYear     = yearRevenue(data.invoices, thisYear);
   const pendingQuotes    = (data.quotes||[]).filter(q=>q.status==="gesendet");
   const expiredQuotes    = (data.quotes||[]).filter(q=>q.status==="gesendet"&&q.validUntil&&q.validUntil<today);
   const unbilledProjects = activeProjects.map(p=>{
@@ -103,7 +104,7 @@ export default function Dashboard({ data, setView, currentUser, userPermissions,
       return d.toISOString().slice(0,7);
     });
   })();
-  const monthlyRevenue   = last6Months.map(m=>({m,paid:data.invoices.filter(i=>i.status==="bezahlt"&&(i.date||"").startsWith(m)).reduce((s,i)=>s+(i.sub||0),0)}));
+  const monthlyRevenue   = last6Months.map(m=>({m,paid:data.invoices.filter(i=>i.status==="bezahlt"&&(i.date||"").startsWith(m)).reduce((s,i)=>s+invoiceNet(i),0)}));
   const maxRev           = Math.max(...monthlyRevenue.map(m=>m.paid),1);
 
   // ─── Permission ────────────────────────────────────────────────────
@@ -224,7 +225,7 @@ export default function Dashboard({ data, setView, currentUser, userPermissions,
       ? <KpiCard label={`Stunden ${new Date().toLocaleString("de-CH",{month:"long"})}`} value="—" color="var(--positive)" sub="Kein Mitarbeiterprofil verknüpft" />
       : <KpiCard label={`Stunden ${new Date().toLocaleString("de-CH",{month:"long"})}`} value={formatHours(myEmpId?myMonthMins:monthMins)} color="var(--positive)" go="time" setView={!editMode?setView:undefined} sub={!myEmpId&&lastMoMins>0?`Vormonat: ${formatHours(lastMoMins)}`:undefined} />,
     "kpi-ausstehend": () => <KpiCard label="Ausstehend" value={formatCHF(openAmount)} color={overdueInvoices.length>0?"var(--negative)":"var(--warning)"} go="invoices" setView={!editMode?setView:undefined} sub={overdueInvoices.length>0?`${overdueInvoices.length} überfällig`:`${openInvoices.length} gesendet`} />,
-    "kpi-umsatz": () => <KpiCard label="Umsatz dieses Jahr" value={formatCHF(paidThisYear)} color="var(--positive)" go="invoices" setView={!editMode?setView:undefined} sub="bezahlt (netto)" />,
+    "kpi-umsatz": () => <KpiCard label="Umsatz dieses Jahr" value={formatCHF(paidThisYear)} color="var(--positive)" go="invoices" setView={!editMode?setView:undefined} sub="gestellt (netto)" />,
     "warnungen": () => {
       // "Warnungen" mischt zwei Berechtigungsbereiche (Rechnungen/Offerten) —
       // hier pro Teilblock statt über DASHBOARD_WIDGETS.perm gaten, sonst

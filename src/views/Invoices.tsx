@@ -14,17 +14,20 @@
 // wird geklemmt: 31.1. + 1 Monat = 28./29.2.).
 //
 // Summen (sub/tax/total/subAfterDisc/globalDisc) werden beim Speichern EINMAL mit
-// `calcTotal` berechnet und mitgespeichert (Total auf Rappen gerundet, `roundCHF`);
+// `calcTotal` berechnet und mitgespeichert (Netto und MWST auf Rappen, Total = Summe);
 // Listen und Druck zeigen nur die gespeicherten Werte. Der MWST-Satz wird pro Rechnung
 // festgehalten (`mwstRate`). Nummern: konfigurierbar (`settings.invoiceNumberFormat`,
-// Standard «YYYY-NNN»), laufende Nummer aus den bestehenden Rechnungen.
+// Standard «YYYY-NNN»), Jahr aus dem Rechnungsdatum, laufende Nummer aus den bestehenden
+// Rechnungen; doppelte Nummern werden beim Speichern abgewiesen.
+// Zeiteinträge: nur Rechnungen nach Stunden (`form.hoursFromEntries`) zeigen die Auswahl;
+// die verrechneten Minuten je Eintrag bleiben in `entrySelections` an der Rechnung.
 // Status: entwurf → gesendet → bezahlt / überfällig. Die Zahlungsreferenz (QR) wird
 // beim Drucken erzeugt (`generateQRReference` aus der Rechnungsnummer).
 // Umwandlung aus Offerten: Quotes.tsx setzt `modal = { type: "newInvoice", quoteId }`.
 
 
 import React, { useState, useEffect } from "react";
-import { generateId, localISODate } from "../utils";
+import { generateId, localISODate, projectFee } from "../utils";
 import { Header } from "../components/UI";
 import { changeWithUndo } from "../undo";
 import { showToast } from "../toast";
@@ -37,7 +40,7 @@ import { InvoiceKpiCards } from "./invoices/InvoiceKpiCards";
 import { InvoiceSendModal } from "./invoices/InvoiceSendModal";
 import { InvoiceTable } from "./invoices/InvoiceTable";
 import { NewInvoiceModal } from "./invoices/NewInvoiceModal";
-import { akontoPlanRows, buildAkontoInvoices, calcTotal, defaultStartDate, nextInvoiceNumber } from "./invoices/invoiceHelpers";
+import { akontoPlanRows, applyEntryHours, buildAkontoInvoices, calcTotal, defaultInvoiceMode, defaultStartDate, entrySelectionsForEdit, isInvoiceNumberTaken, nextInvoiceNumber, selectAllEntries, selectedEntrySelections } from "./invoices/invoiceHelpers";
 import type { AkontoPlan, EntrySelections, InvoiceForm, NewInvoiceState } from "./invoices/invoiceHelpers";
 import { filterAndSortInvoices, groupInvoices, summarizeUnbilled } from "./invoices/invoiceList";
 import { buildNewInvoiceForm } from "./invoices/newInvoiceForm";
@@ -72,7 +75,9 @@ function Invoices({ data, update, saveAll, modal, setModal, setPrintContent }: P
   /* eslint-disable react-hooks/set-state-in-effect -- einmalige Übergabe, danach wird modal geleert */
   useEffect(() => {
     if (modal?.type === "newInvoice" && !modal.quoteId) {
-      setNi({ tab: "projekt", projectId: (modal.projectId as string) || "", quoteId: "", mode: "akonto-stunden", pct: 30, amt: 0 });
+      // Startmodus nach Abrechnungsart des vorgewählten Projekts (Pauschal → Akonto %, Stundensatz → Teilrechnung nach Stunden)
+      const preProj = data.projects.find(p => p.id === modal.projectId);
+      setNi({ tab: "projekt", projectId: (modal.projectId as string) || "", quoteId: "", mode: defaultInvoiceMode(preProj), pct: 30, amt: 0 });
       setNewInvModal(true);
       setModal(null);
       return;
@@ -115,11 +120,18 @@ function Invoices({ data, update, saveAll, modal, setModal, setPrintContent }: P
       showToast("Bitte einen Kunden auswählen.");
       return;
     }
+    if (isInvoiceNumberTaken(invoices, form.number, editingId)) {
+      showToast(`Die Rechnungsnummer ${(form.number || "").trim()} ist schon vergeben.`);
+      return;
+    }
     const { sub, globalDisc, subAfterDisc, tax, total } = calcTotal(form.items, form.mwst, form.mwstRate ?? data.settings.mwstRate, form.discountType, form.discountValue);
     const invoiceId = editingId || generateId();
     const status = statusOverride || form.status || "entwurf";
-    const inv = { ...form, id: invoiceId, sub, globalDisc, subAfterDisc, tax, total, mwstRate: form.mwstRate ?? data.settings.mwstRate, status } as Invoice;
-    delete inv.entrySelections;
+    // Verrechnete Minuten je Zeiteintrag bleiben an der Rechnung (entrySelections), damit beim Bearbeiten
+    // gekürzte Einträge nicht still wieder auf die vollen Minuten springen.
+    const { hoursFromEntries: _hoursFromEntries, ...formFields } = form;
+    const inv = { ...formFields, number: (form.number || "").trim(), id: invoiceId, sub, globalDisc, subAfterDisc, tax, total, mwstRate: form.mwstRate ?? data.settings.mwstRate, status,
+      entrySelections: selectedEntrySelections(form.entrySelections) } as Invoice;
 
     const selectedIds = Object.entries(form.entrySelections || {})
       .filter(([_, sel]) => sel.selected)
@@ -143,14 +155,15 @@ function Invoices({ data, update, saveAll, modal, setModal, setPrintContent }: P
   };
 
   const openEdit = (inv: Invoice) => {
-    const linked = data.timeEntries.filter(e => e.invoiceId === inv.id);
-    const entrySelections: EntrySelections = {};
-    linked.forEach(e => { entrySelections[e.id] = { selected: true, billedMinutes: e.minutes }; });
+    const entrySelections = entrySelectionsForEdit(inv, data.timeEntries);
+    // Zeile 1 folgt der Zeitauswahl nur bei Rechnungen nach Stunden; die gespeicherten Beträge bleiben,
+    // bis die Auswahl geändert wird.
     setForm({
       discountType: "none", discountValue: 0, discountLabel: "Rabatt",
       ...inv,
       items: (inv.items || []).map(it => ({ discount: 0, ...it })),
       entrySelections,
+      hoursFromEntries: Object.keys(entrySelections).length > 0,
     });
     setModal({ type: "invoice", id: inv.id });
   };
@@ -194,6 +207,10 @@ function Invoices({ data, update, saveAll, modal, setModal, setPrintContent }: P
     setMahnModal({ inv });
   };
 
+  // Neue Zeitauswahl übernehmen; bei Rechnungen nach Stunden folgt Zeile 1 (Stunden × Satz) der Auswahl.
+  const setSelections = (entrySelections: EntrySelections) => setForm(f =>
+    applyEntryHours({ ...f, entrySelections }, data.projects.find(p => p.id === f.projectId)));
+
   const toggleEntrySelection = (entryId: string, entry: TimeEntry) => {
     const current = form.entrySelections?.[entryId];
     const newSelections = { ...form.entrySelections };
@@ -202,59 +219,38 @@ function Invoices({ data, update, saveAll, modal, setModal, setPrintContent }: P
     } else {
       newSelections[entryId] = { selected: true, billedMinutes: current?.billedMinutes ?? entry.minutes };
     }
-    setForm(f => ({ ...f, entrySelections: newSelections }));
+    setSelections(newSelections);
   };
 
   const updateBilledMinutes = (entryId: string, minutes: number) => {
     const newSelections = { ...form.entrySelections };
     newSelections[entryId] = { ...(newSelections[entryId] || { selected: true }), billedMinutes: Math.max(0, minutes) };
-    setForm(f => ({ ...f, entrySelections: newSelections }));
+    setSelections(newSelections);
   };
 
   const prefillFromProject = (projectId: string) => {
-    if (!projectId) { setForm(f => ({ ...f, projectId: "", entrySelections: {} })); return; }
+    if (!projectId) { setForm(f => ({ ...f, projectId: "", entrySelections: {}, hoursFromEntries: false })); return; }
     const proj = data.projects.find(p => p.id === projectId);
     if (!proj) return;
     const bType = proj.billingType || proj.type;
     const openEntries = openEntriesForProject(projectId);
     if (bType === "stundensatz") {
-      const entrySelections: EntrySelections = {};
-      openEntries.forEach(e => { entrySelections[e.id] = { selected: true, billedMinutes: e.minutes }; });
+      const entrySelections = selectAllEntries(openEntries);
       const totalMins = openEntries.reduce((s, e) => s + e.minutes, 0);
       const hours = Math.round(totalMins / 60 * 100) / 100;
       setForm(f => ({
-        ...f, projectId, clientId: proj.clientId || f.clientId, entrySelections,
+        ...f, projectId, clientId: proj.clientId || f.clientId, entrySelections, hoursFromEntries: true,
         items: hours > 0
           ? [{ id: generateId(), desc: `Architektur-/Grafikleistungen – ${proj.name}`, qty: hours, price: proj.hourlyRate as number, discount: 0 }]
           : [{ id: generateId(), desc: "", qty: 1, price: 0, discount: 0 }]
       }));
     } else if (bType === "pauschal") {
-      setForm(f => ({ ...f, projectId, clientId: proj.clientId || f.clientId, entrySelections: {},
-        items: [{ id: generateId(), desc: `Pauschalhonorar – ${proj.name}`, qty: 1, price: proj.budget as number, discount: 0 }] }));
+      setForm(f => ({ ...f, projectId, clientId: proj.clientId || f.clientId, entrySelections: {}, hoursFromEntries: false,
+        items: [{ id: generateId(), desc: `Pauschalhonorar – ${proj.name}`, qty: 1, price: projectFee(proj), discount: 0 }] }));
     } else {
-      setForm(f => ({ ...f, projectId, clientId: proj.clientId || f.clientId, entrySelections: {} }));
+      setForm(f => ({ ...f, projectId, clientId: proj.clientId || f.clientId, entrySelections: {}, hoursFromEntries: false }));
     }
   };
-
-  useEffect(() => {
-    if (!form.projectId) return;
-    const proj = data.projects.find(p => p.id === form.projectId);
-    if (!proj || (proj.billingType || proj.type) !== "stundensatz") return;
-    const totalBilledMins = Object.values(form.entrySelections || {})
-      .filter(s => s.selected)
-      .reduce((sum, s) => sum + (s.billedMinutes || 0), 0);
-    const hours = Math.round(totalBilledMins / 60 * 100) / 100;
-    // Invariante: Zeile 1 = gewählte Stunden × Stundensatz; entrySelections wird an vielen Stellen gesetzt
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- hält die Invariante an einer Stelle
-    setForm(f => {
-      const existing = f.items[0] || {};
-      if (existing.qty === hours && existing.price === proj.hourlyRate) return f;
-      const newItems = [...f.items];
-      newItems[0] = { id: existing.id || generateId(), desc: existing.desc || `Architektur-/Grafikleistungen – ${proj.name}`, qty: hours, price: proj.hourlyRate as number, discount: existing.discount || 0 };
-      return { ...f, items: newItems };
-    });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [form.entrySelections, form.projectId]);
 
   // Verfügbare Jahre aus Rechnungen sammeln
   const availableYears = Array.from(new Set(invoices.map(i => (i.date || "").slice(0, 4)).filter(Boolean))).sort().reverse();
@@ -276,7 +272,7 @@ function Invoices({ data, update, saveAll, modal, setModal, setPrintContent }: P
       <Header title="Rechnungen" action={
         <div style={{ display: "flex", gap: 8 }}>
           <button className="btn btn-ghost" onClick={() => { setAp({ ...emptyAp, startDate: defaultStartDate() }); setAkontoModal(true); }}>Akonto planen</button>
-          <button className="btn btn-primary" onClick={() => { setNi({ tab: "projekt", projectId: "", quoteId: "", mode: "akonto-stunden", pct: 30, amt: 0 }); setNewInvModal(true); }}>+ Neue Rechnung</button>
+          <button className="btn btn-primary" onClick={() => { setNi({ tab: "projekt", projectId: "", quoteId: "", mode: defaultInvoiceMode(null), pct: 30, amt: 0 }); setNewInvModal(true); }}>+ Neue Rechnung</button>
         </div>
       } />
 
@@ -305,7 +301,7 @@ function Invoices({ data, update, saveAll, modal, setModal, setPrintContent }: P
 
       {modal?.type === "invoice" && (
         <InvoiceEditModal modal={modal} setModal={setModal} form={form} setForm={setForm} data={data} clients={clients} editingId={editingId} save={save}
-          openEntriesForProject={openEntriesForProject} prefillFromProject={prefillFromProject} toggleEntrySelection={toggleEntrySelection}
+          openEntriesForProject={openEntriesForProject} prefillFromProject={prefillFromProject} toggleEntrySelection={toggleEntrySelection} setSelections={setSelections}
           updateBilledMinutes={updateBilledMinutes} addItem={addItem} removeItem={removeItem} updateItem={updateItem} />
       )}
 

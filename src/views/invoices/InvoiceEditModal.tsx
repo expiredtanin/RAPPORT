@@ -5,12 +5,12 @@ import { formatCHF, formatHours } from "../../utils";
 import { Modal, FormField, DateInput } from "../../components/UI";
 import LivePreview from "../../components/LivePreview";
 import type { AppData, Invoice, InvoiceItem, ModalState, Person, TimeEntry } from "../../types";
-import { calcLineTotal, calcTotal } from "./invoiceHelpers";
-import type { InvoiceForm } from "./invoiceHelpers";
+import { calcLineTotal, calcTotal, nextInvoiceNumber } from "./invoiceHelpers";
+import type { EntrySelections, InvoiceForm } from "./invoiceHelpers";
 import { TimeEntriesPicker } from "./TimeEntriesPicker";
 
 /** Formular-Dialog einer Rechnung; der Zustand (`form`) und alle Änderungen liegen in Invoices.tsx. */
-export function InvoiceEditModal({ modal, setModal, form, setForm, data, clients, editingId, save, openEntriesForProject, prefillFromProject, toggleEntrySelection, updateBilledMinutes, addItem, removeItem, updateItem }: {
+export function InvoiceEditModal({ modal, setModal, form, setForm, data, clients, editingId, save, openEntriesForProject, prefillFromProject, toggleEntrySelection, setSelections, updateBilledMinutes, addItem, removeItem, updateItem }: {
   modal: NonNullable<ModalState>;
   setModal: (modal: ModalState) => void;
   form: InvoiceForm;
@@ -22,6 +22,7 @@ export function InvoiceEditModal({ modal, setModal, form, setForm, data, clients
   openEntriesForProject: (projectId?: string) => TimeEntry[];
   prefillFromProject: (projectId: string) => void;
   toggleEntrySelection: (entryId: string, entry: TimeEntry) => void;
+  setSelections: (entrySelections: EntrySelections) => void;
   updateBilledMinutes: (entryId: string, minutes: number) => void;
   addItem: () => void;
   removeItem: (idx: number) => void;
@@ -35,7 +36,12 @@ export function InvoiceEditModal({ modal, setModal, form, setForm, data, clients
       preview={<LivePreview settings={data.settings} assets={data.docAssets} content={{ type: "invoice", inv: { ...form, sub, globalDisc, subAfterDisc, tax, total, mwstRate: form.mwstRate ?? data.settings.mwstRate } as Invoice, client: clients.find(c => c.id === form.clientId) }} />}>
       <div className="form-row">
         <FormField label="Nr."><input value={form.number} onChange={e => setForm({ ...form, number: e.target.value })} /></FormField>
-        <FormField label="Datum"><DateInput value={form.date} onChange={e => setForm({ ...form, date: e.target.value })} /></FormField>
+        <FormField label="Datum"><DateInput value={form.date} onChange={e => {
+          // Neue Rechnung mit automatisch vergebener Nummer: Jahr/Monat der Nummer folgen dem Rechnungsdatum
+          const fmt = data.settings.invoiceNumberFormat;
+          const auto = !editingId && !!form.date && form.number === nextInvoiceNumber(data.invoices || [], fmt, form.date);
+          setForm({ ...form, date: e.target.value, ...(auto && e.target.value ? { number: nextInvoiceNumber(data.invoices || [], fmt, e.target.value) } : {}) });
+        }} /></FormField>
         <FormField label="Fällig am"><DateInput value={form.dueDate} onChange={e => setForm({ ...form, dueDate: e.target.value })} /></FormField>
       </div>
       <div className="form-row">
@@ -76,7 +82,7 @@ export function InvoiceEditModal({ modal, setModal, form, setForm, data, clients
       </div>
 
       {/* Offene Zeiteinträge des Projekts */}
-      <TimeEntriesPicker form={form} setForm={setForm} data={data} openEntriesForProject={openEntriesForProject} toggleEntrySelection={toggleEntrySelection} updateBilledMinutes={updateBilledMinutes} />
+      <TimeEntriesPicker form={form} data={data} openEntriesForProject={openEntriesForProject} toggleEntrySelection={toggleEntrySelection} setSelections={setSelections} updateBilledMinutes={updateBilledMinutes} />
 
       <div style={{ marginBottom: 14 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>

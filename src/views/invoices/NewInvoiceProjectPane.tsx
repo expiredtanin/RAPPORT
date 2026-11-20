@@ -2,8 +2,9 @@
 
 import type React from "react";
 import { SIA_PHASES } from "../../constants";
-import { formatCHF, formatHours } from "../../utils";
+import { formatCHF, formatHours, projectFee } from "../../utils";
 import type { AppData, Invoice, Project } from "../../types";
+import { defaultInvoiceMode, phaseInvoiceAmount } from "./invoiceHelpers";
 import type { NewInvoiceState } from "./invoiceHelpers";
 
 /** Inhalt des Projekt-Reiters; `proj` ist das gewählte Projekt, `bType` seine Abrechnungsart. */
@@ -21,8 +22,7 @@ export function NewInvoiceProjectPane({ ni, setNi, data, invoices, proj, bType }
         <label style={{ fontSize: 10, letterSpacing: "0.08em", color: "var(--text4)", display: "block", marginBottom: 5 }}>PROJEKT</label>
         <select value={ni.projectId} onChange={e => {
           const selProj = (data.projects || []).find(p => p.id === e.target.value);
-          const selBType = selProj ? (selProj.billingType || selProj.type) : "";
-          setNi(n => ({ ...n, projectId: e.target.value, mode: selBType === "stundensatz" ? "teilrechnung" : selBType === "pauschal" ? "akonto-percent" : n.mode }));
+          setNi(n => ({ ...n, projectId: e.target.value, mode: selProj ? defaultInvoiceMode(selProj) : n.mode }));
         }} style={!ni.projectId ? { borderColor: "var(--warning)" } : {}}>
           <option value="">— Projekt wählen —</option>
           {(data.projects || []).filter(p => p.status !== "archiviert").map(p => {
@@ -33,7 +33,7 @@ export function NewInvoiceProjectPane({ ni, setNi, data, invoices, proj, bType }
         </select>
       </div>
       {proj && (() => {
-        const projBudget = proj.budget || proj.budgetAmount || 0;
+        const projBudget = projectFee(proj);
         const hasPhaseBudget = (proj.phasesBudget || []).filter(p => p.hours > 0).length > 0;
         const kind = ni.mode === "schluss" ? "schluss"
           : (ni.mode === "akonto-percent" || ni.mode === "akonto-amount" || ni.mode === "akonto-phase" || ni.mode === "akonto-stunden") ? "akonto"
@@ -86,7 +86,7 @@ export function NewInvoiceProjectPane({ ni, setNi, data, invoices, proj, bType }
             <div style={{ marginTop: 10, padding: "10px 12px", background: "var(--surface2)", borderRadius: 6, border: "1px solid var(--border2)" }}>
               {(proj.phasesBudget || []).filter(p => p.hours > 0).map(ph => {
                 const phInfo = SIA_PHASES.find(p => p.id === ph.id);
-                const amt = Math.round(ph.hours * (proj.hourlyRate || 0) * 100) / 100;
+                const amt = phaseInvoiceAmount(proj, ph.id, data.quotes || [], data.settings.roles);
                 const alreadyBilled = billedInvs.some(i => (i.items || []).some(it => (it.desc || "").includes(phInfo?.label || ph.id)));
                 const isSelected = ni.phaseId === ph.id;
                 return (
@@ -98,7 +98,7 @@ export function NewInvoiceProjectPane({ ni, setNi, data, invoices, proj, bType }
                     <div style={{ width: 13, height: 13, borderRadius: "50%", flexShrink: 0, border: isSelected ? `4px solid ${kind === "akonto" ? "var(--accent)" : "var(--info)"}` : "2px solid #ccc" }} />
                     <div style={{ flex: 1 }}>
                       <div style={{ fontSize: 12, fontWeight: 500 }}>{phInfo?.label || ph.id}</div>
-                      <div style={{ fontSize: 10, color: "var(--text4)" }}>{ph.hours}h × {formatCHF(proj.hourlyRate || 0)}/h = <strong>{formatCHF(amt)}</strong></div>
+                      <div style={{ fontSize: 10, color: "var(--text4)" }}>{ph.hours}h · offeriert <strong>{formatCHF(amt)}</strong></div>
                     </div>
                     {alreadyBilled && <span style={{ fontSize: 10, color: "var(--positive)", background: "var(--positive-bg)", padding: "2px 6px", borderRadius: 20 }}>✓ verrechnet</span>}
                   </div>
@@ -148,7 +148,7 @@ export function NewInvoiceProjectPane({ ni, setNi, data, invoices, proj, bType }
             {kind === "schluss" && (
               <div style={{ padding: "10px 14px", background: "var(--surface3)", borderRadius: 6, fontSize: 12, color: "var(--text3)", marginBottom: 10 }}>
                 {bType === "stundensatz"
-                  ? "Alle restlichen offenen Stunden bis heute."
+                  ? "Alle restlichen offenen Stunden bis heute, abzgl. Akonto-/Teilrechnungen, die nicht nach Stunden gestellt wurden."
                   : `Gesamthonorar ${formatCHF(projBudget)} abzgl. bisherige Akonto- und Teilrechnungen.`}
               </div>
             )}

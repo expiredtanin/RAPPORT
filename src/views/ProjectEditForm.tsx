@@ -3,7 +3,7 @@
 
 import React, { useState } from "react";
 import { SIA_PHASES, PROJECT_TYPES, NON_BILLING_CATEGORIES, PROJECT_USAGES } from "../constants";
-import { calcSIAHours, calcManualHours, deriveQuoteBudget, migrateLinkedQuotes, generateId, formatCHF } from "../utils";
+import { calcSIAHours, calcManualHours, deriveQuoteBudget, hasQuoteBudget, migrateLinkedQuotes, generateId, formatCHF } from "../utils";
 import { FormField, DateInput } from "../components/UI";
 import type { Project, ProjectPosition, ProjectUsage, ViewProps } from "../types";
 
@@ -82,7 +82,9 @@ export function ProjectEditForm({ form, setForm, data }: {
             </FormField>
             {form.billingType === "stundensatz"
               ? <FormField label="Stundensatz (CHF)"><input type="number" value={form.hourlyRate} onChange={e => setForm({ ...form, hourlyRate: +e.target.value })} /></FormField>
-              : <FormField label="Pauschalpreis (CHF)"><input type="number" value={form.budget} onChange={e => setForm({ ...form, budget: +e.target.value })} /></FormField>}
+              : <FormField label="Pauschalpreis (CHF, netto)"><input type="number" value={form.budget} onChange={e => setForm({ ...form, budget: +e.target.value,
+                  // mit verknüpften Offerten gilt budgetAmount (projectFee) — von Hand gesetzter Preis überschreibt beide
+                  ...(hasQuoteBudget(form) ? { budgetAmount: +e.target.value } : {}) })} /></FormField>}
           </>
         )}
         <FormField label="Startdatum"><DateInput value={form.startDate} onChange={e => setForm({ ...form, startDate: e.target.value })} /></FormField>
@@ -115,18 +117,25 @@ export function ProjectEditForm({ form, setForm, data }: {
           const newLinked = [...linked, { quoteId, role: isFirst ? "Hauptofferte" : "Nachtrag" }];
           const d = deriveQuoteBudget(newLinked, data.quotes || [], data.settings.roles || []);
           const q = (data.quotes || []).find(x => x.id === quoteId);
-          setForm(f => ({
-            ...f, linkedQuotes: newLinked, budgetHours: d.budgetHours, budgetAmount: d.budgetAmount, phasesBudget: d.phasesBudget,
-            enabledPhases: isFirst ? [...new Set([...(f.enabledPhases || []), ...d.enabledPhases])] : (f.enabledPhases || []),
-            billingType: isFirst ? (q?.mode === "manual" ? "stundensatz" : "pauschal") : f.billingType,
-            positions: buildPositions(newLinked, f.positions || []),
-          }));
+          setForm(f => {
+            const billingType = isFirst ? (q?.mode === "manual" ? "stundensatz" : "pauschal") : f.billingType;
+            return {
+              ...f, linkedQuotes: newLinked, budgetHours: d.budgetHours, budgetAmount: d.budgetAmount, phasesBudget: d.phasesBudget,
+              // Pauschalpreis = Hauptofferte + Nachträge (eine Quelle, siehe projectFee)
+              budget: billingType === "pauschal" && hasQuoteBudget({ linkedQuotes: newLinked }) ? d.budgetAmount : f.budget,
+              enabledPhases: isFirst ? [...new Set([...(f.enabledPhases || []), ...d.enabledPhases])] : (f.enabledPhases || []),
+              billingType,
+              positions: buildPositions(newLinked, f.positions || []),
+            };
+          });
         };
 
         const removeQuote = (quoteId: string) => {
           const newLinked = linked.filter(lq => lq.quoteId !== quoteId);
           const d = newLinked.length > 0 ? deriveQuoteBudget(newLinked, data.quotes || [], data.settings.roles || []) : { budgetHours: 0, budgetAmount: 0, phasesBudget: [] };
-          setForm(f => ({ ...f, linkedQuotes: newLinked, budgetHours: d.budgetHours, budgetAmount: d.budgetAmount, phasesBudget: d.phasesBudget, positions: buildPositions(newLinked, (f.positions || []).filter(p => p.quoteId !== quoteId)) }));
+          setForm(f => ({ ...f, linkedQuotes: newLinked, budgetHours: d.budgetHours, budgetAmount: d.budgetAmount, phasesBudget: d.phasesBudget,
+            budget: f.billingType === "pauschal" && hasQuoteBudget({ linkedQuotes: newLinked }) ? d.budgetAmount : f.budget,
+            positions: buildPositions(newLinked, (f.positions || []).filter(p => p.quoteId !== quoteId)) }));
         };
 
         const changeRole = (quoteId: string, role: string) => setForm(f => {

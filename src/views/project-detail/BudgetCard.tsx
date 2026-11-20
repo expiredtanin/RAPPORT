@@ -1,6 +1,6 @@
 // Karte «Honorar- und Stundenbudget» der Projekt-Detailansicht: Verbrauch je verknüpfter Offerte (einzeln/gesamt).
 
-import { calcSIAHours, calcManualHours, deriveQuoteBudget, migrateLinkedQuotes, formatCHF } from "../../utils";
+import { calcSIAHours, calcManualHours, deriveQuoteBudget, migrateLinkedQuotes, formatCHF, invoiceNet, projectFee } from "../../utils";
 import { type ViewProps, type Project, type Invoice, type TimeEntry, type ProjectPosition } from "../../types";
 import { notNull } from "./helpers";
 
@@ -22,10 +22,10 @@ export function BudgetCard({ project, data, entries, positions, projectInvoices,
 }) {
   const linked = migrateLinkedQuotes(project);
   const derived = linked.length > 0 ? deriveQuoteBudget(linked, data.quotes || [], data.settings.roles || []) : null;
-  const amountBudget = project.budgetAmount || derived?.budgetAmount || 0;
+  const amountBudget = projectFee(project) || derived?.budgetAmount || 0;
   // Entwürfe sind noch nicht ausgestellt und dürfen den Budgetverbrauch
   // nicht überzeichnen (analog Accounting.jsx totalTax-Fix).
-  const invoicedAmount = projectInvoices.filter(i => i.status !== "entwurf").reduce((s, i) => s + (i.sub || 0), 0);
+  const invoicedAmount = projectInvoices.filter(i => i.status !== "entwurf").reduce((s, i) => s + invoiceNet(i), 0);
 
   if (budget === 0 && amountBudget === 0) return (
     <div className="card mark" style={{ marginBottom: 20, padding: "12px 20px", ["--mark" as string]: "var(--border3)" } as React.CSSProperties}>

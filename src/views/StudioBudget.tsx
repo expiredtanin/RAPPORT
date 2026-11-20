@@ -18,7 +18,7 @@
 // `settings.studioBudgetVersions` ab (auch Grundlage des PDFs).
 
 import React, { useState } from "react";
-import { generateId, formatCHF } from "../utils";
+import { generateId, formatCHF, invoiceNet } from "../utils";
 import { Header, FormField, ShareButton } from "../components/UI";
 import type { Employee, StudioBudgetState, StudioBudgetVersion, ViewProps } from "../types";
 
@@ -221,9 +221,9 @@ function StudioBudget({ data, update, setPrintContent }: Pick<ViewProps, "data" 
 
   // ── Einnahmen ─────────────────────────────────────────────────
   const yearInvoices = (data.invoices || []).filter(i => (i.date || "").startsWith(String(currentYear)));
-  const paidRevenue = yearInvoices.filter(i => i.status === "bezahlt").reduce((s, i) => s + (i.sub || 0), 0);
-  const sentRevenue = yearInvoices.filter(i => i.status === "gesendet" || i.status === "überfällig").reduce((s, i) => s + (i.sub || 0), 0);
-  const draftRevenue = yearInvoices.filter(i => i.status === "entwurf").reduce((s, i) => s + (i.sub || 0), 0);
+  const paidRevenue = yearInvoices.filter(i => i.status === "bezahlt").reduce((s, i) => s + invoiceNet(i), 0);
+  const sentRevenue = yearInvoices.filter(i => i.status === "gesendet" || i.status === "überfällig").reduce((s, i) => s + invoiceNet(i), 0);
+  const draftRevenue = yearInvoices.filter(i => i.status === "entwurf").reduce((s, i) => s + invoiceNet(i), 0);
   const invoiceAutoRevenue = b.inkludiereRechnungen
     ? paidRevenue + sentRevenue + (b.inkludiereEntwuerfe ? draftRevenue : 0)
     : 0;

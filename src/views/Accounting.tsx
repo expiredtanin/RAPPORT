@@ -2,8 +2,9 @@
 // Lohnabrechnungen, plus Mahnwesen und Export (PDF/CSV).
 //
 // Rechenregeln (alle bewusst so, nicht vereinfachen):
-//   - Einnahmen = Summe der Netto-Beträge (`inv.sub`) der Rechnungen des Jahres,
-//     inkl. Entwürfe (die werden als «erwartet» separat ausgewiesen).
+//   - Einnahmen = Umsatz netto nach Rabatt (`invoiceNet`) der gestellten Rechnungen des Jahres nach
+//     Rechnungsdatum, OHNE Entwürfe (`yearRevenue`, dieselbe Regel wie Übersicht und «Heute»); Entwürfe
+//     werden nur als «erwartet» daneben ausgewiesen und fliessen nicht ins Ergebnis.
 //   - MWST-Schuld: nur nicht-Entwürfe; Akonto-MWST wird getrennt ausgewiesen, weil
 //     sie erst bei der Schlussrechnung steuerrelevant ist.
 //   - Spesen, die über eine Lohnabrechnung ausbezahlt wurden (`lohnEntryId`), stecken
@@ -15,7 +16,7 @@
 // Überfällig = Status «gesendet»/«überfällig» mit Fälligkeit vor heute.
 
 import React, { useState } from "react";
-import { formatCHF, formatDate, exportBuchhaltungCSV, localISODate } from "../utils";
+import { formatCHF, formatDate, exportBuchhaltungCSV, localISODate, invoiceNet, yearRevenue } from "../utils";
 import { Header, StatusBadge, KpiCard, ShareButton } from "../components/UI";
 import { MahnModal } from "../components/MahnModal";
 import { ReceiptViewer } from "../components/ReceiptViewer";
@@ -55,7 +56,7 @@ function Accounting({ data, update, setView, setPrintContent }: Pick<ViewProps, 
   const lohnEntries = (data.lohnEntries || []).filter(l => !filterYear || l.monat.startsWith(filterYear));
 
   // Einnahmen
-  const totalInvoiced = invoices.reduce((s, i) => s + (i.sub || 0), 0);
+  const totalInvoiced = yearRevenue(invoices, "");
   // Entwürfe sind noch nicht ausgestellt — es entsteht noch keine MWST-Schuld.
   const totalTax = invoices.filter(i => i.status !== "entwurf").reduce((s, i) => s + (i.tax || 0), 0);
   // Akonto-MwSt ist erst bei Schlussrechnung steuerrelevant — separat ausweisen
@@ -66,8 +67,8 @@ function Accounting({ data, update, setView, setPrintContent }: Pick<ViewProps, 
   // Entwürfe sind noch nicht verschickt, also keine offene Forderung.
   const totalOpen = invoices.filter(i => i.status === "gesendet").reduce((s, i) => s + (i.total || 0), 0);
   const totalOverdue = invoices.filter(i => i.status === "überfällig").reduce((s, i) => s + (i.total || 0), 0);
-  const totalDraftSub = invoices.filter(i => i.status === "entwurf").reduce((s, i) => s + (i.sub || 0), 0);
-  const totalBilledSub = totalInvoiced - totalDraftSub;
+  const totalDraftSub = invoices.filter(i => i.status === "entwurf").reduce((s, i) => s + invoiceNet(i), 0);
+  const issuedCount = invoices.filter(i => i.status !== "entwurf").length;
 
   // Ausgaben Spesen — über Lohnabrechnung ausbezahlte Spesen (lohnEntryId
   // gesetzt) stecken bereits in l.auszahlung (siehe totalLoehne unten) und
@@ -129,7 +130,7 @@ function Accounting({ data, update, setView, setPrintContent }: Pick<ViewProps, 
       {/* KPI-Karten */}
       <div className="responsive-grid-4" style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16, marginBottom: 28 }}>
         {[
-          { label: "Umsatz netto", value: formatCHF(totalInvoiced), sub: totalDraftSub > 0 ? `${invoices.length} Rechnungen — davon ${formatCHF(totalDraftSub)} erwartet` : `${invoices.length} Rechnungen`, color: "var(--positive)" },
+          { label: "Umsatz netto", value: formatCHF(totalInvoiced), sub: totalDraftSub > 0 ? `${issuedCount} Rechnungen — dazu ${formatCHF(totalDraftSub)} in Entwürfen` : `${issuedCount} Rechnungen`, color: "var(--positive)" },
           { label: "Davon bezahlt", value: formatCHF(totalPaid), sub: "eingegangen", color: "var(--positive)" },
           { label: "Offen / überfällig", value: formatCHF(totalOpen + totalOverdue), sub: `${overdueInvoices.length} überfällig`, color: totalOverdue > 0 ? "var(--negative)" : "var(--warning)" },
           { label: "Ausgaben total", value: formatCHF(totalAusgaben), sub: `Spesen + ${totalLoehneAnzahl} Lohnabrechnungen (inkl. AG-Abgaben)` },
@@ -143,9 +144,8 @@ function Accounting({ data, update, setView, setPrintContent }: Pick<ViewProps, 
         <div className="card">
           <div className="section-label" style={{ marginBottom: 16 }}>JAHRESERGEBNIS {filterYear || "GESAMT"}</div>
           {([
-            { label: "Einnahmen (Netto)", value: totalInvoiced, bold: false },
-            totalDraftSub > 0 && { label: "→ Davon fakturiert", value: totalBilledSub, note: true },
-            totalDraftSub > 0 && { label: "→ Davon erwartet (Entwürfe)", value: totalDraftSub, note: true, expected: true },
+            { label: "Einnahmen (Netto, gestellte Rechnungen)", value: totalInvoiced, bold: false },
+            totalDraftSub > 0 && { label: "→ Erwartet aus Entwürfen (nicht im Ergebnis)", value: totalDraftSub, note: true, expected: true },
             { label: "Spesen (Netto)", value: -totalExpNet, bold: false },
             { label: "Interne Ausgaben (Netto)", value: -totalIntExpNet, bold: false },
             { label: "Personalaufwand (Löhne)", value: -totalLoehne, bold: false },
@@ -183,18 +183,19 @@ function Accounting({ data, update, setView, setPrintContent }: Pick<ViewProps, 
             const monthData = months.map((label, i) => {
               const key = `${year}-${String(i + 1).padStart(2, "0")}`;
               const invs = data.invoices.filter(inv => (inv.date || "").startsWith(key));
-              const paid = invs.filter(inv => inv.status === "bezahlt").reduce((s, inv) => s + (inv.sub || 0), 0);
-              const open = invs.filter(inv => inv.status === "gesendet" || inv.status === "überfällig").reduce((s, inv) => s + (inv.sub || 0), 0);
-              const draft = invs.filter(inv => inv.status === "entwurf").reduce((s, inv) => s + (inv.sub || 0), 0);
+              const paid = invs.filter(inv => inv.status === "bezahlt").reduce((s, inv) => s + invoiceNet(inv), 0);
+              const open = invs.filter(inv => inv.status === "gesendet" || inv.status === "überfällig").reduce((s, inv) => s + invoiceNet(inv), 0);
+              const draft = invs.filter(inv => inv.status === "entwurf").reduce((s, inv) => s + invoiceNet(inv), 0);
               return { label, key, paid, open, draft, total: paid + open + draft };
             });
             const maxVal = Math.max(...monthData.map(m => m.total), 1);
-            const yearTotal = monthData.reduce((s, m) => s + m.total, 0);
+            // Umsatz ohne Entwürfe (die Balken zeigen Entwürfe zusätzlich als «erwartet»)
+            const yearTotal = monthData.reduce((s, m) => s + m.paid + m.open, 0);
             const currentMonth = localISODate().slice(0, 7);
             return (
               <>
                 <div style={{ fontSize: 11, color: "var(--text5)", marginBottom: 16 }}>
-                  Total {formatCHF(yearTotal)} · {data.invoices.filter(i => (i.date||"").startsWith(year)).length} Rechnungen
+                  Total {formatCHF(yearTotal)} · {data.invoices.filter(i => i.status !== "entwurf" && (i.date||"").startsWith(year)).length} Rechnungen
                 </div>
                 <div style={{ display: "flex", alignItems: "flex-end", gap: 4, height: 80, marginBottom: 8 }}>
                   {monthData.map(m => (

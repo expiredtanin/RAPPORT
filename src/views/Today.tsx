@@ -9,7 +9,7 @@ import { useEffect, useState } from "react";
 import type { AppData, CurrentUser, Employee, ViewProps } from "../types";
 import type { PaletteTarget } from "../commandPalette";
 import { NON_BILLING_CATEGORIES, SIA_PHASES } from "../constants";
-import { formatCHF, formatHours, generateId, getKW, localISODate } from "../utils";
+import { formatCHF, formatHours, generateId, getKW, localISODate, yearRevenue } from "../utils";
 import { addDays, setLinkedStatus } from "../schedule";
 import { formatElapsed, openTasks, readTimer, timerElapsedMs, timerToEntry, weekAgenda, writeTimer, type RunningTimer } from "../today";
 import { getSollForDay } from "./time/timeUtils";
@@ -107,7 +107,8 @@ export default function Today({ data, currentUser, userPermissions, run, onOpenP
   const showOffice = can("invoices");
   const open = (data.invoices || []).filter(i => i.status === "gesendet" || i.status === "überfällig");
   const overdue = open.filter(i => i.status === "überfällig").length;
-  const yearPaid = (data.invoices || []).filter(i => i.status === "bezahlt" && (i.paidDate || i.date || "").startsWith(today.slice(0, 4))).reduce((s, i) => s + (i.sub || 0), 0);
+  // Umsatz wie Übersicht und Buchhaltung: gestellte Rechnungen (ohne Entwürfe) nach Rechnungsdatum, netto
+  const yearPaid = yearRevenue(data.invoices || [], today.slice(0, 4));
   const followUps = (data.activities || []).filter(a => a.followUpDate && !a.followUpDone && a.followUpDate <= today).length;
   const monthMins = (data.timeEntries || []).filter(e => e.date.startsWith(today.slice(0, 7))).reduce((s, e) => s + (e.minutes || 0), 0);
 

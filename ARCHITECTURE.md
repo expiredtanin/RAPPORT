@@ -174,7 +174,7 @@ Rust: `tauri-plugin-fs` (+`watch`), `tauri-plugin-dialog`, `tauri-plugin-persist
 
 **CRM / Akquise** (`leads[]`, `activities[]`, plus `Person.source/referredById/tags`, `settings.leadSources`):
 - `Lead` = ein Akquise-Vorgang mit Stufe (`anfrage` → `besichtigung` → `offerte` → `verhandlung` → `gewonnen` | `verloren`), Herkunft, Empfehler (`referrerId`), geschätztem Honorar (netto), optional verknüpfter Offerte/Projekt. `Activity` = Kontaktverlauf einer Person (mit optionaler Wiedervorlage); Meetings werden daraus gezählt, nicht gespeichert.
-- Auswertung nur in [crm.ts](src/crm.ts), nichts Aggregiertes wird gespeichert. «Umsatz» = netto (`Invoice.sub`), alle Rechnungen ausser Entwurf. Empfehler/Herkunft einer Rechnung: Lead (über Projekt oder Offerte) vor `Person.referredById`/`Person.source`.
+- Auswertung nur in [crm.ts](src/crm.ts), nichts Aggregiertes wird gespeichert. «Umsatz» = netto nach Rabatt (`invoiceNet`), alle Rechnungen ausser Entwurf, nach Rechnungsdatum. Empfehler/Herkunft einer Rechnung: Lead (über Projekt oder Offerte) vor `Person.referredById`/`Person.source`.
 - Zahlungsmoral braucht `Invoice.paidDate`; die UI setzt es seit dem CRM-Update beim Wechsel auf «bezahlt» (ältere Rechnungen haben keins).
 - **Nur lokal:** `leads`/`activities` sind noch nicht in `ENTITY_MAP` des PocketBase-Adapters. Im Cloud-Modus werden sie nicht synchronisiert. Für den Sync: ENTITY_MAP + Mapper (`pocketbase-mappers.ts`), Collections und Gate-Listen in `pb/` (Migration + `pb/pb_hooks/permissions.pb.js`).
 
@@ -228,9 +228,9 @@ Alle Views liegen in [src/views/](src/views/), werden in [App.tsx](src/App.tsx) 
 | [ProjectDetail.tsx](src/views/ProjectDetail.tsx) | ~300 | **Projekt-Arbeitsraum:** links Projektliste (`ProjectList`, ab 1100 px), Kopf mit Aktionen (Stoppuhr, Protokoll und Rechnung zum Projekt über `run`, ⋯ Einstellungen/Budget/PDF), Phasenleiste (`phaseStrip`: aktuelle Phase = Phase des neuesten Zeiteintrags), Reiter Überblick (Kennzahlen, Phasen, Pendenzen, nächste Termine, Beteiligte, Hinweis bei überzogenen Phasen) · Stunden · Termine · Honorar & Rechnungen · Protokolle · Beteiligte. State und Handler hier, Karten/Dialoge in [project-detail/](src/views/project-detail/) (`Workspace.tsx`: Liste, Phasenleiste, Überblick, Beteiligte; `helpers.ts` mit `computePhaseStats`, `BudgetCard`, `PhaseCard`, `SettingsModal`, `BudgetModal`, …) | **Sehr hoch** |
 | [ProjectEditForm.tsx](src/views/ProjectEditForm.tsx) | 224 | Gemeinsames Bearbeitungsformular (Liste + Detail) | Mittel |
 | [Time.tsx](src/views/Time.tsx) | ~400 | Wochen-Grid mit Drag&Drop, Tag/Woche/Monat, Absenzen. Seit Beta 26.11: Personenwahl im Kopf (gemerkt in `rapport_time_employee`), Werkzeugleiste mit «Heute», Tageskopf mit Ist/Soll, Jetzt-Linie, laufende Stoppuhr als Block, Farbe je Projekt (`time/projectColor.ts`), Monats-Heatmap und eine Saldo-Karte; Stile `zeit-*` in global.css (`.is-today` statt `.today`, das ist die «Heute»-Seite). Teile in [time/](src/views/time/): `timeUtils.ts` (Soll/Saldo/Feiertage, mit `data` als erstem Argument), `WeekGrid`, `WeekForms`, `DayView`, `MonthCalendar`, `SaldoCards`, `FerienModals`, Hooks `useWeekResize`/`useFerienAntrag`/`useExpenses` | **Sehr hoch** |
-| [Invoices.tsx](src/views/Invoices.tsx) | ~300 | Rechnungen, Akonto, QR-Bill, Mahnungen, Planer. Teile in [invoices/](src/views/invoices/): `invoiceHelpers.ts` (`calcTotal`, Nummern, Akonto-Plan), `newInvoiceForm.ts` (`buildNewInvoiceForm`: Vorbefüllung Teil-/Akonto-/Schlussrechnung), `invoiceList.ts`, Dialoge und Tabelle | **Sehr hoch** |
+| [Invoices.tsx](src/views/Invoices.tsx) | ~300 | Rechnungen, Akonto, QR-Bill, Mahnungen, Planer. Teile in [invoices/](src/views/invoices/): `invoiceHelpers.ts` (`calcTotal`, Nummern, Akonto-Plan, Zeitauswahl, `invoicesForQuote`, `phaseInvoiceAmount`), `newInvoiceForm.ts` (`buildNewInvoiceForm`: Vorbefüllung Teil-/Akonto-/Schlussrechnung; auch Grundlage der Dialog-Vorschau), `invoiceList.ts`, Dialoge und Tabelle. Regeln siehe «Rechnungen» unten | **Sehr hoch** |
 | [Employees.tsx](src/views/Employees.tsx) | ~240 | Multi-Tab: Stammdaten, Absenzen, Ferien, Lohnabschluss. Teile in [employees/](src/views/employees/): `calc.ts` (`createEmployeeCalc(data)`: Monats-/Ferien-/Überstundensaldo), Tabs und Dialoge | **Sehr hoch** |
-| [Quotes.tsx](src/views/Quotes.tsx) | 980 | Offerten: SIA / manuell / frei, Übernahme als Projekt; im Modus «Aufwand» Schätzung aus eigenen Projekten ([quotes/EffortEstimatePanel](src/views/quotes/EffortEstimatePanel.tsx)) | Hoch |
+| [Quotes.tsx](src/views/Quotes.tsx) | 980 | Offerten: SIA / manuell / frei, Übernahme als Projekt; im Modus «Aufwand» Schätzung aus eigenen Projekten ([quotes/EffortEstimatePanel](src/views/quotes/EffortEstimatePanel.tsx)). Netto und MWST auf Rappen, Total = Summe. Speichern einer verknüpften Offerte führt das Projektbudget nach (`quoteBudgetFields`, Meldung «Projektbudget aktualisiert») | Hoch |
 | [Protocols.tsx](src/views/Protocols.tsx) | ~880 | Sitzungsprotokolle (Beschluss/Info/Aufgabe); der Mahn-Dialog liegt in components/MahnModal.tsx | Hoch |
 | [Expenses.tsx](src/views/Expenses.tsx) | ~500 | Mitarbeiter-Spesen, Beleg-Upload + Belegerkennung | Hoch |
 | [InternalExpenses.tsx](src/views/InternalExpenses.tsx) | ~400 | Interne Ausgaben (gleich aufgebaut wie Spesen) | Mittel |
@@ -252,6 +252,17 @@ Alle Views liegen in [src/views/](src/views/), werden in [App.tsx](src/App.tsx) 
 
 ---
 
+### Rechnungen (Regeln, Stand 26.11)
+
+- **Summen** (`calcTotal`): Zwischentotal, Gesamtrabatt, Netto nach Rabatt (`subAfterDisc`) und MWST je auf Rappen gerundet, Total = Netto + MWST. Gespeichert beim Speichern, danach nur angezeigt (alte Rechnungen werden nicht neu berechnet, erst beim nächsten Speichern). PDF «Netto» = `invoiceNet`, QR-Betrag = `total`.
+- **Nummer** (`nextInvoiceNumber`): Jahr/Monat aus dem Rechnungsdatum, laufende Nummer pro Jahr; bei einer neuen Rechnung folgt die automatisch vergebene Nummer einer Datumsänderung. Speichern mit einer schon vergebenen Nummer wird abgewiesen (Meldung). Der Akonto-Planer vergibt die Nummern nach dem Datum jeder Rate.
+- **Dialog «Neue Rechnung»**: Startmodus nach Abrechnungsart (`defaultInvoiceMode`: Pauschal → Akonto % vom Budget, Stundensatz → Teilrechnung nach Stunden), auch aus dem Projekt-Arbeitsraum. Die Vorschau rechnet mit genau dem Formular, das «Weiter» erzeugt.
+- **Zeiteinträge**: nur Rechnungen nach Stunden (`hoursFromEntries`: Teilrechnung/Akonto/Schluss nach Stunden, Autofill eines Stundensatz-Projekts, Bearbeiten einer Rechnung mit verknüpften Einträgen) zeigen die Auswahl; Zeile 1 = gewählte Stunden × Satz folgt nur Änderungen an der Auswahl. Betrag-, %- und Phasen-Rechnungen markieren keine Einträge und werden nicht überschrieben. Die verrechneten Minuten je Eintrag bleiben in `Invoice.entrySelections` (bestehendes Cloud-Feld) und werden beim Bearbeiten wieder geladen.
+- **Schlussrechnung**: Pauschal = `projectFee` minus alle gestellten Nicht-Schluss-Rechnungen des Projekts (netto nach Rabatt, ohne Entwürfe). Stundensatz = offene Stunden bis heute minus Akonti/Teilrechnungen, die nicht nach Stunden gestellt wurden. Aus einer Offerte = `Quote.sub` minus die Rechnungen dieser Offerte (`invoicesForQuote`: `quoteId`, bei der Hauptofferte zusätzlich Projekt-Rechnungen ohne Offertbezug; Nachträge getrennt).
+- **Teilrechnung «Nach SIA-Phase»**: offerierter Phasenbetrag aus den verknüpften Offerten (`phaseInvoiceAmount`; Aufwand-Offerten mit den Sätzen der Rollen), ohne Offerte Phasenstunden × Stundensatz.
+- **Akonto-Planer**: höchstens 24 Raten (Betrag durch die tatsächliche Anzahl), Vorschlag = Restbetrag (`projectFee` minus gestellte Rechnungen), «= Budget übernehmen» als Alternative.
+- **Offen (bewusst nicht geändert, Entscheid Karim):** Akonto-MWST wird in der Buchhaltung getrennt als «ausstehend» geführt; Vertragssumme aus Offerte = Brutto (`q.total`).
+
 ## 6. utils.ts — Business-Logik-Bibliothek
 
 [utils.ts](src/utils.ts) ist isoliert und gut testbar. Die wichtigsten Gruppen:
@@ -260,7 +271,11 @@ Alle Views liegen in [src/views/](src/views/), werden in [App.tsx](src/App.tsx) 
 - `calcSIAHours(baukosten, schwierigkeit, phasen)` — SIA-102-Formel `p = Z1 + Z2/∛B`
 - `calcManualHours(phases, roles)` — Stundenansatz × Stunden pro Rolle
 - `calcOfficeBenchmarks(projects, timeEntries)` / `estimateEffort(bench, gf, faktor, phasen?)` — Aufwandschätzung aus eigenen Projekten: Stunden je m² GF je Nutzung aus abgeschlossenen Projekten (Status «abgeschlossen», `usage` + `floorArea` gesetzt, ohne Wettbewerb), Median und Bandbreite (ab 5 Projekten 10.–90. Perzentil, sonst min–max), Phasenanteile gemittelt. Gleicher Aufbau wie die ETH Value-Methode (Bezugsgrösse × Kennwert × Anpassungsfaktor, sechs Nutzungen = `PROJECT_USAGES`), aber nur mit eigenen Zahlen — deren Kennwerte sind nicht öffentlich und werden bewusst nicht nachgebaut. UI: [quotes/EffortEstimatePanel](src/views/quotes/EffortEstimatePanel.tsx) im Offerten-Modus «Aufwand», Grundlage bleibt als `quote.estimate`
-- `deriveQuoteBudget(linkedQuotes, allQuotes, roles)` — Aggregiert Offerten zu Projekt-Budget
+- `deriveQuoteBudget(linkedQuotes, allQuotes, roles)` — Aggregiert Offerten zu Projekt-Budget (Stunden, Betrag auf Rappen, Stunden und offerierter Betrag je Phase; «Referenz» zählt nicht)
+- `quoteBudgetFields(project, linked, quotes, roles)` — die aus Offerten abgeleiteten Projektfelder; **jede** Stelle, die Offerten verknüpft/entkoppelt oder eine verknüpfte Offerte speichert, schreibt damit (Quotes.tsx, ProjectDetail Budget-Dialog, ProjectEditForm). Pauschalprojekte: `budget` = `budgetAmount`, solange Offerten verknüpft sind
+- `projectFee(project)` — **die eine Quelle** für das Pauschalhonorar (Akonto %, Akonto-Planer, Schlussrechnung, Kennzahlen, Drucke): mit verknüpften Offerten `budgetAmount` (Hauptofferte + Nachträge), sonst der von Hand gesetzte Pauschalpreis `budget`; Altdaten fallen auf den jeweils anderen Wert zurück. Nie mehr `budget || budgetAmount` direkt lesen
+- `invoiceNet(inv)` — Netto einer Rechnung nach Gesamtrabatt (`sub − globalDisc`; robust gegen `subAfterDisc: 0` aus der Cloud). Alle Netto-Kennzahlen (Umsatz, «verrechnet», CRM, Studio-Budget, Abzüge in Schlussrechnungen) rechnen damit, nie mit `sub` (= Zwischentotal vor Rabatt)
+- `yearRevenue(invoices, year)` — Umsatz netto: gestellte Rechnungen ohne Entwürfe, nach **Rechnungsdatum**; gleiche Regel für Buchhaltung, Übersicht, «Heute», CSV/PDF-Export
 - `calcLohn(emp, monat, spesen, bonus)` — AHV/ALV/BVG/NBU/KTG/Quellensteuer
 
 **Crypto / Auth:**
@@ -275,7 +290,7 @@ Alle Views liegen in [src/views/](src/views/), werden in [App.tsx](src/App.tsx) 
 **Formatierung (de-CH):**
 - `formatCHF(amount)` → `"CHF 1'234.50"`
 - `formatDate(iso)` → `"14. Mai 2025"`
-- `roundCHF(amount)` → 5-Rappen-Rundung
+- `roundCHF(amount)` → Rundung auf Rappen (keine 5-Rappen-Rundung, QR-Rechnungen werden elektronisch bezahlt)
 - `formatHours(minutes)` → `"2h 30m"`
 
 **Schweizer QR-Rechnung:**
@@ -482,7 +497,7 @@ npm test             # Vitest (*.test.ts neben dem Code, Node-Umgebung)
 2. **App.tsx ist ~420 Zeilen** und hält noch Login/Cloud-Setup (nutzt `save`/`setData`), View-Routing, Print-Routing und die Layout-Hülle. Der Daten-State liegt in `hooks/useStudioData.ts`; ausgelagert sind ausserdem Sidebar, Changelog/Über, globales CSS, Navigation, Erscheinungsbild und Rechte-Ableitung. Jede Änderung an App.tsx ist hochriskant — sie betrifft alles.
 3. **Inline-Styles ohne Konvention** — Spacing ist über das Projekt verstreut; Farben laufen über Theme- und Bedeutungsvariablen (siehe §11), Reste von Hex-Werten stehen noch in Template-Strings.
 4. **Modal-State chaotisch** — manche Views haben `{type,id}`, andere mehrere `useState`. Kein zentraler Manager.
-5. **Wenige Tests.** Vitest (`npm test`) deckt QR-Referenz, Lohn, SIA-Honorar, Nummernformate, Passwörter, Datenordner/Dateiablage und die Datenprüfung ab. Keine UI-Tests, kein Rust-Test; MWST/Rechnungssummen (`calcTotal` in invoices/invoiceHelpers.ts) noch ohne Test.
+5. **Wenige Tests.** Vitest (`npm test`) deckt QR-Referenz, Lohn, SIA-Honorar, Nummernformate, Passwörter, Datenordner/Dateiablage und die Datenprüfung ab. Keine UI-Tests, kein Rust-Test. Ablauf Offerte → Projekt → Rechnungen (Summen, Budget, Akonto/Schluss, Nummern) in [offerteRechnungFlow.test.ts](src/views/invoices/offerteRechnungFlow.test.ts), Druck-Summen in `print/docs/*.test.tsx`.
 6. **TypeScript seit der Migration (siehe TYPESCRIPT-MIGRATION.md).** Die Typen des Datenmodells stehen in [src/types.ts](src/types.ts); ältere Datensätze sind aber oft unvollständig, deshalb sind viele Felder optional. Ein Schema-Refactor braucht trotzdem eine Migration in `storage/migrations.ts`.
 7. **Error-Boundary** ([ErrorBoundary.tsx](src/components/ErrorBoundary.tsx)) um die Ansichten (Ansichtswechsel setzt zurück), um die Druckansicht und ganz aussen in main.tsx. Ein Fehler zeigt eine Meldung statt weissem Bildschirm, «Fehlertext kopieren» liefert Stack, Ansicht und Version für den Support — behoben ist er damit nicht.
 8. **Datenprüfung nur grob** ([validate.ts](src/storage/validate.ts)): oberste Ebene, `settings` und die Unterlisten aus `NESTED_LISTS`; einzelne Felder in Einträgen werden nicht geprüft.

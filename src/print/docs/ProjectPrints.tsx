@@ -1,7 +1,7 @@
 // Druckvorlagen Projektdetail (`projectDetail`) und Projektübersicht (`projectsOverview`).
 
 import { SIA_PHASES, PROJECT_TYPES } from "../../constants";
-import { formatCHF, formatDate, formatHours, formatSenderAddress } from "../../utils";
+import { formatCHF, formatDate, formatHours, formatSenderAddress, projectFee } from "../../utils";
 import { StudioLogo } from "../../components/UI";
 import type { AppData, Invoice, Project, Settings, TimeEntry } from "../../types";
 import { HEADING, type Content, type Client } from "./shared";
@@ -149,7 +149,7 @@ export function ProjectsOverviewPrint({ projects, data, settings }: { projects: 
   const projectAmount = (p: Project) => {
     const bType = p.billingType || p.type;
     if (bType === "stundensatz") return (projectMinutes(p.id) / 60) * (p.hourlyRate as number);
-    return p.budget || 0;
+    return projectFee(p);
   };
 
   const grouped = PROJECT_TYPES.map(cat => ({

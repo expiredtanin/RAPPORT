@@ -2,15 +2,16 @@
 
 import React from "react";
 import { STATUS_COLORS } from "../../constants";
-import { formatCHF, formatDate, formatSenderAddress } from "../../utils";
+import { formatCHF, formatDate, formatSenderAddress, invoiceNet } from "../../utils";
 import { StudioLogo } from "../../components/UI";
 import type { AppData, Settings } from "../../types";
 import { HEADING } from "./shared";
 
 export function BuchhaltungPrint({ data, filterYear, settings }: { data: AppData; filterYear?: string; settings: Settings }) {
   const mwstRate = settings.mwstRate ?? 8.1;
+  // Nur gestellte Rechnungen (ohne Entwürfe), nach Rechnungsdatum — gleiche Regel wie Accounting.tsx (yearRevenue)
   const invoices = [...data.invoices]
-    .filter(i => !filterYear || (i.date || "").startsWith(filterYear))
+    .filter(i => i.status !== "entwurf" && (!filterYear || (i.date || "").startsWith(filterYear)))
     .sort((a, b) => (a.date || "").localeCompare(b.date || ""));
   const expenses = [...(data.expenses || [])]
     .filter(e => !filterYear || (e.date || "").startsWith(filterYear))
@@ -22,9 +23,9 @@ export function BuchhaltungPrint({ data, filterYear, settings }: { data: AppData
     .filter(l => !filterYear || l.monat.startsWith(filterYear))
     .sort((a, b) => a.monat.localeCompare(b.monat));
 
-  const totalInvoicedNet = invoices.reduce((s, i) => s + (i.sub || 0), 0);
+  const totalInvoicedNet = invoices.reduce((s, i) => s + invoiceNet(i), 0);
   // Roh-Summe über exakt die Zeilen, die die RECHNUNGEN-Tabelle unten
-  // rendert (inkl. Entwürfe) — deren Fusszeile muss auf die sichtbaren
+  // rendert (ohne Entwürfe) — deren Fusszeile muss auf die sichtbaren
   // Zeilen aufgehen, sonst wirkt es wie ein Rechenfehler beim Nachprüfen.
   const tableInvoicedTax = invoices.reduce((s, i) => s + (i.tax || 0), 0);
   // Entwürfe sind noch nicht ausgestellt, Akonto-MwSt erst bei Schlussrechnung
@@ -138,7 +139,7 @@ export function BuchhaltungPrint({ data, filterYear, settings }: { data: AppData
                   <td style={tdStyle}>{formatDate(inv.date)}</td>
                   <td style={tdStyle}>{client?.name || "—"}</td>
                   <td style={{ ...tdStyle, color: "#666", maxWidth: 140, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{desc || "—"}</td>
-                  <td style={tdR}>{formatCHF(inv.sub)}</td>
+                  <td style={tdR}>{formatCHF(invoiceNet(inv))}</td>
                   <td style={{ ...tdR, color: "#888" }}>{inv.mwst ? formatCHF(inv.tax) : "—"}</td>
                   <td style={{ ...tdR, fontWeight: 600 }}>{formatCHF(inv.total)}</td>
                   <td style={{ ...tdR, color: STATUS_COLORS[inv.status] || "#888" }}>{inv.status}</td>

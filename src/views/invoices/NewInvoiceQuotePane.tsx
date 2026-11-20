@@ -1,8 +1,9 @@
 // Offerte-Reiter des Dialogs «Neue Rechnung»: Offertenwahl, Art (Akonto/Teil/Schluss) und Betragsart.
 
 import type React from "react";
-import { formatCHF } from "../../utils";
+import { formatCHF, invoiceNet } from "../../utils";
 import type { AppData, Invoice, Quote } from "../../types";
+import { invoicesForQuote } from "./invoiceHelpers";
 import type { NewInvoiceState } from "./invoiceHelpers";
 
 /** Inhalt des Offerte-Reiters; `q` ist die gewählte Offerte. */
@@ -20,14 +21,14 @@ export function NewInvoiceQuotePane({ ni, setNi, data, invoices, q }: {
         <select value={ni.quoteId} onChange={e => setNi(n => ({ ...n, quoteId: e.target.value }))} style={!ni.quoteId ? { borderColor: "var(--warning)" } : {}}>
           <option value="">— Offerte wählen —</option>
           {(data.quotes || []).map(x => {
-            const alrInv = (invoices).filter(i => i.quoteId === x.id || (x.projectId && i.projectId === x.projectId)).reduce((s, i) => s + (i.sub || 0), 0);
+            const alrInv = invoicesForQuote(x, invoices, data.projects).filter(i => i.status !== "entwurf" && i.invoiceKind !== "schluss").reduce((s, i) => s + invoiceNet(i), 0);
             const rem = Math.max(0, (x.sub || 0) - alrInv);
-            return <option key={x.id} value={x.id}>{x.number}{x.projectName ? ` · ${x.projectName}` : ""} — {formatCHF(x.total)}{alrInv > 0 ? ` (offen: ${formatCHF(rem)})` : ""}</option>;
+            return <option key={x.id} value={x.id}>{x.number}{x.projectName ? ` · ${x.projectName}` : ""} — {formatCHF(x.total)}{alrInv > 0 ? ` (offen netto: ${formatCHF(rem)})` : ""}</option>;
           })}
         </select>
       </div>
       {q && (() => {
-        const alrInv = (invoices).filter(i => i.quoteId === q.id || (q.projectId && i.projectId === q.projectId)).reduce((s, i) => s + (i.sub || 0), 0);
+        const alrInv = invoicesForQuote(q, invoices, data.projects).filter(i => i.status !== "entwurf" && i.invoiceKind !== "schluss").reduce((s, i) => s + invoiceNet(i), 0);
         const rem = Math.max(0, (q.sub || 0) - alrInv);
         const qKind = ni.mode === "schluss" ? "schluss"
           : (ni.mode === "akonto-percent" || ni.mode === "akonto-amount") ? "akonto"

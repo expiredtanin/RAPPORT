@@ -9,7 +9,7 @@
 import React, { useState } from "react";
 import { attribution, billedInvoices, overallWinRate, paymentDaysByClient, revenueByClient, revenueByReferrer, revenueBySource, winRateBy, wonLeadAverages } from "../crm";
 import type { GroupRow, WinRow } from "../crm";
-import { formatCHF } from "../utils";
+import { formatCHF, invoiceNet } from "../utils";
 import { KpiCard } from "../components/UI";
 import type { AppData } from "../types";
 
@@ -60,8 +60,8 @@ export default function CrmAuswertung({ data, setView }: { data: AppData; setVie
   const [year, setYear] = useState(thisYear);
 
   const billed = billedInvoices(data, year);
-  const revenue = billed.reduce((s, i) => s + (i.sub || 0), 0);
-  const attributed = billed.filter(i => { const a = attribution(data, i); return a.referrerId || a.source; }).reduce((s, i) => s + (i.sub || 0), 0);
+  const revenue = billed.reduce((s, i) => s + invoiceNet(i), 0);
+  const attributed = billed.filter(i => { const a = attribution(data, i); return a.referrerId || a.source; }).reduce((s, i) => s + invoiceNet(i), 0);
   const avg = wonLeadAverages(data, year);
   const srcWin = new Map<string, WinRow>(winRateBy(data, year, "source").map(r => [r.key, r]));
   const refWin = new Map<string, WinRow>(winRateBy(data, year, "referrer").map(r => [r.key, r]));

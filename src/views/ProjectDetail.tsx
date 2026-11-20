@@ -6,7 +6,7 @@
 
 import React, { useState } from "react";
 import { NON_BILLING_CATEGORIES } from "../constants";
-import { deriveQuoteBudget, migrateLinkedQuotes } from "../utils";
+import { deriveQuoteBudget, hasQuoteBudget, invoiceNet, migrateLinkedQuotes, projectFee } from "../utils";
 import { RowMenu } from "../components/UI";
 import type { PaletteTarget } from "../commandPalette";
 import { readTimer, writeTimer, weekAgenda } from "../today";
@@ -150,7 +150,9 @@ function ProjectDetail({ data, update, saveAll, projectId, onBack, onSelect, run
   });
 
   const saveBudget = () => {
-    update("projects", data.projects.map(p => p.id === projectId ? { ...p, ...budgetForm } : p));
+    // Pauschalpreis mit den verknüpften Offerten (Hauptofferte + Nachträge) nachführen — eine Quelle (projectFee)
+    const budget = budgetForm.billingType === "pauschal" && hasQuoteBudget(budgetForm) ? budgetForm.budgetAmount : project.budget;
+    update("projects", data.projects.map(p => p.id === projectId ? { ...p, ...budgetForm, budget } : p));
     setBudgetModal(false);
   };
 
@@ -162,7 +164,7 @@ function ProjectDetail({ data, update, saveAll, projectId, onBack, onSelect, run
   const billingType = project.billingType || project.type || "stundensatz";
   const isNonBilling = NON_BILLING_CATEGORIES.includes(project.category as string);
   const isCostControl = billingType !== "stundensatz" || isNonBilling;
-  const totalAmount = billingType === "stundensatz" ? (totalMinutes / 60) * (project.hourlyRate as number) : project.budget;
+  const totalAmount = billingType === "stundensatz" ? (totalMinutes / 60) * (project.hourlyRate as number) : projectFee(project);
   const budget = project.budgetHours || 0;
   const budgetPct = budget > 0 ? (totalHours / budget) * 100 : 0;
   const budgetColor = budgetPct >= 100 ? "var(--negative)" : budgetPct >= 80 ? "var(--warning)" : "var(--positive)";
@@ -207,17 +209,19 @@ function ProjectDetail({ data, update, saveAll, projectId, onBack, onSelect, run
   // ── Arbeitsraum ────────────────────────────────────────────────
   const canSeeTime = isAdmin || userPermissions.includes("time");
   const nextTerm = weekAgenda(data, localISODate(), 60, { projectId })[0];
-  const invoicedTotal = projectInvoices.filter(i => i.status !== "entwurf").reduce((s, i) => s + (i.sub || 0), 0);
+  const invoicedTotal = projectInvoices.filter(i => i.status !== "entwurf").reduce((s, i) => s + invoiceNet(i), 0);
   const chf0 = (n: number) => Math.round(n).toLocaleString("de-CH").replace(/[’\u2019]/g, "'");
   const figures: WsFigure[] = [
     { label: "Stunden", value: formatHours(totalMinutes), sub: budget > 0 ? `von ${budget} h · ${Math.round(budgetPct)} %` : `${entries.length} Einträge`, tone: budgetPct >= 100 ? "neg" : budgetPct >= 80 ? "warn" : undefined },
-    ...(canSeeInvoices ? [{ label: "Honorar verrechnet", value: chf0(invoicedTotal), sub: project.budgetAmount ? `von CHF ${chf0(project.budgetAmount)}` : `${projectInvoices.length} Rechnung(en)` }] : []),
+    ...(canSeeInvoices ? [{ label: "Honorar verrechnet", value: chf0(invoicedTotal), sub: projectFee(project) ? `von CHF ${chf0(projectFee(project))}` : `${projectInvoices.length} Rechnung(en)` }] : []),
     showOffen
       ? { label: "Offen zu verrechnen", value: formatHours(openMinutes), sub: project.hourlyRate ? `≈ CHF ${chf0(openMinutes / 60 * (project.hourlyRate as number))}` : undefined, tone: openMinutes > 0 ? "warn" as const : undefined }
       : { label: "Budget genutzt", value: budget > 0 ? `${Math.round(budgetPct)} %` : "—", sub: isCostControl ? "Kostenkontrolle" : undefined, tone: budgetPct >= 100 ? "neg" as const : undefined },
     { label: "Nächster Termin", value: nextTerm ? nextTerm.label : "—", sub: nextTerm ? new Date(nextTerm.date + "T12:00:00").toLocaleDateString("de-CH", { weekday: "short", day: "numeric", month: "numeric" }) : "nichts geplant" },
   ];
-  const overrun = phaseStats.filter(ps => ps.phaseBudget > 0 && ps.hours > ps.phaseBudget * 1.02).map(ps => ps.id as string);
+  // Nur Stunden der Hauptofferte (ohne Nachtrags-Position) gegen das Phasenbudget der Hauptofferte —
+  // Nachträge haben ihr eigenes Budget (PhaseCard).
+  const overrun = phaseStats.filter(ps => ps.phaseBudget > 0 && ps.hoMins / 60 > ps.phaseBudget * 1.02).map(ps => ps.id as string);
   const hasPhases = (project.enabledPhases || []).length > 0 || positions.some(pos => entries.some(e => e.positionId === pos.code)) || customPhaseStats.length > 0;
   const phaseCard = hasPhases ? <PhaseCard project={project} data={data} entries={entries} positions={positions} phaseStats={phaseStats} customPhaseStats={customPhaseStats} customMinsTotal={customMinsTotal} unassignedMins={unassignedMins} phaseChartView={phaseChartView} setPhaseChartView={setPhaseChartView} /> : null;
   const openBudget = () => { openBudgetModal(); setBudgetModal(true); };

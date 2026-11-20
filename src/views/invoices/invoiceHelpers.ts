@@ -1,11 +1,15 @@
 // Reine Hilfen der Rechnungsansicht (views/invoices/): Formular-Typen, Summenberechnung, Rechnungsnummern
 // und die Erzeugung der Akonto-Plan-Rechnungen. Keine React-Abhängigkeiten.
 
-import { generateId, roundCHF } from "../../utils";
-import type { AppData, Invoice, InvoiceItem } from "../../types";
+import { deriveQuoteBudget, generateId, localISODate, migrateLinkedQuotes, roundCHF } from "../../utils";
+import type { AppData, Invoice, InvoiceItem, Project, Quote, Role, TimeEntry } from "../../types";
 
-/** Formularstand einer Rechnung: Id und Summen kommen erst beim Speichern dazu; die Positionsliste ist immer vorhanden. */
-export type InvoiceForm = Partial<Invoice> & Pick<Invoice, "items">;
+/**
+ * Formularstand einer Rechnung: Id und Summen kommen erst beim Speichern dazu; die Positionsliste ist immer
+ * vorhanden. `hoursFromEntries` (nur im Formular, wird nicht gespeichert): Zeile 1 ist «gewählte Stunden ×
+ * Stundensatz» und folgt der Auswahl der Zeiteinträge.
+ */
+export type InvoiceForm = Partial<Invoice> & Pick<Invoice, "items"> & { hoursFromEntries?: boolean };
 
 /** Zustand des Dialogs «Neue Rechnung» (Quelle: Projekt oder Offerte, Art der Rechnung). */
 export type NewInvoiceState = { tab: string; projectId?: string; quoteId?: string; mode: string; pct: number; amt: number; phaseId?: string; [key: string]: unknown };
@@ -14,17 +18,21 @@ export type AkontoPlan = { projectId: string; clientId: string; totalAmt: number
 /** Zeiteintrags-Auswahl einer Rechnung (verrechnete Minuten je Eintrag). */
 export type EntrySelections = NonNullable<Invoice["entrySelections"]>;
 
-/** Summen einer Rechnung (Zwischentotal, Gesamtrabatt, MWST, auf Rappen gerundetes Total). */
+/**
+ * Summen einer Rechnung: Zwischentotal, Gesamtrabatt, Netto nach Rabatt, MWST und Total. Alle Beträge auf
+ * Rappen gerundet; das Total ist die Summe aus gerundetem Netto und gerundeter MWST, damit Netto + MWST auf
+ * Rechnung, PDF und QR-Zahlteil genau das Total ergeben.
+ */
 export const calcTotal = (items: InvoiceItem[] | undefined, mwst: boolean | undefined, rate: number, discountType?: string, discountValue?: number) => {
-  const sub = (items || []).reduce((s, i) => {
+  const sub = roundCHF((items || []).reduce((s, i) => {
     const line = i.qty * i.price;
     const disc = (i.discount || 0) > 0 ? line * ((i.discount || 0) / 100) : 0;
     return s + line - disc;
-  }, 0);
-  const globalDisc = discountType === "percent" ? sub * ((discountValue || 0) / 100)
-    : discountType === "amount" ? (discountValue || 0) : 0;
-  const subAfterDisc = sub - globalDisc;
-  const tax = mwst ? subAfterDisc * (rate / 100) : 0;
+  }, 0));
+  const globalDisc = roundCHF(discountType === "percent" ? sub * ((discountValue || 0) / 100)
+    : discountType === "amount" ? (discountValue || 0) : 0);
+  const subAfterDisc = roundCHF(sub - globalDisc);
+  const tax = mwst ? roundCHF(subAfterDisc * (rate / 100)) : 0;
   const total = roundCHF(subAfterDisc + tax);
   return { sub, globalDisc, subAfterDisc, tax, total };
 };
@@ -35,14 +43,16 @@ export const calcLineTotal = (item: Pick<InvoiceItem, "qty" | "price" | "discoun
   return line * (1 - ((item.discount || 0) / 100));
 };
 
-/** Nächste Rechnungsnummer nach dem konfigurierten Format (laufende Nummer aus den bestehenden Rechnungen). */
-export const nextInvoiceNumber = (invoices: Invoice[], format: string | undefined) => {
+/**
+ * Nächste Rechnungsnummer nach dem konfigurierten Format. Jahr und Monat (YYYY/YY/MM) kommen aus dem
+ * Rechnungsdatum `date` (Standard: heute); die laufende Nummer zählt pro Jahr bzw. pro Präfix weiter.
+ */
+export const nextInvoiceNumber = (invoices: Pick<Invoice, "number">[], format: string | undefined, date: string = localISODate()) => {
   const fmt = format || "YYYY-NNN";
-  const now = new Date();
-  const yyyy = String(now.getFullYear());
+  const yyyy = date.slice(0, 4);
   const yy = yyyy.slice(2);
-  const mm = String(now.getMonth() + 1).padStart(2, "0");
-  // Build regex to extract the sequence number from existing invoice numbers
+  const mm = date.slice(5, 7);
+  // Suchmuster aus dem Format: Jahr fest, Monat beliebig (laufende Nummer gilt fürs ganze Jahr)
   const pattern = fmt
     .replace(/[-/^$*+?.()|[\]{}]/g, "\\$&")
     .replace(/YYYY/g, yyyy).replace(/YY/g, yy).replace(/MM/g, "\\d{2}")
@@ -57,6 +67,12 @@ export const nextInvoiceNumber = (invoices: Invoice[], format: string | undefine
   return fmt
     .replace(/YYYY/g, yyyy).replace(/YY/g, yy).replace(/MM/g, mm)
     .replace(/N+/, String(nextSeq).padStart(padLen, "0"));
+};
+
+/** true, wenn eine andere Rechnung (Id ≠ `ownId`) schon die Nummer `number` trägt (ohne Leerzeichen am Rand). */
+export const isInvoiceNumberTaken = (invoices: Pick<Invoice, "id" | "number">[], number: string | undefined, ownId?: string | null) => {
+  const n = (number || "").trim();
+  return !!n && invoices.some(i => i.id !== ownId && (i.number || "").trim() === n);
 };
 
 // Reine UTC-Monatsarithmetik MIT Tages-Klemmung: ein Zieltag, den es im
@@ -77,39 +93,46 @@ export const defaultStartDate = () => {
   return new Date(Date.UTC(now.getFullYear(), now.getMonth() + 1, 1)).toISOString().slice(0, 10);
 };
 
-/** Raten des Akonto-Plans: gleichmässig aus Intervall/Anzahl berechnet oder die manuell erfassten Zeilen. */
+/** Höchstzahl Raten im Akonto-Planer (Intervall-Modus). */
+export const AKONTO_MAX_RATES = 24;
+
+/**
+ * Raten des Akonto-Plans: gleichmässig aus Intervall/Anzahl berechnet (Anzahl auf 1–24 begrenzt, der Betrag
+ * wird durch die tatsächliche Anzahl geteilt) oder die manuell erfassten Zeilen.
+ */
 export const akontoPlanRows = (ap: AkontoPlan) => {
   if (ap.mode === "interval") {
     const start = ap.startDate || defaultStartDate();
-    const perInv = ap.count > 0 ? Math.round((ap.totalAmt / ap.count) * 100) / 100 : 0;
-    return Array.from({ length: Math.max(1, Math.min(ap.count, 24)) }, (_, i) => {
+    const count = Math.max(1, Math.min(Math.floor(ap.count) || 1, AKONTO_MAX_RATES));
+    const perInv = Math.round((ap.totalAmt / count) * 100) / 100;
+    return Array.from({ length: count }, (_, i) => {
       return { id: String(i), date: addMonthsClamped(start, i * (ap.intervalMonths || 1)), amt: perInv };
     });
   }
   return ap.manualRows;
 };
 
-/** Fortlaufende Rechnungsnummern für `count` neue Rechnungen. */
-export const generateSequentialNumbers = (invoices: Invoice[], format: string | undefined, count: number) => {
-  const fmt = format || "YYYY-NNN";
-  const now = new Date();
-  const yyyy = String(now.getFullYear()); const yy = yyyy.slice(2);
-  const escaped = fmt.replace(/[-/^$*+?.()|[\]{}]/g, "\\$&").replace(/YYYY/g, yyyy).replace(/YY/g, yy).replace(/N+/, "(\\d+)");
-  const rx = new RegExp("^" + escaped + "$");
-  const nums = invoices.map(i => { const m = (i.number || "").match(rx); return m ? parseInt(m[1]) : null; }).filter(n => n !== null);
-  let nextSeq = nums.length ? Math.max(...nums) + 1 : 1;
-  const padLen = (fmt.match(/N+/) || ["NNN"])[0].length;
-  return Array.from({ length: count }, () => {
-    const n = fmt.replace(/YYYY/g, yyyy).replace(/YY/g, yy).replace(/N+/, String(nextSeq).padStart(padLen, "0"));
-    nextSeq++;
+/**
+ * Fortlaufende Rechnungsnummern für neue Rechnungen mit den Rechnungsdaten `dates` (gleiche Regeln wie
+ * `nextInvoiceNumber`, jede vergebene Nummer zählt für die nächste mit).
+ */
+export const generateSequentialNumbers = (invoices: Pick<Invoice, "number">[], format: string | undefined, dates: string[]) => {
+  const taken: Pick<Invoice, "number">[] = [...invoices];
+  return dates.map(date => {
+    const n = nextInvoiceNumber(taken, format, date);
+    taken.push({ number: n });
     return n;
   });
 };
 
+/** Bereits gestellte Rechnungen eines Projekts (ohne Entwürfe), netto — für den Restbetrag im Akonto-Planer. */
+export const billedNetForProject = (invoices: Invoice[], projectId: string) =>
+  roundCHF(invoices.filter(i => i.projectId === projectId && i.status !== "entwurf").reduce((s, i) => s + roundCHF((i.sub || 0) - (i.globalDisc || 0)), 0));
+
 /** Baut aus den Raten des Akonto-Plans die Entwurfs-Rechnungen (Akonto, 30 Tage Zahlungsfrist). */
 export const buildAkontoInvoices = (rows: { id: string; date: string; amt: number }[], ap: AkontoPlan, data: AppData, invoices: Invoice[]) => {
   const proj = data.projects.find(p => p.id === ap.projectId);
-  const numbers = generateSequentialNumbers(invoices, data.settings.invoiceNumberFormat, rows.length);
+  const numbers = generateSequentialNumbers(invoices, data.settings.invoiceNumberFormat, rows.map(r => r.date));
   return rows.map((row, i) => {
     const due = new Date(`${row.date}T00:00:00Z`); due.setUTCDate(due.getUTCDate() + 30);
     const { sub, tax, total, subAfterDisc, globalDisc } = calcTotal(
@@ -129,4 +152,66 @@ export const buildAkontoInvoices = (rows: { id: string; date: string; amt: numbe
       createdAt: new Date().toISOString(),
     };
   });
+};
+
+/** Startmodus des Dialogs «Neue Rechnung» nach Abrechnungsart: Stundensatz → Teilrechnung nach Stunden, sonst Akonto % vom Budget. */
+export const defaultInvoiceMode = (project: Pick<Project, "billingType" | "type"> | null | undefined) =>
+  project && (project.billingType || project.type) === "stundensatz" ? "teilrechnung" : "akonto-percent";
+
+/** Auswahl der Zeiteinträge für ein neues Formular: alle Einträge mit ihren vollen Minuten. */
+export const selectAllEntries = (entries: TimeEntry[]): EntrySelections =>
+  Object.fromEntries(entries.map(e => [e.id, { selected: true, billedMinutes: e.minutes }]));
+
+/**
+ * Auswahl der Zeiteinträge beim Bearbeiten einer gespeicherten Rechnung: alle mit ihr verknüpften Einträge,
+ * mit den gespeicherten verrechneten Minuten (`inv.entrySelections`); ältere Rechnungen ohne gespeicherte
+ * Auswahl fallen auf die vollen Minuten zurück.
+ */
+export const entrySelectionsForEdit = (inv: Pick<Invoice, "id" | "entrySelections">, timeEntries: TimeEntry[]): EntrySelections => {
+  const saved = inv.entrySelections || {};
+  return Object.fromEntries(timeEntries.filter(e => e.invoiceId === inv.id)
+    .map(e => [e.id, { selected: true, billedMinutes: saved[e.id]?.billedMinutes ?? e.minutes }]));
+};
+
+/** Zu speichernde Auswahl: nur die gewählten Einträge mit ihren verrechneten Minuten. */
+export const selectedEntrySelections = (sel: EntrySelections | undefined): EntrySelections =>
+  Object.fromEntries(Object.entries(sel || {}).filter(([, s]) => s.selected).map(([id, s]) => [id, { selected: true, billedMinutes: s.billedMinutes ?? 0 }]));
+
+/**
+ * Hält Zeile 1 eines Stunden-Formulars (`hoursFromEntries`) auf «gewählte Stunden × Stundensatz». Andere
+ * Formulare (Akonto/Teilrechnung als Betrag, %, Phase; Pauschal) bleiben unverändert.
+ */
+export const applyEntryHours = (form: InvoiceForm, project: Pick<Project, "name" | "hourlyRate"> | undefined): InvoiceForm => {
+  if (!form.hoursFromEntries || !project) return form;
+  const mins = Object.values(form.entrySelections || {}).filter(s => s.selected).reduce((sum, s) => sum + (s.billedMinutes || 0), 0);
+  const hours = Math.round(mins / 60 * 100) / 100;
+  const rate = project.hourlyRate || 0;
+  const first: Partial<InvoiceItem> = form.items[0] || {};
+  if (first.qty === hours && first.price === rate) return form;
+  const items = [...form.items];
+  items[0] = { id: first.id || generateId(), desc: first.desc || `Architektur-/Grafikleistungen – ${project.name}`, qty: hours, price: rate, discount: first.discount || 0 };
+  return { ...form, items };
+};
+
+/**
+ * Rechnungen, die zu einer Offerte gehören: mit `quoteId` auf sie verwiesen; bei der Hauptofferte eines
+ * Projekts zusätzlich die Projekt-Rechnungen ohne Offertbezug (Akonto/Teilrechnung über den Reiter «Projekt»).
+ * Rechnungen anderer Offerten desselben Projekts (Nachträge) zählen nicht.
+ */
+export const invoicesForQuote = (q: Pick<Quote, "id" | "projectId">, invoices: Invoice[], projects: Project[]) => {
+  const proj = q.projectId ? projects.find(p => p.id === q.projectId) : undefined;
+  const linked = proj ? migrateLinkedQuotes(proj) : [];
+  const isMain = !proj || linked.length === 0 || linked.some(lq => lq.quoteId === q.id && lq.role === "Hauptofferte");
+  return invoices.filter(i => i.quoteId === q.id || (isMain && !!q.projectId && i.projectId === q.projectId && !i.quoteId));
+};
+
+/**
+ * Betrag einer Teil-/Akontorechnung «Nach SIA-Phase»: der offerierte Phasenbetrag aus den verknüpften
+ * Offerten (Aufwand-Offerten mit den Sätzen der Rollen); ohne Offerte Phasenstunden × Stundensatz.
+ */
+export const phaseInvoiceAmount = (project: Project, phaseId: string, quotes: Quote[], roles?: Role[]) => {
+  const fromQuotes = deriveQuoteBudget(migrateLinkedQuotes(project), quotes, roles).phasesAmount.find(p => p.id === phaseId);
+  if (fromQuotes) return fromQuotes.amount;
+  const ph = (project.phasesBudget || []).find(p => p.id === phaseId);
+  return roundCHF((ph?.hours || 0) * (project.hourlyRate || 0));
 };

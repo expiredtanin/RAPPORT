@@ -1,21 +1,24 @@
 // Auswahl der offenen Zeiteinträge eines Stundensatz-Projekts im Rechnungsformular (Häkchen + verrechnete Stunden).
 
-import type React from "react";
 import { SIA_PHASES } from "../../constants";
 import { formatDate, formatHours } from "../../utils";
 import type { AppData, TimeEntry } from "../../types";
-import type { InvoiceForm } from "./invoiceHelpers";
+import type { EntrySelections, InvoiceForm } from "./invoiceHelpers";
 
-/** Tabelle der offenen Zeiteinträge des gewählten Projekts; rendert nichts, wenn es kein Stundensatz-Projekt ist. */
-export function TimeEntriesPicker({ form, setForm, data, openEntriesForProject, toggleEntrySelection, updateBilledMinutes }: {
+/**
+ * Tabelle der offenen Zeiteinträge des gewählten Projekts; nur bei Rechnungen nach Stunden
+ * (`form.hoursFromEntries`, Stundensatz-Projekt). Akonto/Teilrechnung als Betrag, % oder Phase markieren
+ * keine Zeiteinträge.
+ */
+export function TimeEntriesPicker({ form, setSelections, data, openEntriesForProject, toggleEntrySelection, updateBilledMinutes }: {
   form: InvoiceForm;
-  setForm: React.Dispatch<React.SetStateAction<InvoiceForm>>;
+  setSelections: (entrySelections: EntrySelections) => void;
   data: AppData;
   openEntriesForProject: (projectId?: string) => TimeEntry[];
   toggleEntrySelection: (entryId: string, entry: TimeEntry) => void;
   updateBilledMinutes: (entryId: string, minutes: number) => void;
 }) {
-  if (!form.projectId) return null;
+  if (!form.projectId || !form.hoursFromEntries) return null;
   const proj = data.projects.find(p => p.id === form.projectId);
   if (!proj) return null;
   const bType = proj.billingType || proj.type;
@@ -39,7 +42,7 @@ export function TimeEntriesPicker({ form, setForm, data, openEntriesForProject, 
     } else {
       openEntries.forEach(e => { newSel[e.id] = { selected: true, billedMinutes: newSel[e.id]?.billedMinutes ?? e.minutes }; });
     }
-    setForm(f => ({ ...f, entrySelections: newSel }));
+    setSelections(newSel);
   };
   return (
     <div style={{ marginBottom: 14 }}>

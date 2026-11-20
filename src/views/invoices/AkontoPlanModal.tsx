@@ -1,9 +1,10 @@
 // Dialog «Akonto-Plan erstellen»: Projekt/Kunde, Gesamthonorar, Verteilung (gleichmässig oder manuell) und Vorschau.
 
 import type React from "react";
-import { generateId, formatCHF, formatDate, roundCHF } from "../../utils";
+import { generateId, formatCHF, formatDate, projectFee, roundCHF } from "../../utils";
 import { DateInput } from "../../components/UI";
 import type { AppData, Person } from "../../types";
+import { AKONTO_MAX_RATES, billedNetForProject } from "./invoiceHelpers";
 import type { AkontoPlan } from "./invoiceHelpers";
 
 /** Planer für mehrere Akonto-Rechnungen; «Entwürfe erstellen» ruft `onCreate` mit den Raten `apRows`. */
@@ -17,7 +18,10 @@ export function AkontoPlanModal({ ap, setAp, apRows, data, clients, onClose, onC
   onCreate: () => void;
 }) {
   const apProj = data.projects.find(p => p.id === ap.projectId);
-  const apBudget = apProj ? (apProj.budget || apProj.budgetAmount || 0) : 0;
+  const apBudget = apProj ? projectFee(apProj) : 0;
+  // Bereits gestellte Rechnungen des Projekts (ohne Entwürfe): Vorschlag ist der Restbetrag, nicht das volle Budget
+  const apBilled = apProj ? billedNetForProject(data.invoices || [], apProj.id) : 0;
+  const apRest = Math.max(0, roundCHF(apBudget - apBilled));
   const apTotal = apRows.reduce((s, r) => s + (r.amt || 0), 0);
   const canCreate = apRows.length > 0 && apRows.every(r => r.date && r.amt > 0) && (ap.projectId || ap.clientId);
   return (
@@ -31,7 +35,8 @@ export function AkontoPlanModal({ ap, setAp, apRows, data, clients, onClose, onC
             <label>Projekt</label>
             <select value={ap.projectId} onChange={e => {
               const p = data.projects.find(x => x.id === e.target.value);
-              setAp(a => ({ ...a, projectId: e.target.value, clientId: p?.clientId || a.clientId, totalAmt: p ? (p.budget || p.budgetAmount || 0) : a.totalAmt }));
+              const rest = p ? Math.max(0, roundCHF(projectFee(p) - billedNetForProject(data.invoices || [], p.id))) : null;
+              setAp(a => ({ ...a, projectId: e.target.value, clientId: p?.clientId || a.clientId, totalAmt: rest ?? a.totalAmt }));
             }}>
               <option value="">— Projekt wählen —</option>
               {data.projects.filter(p => p.status !== "archiviert").map(p => (
@@ -51,11 +56,15 @@ export function AkontoPlanModal({ ap, setAp, apRows, data, clients, onClose, onC
         {/* Gesamtbetrag */}
         <div className="form-group" style={{ marginBottom: 16 }}>
           <label>Gesamthonorar (Netto, exkl. MWST)
-            {apBudget > 0 && <span style={{ fontWeight: 400, fontSize: 11, color: "var(--text5)", marginLeft: 6 }}>Budget: {formatCHF(apBudget)}</span>}
+            {apBudget > 0 && <span style={{ fontWeight: 400, fontSize: 11, color: "var(--text5)", marginLeft: 6 }}>Budget: {formatCHF(apBudget)}{apBilled > 0 ? ` · bereits gestellt ${formatCHF(apBilled)} · Rest ${formatCHF(apRest)}` : ""}</span>}
           </label>
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
             <input type="number" step="500" min={0} value={ap.totalAmt} onChange={e => setAp(a => ({ ...a, totalAmt: +e.target.value }))}
               style={{ width: 180, textAlign: "right" }} />
+            {apBilled > 0 && ap.totalAmt !== apRest && (
+              <button className="btn btn-ghost" style={{ fontSize: 11, padding: "4px 10px", whiteSpace: "nowrap" }}
+                onClick={() => setAp(a => ({ ...a, totalAmt: apRest }))}>= Restbetrag übernehmen</button>
+            )}
             {apBudget > 0 && ap.totalAmt !== apBudget && (
               <button className="btn btn-ghost" style={{ fontSize: 11, padding: "4px 10px", whiteSpace: "nowrap" }}
                 onClick={() => setAp(a => ({ ...a, totalAmt: apBudget }))}>= Budget übernehmen</button>
@@ -96,8 +105,8 @@ export function AkontoPlanModal({ ap, setAp, apRows, data, clients, onClose, onC
               </div>
               <div>
                 <div style={{ fontSize: 11, color: "var(--text4)", marginBottom: 4 }}>Anzahl Raten</div>
-                <input type="number" min={1} max={24} step={1} value={ap.count}
-                  onChange={e => setAp(a => ({ ...a, count: Math.max(1, +e.target.value) }))} />
+                <input type="number" min={1} max={AKONTO_MAX_RATES} step={1} value={ap.count}
+                  onChange={e => setAp(a => ({ ...a, count: Math.max(1, Math.min(AKONTO_MAX_RATES, Math.floor(+e.target.value) || 1)) }))} />
               </div>
             </div>
           )}

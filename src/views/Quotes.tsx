@@ -6,7 +6,9 @@
 //              (quotes/EffortEstimatePanel, Grundlage in `quote.estimate`);
 //   "free"   – freie Positionen (Menge × Preis), keine Stunden.
 // Die Summen (sub/tax/total/totalHours) werden beim Speichern EINMAL berechnet und
-// mitgespeichert; die Liste zeigt nur diese gespeicherten Werte. Der MWST-Satz wird
+// mitgespeichert (Netto und MWST auf Rappen, Total = Summe); die Liste zeigt nur diese
+// gespeicherten Werte. Ist die Offerte mit Projekten verknüpft, führt das Speichern deren
+// Budget nach (`quoteBudgetFields`). Der MWST-Satz wird
 // pro Offerte festgehalten (`mwstRate`), spätere Änderungen am Studio-Satz ändern
 // alte Offerten nicht.
 //
@@ -21,7 +23,8 @@
 
 import React, { useState, useEffect } from "react";
 import { SIA_PHASES, SIA_PHASE_WEIGHTS } from "../constants";
-import { calcSIAHours, calcManualHours, generateId, formatCHF, formatDate, formatHours, roundCHF, applyProjectNumberFormat, migrateLinkedQuotes, deriveQuoteBudget, localISODate } from "../utils";
+import { calcSIAHours, calcManualHours, generateId, formatCHF, formatDate, formatHours, roundCHF, applyProjectNumberFormat, migrateLinkedQuotes, localISODate, invoiceNet, quoteBudgetFields } from "../utils";
+import { invoicesForQuote } from "./invoices/invoiceHelpers";
 import { Header, Modal, FormField, StatusSelect, DateInput, SortTh, RowMenu } from "../components/UI";
 import { removeWithUndo } from "../undo";
 import LivePreview from "../components/LivePreview";
@@ -155,9 +158,9 @@ function Quotes({ data, update, saveAll, modal, setModal, setPrintContent, setVi
       : q.mode === "manual" ? (manH && manH.totalHours > 0 ? Math.round((manH.totalAmount / manH.totalHours) * 100) / 100 : (qRoles[0]?.rate || data.settings.defaultHourlyRate))
       : data.settings.defaultHourlyRate;
     const billingType = q.mode === "manual" ? "stundensatz" : "pauschal";
-    const budgetFromQuote = q.mode === "free"
+    const budgetFromQuote = roundCHF(q.mode === "free"
       ? (q.freeItems || []).reduce((s, it) => s + it.qty * it.price, 0)
-      : q.sub || 0;
+      : q.sub || 0);
     const newProj: Project = {
       id: generateId(),
       number: projNumber,
@@ -189,14 +192,16 @@ function Quotes({ data, update, saveAll, modal, setModal, setPrintContent, setVi
   const siaCalc = form.mode === "sia" ? calcSIAHours(form.sia.baukosten, form.sia.schwierigkeit, form.sia.phases) : null;
   const manCalc = form.mode === "manual" ? calcManualHours(form.manualPhases, activeRoles) : null;
   const freeSubTotal = form.mode === "free" ? (form.freeItems || []).reduce((s, it) => s + (it.qty * it.price), 0) : 0;
-  const subTotal = form.mode === "sia" ? (siaCalc?.total || 0) * (form.sia.stundenansatz || 0) : form.mode === "manual" ? (manCalc?.totalAmount || 0) : freeSubTotal;
+  // Netto und MWST auf Rappen, Total = Netto + MWST (wie Rechnungen, calcTotal) — gespeicherte Offerten
+  // behalten ihre Summen, bis sie bearbeitet und neu gespeichert werden.
+  const subTotal = roundCHF(form.mode === "sia" ? (siaCalc?.total || 0) * (form.sia.stundenansatz || 0) : form.mode === "manual" ? (manCalc?.totalAmount || 0) : freeSubTotal);
   const totalHours = form.mode === "sia" ? (siaCalc?.total || 0) : form.mode === "manual" ? (manCalc?.totalHours || 0) : 0;
   // Beim Bearbeiten den tatsächlich gespeicherten Satz beibehalten (form.mwstRate,
   // von openEdit aus der Offerte geladen) — sonst würde reines Öffnen+Speichern
   // einer alten Offerte ihren MWST-Satz rückwirkend auf den aktuellen Studio-
   // Default überschreiben, selbst wenn der gespeicherte Satz bewusst 0 war.
   const taxRate = form.mwstRate ?? data.settings.mwstRate ?? 8.1;
-  const tax = form.mwst ? subTotal * (taxRate / 100) : 0;
+  const tax = form.mwst ? roundCHF(subTotal * (taxRate / 100)) : 0;
   const total = roundCHF(subTotal + tax);
 
   const save = () => {
@@ -219,7 +224,24 @@ function Quotes({ data, update, saveAll, modal, setModal, setPrintContent, setVi
     }
     const q: Quote = { ...form, estimate: form.mode === "manual" ? form.estimate ?? null : null, sub: subTotal, totalHours, tax, total, mwstRate: taxRate, id: (modal?.id as string | undefined) || generateId(), createdAt: modal?.id ? form.createdAt : new Date().toISOString() };
     const quotes = modal?.id ? (data.quotes||[]).map(x => x.id === modal.id ? q : x) : [...(data.quotes||[]), q];
-    update("quotes", quotes);
+    // Mit Projekten verknüpfte Offerte: das aus den Offerten abgeleitete Projektbudget (Stunden, Betrag,
+    // Phasen, Pauschalpreis) nachführen, sonst rechnen Akonto/Schlussrechnung mit dem alten Betrag.
+    let budgetChanged = false;
+    const projects = data.projects.map(p => {
+      const linked = migrateLinkedQuotes(p);
+      if (!linked.some(lq => lq.quoteId === q.id)) return p;
+      const f = quoteBudgetFields(p, linked, quotes, data.settings.roles || []);
+      const next = { ...p, budgetHours: f.budgetHours, budgetAmount: f.budgetAmount, phasesBudget: f.phasesBudget, budget: f.budget };
+      if (JSON.stringify([p.budgetHours, p.budgetAmount, p.phasesBudget, p.budget]) === JSON.stringify([next.budgetHours, next.budgetAmount, next.phasesBudget, next.budget])) return p;
+      budgetChanged = true;
+      return next;
+    });
+    if (budgetChanged) {
+      saveAll({ ...data, quotes, projects });
+      showToast("Projektbudget aktualisiert");
+    } else {
+      update("quotes", quotes);
+    }
     setModal(null);
   };
 
@@ -357,8 +379,9 @@ function Quotes({ data, update, saveAll, modal, setModal, setPrintContent, setVi
                 )}
             {group.items.map(q => {
               const cl = clients.find(c => c.id === q.clientId);
+              // Netto (nach Rabatt) der gestellten Rechnungen dieser Offerte — ohne Rechnungen anderer Offerten (Nachträge) desselben Projekts
               const qInvoiced = q.status === "angenommen"
-                ? (data.invoices || []).filter(i => (i.quoteId === q.id || (q.projectId && i.projectId === q.projectId)) && i.status !== "entwurf").reduce((s, i) => s + (i.sub || 0), 0)
+                ? invoicesForQuote(q, data.invoices || [], data.projects).filter(i => i.status !== "entwurf").reduce((s, i) => s + invoiceNet(i), 0)
                 : 0;
               return (
                 <tr key={q.id} className="row-link" onClick={() => openEdit(q)}>
@@ -369,7 +392,7 @@ function Quotes({ data, update, saveAll, modal, setModal, setPrintContent, setVi
                   <td className="hide-narrow">{formatDate(q.validUntil)}</td>
                   <td style={{ textAlign: "right" }}>
                     <strong>{formatCHF(q.total)}</strong>
-                    {qInvoiced > 0 && <div style={{ fontSize: 10, color: "var(--positive)", marginTop: 1 }}>verrechnet {formatCHF(qInvoiced)}</div>}
+                    {qInvoiced > 0 && <div style={{ fontSize: 10, color: "var(--positive)", marginTop: 1 }}>verrechnet {formatCHF(qInvoiced)} von {formatCHF(q.sub)} netto</div>}
                   </td>
                   <td>
                     <StatusSelect value={q.status} options={["entwurf","gesendet","angenommen","abgelehnt","abgelaufen"]} onChange={v => setStatus(q.id, v)} />
@@ -421,8 +444,8 @@ function Quotes({ data, update, saveAll, modal, setModal, setPrintContent, setVi
           const updatedProjects = data.projects.map(p => {
             const linked = migrateLinkedQuotes(p).filter(lq => lq.quoteId !== q.id);
             if (linked.length === migrateLinkedQuotes(p).length) return p;
-            const derived = deriveQuoteBudget(linked, data.quotes || [], data.settings.roles || []);
-            return { ...p, linkedQuotes: linked, budgetHours: derived.budgetHours, budgetAmount: derived.budgetAmount, phasesBudget: derived.phasesBudget };
+            const f = quoteBudgetFields(p, linked, data.quotes || [], data.settings.roles || []);
+            return { ...p, linkedQuotes: linked, budgetHours: f.budgetHours, budgetAmount: f.budgetAmount, phasesBudget: f.phasesBudget, budget: f.budget };
           });
           const updatedQuotes = (data.quotes || []).map(x => x.id === q.id ? { ...x, projectId: null } : x);
           saveAll({ ...data, projects: updatedProjects, quotes: updatedQuotes });
@@ -439,10 +462,10 @@ function Quotes({ data, update, saveAll, modal, setModal, setPrintContent, setVi
             const existingLinked = migrateLinkedQuotes(proj);
             if (existingLinked.some(lq => lq.quoteId === q.id)) { setProjectModal(null); return; }
             const newLinked = [...existingLinked, { quoteId: q.id, role: existingLinked.length === 0 ? "Hauptofferte" : "Nachtrag" }];
-            const derived = deriveQuoteBudget(newLinked, data.quotes || [], data.settings.roles || []);
+            const derived = quoteBudgetFields(proj, newLinked, data.quotes || [], data.settings.roles || []);
             const updatedProjects = data.projects.map(p => p.id === pmAttachId ? {
               ...p, linkedQuotes: newLinked, budgetHours: derived.budgetHours,
-              budgetAmount: derived.budgetAmount, phasesBudget: derived.phasesBudget,
+              budgetAmount: derived.budgetAmount, phasesBudget: derived.phasesBudget, budget: derived.budget,
               enabledPhases: [...new Set([...(p.enabledPhases || []), ...derived.enabledPhases])],
               hourlyRate: p.hourlyRate || stundenansatz,
             } : p);

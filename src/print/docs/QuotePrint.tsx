@@ -6,6 +6,9 @@ import { StudioLogo } from "../../components/UI";
 import type { Quote, Settings } from "../../types";
 import { HEADING, type Client } from "./shared";
 
+/** Stundenansatz wie «140.–» bzw. «142.50» (keine «142.5.–»). */
+const rateLabel = (rate: number) => Number.isInteger(rate) ? `${rate}.–` : rate.toFixed(2);
+
 export function QuotePrint({ quote, client, settings }: { quote: Quote; client: Client; settings: Settings }) {
   // Gespeicherten Satz verwenden (wie bei Rechnungen) — sonst zeigt der
   // Nachdruck einer alten Offerte den AKTUELLEN Studio-Satz neben dem damals
@@ -68,7 +71,7 @@ export function QuotePrint({ quote, client, settings }: { quote: Quote; client: 
             </div>
             <div>
               <div style={{ color: "#888", marginBottom: 2 }}>Stundenansatz</div>
-              <div style={{ fontWeight: 500 }}>CHF {stundenansatz}.–/h</div>
+              <div style={{ fontWeight: 500 }}>CHF {rateLabel(stundenansatz)}/h</div>
             </div>
           </div>
 
@@ -117,7 +120,7 @@ export function QuotePrint({ quote, client, settings }: { quote: Quote; client: 
           </div>
           <div style={{ display: "flex", gap: 14, flexWrap: "wrap", marginBottom: 14, fontSize: 10 }}>
             {roles.map(r => (
-              <div key={r.id}><strong>{r.id}</strong> <span style={{ color: "#888" }}>{r.label} — CHF {r.rate}.–/h</span></div>
+              <div key={r.id}><strong>{r.id}</strong> <span style={{ color: "#888" }}>{r.label} — CHF {rateLabel(r.rate)}/h</span></div>
             ))}
           </div>
           <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: 22, fontSize: 10 }}>
