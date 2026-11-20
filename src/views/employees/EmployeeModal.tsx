@@ -1,9 +1,9 @@
 // Modal «Mitarbeiter»: Personalien, Arbeitszeit, Lohn/Sozialabzüge und optionaler App-Zugang.
 
 import React from "react";
-import { arbeitszeitAm, formatIban, formatCHF, localISODate } from "../../utils";
+import { arbeitszeitAm, formatIban, formatCHF, localISODate, monatslohnAm } from "../../utils";
 import { Modal, FormField, DateInput, DatePicker } from "../../components/UI";
-import type { PensumWechsel, ViewProps } from "../../types";
+import type { LohnWechsel, PensumWechsel, ViewProps } from "../../types";
 import type { EmpForm } from "./types";
 
 interface EmployeeModalProps {
@@ -20,6 +20,9 @@ export default function EmployeeModal({ data, empForm, setEmpForm, nextPersonalN
   const verlauf = empForm.pensumVerlauf || [];
   const setVerlauf = (list: PensumWechsel[]) => setEmpForm({ ...empForm, pensumVerlauf: list });
   const heute = arbeitszeitAm(empForm, localISODate());
+  const lohnVerlauf = empForm.lohnVerlauf || [];
+  const setLohnVerlauf = (list: LohnWechsel[]) => setEmpForm({ ...empForm, lohnVerlauf: list });
+  const lohnHeute = monatslohnAm(empForm, localISODate());
   const stichtagJahr = (empForm.saldoStichtag || "").slice(0, 4);
   const ferienStichtag = stichtagJahr ? (empForm.ferienUebertragVorjahr || {})[stichtagJahr] : undefined;
   const hint = { fontSize: 10, color: "var(--text5)", marginTop: 3 } as const;
@@ -115,10 +118,10 @@ export default function EmployeeModal({ data, empForm, setEmpForm, nextPersonalN
 
       <div style={{ fontSize: 11, letterSpacing: "0.08em", color: "var(--text4)", margin: "14px 0 10px", paddingTop: 12, borderTop: "1px solid var(--border2)" }}>LOHN & AUSZAHLUNG</div>
       <div className="form-row">
-        <FormField label="Monatslohn Brutto CHF (100% Basis)">
+        <FormField label={lohnVerlauf.length ? "Monatslohn CHF (100 %, ab Eintritt)" : "Monatslohn Brutto CHF (100% Basis)"}>
           <input type="number" min={0} step={100} value={empForm.monatslohn || ""} onChange={e => setEmpForm({ ...empForm, monatslohn: +e.target.value })} placeholder="z.B. 7000" />
-          {heute.pensum < 100 && (empForm.monatslohn || 0) > 0 && (
-            <div style={{ fontSize: 11, color: "var(--text4)", marginTop: 3 }}>Effektiv bei {heute.pensum}%: {formatCHF(Math.round((empForm.monatslohn as number) * (heute.pensum / 100) * 100) / 100)}</div>
+          {(heute.pensum < 100 || lohnVerlauf.length > 0) && lohnHeute > 0 && (
+            <div style={{ fontSize: 11, color: "var(--text4)", marginTop: 3 }}>Effektiv heute{heute.pensum < 100 ? ` bei ${heute.pensum}%` : ""}: {formatCHF(Math.round(lohnHeute * (heute.pensum / 100) * 100) / 100)}</div>
           )}
         </FormField>
         <FormField label="IBAN Lohnkonto">
@@ -135,6 +138,21 @@ export default function EmployeeModal({ data, empForm, setEmpForm, nextPersonalN
           </label>
         </FormField>
       </div>
+      {/* Lohnänderungen: ab einem Datum gilt ein anderer Monatslohn (im Wechselmonat tagesgenau) */}
+      <div style={{ fontSize: 11, color: "var(--text4)", margin: "4px 0 8px" }}>
+        Lohnänderungen <span style={{ color: "var(--text5)" }}>— ab dem Datum gilt der neue Monatslohn (100 %); im Wechselmonat tagesgenau anteilig, frühere Abrechnungen bleiben</span>
+      </div>
+      {lohnVerlauf.map((v, i) => (
+        <div key={i} className="form-row" style={{ alignItems: "flex-end" }}>
+          <FormField label="Ab"><DatePicker value={v.ab || ""} onChange={e => setLohnVerlauf(lohnVerlauf.map((x, j) => j === i ? { ...x, ab: e.target.value } : x))} style={!v.ab ? { borderColor: "var(--warning)" } : {}} /></FormField>
+          <FormField label="Monatslohn CHF (100 %)"><input type="number" min={0} step={100} value={v.monatslohn || ""} onChange={e => setLohnVerlauf(lohnVerlauf.map((x, j) => j === i ? { ...x, monatslohn: +e.target.value } : x))} /></FormField>
+          <div style={{ flex: "0 0 auto", paddingBottom: 6 }}>
+            <button type="button" className="btn-icon danger" title="Lohnänderung entfernen" aria-label="Lohnänderung entfernen" onClick={() => setLohnVerlauf(lohnVerlauf.filter((_, j) => j !== i))}><span className="msr" style={{ fontSize: 16 }}>close</span></button>
+          </div>
+        </div>
+      ))}
+      <button type="button" className="btn btn-ghost" style={{ fontSize: 11, padding: "3px 10px", marginBottom: 6 }}
+        onClick={() => setLohnVerlauf([...lohnVerlauf, { ab: "", monatslohn: lohnHeute }])}>+ Lohn ab …</button>
       <div style={{ fontSize: 11, color: "var(--text4)", marginBottom: 8 }}>Sozialabzüge Arbeitnehmer (anpassbar)</div>
       <div className="form-row">
         <FormField label="AHV/IV/EO %">

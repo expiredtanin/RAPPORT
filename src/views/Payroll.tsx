@@ -16,7 +16,7 @@
 // Fachliche Details der Abzüge: utils.ts `calcLohn`, docs/FACHLOGIK.md.
 
 import React, { useState } from "react";
-import { generateId, formatCHF, calcLohn, lohnAGSaetze, pensumImMonat } from "../utils";
+import { generateId, formatCHF, calcLohn, lohnAGSaetze, pensumImMonat, monatslohnImMonat } from "../utils";
 import { lohnAGBeitraege, lohnPersonalaufwand, lohnVorperioden, spesenFuerLohn, spesenWartend } from "../accounting";
 import { Header, NavArrows, ShareButton, EmptyState } from "../components/UI";
 import { useConfirm } from "../hooks/useConfirm";
@@ -66,7 +66,9 @@ function Payroll({ data, saveAll, setPrintContent, setView }: Pick<ViewProps, "d
     return true;
   };
 
-  const getEffBrutto = (emp: Employee) => bruttoOverride[emp.id] != null ? bruttoOverride[emp.id] : (emp.monatslohn || 0);
+  // Stammlohn des Monats (Lohnänderung im Monat: am letzten angestellten Tag; die Abrechnung rechnet tagesgenau)
+  const stammLohn = (emp: Employee) => monatslohnImMonat(emp, monatStr);
+  const getEffBrutto = (emp: Employee) => bruttoOverride[emp.id] != null ? bruttoOverride[emp.id] : stammLohn(emp);
   // Ohne Übersteuerung das Pensum des Monats (bei einem Pensumwechsel tagesgenau gewichtet, s. pensumImMonat)
   const monthPensum = (emp: Employee) => Math.round(pensumImMonat(emp, monatStr) * 100) / 100;
   const getEffPensum = (emp: Employee) => pensumOverride[emp.id] != null ? pensumOverride[emp.id] : monthPensum(emp);
@@ -75,7 +77,7 @@ function Payroll({ data, saveAll, setPrintContent, setView }: Pick<ViewProps, "d
   const findEntry = (empId: string) => lohnEntries.find(l => l.monat === monatStr && l.employeeId === empId);
   /** Vorschau/Abschluss mit den Overrides dieses Laufs und den früheren Abrechnungen des Jahres. */
   const calcFor = (emp: Employee, spesen: { amount?: number }[]) =>
-    calcLohn({ ...emp, monatslohn: getEffBrutto(emp), ...(pensumOverride[emp.id] != null ? { pensum: pensumOverride[emp.id], pensumVerlauf: undefined } : {}) }, monatStr, spesen, (bonusOverride[emp.id] as number) || 0, lohnVorperioden(lohnEntries, emp.id, monatStr), lohnAGSaetze(data.settings));
+    calcLohn({ ...emp, ...(bruttoOverride[emp.id] != null ? { monatslohn: bruttoOverride[emp.id], lohnVerlauf: undefined } : {}), ...(pensumOverride[emp.id] != null ? { pensum: pensumOverride[emp.id], pensumVerlauf: undefined } : {}) }, monatStr, spesen, (bonusOverride[emp.id] as number) || 0, lohnVorperioden(lohnEntries, emp.id, monatStr), lohnAGSaetze(data.settings));
 
   const abschliessen = (emp: Employee) => {
     if (findEntry(emp.id)) return;
@@ -140,7 +142,7 @@ function Payroll({ data, saveAll, setPrintContent, setView }: Pick<ViewProps, "d
 
   const monatEntries = lohnEntries.filter(l => l.monat === monatStr);
   // Mit Monatslohn; ausgetretene (active === false) nur, wenn für den Monat schon abgerechnet
-  const payrollEmployees = employees.filter(e => (e.monatslohn || 0) > 0 && (e.active !== false || !!findEntry(e.id)));
+  const payrollEmployees = employees.filter(e => ((e.monatslohn || 0) > 0 || (e.lohnVerlauf || []).length > 0) && (e.active !== false || !!findEntry(e.id)));
   // Ohne Auswahl zeigt die Detailspalte die erste Person, die abgerechnet werden kann
   const effEmpId = selEmpId || payrollEmployees.find(isMonatAvailable)?.id || "";
   const selectedEmp = employees.find(e => e.id === effEmpId);
@@ -174,16 +176,16 @@ function Payroll({ data, saveAll, setPrintContent, setView }: Pick<ViewProps, "d
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <input type="number" step={100} min={0} value={getEffBrutto(emp)}
               onChange={e => setBruttoOverride(o => ({ ...o, [emp.id]: +e.target.value }))}
-              style={{ flex: 1, height: 32, fontSize: 13, textAlign: "right", border: bruttoOverride[emp.id] != null && bruttoOverride[emp.id] !== emp.monatslohn ? "1.5px solid var(--warning)" : "1px solid var(--border3)" }} />
+              style={{ flex: 1, height: 32, fontSize: 13, textAlign: "right", border: bruttoOverride[emp.id] != null && bruttoOverride[emp.id] !== stammLohn(emp) ? "1.5px solid var(--warning)" : "1px solid var(--border3)" }} />
             <span style={{ fontSize: 11, color: "var(--text4)" }}>CHF</span>
-            {bruttoOverride[emp.id] != null && bruttoOverride[emp.id] !== emp.monatslohn && (
+            {bruttoOverride[emp.id] != null && bruttoOverride[emp.id] !== stammLohn(emp) && (
               <button onClick={() => setBruttoOverride(o => { const n={...o}; delete n[emp.id]; return n; })}
                 title="Stammdaten-Wert wiederherstellen"
                 style={{ fontSize: 11, color: "var(--text4)", background: "none", border: "1px solid var(--border3)", borderRadius: 20, cursor: "pointer", padding: "2px 8px" }}>↺ Reset</button>
             )}
           </div>
-          {bruttoOverride[emp.id] != null && bruttoOverride[emp.id] !== emp.monatslohn && (
-            <div style={{ fontSize: 10, color: "var(--warning)", marginTop: 4 }}>Abweichend von Stammdaten ({formatCHF(emp.monatslohn || 0)})</div>
+          {bruttoOverride[emp.id] != null && bruttoOverride[emp.id] !== stammLohn(emp) && (
+            <div style={{ fontSize: 10, color: "var(--warning)", marginTop: 4 }}>Abweichend von Stammdaten ({formatCHF(stammLohn(emp))})</div>
           )}
           <div style={{ fontSize: 10, letterSpacing: "0.08em", color: "var(--text4)", margin: "10px 0 6px", paddingTop: 8, borderTop: "1px solid var(--border)" }}>PENSUM DIESEN MONAT</div>
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
@@ -404,12 +406,12 @@ function Payroll({ data, saveAll, setPrintContent, setView }: Pick<ViewProps, "d
                   ) : (
                     <button className="btn btn-primary" style={{ flex: 1, fontSize: 11 }}
                       onClick={() => abschliessen(selectedEmp)}
-                      disabled={!selectedEmp.monatslohn && bruttoOverride[selectedEmp.id] == null}>
+                      disabled={!stammLohn(selectedEmp) && bruttoOverride[selectedEmp.id] == null}>
                       Lohnabrechnung abschliessen
                     </button>
                   )}
                 </div>
-                {!existingEntry && !selectedEmp.monatslohn && bruttoOverride[selectedEmp.id] == null && (
+                {!existingEntry && !stammLohn(selectedEmp) && bruttoOverride[selectedEmp.id] == null && (
                   <div style={{ marginTop: 10, fontSize: 11, color: "var(--warning)" }}>Kein Monatslohn hinterlegt.</div>
                 )}
               </div>

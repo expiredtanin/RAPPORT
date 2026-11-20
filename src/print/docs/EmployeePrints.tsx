@@ -1,6 +1,6 @@
 // Druckvorlagen Mitarbeitendenübersicht (`mitarbeiterOverview`) und Monatsrapport (`timeReport`).
 
-import { formatCHF, formatDate, formatHours, formatSenderAddress } from "../../utils";
+import { arbeitszeitAm, formatCHF, formatDate, formatHours, formatSenderAddress, localISODate, monatslohnAm } from "../../utils";
 import { StudioLogo } from "../../components/UI";
 import type { AppData, Employee, Project, Settings, TimeEntry } from "../../types";
 import { HEADING } from "./shared";
@@ -22,11 +22,11 @@ export function MitarbeiterOverviewPrint({ employees, settings }: { employees: E
         </div>
         {emp.personalNr && <div style={{ fontSize: 10, color: "#aaa", letterSpacing: "0.08em" }}>#{emp.personalNr}</div>}
       </div>
-      <Row label="Pensum" value={emp.pensum != null ? `${emp.pensum}%` : null} />
+      <Row label="Pensum" value={emp.pensum != null ? `${arbeitszeitAm(emp, localISODate()).pensum}%` : null} />
       <Row label="Wochenstunden" value={emp.wochenstunden ? `${emp.wochenstunden} h` : null} />
       <Row label="Ferien" value={emp.ferienWochen ? `${emp.ferienWochen} Wochen` : null} />
       <Row label="Eintrittsdatum" value={emp.eintrittsdatum ? formatDate(emp.eintrittsdatum) : null} />
-      <Row label="Monatslohn" value={emp.monatslohn ? formatCHF(emp.monatslohn) : null} />
+      <Row label="Monatslohn" value={monatslohnAm(emp, localISODate()) ? formatCHF(monatslohnAm(emp, localISODate())) : null} />
     </div>
   );
 

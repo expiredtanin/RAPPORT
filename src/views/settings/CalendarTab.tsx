@@ -16,6 +16,7 @@ export function CalendarTab({ data, update, onSettingsSaved }: Pick<ViewProps, "
   const { askConfirm, ConfirmModalEl } = useConfirm();
   const kanton: Kanton = data.settings.kanton && KANTON_FEIERTAGE[data.settings.kanton] ? data.settings.kanton : "ZH";
   const kantonName = KANTON_FEIERTAGE[kanton].name;
+  const vortagStunden = data.settings.vortagStunden ?? 1;
   const [ftForm, setFtForm] = useState<Partial<Feiertag>>({ date: "", label: "", stundenDelta: 0, repeatsYearly: true });
   const [absenzTypeForm, setAbsenzTypeForm] = useState<Partial<AbsenzType>>({ label: "", color: "#555" });
   const [kalModal, setKalModal] = useState<"ft" | "absenztype" | null>(null);
@@ -115,9 +116,14 @@ export function CalendarTab({ data, update, onSettingsSaved }: Pick<ViewProps, "
               {KANTONE.map(k => <option key={k} value={k}>{KANTON_FEIERTAGE[k].name} ({k})</option>)}
             </select>
           </FormField>
+          <FormField label="Vortag vor ganzem Feiertag (Stunden weniger Soll)">
+            <input type="number" min={0} max={8} step={0.5} value={vortagStunden} style={{ maxWidth: 120 }}
+              onChange={e => { const v = Math.max(0, +e.target.value || 0); update("settings", prev => ({ ...prev, vortagStunden: v })); onSettingsSaved?.({ vortagStunden: v }); }} />
+            <div style={{ fontSize: 10, color: "var(--text5)", marginTop: 3 }}>Büro-Usanz, gesetzlich nicht vorgeschrieben (allenfalls Arbeitsvertrag oder GAV). Gilt für 100 %, bei Teilzeit anteilig; 0 = aus.</div>
+          </FormField>
           <div style={{ fontSize: 11, color: "var(--text5)", marginBottom: 14, lineHeight: 1.6 }}>
             Vorlage: gesetzliche bzw. üblicherweise arbeitsfreie Tage des Kantons (bei Unterschieden nach Gemeinde oder Konfession die Regel des Hauptorts) — eigene Tage ergänzen oder streichen.
-            Gelten für alle Mitarbeiter. Jährlich wiederkehrende werden automatisch übertragen. Mit «Stunden-Delta» lassen sich Halbfeiertage definieren (z.B. −3.5h für den 24.12.; gilt für 100 %, bei Teilzeit anteilig). Am Werktag vor einem ganzen Feiertag zählt das Soll 1 h weniger.
+            Gelten für alle Mitarbeiter. Jährlich wiederkehrende werden automatisch übertragen. Mit «Stunden-Delta» lassen sich Halbfeiertage definieren (z.B. −3.5h für den 24.12.; gilt für 100 %, bei Teilzeit anteilig). Am Werktag direkt vor einem ganzen Feiertag (auch Freitag vor einem Samstag-Feiertag) zählt das Soll {vortagStunden > 0 ? `${vortagStunden} h weniger` : "normal"}.
           </div>
           <div className="card" style={{ padding: 0, marginBottom: feiertage.length === 0 ? 12 : 0 }}>
             <table>

@@ -223,7 +223,7 @@ const zollEntries = [
 // eine leichte Schwankung ergibt ein kleines Plus über das Jahr. Nur vergangene Wochen, Feiertage hat
 // die Demo keine. Diese Woche bleibt von Hand gesetzt (Wochenansicht der Screenshots).
 // ── Kalender des Jahres: Feiertage ZH, Ferien, Absenzen, Pensumwechsel, Stichtage ─────────────────
-// Sonderfälle zum Nachrechnen (Lohn, Soll, Saldo, Ferien): Pensumwechsel mitten im Monat (Laura 15.8.),
+// Sonderfälle zum Nachrechnen (Lohn, Soll, Saldo, Ferien): Lohnerhöhung (Julian 1.4.), Pensumwechsel mitten im Monat (Laura 15.8.),
 // im Austrittsmonat (Sara 1.11., Austritt 15.11.), über dem ALV-Höchstlohn (Marc 1.4.), mit neuen
 // Wochenstunden (Nina 1.3.); Umstieg mitten im Jahr (Peter, Stichtag 1.6.) mit Ferien über den Stichtag.
 const Y = MONDAY.getFullYear();
@@ -726,7 +726,7 @@ export const demoData = {
       ] },
   ],
   employees: [
-    { id: E_JULIAN, saldoStichtag: `${MONDAY.getFullYear()}-01-01`, saldoUebertragStunden: 14.5, name: "Julian Roth", role: "Bauleiter", pensum: 100, monatslohn: 8200, wochenstunden: 41, ferienWochen: 5, personalNr: "101", geburtsdatum: "1990-04-18", eintrittsdatum: dateAt(-250), ferienUebertragVorjahr: {} },
+    { id: E_JULIAN, lohnVerlauf: [{ ab: `${Y}-04-01`, monatslohn: 8500 }] /* Lohnerhöhung */, saldoStichtag: `${MONDAY.getFullYear()}-01-01`, saldoUebertragStunden: 14.5, name: "Julian Roth", role: "Bauleiter", pensum: 100, monatslohn: 8200, wochenstunden: 41, ferienWochen: 5, personalNr: "101", geburtsdatum: "1990-04-18", eintrittsdatum: dateAt(-250), ferienUebertragVorjahr: {} },
     { id: E_LAURA, pensumVerlauf: PENSUM_VERLAUF[E_LAURA], saldoStichtag: `${MONDAY.getFullYear()}-01-01`, saldoUebertragStunden: -6, name: "Laura Meier", role: "Architektin", pensum: 100, monatslohn: 7600, wochenstunden: 41, ferienWochen: 5, personalNr: "102", geburtsdatum: "1984-09-03", eintrittsdatum: dateAt(-380), ferienUebertragVorjahr: {} },
     { id: E_NINA, pensumVerlauf: PENSUM_VERLAUF[E_NINA], saldoStichtag: `${MONDAY.getFullYear()}-01-01`, saldoUebertragStunden: 3.5, name: "Nina Baumgartner", role: "Praktikantin", pensum: 80, monatslohn: 3800, wochenstunden: 41, ferienWochen: 5, personalNr: "103", geburtsdatum: "2000-02-11", eintrittsdatum: dateAt(-58), ferienUebertragVorjahr: {} },
     // Saldo-Übertrag per 1.1.: Überstunden aus der Zeit vor RAPPORT (frühere Jahre sind nicht erfasst)

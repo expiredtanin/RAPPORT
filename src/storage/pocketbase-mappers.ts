@@ -206,6 +206,8 @@ export const fromDB = {
       saldoStichtag: row.saldoStichtag ? row.saldoStichtag.slice(0, 10) : "",
       saldoUebertragStunden: row.saldoUebertragStunden ?? null,
       pensumVerlauf: Array.isArray(row.pensumVerlauf) ? row.pensumVerlauf : [],
+      // Lohnänderungen über die Zeit (PB-Migration lohn_verlauf)
+      lohnVerlauf: Array.isArray(row.lohnVerlauf) ? row.lohnVerlauf : [],
       appUserId: row.appUser || null,
       active: row.active !== false,
     };
@@ -540,6 +542,8 @@ export const toDB = {
         closedMonths: rest.closedMonths || [], blockMaiTag: rest.blockMaiTag !== false,
         // Protokoll-Genehmigung: ohne eigene Spalte im ui-Blob (fromDB übernimmt ...row.ui)
         protokollApproval: rest.protokollApproval, protokollApprovalHours: rest.protokollApprovalHours,
+        // Familienzulagen im Ein-/Austrittsmonat anteilig, Vortag vor Feiertagen — ohne eigene Spalte
+        familienzulagenAnteilig: rest.familienzulagenAnteilig, vortagStunden: rest.vortagStunden,
         // Mahnwesen (Verzugszins, Mahngebühren) — ohne eigene Spalte
         verzugszinsAktiv: rest.verzugszinsAktiv, verzugszinsSatz: rest.verzugszinsSatz, mahngebuehrAktiv: rest.mahngebuehrAktiv, mahngebuehren: rest.mahngebuehren,
         // Dokument-Design (Schriften/Farben/eigenes CSS) — Dateien liegen separat in docAssets
@@ -610,6 +614,7 @@ export const toDB = {
       saldoStichtag: e.saldoStichtag || null,
       saldoUebertragStunden: e.saldoUebertragStunden ?? null,
       pensumVerlauf: e.pensumVerlauf || [],
+      lohnVerlauf: e.lohnVerlauf || [],
       appUser: e.appUserId || null,
       active: e.active !== false,
     };

@@ -124,6 +124,11 @@ export function StudioTab({ s, setField, data }: DraftProps & { data: AppData })
             <div style={{ fontSize: 10, color: "var(--text5)", marginTop: 3 }}>leer = paritätisch</div>
           </FormField>
         </div>
+        <label style={{ display: "flex", alignItems: "center", gap: 8, textTransform: "none", fontSize: 13, color: "var(--text2)", marginTop: 6 }}>
+          <input type="checkbox" checked={!!s.familienzulagenAnteilig} onChange={e => setField({ familienzulagenAnteilig: e.target.checked })} style={{ width: "auto" }} />
+          Familienzulagen im Ein- und Austrittsmonat anteilig nach Kalendertagen
+        </label>
+        <div style={{ fontSize: 10, color: "var(--text5)", marginTop: 3, marginLeft: 24 }}>Je nach Familienausgleichskasse; ausgeschaltet wird der volle Monatsbetrag ausbezahlt.</div>
       </Section>
     </div>
 

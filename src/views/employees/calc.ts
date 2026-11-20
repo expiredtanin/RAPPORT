@@ -28,7 +28,7 @@ export function createEmployeeCalc(data: ViewProps["data"]) {
   };
 
   /** Feiertage eines Jahres inklusive Vortage (gleiche Liste wie in der Zeiterfassung). */
-  const getFTYear = (year: number) => resolveHolidays(data.feiertage, year);
+  const getFTYear = (year: number) => resolveHolidays(data.feiertage, year, data.settings?.vortagStunden ?? 1);
 
   /** Ferien eines Jahres in Stunden: Anspruch (anteilig), Übertrag, bezogen, künftig, Rest. */
   const calcFerienYear = (emp: Employee, year: number) => {

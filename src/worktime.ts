@@ -10,7 +10,8 @@
 //    stecken schon im Übertrag. Ferienguthaben per Stichtag = `ferienUebertragVorjahr[Stichtag-Jahr]`.
 //  - Kein Soll: Wochenende, vor dem Eintritt, nach dem Austritt, ganzer Feiertag (`stundenDelta` 0/leer).
 //  - Halber Feiertag: Tagessoll + `stundenDelta` × Pensum (Delta gilt für ein 100-%-Pensum; nie unter 0).
-//  - Vortag eines ganzen Feiertags (Werktag ohne eigenen Feiertag): 1 h weniger (× Pensum), Zürcher Usanz.
+//  - Vortag eines ganzen Feiertags (Werktag ohne eigenen Feiertag): 1 h weniger (× Pensum), Büro-Usanz, nicht
+//    gesetzlich; Stunden einstellbar (`settings.vortagStunden`, 0 = aus).
 //  - Ferien (genehmigt; bei einem Änderungsantrag die bisher genehmigten Daten): der Tag zählt mit seinem
 //    Soll als Ferien (Ist-Gutschrift). Ferienbezug in Stunden = Soll der Ferientage, also halber Tag an
 //    Heiligabend. Eine ganztägige, genehmigte Absenz (z.B. Krankheit) an einem Ferientag geht vor: der
@@ -23,13 +24,13 @@
 //    Lohn, `monatsAnteilNachEintritt`, mit Ein- und Austritt; mit Pensumwechsel/Stichtag Tag für Tag summiert). Mindestens 4 Wochen, bis zum Kalenderjahr
 //    des 20. Geburtstags 5 Wochen (OR 329a Abs. 1).
 
-import { arbeitszeitAm, monatsAnteilNachEintritt } from "./utils";
-import type { AppData, DateStr, Employee, Feiertag, FerienEntry, Kanton } from "./types";
+import { arbeitszeitAm, monatsAnteilNachEintritt, monatslohnAm } from "./utils";
+import type { AppData, DateStr, Employee, Feiertag, FerienEntry, Kanton, Settings } from "./types";
 
 /** Datenausschnitt, den die Rechnung braucht. */
-export type WorkData = Pick<AppData, "feiertage" | "ferienEntries" | "absences" | "timeEntries"> & Partial<Pick<AppData, "uberstundenAbschluss">>;
+export type WorkData = Pick<AppData, "feiertage" | "ferienEntries" | "absences" | "timeEntries"> & Partial<Pick<AppData, "uberstundenAbschluss">> & { settings?: Partial<Pick<Settings, "vortagStunden">> };
 /** Felder eines Mitarbeiters, die die Rechnung braucht. */
-export type WorkEmployee = Pick<Employee, "id"> & Partial<Pick<Employee, "pensum" | "wochenstunden" | "ferienWochen" | "eintrittsdatum" | "austrittsdatum" | "geburtsdatum" | "ferienUebertragVorjahr" | "pensumVerlauf" | "saldoStichtag" | "saldoUebertragStunden">>;
+export type WorkEmployee = Pick<Employee, "id"> & Partial<Pick<Employee, "pensum" | "wochenstunden" | "ferienWochen" | "eintrittsdatum" | "austrittsdatum" | "geburtsdatum" | "ferienUebertragVorjahr" | "pensumVerlauf" | "saldoStichtag" | "saldoUebertragStunden" | "lohnVerlauf" | "monatslohn">>;
 
 /**
  * Stunden auf eine Dezimale (x.x5 auf). Die Tagessolls (z.B. 42 × 90 % ÷ 5 = 7.56) sind binär nicht exakt; eine
@@ -247,22 +248,24 @@ function holidaysOfYear(feiertage: Feiertag[] | undefined, year: number): Feiert
 }
 
 /**
- * Feiertage eines Jahres inklusive der automatischen Vortage (−1 h, `id` «vortag-…»): Werktag vor einem
- * ganzen Feiertag, der selbst kein Feiertag ist. Feiertage am 1./2. Januar des Folgejahrs zählen mit.
+ * Feiertage eines Jahres inklusive der automatischen Vortage (−`vortagStunden` h × Pensum, Standard 1, 0 = keine;
+ * `id` «vortag-…»): der Werktag direkt vor einem ganzen Feiertag, der selbst kein Feiertag ist — auch der
+ * Freitag vor einem Feiertag am Samstag. Büro-Usanz, gesetzlich nicht vorgeschrieben (Einstellungen → Feiertage). Feiertage am 1./2. Januar des Folgejahrs zählen mit.
  */
-export function resolveHolidays(feiertage: Feiertag[] | undefined, year: number | string): Feiertag[] {
+export function resolveHolidays(feiertage: Feiertag[] | undefined, year: number | string, vortagStunden = 1): Feiertag[] {
   const y = Number(year);
   const fts = holidaysOfYear(feiertage, y);
   const all = [...fts, ...holidaysOfYear(feiertage, y + 1).filter(f => f.date.slice(5, 10) <= "01-07")];
   const taken = new Set(all.map(f => f.date));
   const vortage: Feiertag[] = [];
+  if (!(vortagStunden > 0)) return fts;
   for (const f of all) {
     if (!isFullHoliday(f)) continue;
     const ds = shiftDate(f.date, -1);
     const dow = weekday(ds);
     if (!ds.startsWith(String(y)) || dow === 0 || dow === 6 || taken.has(ds)) continue;
     taken.add(ds);
-    vortage.push({ id: `vortag-${ds}`, date: ds, label: `Vortag ${f.label || f.date}`, stundenDelta: -1 });
+    vortage.push({ id: `vortag-${ds}`, date: ds, label: `Vortag ${f.label || f.date}`, stundenDelta: -vortagStunden });
   }
   return [...fts, ...vortage];
 }
@@ -312,10 +315,11 @@ export function activeVacationRange(f: FerienEntry): { from: DateStr; to: DateSt
  * Wochenstunden beziehen sich auf 100 %, das Pensum kürzt sich heraus; mit `ds` gelten die Wochenstunden an
  * diesem Datum (`pensumVerlauf`).
  */
-export function overtimeHourlyRate(emp: Pick<Employee, "monatslohn" | "wochenstunden" | "dreizehnterLohn"> & Partial<Pick<Employee, "pensumVerlauf" | "pensum">>, ds?: DateStr): number {
-  if (!emp.monatslohn) return 0;
+export function overtimeHourlyRate(emp: Pick<Employee, "monatslohn" | "wochenstunden" | "dreizehnterLohn"> & Partial<Pick<Employee, "pensumVerlauf" | "pensum" | "lohnVerlauf">>, ds?: DateStr): number {
+  const lohn = ds ? monatslohnAm(emp, ds) : (emp.monatslohn || 0);
+  if (!lohn) return 0;
   const wochenstunden = ds ? arbeitszeitAm(emp, ds).wochenstunden : (emp.wochenstunden || 35);
-  return Math.round((emp.monatslohn * (emp.dreizehnterLohn ? 13 : 12) / (wochenstunden * 52)) * 100) / 100;
+  return Math.round((lohn * (emp.dreizehnterLohn ? 13 : 12) / (wochenstunden * 52)) * 100) / 100;
 }
 
 /** Zählt der Tag für Saldo und Ferien: angestellt und nicht vor dem Saldo-Stichtag. */
@@ -359,7 +363,7 @@ export function createWorktime(data: WorkData, today: DateStr) {
     let m = ftCache.get(year);
     if (!m) {
       m = new Map();
-      for (const f of resolveHolidays(data.feiertage, year)) if (!m.has(f.date)) m.set(f.date, f);
+      for (const f of resolveHolidays(data.feiertage, year, data.settings?.vortagStunden ?? 1)) if (!m.has(f.date)) m.set(f.date, f);
       ftCache.set(year, m);
     }
     return m;

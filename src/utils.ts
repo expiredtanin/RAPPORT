@@ -1229,15 +1229,18 @@ export interface LohnAGSaetze {
   bu: number;
   /** KTG-Anteil Arbeitgeber, % des Bruttolohns; `null` = gleich wie der AN-Satz (paritätisch) */
   ktgAG: number | null;
+  /** Familienzulagen im Ein-/Austrittsmonat anteilig (sonst voll) */
+  fzAnteilig?: boolean;
 }
 
 /** AG-Sätze aus den Einstellungen mit branchenüblichen Vorgaben (FAK 1.0 %, VK 3 %, BU 0.1 %, KTG paritätisch). */
-export function lohnAGSaetze(settings: Partial<Pick<Settings, "lohnFakSatz" | "lohnVkSatz" | "lohnBuSatz" | "lohnKtgAGSatz">> | undefined): LohnAGSaetze {
+export function lohnAGSaetze(settings: Partial<Pick<Settings, "lohnFakSatz" | "lohnVkSatz" | "lohnBuSatz" | "lohnKtgAGSatz" | "familienzulagenAnteilig">> | undefined): LohnAGSaetze {
   return {
     fak: settings?.lohnFakSatz ?? 1.0,
     vk: settings?.lohnVkSatz ?? 3.0,
     bu: settings?.lohnBuSatz ?? 0.1,
     ktgAG: settings?.lohnKtgAGSatz ?? null,
+    ...(settings?.familienzulagenAnteilig ? { fzAnteilig: true } : {}),
   };
 }
 
@@ -1274,8 +1277,9 @@ export interface LohnVorperioden {
  * (inkl. 13. Lohn und Bonus); fehlen Sätze am Mitarbeiter, gelten die Standardwerte
  * (AHV 5.3, ALV 1.1, BVG 8.0, NBU 1.5, KTG 0.5, PK-AG 8.0, QST 10).
  * - Eintritt im Monat: Monatslohn anteilig nach Kalendertagen (`monatsAnteilNachEintritt`).
- * - Pensumwechsel im Monat (`pensumVerlauf`): Pensum tagesgenau gewichtet (`pensumImMonat`); für einen
- *   Lauf mit fest übersteuertem Pensum `pensumVerlauf` leeren.
+ * - Pensum- und Lohnwechsel im Monat (`pensumVerlauf`, `lohnVerlauf`): tagesgenau gewichtet (`lohnImMonat`);
+ *   für einen Lauf mit fest übersteuertem Pensum bzw. Lohn den jeweiligen Verlauf leeren.
+ * - Familienzulagen im Ein-/Austrittsmonat voll, mit `agSaetze.fzAnteilig` anteilig nach Kalendertagen.
  * - ALV und NBU nur bis zum Höchstlohn 148'200/Jahr, kumuliert über das Jahr (`vorperioden`
  *   = frühere Abrechnungen desselben Jahres); darüber kein Abzug.
  * Jeder Posten wird einzeln auf Rappen gerundet, damit die Summen auf dem Beleg aufgehen.
@@ -1295,11 +1299,11 @@ export function calcLohn(
 ): LohnResult {
   const r2 = (n: number) => Math.round(n * 100) / 100;
   const hinweise: string[] = [];
-  // Pensum des Monats: mit Pensumwechsel tagesgenau gewichtet (wie Ein-/Austritt nach Kalendertagen)
-  const pensumFactor = pensumImMonat(emp, monat) / 100;
-  const bruttoBase = emp.monatslohn || 0;
+  // Lohn × Pensum des Monats: mit Lohn- oder Pensumwechsel tagesgenau gewichtet (lohnImMonat)
+  const monatsLohn = lohnImMonat(emp, monat);
+  const bruttoBase = monatslohnImMonat(emp, monat);
   const anteil = monatsAnteilNachEintritt(emp.eintrittsdatum, monat, emp.austrittsdatum);
-  const brutto = r2(bruttoBase * pensumFactor * anteil);
+  const brutto = r2(monatsLohn * anteil);
   if (anteil > 0 && anteil < 1) hinweise.push(`Monatslohn anteilig (${Math.round(anteil * 1000) / 10} % des Monats, Ein-/Austritt)`);
   // 13. Monatslohn: 1/12 pro Monat; der Dezember gleicht die Rappen-Rundung der Vormonate aus,
   // damit übers Jahr genau 1/12 der Monatslöhne herauskommt (11 × 1'208.33 + 1'208.37 = 14'500.00).
@@ -1335,7 +1339,7 @@ export function calcLohn(
 
   // Pensionskasse: Beträge laut PK-Ausweis haben Vorrang; sonst % vom Bruttolohn. Unter der
   // BVG-Eintrittsschwelle und für Rentner keine Pflicht (dann 0, ausser PK-Ausweis-Beträge).
-  const jahreslohn = bruttoBase * pensumFactor * (emp.dreizehnterLohn ? 13 : 12);
+  const jahreslohn = monatsLohn * (emp.dreizehnterLohn ? 13 : 12);
   const pkAusweis = (emp.pkBeitragAN ?? 0) > 0 || (emp.pkBeitragAG ?? 0) > 0;
   let bvg = 0, bvgAG = 0;
   if (pkAusweis) {
@@ -1359,7 +1363,8 @@ export function calcLohn(
 
   const totalAbzuege = r2(ahv + alv + bvg + nbu + ktg + qst);
   const netto = r2(bruttoTotal - totalAbzuege);
-  const familienzulagen = anteil > 0 ? r2(emp.familienzulagen || 0) : 0;
+  // Familienzulagen: im Ein-/Austrittsmonat voll oder anteilig nach Kalendertagen, je nach Praxis der Kasse
+  const familienzulagen = anteil > 0 ? r2((emp.familienzulagen || 0) * (agSaetze?.fzAnteilig ? anteil : 1)) : 0;
   const spesenTotal = r2((spesen || []).reduce((s, e) => s + (e.amount || 0), 0));
   const auszahlung = r2(netto + familienzulagen + spesenTotal);
 
@@ -1657,4 +1662,65 @@ export function pensumImMonat(emp: ArbeitszeitFelder & Partial<Pick<Employee, "e
   // Gleiches Pensum an allen Tagen → exakt dieser Wert (keine Gleitkomma-Reste in der Lohnrechnung)
   const first = arbeitszeitAm(emp, emp.eintrittsdatum && emp.eintrittsdatum > `${monat}-01` ? emp.eintrittsdatum : `${monat}-01`).pensum;
   return sum === first * n ? first : sum / n;
+}
+
+// ─── Lohn über die Zeit ────────────────────────────────────────────────────────
+
+/** Felder eines Mitarbeiters, aus denen der Monatslohn zu einem Datum folgt. */
+export type LohnFelder = Partial<Pick<Employee, "monatslohn" | "lohnVerlauf">>;
+
+/**
+ * Monatslohn (100-%-Basis) an einem Datum: der letzte Eintrag aus `lohnVerlauf` mit `ab` ≤ Datum, sonst
+ * `monatslohn` (Lohn ab Eintritt). Einträge ohne gültiges Datum oder mit negativem Lohn werden übergangen.
+ */
+export function monatslohnAm(emp: LohnFelder, ds: string): number {
+  let lohn = Number(emp.monatslohn) || 0;
+  const verlauf = emp.lohnVerlauf;
+  if (!verlauf || verlauf.length === 0) return lohn;
+  const day = ds.slice(0, 10);
+  const sorted = verlauf.filter(v => v && /^\d{4}-\d{2}-\d{2}/.test(v.ab || "") && Number.isFinite(Number(v.monatslohn)) && Number(v.monatslohn) >= 0)
+    .slice().sort((a, b) => a.ab.localeCompare(b.ab));
+  for (const v of sorted) {
+    if (v.ab.slice(0, 10) > day) break;
+    lohn = Number(v.monatslohn);
+  }
+  return lohn;
+}
+
+/** Letzter angestellter Tag eines Monats `YYYY-MM` (Austritt im Monat), sonst der Monatsletzte. */
+function letzterTagImMonat(emp: Partial<Pick<Employee, "austrittsdatum">>, monat: string): string {
+  const [y, m] = monat.split("-").map(Number);
+  const last = `${monat}-${String(new Date(y, m, 0).getDate()).padStart(2, "0")}`;
+  return emp.austrittsdatum && emp.austrittsdatum.startsWith(monat) && emp.austrittsdatum < last ? emp.austrittsdatum : last;
+}
+
+/** Monatslohn (100 %) am letzten angestellten Tag des Monats — Anzeige «Basis 100 %» in der Abrechnung. */
+export function monatslohnImMonat(emp: LohnFelder & Partial<Pick<Employee, "austrittsdatum">>, monat: string | undefined): number {
+  if (!monat || !/^\d{4}-\d{2}$/.test(monat)) return Number(emp.monatslohn) || 0;
+  return monatslohnAm(emp, letzterTagImMonat(emp, monat));
+}
+
+/**
+ * Monatslohn × Pensum eines Monats `YYYY-MM` (CHF, vor Ein-/Austritts-Anteil), über die angestellten Tage
+ * tagesgenau gewichtet (Kalendertage). Ohne Lohnwechsel genau `monatslohn × pensumImMonat`; mit Wechsel
+ * z.B. 1.–14. 7'600 × 100 %, 15.–31. 8'000 × 100 % → (14 × 7'600 + 17 × 8'000) / 31.
+ */
+export function lohnImMonat(emp: LohnFelder & ArbeitszeitFelder & Partial<Pick<Employee, "eintrittsdatum" | "austrittsdatum">>, monat: string | undefined): number {
+  const pensum = pensumImMonat(emp, monat) / 100;
+  if (!emp.lohnVerlauf || emp.lohnVerlauf.length === 0 || !monat || !/^\d{4}-\d{2}$/.test(monat)) return (Number(emp.monatslohn) || 0) * pensum;
+  const [y, m] = monat.split("-").map(Number);
+  const tage = new Date(y, m, 0).getDate();
+  let sum = 0, n = 0;
+  const lohnWerte = new Set<number>();
+  for (let d = 1; d <= tage; d++) {
+    const ds = `${monat}-${String(d).padStart(2, "0")}`;
+    if ((emp.eintrittsdatum && ds < emp.eintrittsdatum) || (emp.austrittsdatum && ds > emp.austrittsdatum)) continue;
+    const l = monatslohnAm(emp, ds);
+    lohnWerte.add(l);
+    sum += l * arbeitszeitAm(emp, ds).pensum / 100; n++;
+  }
+  if (n === 0) return monatslohnImMonat(emp, monat) * pensum;
+  // Gleicher Lohn im ganzen Monat → exakt Lohn × Monatspensum (keine Gleitkomma-Reste)
+  if (lohnWerte.size === 1) return [...lohnWerte][0] * pensum;
+  return sum / n;
 }

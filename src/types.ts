@@ -79,6 +79,10 @@ export interface Settings {
   protokollApproval?: ProtocolApproval;
   /** Frist in Stunden für die stillschweigende Genehmigung. Standard 24. */
   protokollApprovalHours?: number;
+  /** Familienzulagen im Ein-/Austrittsmonat anteilig nach Kalendertagen (Praxis der Kasse); Standard voll. */
+  familienzulagenAnteilig?: boolean;
+  /** Stunden weniger Soll am Werktag vor einem ganzen Feiertag (Büro-Usanz, nicht gesetzlich); Standard 1, 0 = aus. */
+  vortagStunden?: number;
   /** Mahnwesen: Verzugszins in Mahnungen ausweisen (OR 104). Standard aus. */
   verzugszinsAktiv?: boolean;
   /** Verzugszins in % p.a.; Standard 5 (gesetzlicher Satz). */
@@ -659,6 +663,8 @@ export interface Employee {
   saldoUebertragStunden?: number | null;
   /** Pensumwechsel: ab einem Datum gilt ein anderes Pensum (und ggf. andere Wochenstunden). Vor dem ersten Eintrag gelten `pensum`/`wochenstunden`. */
   pensumVerlauf?: PensumWechsel[];
+  /** Lohnänderungen über die Zeit (`monatslohn` = Lohn ab Eintritt); im Wechselmonat tagesgenau anteilig. */
+  lohnVerlauf?: LohnWechsel[];
   /** Cloud-User, der diesem Mitarbeiter entspricht (Self-Service-Ansichten) */
   appUserId?: Id | null;
   active?: boolean;
@@ -669,6 +675,12 @@ export interface Employee {
 }
 
 /** Ein Pensumwechsel: ab `ab` (einschliesslich) gilt `pensum` (%), optional mit neuen Wochenstunden (100-%-Basis). */
+/** Lohnänderung: ab `ab` gilt dieser Monatslohn (100-%-Basis). */
+export interface LohnWechsel {
+  ab: DateStr;
+  monatslohn: number;
+}
+
 export interface PensumWechsel {
   ab: DateStr;
   pensum: number;

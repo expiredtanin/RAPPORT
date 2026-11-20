@@ -34,9 +34,10 @@ describe("employee (Saldo-Übertrag, Pensumwechsel)", () => {
     const e = {
       id: "e1", name: "A", saldoStichtag: "2026-06-01", saldoUebertragStunden: -4.5,
       pensumVerlauf: [{ ab: "2026-08-15", pensum: 80 }, { ab: "2026-11-01", pensum: 60, wochenstunden: 40 }],
+      lohnVerlauf: [{ ab: "2026-04-01", monatslohn: 8500 }],
     } as Employee;
     const back = fromDB.employee(asServer(toDB.employee(e, "s1")));
-    expect(back).toMatchObject({ saldoStichtag: "2026-06-01", saldoUebertragStunden: -4.5, pensumVerlauf: e.pensumVerlauf });
+    expect(back).toMatchObject({ saldoStichtag: "2026-06-01", saldoUebertragStunden: -4.5, pensumVerlauf: e.pensumVerlauf, lohnVerlauf: e.lohnVerlauf });
   });
 
   it("alter Datensatz ohne die neuen Felder: kein Stichtag, leerer Verlauf", () => {
@@ -44,6 +45,6 @@ describe("employee (Saldo-Übertrag, Pensumwechsel)", () => {
     const back = fromDB.employee({ ...rec, id: "e1", name: "Alt", saldoStichtag: "", saldoUebertragStunden: 0, pensumVerlauf: null });
     expect(back).toMatchObject({ saldoStichtag: "", saldoUebertragStunden: 0, pensumVerlauf: [] });
     const missing = fromDB.employee({ ...rec, id: "e2", name: "Ohne Spalten" });
-    expect(missing).toMatchObject({ saldoStichtag: "", saldoUebertragStunden: null, pensumVerlauf: [] });
+    expect(missing).toMatchObject({ saldoStichtag: "", saldoUebertragStunden: null, pensumVerlauf: [], lohnVerlauf: [] });
   });
 });

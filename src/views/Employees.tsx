@@ -106,7 +106,9 @@ function Employees({ data, update, saveAll, setPrintContent }: Pick<ViewProps, "
     const pensumVerlauf = (empData.pensumVerlauf || []).filter(v => v.ab && Number(v.pensum) > 0).sort((a, b) => a.ab.localeCompare(b.ab));
     if ((empData.pensumVerlauf || []).length !== pensumVerlauf.length) showToast("Pensumwechsel ohne Datum oder Pensum wurden nicht übernommen.");
     if (empData.saldoStichtag && empData.eintrittsdatum && empData.saldoStichtag < empData.eintrittsdatum) { showToast("Der Saldo-Stichtag liegt vor dem Eintritt."); return; }
-    const emp = { ...empData, id: empId, pensumVerlauf, ...(empData.saldoStichtag ? {} : { saldoUebertragStunden: null }) } as Employee;
+    const lohnVerlauf = (empData.lohnVerlauf || []).filter(v => v.ab && Number(v.monatslohn) > 0).sort((a, b) => a.ab.localeCompare(b.ab));
+    if ((empData.lohnVerlauf || []).length !== lohnVerlauf.length) showToast("Lohnänderungen ohne Datum oder Betrag wurden nicht übernommen.");
+    const emp = { ...empData, id: empId, pensumVerlauf, lohnVerlauf, ...(empData.saldoStichtag ? {} : { saldoUebertragStunden: null }) } as Employee;
 
     const existingUserId = _appUserId;
     let updatedUsers = data.users || [];
