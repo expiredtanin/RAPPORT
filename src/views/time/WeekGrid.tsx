@@ -69,12 +69,15 @@ const isFreeFT = (ft?: Feiertag) => !!ft && (ft.stundenDelta === 0 || ft.stunden
 export function WeekGrid({ data, weekDays, weekFTs, todayStr, currentDate, selectedEmp, selectedEmpId, weekSelectStart, weekHover, weekForm, selectedEntryId, resizing, resizingRef, weekGridRef, absenzTypes, timer, now, setWeekHover, setCurrentDate, setViewMode, setContextMenu, handleSlotClick, isMonthClosed, syncResizing }: WeekGridProps) {
   const nowMins = now.getHours() * 60 + now.getMinutes();
   const isWeekend = (ds: string) => { const dow = new Date(`${ds}T00:00:00Z`).getUTCDay(); return dow === 0 || dow === 6; };
+  // Gemeinsames Spaltenraster für Kopf und Zeitgitter: Flex mit Innenabstand im Kopf verteilte die Breite
+  // anders als im Gitter (WebKit/macOS sichtbar verschoben) — mit einem Grid sind beide Spalten identisch.
+  const cols = { gridTemplateColumns: `48px ${weekDays.map(ds => isWeekend(ds) ? "minmax(0, 0.6fr)" : "minmax(0, 1fr)").join(" ")}` };
 
   return (
     <div ref={weekGridRef} className="zeit-scroll" onMouseLeave={() => setWeekHover(null)}>
 
       {/* Sticky Tageskopf */}
-      <div className="zeit-head">
+      <div className="zeit-head" style={cols}>
         <div className="zeit-gutter" />
         {weekDays.map(ds => {
           const d = new Date(`${ds}T12:00:00`);
@@ -126,7 +129,7 @@ export function WeekGrid({ data, weekDays, weekFTs, todayStr, currentDate, selec
       </div>
 
       {/* Zeitgitter */}
-      <div className="zeit-body">
+      <div className="zeit-body" style={cols}>
         <div className="zeit-gutter zeit-hours" style={{ height: SLOT_COUNT * SLOT_H }}>
           {Array.from({ length: SLOT_COUNT / 4 - 1 }, (_, i) => {
             const hour = SLOT_START_H + i + 1;

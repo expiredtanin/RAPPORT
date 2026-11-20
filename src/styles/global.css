@@ -599,12 +599,11 @@ button.today-row:hover { background: var(--surface3); }
 /* ── Wochenraster ─────────────────────────────────────────────────────────── */
 .zeit-week.card { padding: 0; overflow: hidden; }
 .zeit-scroll { isolation: isolate; overflow-y: auto; max-height: calc(100vh - 190px); min-height: 320px; }
-.zeit-gutter { width: 48px; flex-shrink: 0; position: relative; }
-.zeit-head { display: flex; position: sticky; top: 0; z-index: 20; background: var(--surface); border-bottom: 1px solid var(--border2); transform: translateZ(0); }
-.zeit-dh { flex: 1 1 0; min-width: 0; padding: 10px 8px 9px; border-left: 1px solid var(--border2); cursor: pointer; position: relative; transition: background 0.12s; }
+.zeit-gutter { width: 48px; position: relative; }
+.zeit-head { display: grid; position: sticky; top: 0; z-index: 20; background: var(--surface); border-bottom: 1px solid var(--border2); transform: translateZ(0); }
+.zeit-dh { min-width: 0; padding: 10px 8px 9px; border-left: 1px solid var(--border2); cursor: pointer; position: relative; transition: background 0.12s; }
 .zeit-dh:hover { background: var(--surface2); }
 .zeit-dh.is-today { background: color-mix(in srgb, var(--accent) 5%, var(--surface)); box-shadow: inset 0 2px 0 var(--accent); }
-.zeit-dh.zeit-we, .zeit-col.zeit-we { flex-grow: 0.6; }
 .zeit-dh-top { display: flex; align-items: baseline; gap: 5px; white-space: nowrap; }
 .zeit-dh-wd { font-size: 11.5px; color: var(--text4); font-weight: 500; }
 .zeit-dh-d { font-size: 15px; font-weight: 600; color: var(--text); letter-spacing: -0.01em; }
@@ -624,12 +623,12 @@ button.today-row:hover { background: var(--surface3); }
 .zeit-tag.planned { background: var(--info-bg); color: var(--info); }
 .zeit-tag.pending { background: var(--warning-bg); color: var(--warning); }
 
-.zeit-body { display: flex; }
+.zeit-body { display: grid; }
 .zeit-hours { pointer-events: none; }
 .zeit-hl { position: absolute; right: 8px; transform: translateY(-50%); font-size: 10.5px; color: var(--text4); font-variant-numeric: tabular-nums; line-height: 1; }
 .zeit-hl.off { color: var(--text5); }
 .zeit-col {
-  flex: 1 1 0; min-width: 0; position: relative; border-left: 1px solid var(--border2); background-color: var(--surface);
+  min-width: 0; position: relative; border-left: 1px solid var(--border2); background-color: var(--surface);
   /* Stundenlinien (48 px = 4 Slots à 12 px) und feinere Halbstunden */
   background-image: linear-gradient(var(--border2) 1px, transparent 1px), linear-gradient(color-mix(in srgb, var(--border2) 45%, transparent) 1px, transparent 1px);
   background-size: 100% 48px, 100% 24px;
