@@ -350,7 +350,23 @@ export const demoData = {
       qty: rebBilledH, rate: rateReb, status: "gesendet",
       desc: "Teilrechnung – Architekturleistungen Vorprojekt bis Baubewilligung" }),
   ].map(withPaidDate),
-  contracts: [], expenses: [], internalExpenses: [], deliveryNotes: [],
+  contracts: [], deliveryNotes: [],
+  // Spesen und Büroausgaben, damit die Buchhaltung (Vorsteuer, Jahresergebnis, Budget-Fixkosten) etwas zeigt
+  expenses: [
+    { id: "exp-1", date: dateAt(-1, 1), category: "Reise / Fahrt", projectId: P_LIM, employeeId: E_JULIAN, description: "Bahn Zürich–Limmatfeld, Bausitzung", amount: 18.4, mwstRate: 8.1, inclMwst: true, status: "offen" },
+    { id: "exp-2", date: dateAt(-2, 3), category: "Drucken / Reprografie", projectId: P_LIM, employeeId: E_JULIAN, description: "Plotts Ausführungspläne A0 (12 Stk.)", amount: 186.0, mwstRate: 8.1, inclMwst: true, status: "genehmigt" },
+    { id: "exp-3", date: dateAt(-3, 2), category: "Modellbau / Material", projectId: P_REB, employeeId: E_NINA, description: "Karton und Plexi für Arbeitsmodell 1:200", amount: 74.9, mwstRate: 8.1, inclMwst: true, status: "ausbezahlt" },
+    { id: "exp-4", date: dateAt(-5, 0), category: "Verpflegung / Geschäftsessen", projectId: P_REB, employeeId: E_LAURA, description: "Mittagessen mit Bauherrschaft", amount: 132.5, mwstRate: 8.1, inclMwst: true, status: "ausbezahlt" },
+    { id: "exp-5", date: dateAt(-8, 4), category: "Weiterbildung", employeeId: E_LAURA, description: "Kurs SIA 118 (Werkvertrag)", amount: 420.0, mwstRate: 8.1, inclMwst: true, status: "ausbezahlt" },
+  ],
+  internalExpenses: [
+    { id: "iex-1", date: dateAt(-46, 0), category: "Miete / Raumkosten", description: "Büromiete Konradstrasse", amount: 3800, mwstRate: 0, inclMwst: true, recurring: true, recurringInterval: "monatlich" },
+    { id: "iex-2", date: dateAt(-44, 0), category: "Software / Lizenzen", description: "CAD-Lizenzen (3 Plätze)", amount: 7920, mwstRate: 8.1, inclMwst: true, recurring: true, recurringInterval: "jährlich" },
+    { id: "iex-3", date: dateAt(-40, 0), category: "Telefon / Internet", description: "Glasfaser und Mobile", amount: 189, mwstRate: 8.1, inclMwst: true, recurring: true, recurringInterval: "monatlich" },
+    { id: "iex-4", date: dateAt(-30, 2), category: "Versicherung", description: "Berufshaftpflicht", amount: 2650, mwstRate: 0, inclMwst: true, recurring: true, recurringInterval: "jährlich" },
+    { id: "iex-5", date: dateAt(-6, 1), category: "Hardware / IT", description: "Monitor 32\" für Arbeitsplatz Laura", amount: 649, mwstRate: 8.1, inclMwst: true },
+    { id: "iex-6", date: dateAt(-2, 4), category: "Büromaterial", description: "Skizzenrollen, Stifte, Ordner", amount: 86.3, mwstRate: 8.1, inclMwst: true },
+  ],
   // Zwei Sitzungen, damit die Protokoll-Ansicht (Liste, Detail, Druck) etwas zeigt
   protocols: [
     { id: "proto-bs3", title: "Bausitzung 3", type: "Bausitzung", date: dateAt(-1, 2), time: "09:00", endTime: "10:30", location: "Baustelle Limmatfeld, Container",

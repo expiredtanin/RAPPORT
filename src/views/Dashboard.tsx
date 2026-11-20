@@ -777,16 +777,11 @@ export default function Dashboard({ data, setView, currentUser, userPermissions,
   return (
     <div>
       {/* Header */}
-      <div style={{marginBottom:28,display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
-        <div>
-          <h1 style={{fontFamily:"var(--font-ui)",fontSize:30,fontWeight:400,letterSpacing:"-0.02em",lineHeight:1.1,color:"var(--text)"}}>
-            {data.settings.name||"Studio"}
-          </h1>
-          <div style={{fontSize:11,color:"var(--text4)",letterSpacing:"0.1em",marginTop:6}}>
-            {new Date().toLocaleDateString("de-CH",{weekday:"long",day:"numeric",month:"long",year:"numeric"}).toUpperCase()}
-          </div>
-        </div>
-        <div style={{display:"flex",gap:8,alignItems:"center",marginTop:6,flexShrink:0}}>
+      <header className="page-head">
+        <div className="page-crumb">{new Date().toLocaleDateString("de-CH",{weekday:"long",day:"numeric",month:"long",year:"numeric"})}</div>
+        <div className="page-head-row">
+        <h1>{data.settings.name||"Studio"}</h1>
+        <div className="page-actions">
           {editMode?(
             <>
               <select defaultValue="" onChange={e=>{if(e.target.value){loadTemplate(e.target.value);e.target.value="";}}} className={ctrlBtn}>
@@ -846,7 +841,8 @@ export default function Dashboard({ data, setView, currentUser, userPermissions,
             </button>
           )}
         </div>
-      </div>
+        </div>
+      </header>
 
       {/* Edit banner */}
       {editMode&&(
