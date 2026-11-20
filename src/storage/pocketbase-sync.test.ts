@@ -86,6 +86,20 @@ describe("planSync mit Abgleichsstand (Drei-Wege)", () => {
     ]);
   });
 
+  it("Feiertage (Schlüssel `date`): Server-Datum mit Uhrzeit trifft den App-Schlüssel (Update/Delete statt Create)", () => {
+    // Gegen echtes PocketBase gefunden: geänderter Feiertag → Create → 400 «Value must be unique»
+    const ft = (date: string, label: string, stundenDelta: number) => ({ studio: "s1", date, label, halfDay: false, stundenDelta, repeatsYearly: false });
+    const base = baseFrom([ft("2026-12-24", "Heiligabend", -3.5), ft("2026-12-31", "Silvester", -3.5)], "date");
+    const existing = [{ id: "h1", date: "2026-12-24 00:00:00.000Z" }, { id: "h2", date: "2026-12-31 00:00:00.000Z" }];
+    expect(planSync([ft("2026-12-24", "Heiligabend", -4)], existing, "date", base)).toEqual([
+      { type: "update", id: "h1", body: { stundenDelta: -4 } },
+      { type: "delete", id: "h2" },
+    ]);
+    // ohne Abgleichsstand (Umzug in ein Büro mit Feiertagen): Update statt Create + Delete
+    expect(planSync([ft("2026-12-24", "Heiligabend", -4)], [{ ...srv(ft("2026-12-24", "Heiligabend", -3.5)), id: "h1" }], "date", null))
+      .toEqual([{ type: "update", id: "h1", body: { stundenDelta: -4 } }]);
+  });
+
   it("Personen: geteilte (fremde) Zeilen werden nie gelöscht, studio nur beim Anlegen", () => {
     const p = (id: string, name: string) => ({ id, name });
     const base = baseFrom([p("lokal", "A"), p("geteilt", "B")], "id");

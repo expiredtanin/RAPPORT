@@ -72,8 +72,12 @@ export function changedFields(row: SyncRow, other: SyncRow): SyncRow {
   return out;
 }
 
-/** Schlüssel einer Zeile: `id` oder ein natürlicher Schlüssel (z.B. `roleId`, `date`). */
-const keyOf = (row: SyncRow, keyField: string) => String(row[keyField]);
+/**
+ * Schlüssel einer Zeile: `id` oder ein natürlicher Schlüssel (z.B. `roleId`, `date`). Angeglichen wie
+ * die Felder: Feiertage haben `date` als Schlüssel, der Server liefert "YYYY-MM-DD 00:00:00.000Z", die
+ * App "YYYY-MM-DD" — ohne das wurde ein geänderter Feiertag neu angelegt (400, Datum schon vergeben).
+ */
+const keyOf = (row: SyncRow, keyField: string) => String(normalizeEmpty(row[keyField]));
 
 /** Baut den Abgleichsstand (`base`) aus Zeilen in Datenbankform. */
 export function baseFrom(rows: SyncRow[], keyField: string): Map<string, SyncRow> {
