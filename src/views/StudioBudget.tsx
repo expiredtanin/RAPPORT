@@ -336,7 +336,7 @@ function StudioBudget({ data, update, setPrintContent }: Pick<ViewProps, "data" 
 
       {/* Versions-Panel */}
       {showVersions && (
-        <div className="card" style={{ marginBottom: 20, borderLeft: "4px solid var(--accent)" }}>
+        <div className="card mark" style={{ marginBottom: 20, ["--mark" as string]: "var(--accent)" } as React.CSSProperties}>
           <div style={{ fontSize: 11, letterSpacing: "0.1em", color: "var(--text4)", marginBottom: 14 }}>VERSIONEN</div>
 
           {/* Neue Version speichern */}

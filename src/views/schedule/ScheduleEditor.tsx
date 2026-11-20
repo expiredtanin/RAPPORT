@@ -18,7 +18,7 @@ import {
   breaksOf, glyphOf, markerOf, seriesDates, SCHEDULE_MARKERS, SCHEDULE_VARIANTS,
   isDone, linkedEntry, protocolSuggestions, seriesSessions, setLinkedStatus, suggestionToItem, type ProtocolSuggestion,
 } from "../../schedule";
-import { Modal, FormField, DateInput } from "../../components/UI";
+import { Modal, FormField, DateInput, RowMenu } from "../../components/UI";
 import { useConfirm } from "../../hooks/useConfirm";
 import { GanttChart, ScheduleLegend } from "./GanttChart";
 import { ZOOM_LEVELS } from "./zoom";
@@ -251,43 +251,34 @@ export function ScheduleEditor({ project, data, update, setPrintContent, canEdit
     <div ref={cardRef} className="card" tabIndex={-1} style={{ padding: 0, marginTop: 20, outline: "none" }}
       onPointerDownCapture={e => { if (!(e.target as HTMLElement).closest("input, textarea, select, button")) cardRef.current?.focus({ preventScroll: true }); }}>
       {ConfirmModalEl}
-      {/* Kopf: Programm, Darstellung */}
-      <div style={{ padding: "12px 20px", display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center", borderBottom: "1px solid var(--border2)" }}>
-        <div style={{ fontSize: 11, letterSpacing: "0.1em", color: "var(--text4)", marginRight: 6 }}>TERMINPROGRAMM</div>
-        <div style={{ display: "flex", border: "1px solid var(--border)", borderRadius: 18, padding: 2, gap: 2 }}>
+      {/* Kopf: Programm (Planung/Bau), Zeitraum, Zoom, Aktionen; seltene Aktionen im ⋯-Menü */}
+      <div className="sched-bar">
+        <div className="seg" role="tablist" aria-label="Programm">
           {(["planung", "bau"] as ScheduleTrack[]).map(t => (
-            <button key={t} onClick={() => { setTrack(t); setSelectedId(null); }}
-              style={{ border: "none", borderRadius: 16, padding: "5px 14px", fontSize: 12, cursor: "pointer", fontFamily: "inherit",
-                background: track === t ? "var(--text)" : "transparent", color: track === t ? "var(--surface)" : "var(--text3)" }}>
-              {t === "planung" ? "Planung" : "Bau"} <span style={{ opacity: 0.6 }}>{trackItems(schedule, t).length || ""}</span>
+            <button key={t} role="tab" aria-selected={track === t} className={track === t ? "on" : ""} onClick={() => { setTrack(t); setSelectedId(null); }}>
+              {t === "planung" ? "Planung" : "Bau"}{trackItems(schedule, t).length ? <span className="seg-n">{trackItems(schedule, t).length}</span> : null}
             </button>
           ))}
         </div>
         <div style={{ flex: 1 }} />
         {items.length > 0 && <>
-          <div style={{ display: "flex", border: "1px solid var(--border)", borderRadius: 18, padding: 2, gap: 2 }} role="group" aria-label="Zoom">
+          <div className="seg seg-sm" role="group" aria-label="Zoom">
             {ZOOM_LEVELS.map(z => (
-              <button key={z.id} onClick={() => setZoom(z.id)} title={z.id === "alles" ? "Ganzes Programm in die Breite einpassen" : undefined}
-                style={{ border: "none", borderRadius: 16, padding: "4px 11px", fontSize: 11, cursor: "pointer", fontFamily: "inherit",
-                  background: zoom === z.id ? "var(--surface3)" : "transparent", color: zoom === z.id ? "var(--text)" : "var(--text4)", fontWeight: zoom === z.id ? 600 : 400 }}>
-                {z.label}
-              </button>
+              <button key={z.id} className={zoom === z.id ? "on" : ""} onClick={() => setZoom(z.id)} title={z.id === "alles" ? "Ganzes Programm in die Breite einpassen" : undefined}>{z.label}</button>
             ))}
           </div>
-          <label style={{ fontSize: 11, color: showCritical ? "var(--negative)" : "var(--text3)", display: "flex", gap: 4, alignItems: "center", cursor: "pointer" }}
-            title="Einträge ohne Puffer: jede Verspätung verschiebt das Ende">
-            <input type="checkbox" checked={showCritical} onChange={e => setShowCritical(e.target.checked)} style={{ width: "auto" }} /> Kritischer Weg
-          </label>
-          {baseline && (
-            <label style={{ fontSize: 11, color: "var(--text3)", display: "flex", gap: 4, alignItems: "center", cursor: "pointer" }} title={`Vergleich mit dem Stand vom ${fmtDate(baseline.savedAt)} (graue Striche, Verschiebung in Tagen)`}>
-              <input type="checkbox" checked={showBaseline} onChange={e => setShowBaseline(e.target.checked)} style={{ width: "auto" }} /> Vergleich {fmtDate(baseline.savedAt).slice(0, 6)}
-            </label>
-          )}
-          <button className="btn btn-ghost" style={smallBtn}
-            title="Druckt die aktuelle Ansicht (inkl. kritischem Weg und Vergleich, falls eingeschaltet); Papier A4–A0 quer oder nach Bedarf (Plotter), Zeitraum wählbar"
-            onClick={() => setPrintContent({ type: "schedule", project, track, items, baseline: showBaseline ? baseline : undefined, critical: showCritical ? [...crit.critical] : [], holidays, breaks: trackBreaks, data })}>
-            PDF
-          </button>
+          {canEdit && <>
+            <button className="btn btn-ghost btn-sm" onClick={() => addItem("task")} title={selected ? `Neue Aufgabe nach «${selected.label}»` : "Neue Aufgabe am Ende"}><span className="msr" style={{ fontSize: 16 }}>add</span>Aufgabe</button>
+            <button className="btn btn-ghost btn-sm" onClick={() => addItem("milestone")} title="Meilenstein, Abgabe, Entscheid, Sitzung, Lieferung, Abnahme oder Vertragstermin"><span className="msr" style={{ fontSize: 16 }}>add</span>Termin</button>
+            <button className="btn-icon" onClick={undo} disabled={!history.length} title="Letzte Änderung rückgängig (⌘Z / Ctrl+Z)" aria-label="Rückgängig"><span className="msr" style={{ fontSize: 19 }}>undo</span></button>
+          </>}
+          <RowMenu label="Weitere Aktionen" items={[
+            { label: showCritical ? "Kritischen Weg ausblenden" : "Kritischen Weg zeigen", icon: "route", onClick: () => setShowCritical(v => !v) },
+            { label: showBaseline ? "Vergleich ausblenden" : `Vergleich mit Stand ${baseline ? fmtDate(baseline.savedAt).slice(0, 6) : ""}`, icon: "compare_arrows", hidden: !baseline, onClick: () => setShowBaseline(v => !v) },
+            { label: baseline ? "Stand neu einfrieren" : "Stand einfrieren", icon: "ac_unit", hidden: !canEdit, onClick: freezeBaseline },
+            { label: `Unterbrüche${trackBreaks.length ? ` (${trackBreaks.length})` : ""}`, icon: "beach_access", hidden: !canEdit, onClick: () => setBreaksOpen(true) },
+            { label: "PDF drucken", icon: "picture_as_pdf", onClick: () => setPrintContent({ type: "schedule", project, track, items, baseline: showBaseline ? baseline : undefined, critical: showCritical ? [...crit.critical] : [], holidays, breaks: trackBreaks, data }) },
+          ]} />
         </>}
       </div>
 
@@ -317,26 +308,15 @@ export function ScheduleEditor({ project, data, update, setPrintContent, canEdit
         </div>
       ) : (
         <div style={{ padding: 16 }}>
-          {/* Zusammenfassung und Bearbeiten */}
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 14, alignItems: "center", marginBottom: 10, fontSize: 12, color: "var(--text3)" }}>
-            {range && <span><strong style={{ color: "var(--text)", fontWeight: 600 }}>{fmtDate(range.start)} – {fmtDate(range.end)}</strong> · {zoom === "tag" ? `${totalDays} Tage` : formatDuration(totalDays)}</span>}
-            {showCritical && <span style={{ color: "var(--negative)" }}>{crit.critical.size} kritisch</span>}
-            {conflicts.length > 0 && <span style={{ color: "var(--negative)" }} title="Pfeile mit «rückt nach» aus, deren Folgeaufgabe zu früh beginnt (gestrichelt)">⚠ {conflicts.length} {conflicts.length === 1 ? "Abhängigkeit verletzt" : "Abhängigkeiten verletzt"}</span>}
-            <div style={{ flex: 1 }} />
-            {canEdit && <>
-              <button className="btn btn-ghost" style={smallBtn} onClick={undo} disabled={!history.length} title="Letzte Änderung rückgängig (⌘Z / Ctrl+Z)">↶ Rückgängig</button>
-              <button className="btn btn-ghost" style={smallBtn} onClick={() => addItem("task")} title={selected ? `Neue Aufgabe nach «${selected.label}»` : "Neue Aufgabe am Ende"}>+ Aufgabe</button>
-              <button className="btn btn-ghost" style={smallBtn} onClick={() => addItem("milestone")} title="Meilenstein, Abgabe, Entscheid, Sitzung, Lieferung, Abnahme oder Vertragstermin">+ Termin</button>
-              <button className="btn btn-ghost" style={smallBtn} onClick={() => setBreaksOpen(true)} title="Bauferien und Betriebsferien eintragen">Unterbrüche{trackBreaks.length ? ` (${trackBreaks.length})` : ""}</button>
-              <button className="btn btn-ghost" style={smallBtn} onClick={freezeBaseline}
-                title="Heutige Termine als Soll festhalten; «Vergleich» zeigt danach, was sich verschoben hat">{baseline ? "Stand neu einfrieren" : "Stand einfrieren"}</button>
-            </>}
+          {range && (
+          <div className="sched-range"><b>{fmtDate(range.start)} – {fmtDate(range.end)}</b> · {zoom === "tag" ? `${totalDays} Tage` : formatDuration(totalDays)}
+            {showCritical && <span style={{ color: "var(--negative)" }}> · {crit.critical.size} kritisch</span>}
+            {conflicts.length > 0 && <span style={{ color: "var(--negative)" }} title="Pfeile mit «rückt nach» aus, deren Folgeaufgabe zu früh beginnt (gestrichelt)"> · ⚠ {conflicts.length} {conflicts.length === 1 ? "Abhängigkeit verletzt" : "Abhängigkeiten verletzt"}</span>}
           </div>
-
+          )}
           {/* Auswahl */}
           {/* Feste Höhe, einzeilig: Auswählen darf den Zeitstrahl nicht verschieben (Doppelklick) */}
-          <div style={{ height: 46, boxSizing: "border-box", marginBottom: 8, padding: "6px 10px", borderRadius: 6, background: selected ? "var(--surface2)" : "transparent",
-            border: `1px ${selected ? "solid" : "dashed"} var(--border)`, display: "flex", gap: 8, alignItems: "center", flexWrap: "nowrap", fontSize: 12, overflow: "hidden" }}>
+          <div className={`sched-sel${selected ? " on" : ""}`}>
             {selected ? <>
               <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
                 title={`${selected.label} · ${selected.kind === "milestone" ? fmtDate(selected.start) : `${fmtDate(selected.start)} – ${fmtDate(selected.end)}`}`}>
@@ -357,7 +337,7 @@ export function ScheduleEditor({ project, data, update, setPrintContent, canEdit
                 <button className="btn btn-ghost" style={{ ...smallBtn, flexShrink: 0 }} onClick={() => addItem("task")}>+ Folgeaufgabe</button>
                 <button className="btn btn-ghost" style={{ ...smallBtn, flexShrink: 0, color: "var(--negative)" }} onClick={() => removeItem(selected)}>Löschen</button>
               </>}
-              <button className="btn btn-ghost" style={{ ...smallBtn, padding: "4px 8px", flexShrink: 0 }} onClick={() => setSelectedId(null)} title="Auswahl aufheben (Esc)">✕</button>
+              <button className="btn-icon" style={{ flexShrink: 0 }} onClick={() => setSelectedId(null)} title="Auswahl aufheben (Esc)" aria-label="Auswahl aufheben"><span className="msr" style={{ fontSize: 18 }}>close</span></button>
             </> : (
               <span style={{ color: "var(--text4)", fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>
                 {canEdit

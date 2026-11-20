@@ -150,7 +150,7 @@ function Protokolle({ data, saveAll, setPrintContent, modal, setModal }: Pick<Vi
 
       {/* Offene Aufgaben-Banner */}
       {alleTasks.length > 0 && (
-        <div className="card" style={{ marginBottom: 20, borderLeft: "4px solid var(--warning)", padding: "12px 20px" }}>
+        <div className="card mark" style={{ marginBottom: 20, padding: "12px 20px", ["--mark" as string]: "var(--warning)" } as React.CSSProperties}>
           <div style={{ fontSize: 11, letterSpacing: "0.1em", color: "var(--warning)", marginBottom: 10, fontWeight: 600 }}>
             → OFFENE AUFGABEN ({alleTasks.length})
           </div>

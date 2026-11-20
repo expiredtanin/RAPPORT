@@ -454,7 +454,9 @@ button.today-row:hover { background: var(--surface3); }
 .ws-empty { padding: 20px 16px; color: var(--text4); font-size: 13px; }
 .ws-item { display: flex; flex-direction: column; gap: 3px; width: 100%; padding: 12px 16px; border: none; border-top: 1px solid var(--border2); background: none; text-align: left; color: var(--text); transition: background 0.12s; }
 .ws-item:hover { background: color-mix(in srgb, var(--surface) 55%, transparent); }
-.ws-item.on { background: var(--surface); box-shadow: inset 3px 0 0 var(--accent); }
+.ws-item { position: relative; }
+.ws-item.on { background: var(--surface); }
+.ws-item.on::before { content: ""; position: absolute; left: 6px; top: 12px; bottom: 12px; width: 3px; border-radius: 2px; background: var(--accent); }
 .ws-item.done { opacity: 0.6; }
 .ws-item-top { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
 .ws-item-top b { font-size: 13.5px; font-weight: 600; line-height: 1.3; }
@@ -644,10 +646,10 @@ button.today-row:hover { background: var(--surface3); }
 .zeit-slot.sel { background: color-mix(in srgb, var(--accent) 18%, transparent) !important; }
 
 /* Einträge und Absenzen: --pc-solid (Streifen) und --pc-tint (Fläche) kommen inline */
-.zeit-entry { position: absolute; left: 3px; right: 3px; box-sizing: border-box; border-radius: 6px; background-color: var(--pc-tint); box-shadow: inset 3px 0 0 var(--pc-solid); padding: 3px 6px 3px 9px; overflow: hidden; z-index: 2; color: var(--text); user-select: none; font-size: 11px; line-height: 14px; transition: box-shadow 0.12s; }
-.zeit-entry:hover { box-shadow: inset 3px 0 0 var(--pc-solid), 0 0 0 1px color-mix(in srgb, var(--pc-solid) 55%, transparent); }
-.zeit-entry.is-sel { box-shadow: inset 3px 0 0 var(--pc-solid), 0 0 0 1.5px var(--pc-solid); z-index: 3; }
-.zeit-entry.is-drag { z-index: 10; box-shadow: inset 3px 0 0 var(--pc-solid), 0 0 0 1.5px var(--pc-solid), var(--shadow-pop); }
+.zeit-entry { position: absolute; left: 3px; right: 3px; box-sizing: border-box; border-radius: 7px; background-color: var(--pc-tint); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--pc-solid) 32%, transparent); padding: 4px 7px; overflow: hidden; z-index: 2; color: var(--text); user-select: none; font-size: 11px; line-height: 14px; transition: box-shadow 0.12s; }
+.zeit-entry:hover { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--pc-solid) 70%, transparent); }
+.zeit-entry.is-sel { box-shadow: inset 0 0 0 1.5px var(--pc-solid); z-index: 3; }
+.zeit-entry.is-drag { z-index: 10; box-shadow: inset 0 0 0 1.5px var(--pc-solid), var(--shadow-pop); }
 .zeit-entry.is-locked { opacity: 0.72; }
 .zeit-entry.is-abs { background-image: repeating-linear-gradient(135deg, transparent 0 6px, color-mix(in srgb, var(--pc-solid) 12%, transparent) 6px 12px); }
 .zeit-entry > div { pointer-events: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -671,7 +673,8 @@ button.today-row:hover { background: var(--surface3); }
 .zeit-now { position: absolute; left: 0; right: 0; height: 0; border-top: 1.5px solid var(--accent); z-index: 6; pointer-events: none; }
 .zeit-now::before { content: ""; position: absolute; left: -4px; top: -4.5px; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); }
 .zeit-live { position: absolute; left: 3px; right: 3px; box-sizing: border-box; border-radius: 6px; z-index: 4; padding: 3px 6px 3px 9px; overflow: hidden; font-size: 11px; line-height: 14px; color: var(--text); cursor: default;
-  background: color-mix(in srgb, var(--accent) 11%, var(--surface)); box-shadow: inset 3px 0 0 var(--accent), inset 0 0 0 1px color-mix(in srgb, var(--accent) 35%, transparent); }
+  background: color-mix(in srgb, var(--accent) 11%, var(--surface)); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 35%, transparent); padding-left: 13px; }
+.zeit-live::before { content: ""; position: absolute; left: 5px; top: 5px; bottom: 5px; width: 3px; border-radius: 2px; background: var(--accent); }
 .zeit-live > div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .zeit-live-k { color: var(--accent); font-weight: 600; display: flex; align-items: center; gap: 5px; }
 .zeit-pulse { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); flex-shrink: 0; animation: zeit-pulse 1.6s ease-in-out infinite; }
@@ -772,3 +775,29 @@ button.today-row:hover { background: var(--surface3); }
 /* Formulare unter dem Wochenraster */
 .zeit-pick { border-top: 1px solid var(--border2); padding: 9px 16px 9px 56px; font-size: 12px; color: var(--text4); background: var(--surface2); display: flex; align-items: center; gap: 8px; }
 .zeit-pick b { color: var(--accent); font-weight: 600; font-variant-numeric: tabular-nums; }
+
+/* Projektfarbe als abgesetzter Strich mit runden Enden (wie in der Tagesansicht), nicht als Kantenstreifen */
+.zeit-entry { padding-left: 13px; }
+.zeit-entry::before { content: ""; position: absolute; left: 5px; top: 5px; bottom: 5px; width: 3px; border-radius: 2px; background: var(--pc-solid); pointer-events: none; }
+
+/* Farbmarke: abgesetzter Balken mit runden Enden statt angeklebtem Randstreifen (Farbe über --mark) */
+.mark { position: relative; }
+.mark::before { content: ""; position: absolute; left: 10px; top: 12px; bottom: 12px; width: 3px; border-radius: 2px; background: var(--mark, var(--accent)); pointer-events: none; }
+.card.mark { padding-left: 26px !important; }
+.mark.mark-tight::before { left: 6px; top: 6px; bottom: 6px; }
+
+/* ── Segment-Umschalter (z.B. Planung/Bau, Zoom) ──────────────────────────── */
+.seg { display: inline-flex; gap: 2px; padding: 2px; border-radius: 10px; background: var(--surface3); flex-shrink: 0; }
+.seg button { border: none; background: none; border-radius: 8px; padding: 5px 12px; font-size: 12.5px; color: var(--text3); font-weight: 500; display: inline-flex; gap: 6px; align-items: center; }
+.seg button:hover { color: var(--text); }
+.seg button.on { background: var(--surface); color: var(--text); box-shadow: 0 1px 2px rgba(0,0,0,0.08); }
+.seg.seg-sm button { padding: 4px 10px; font-size: 12px; }
+.seg-n { font-size: 11px; color: var(--text4); font-weight: 500; }
+
+/* ── Terminprogramm-Editor (schedule/ScheduleEditor.tsx) ──────────────────── */
+.sched-bar { padding: 12px 16px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; border-bottom: 1px solid var(--border2); }
+.sched-range { font-size: 12.5px; color: var(--text3); margin: 2px 2px 8px; }
+.sched-range b { color: var(--text); font-weight: 600; }
+.sched-sel { height: 44px; box-sizing: border-box; margin-bottom: 10px; padding: 6px 6px 6px 12px; border-radius: 10px; display: flex; gap: 8px; align-items: center; flex-wrap: nowrap; font-size: 12.5px; overflow: hidden; background: transparent; }
+.sched-sel.on { background: var(--surface2); }
+.sched-bar.sched-bar-page { padding: 0 0 16px; border-bottom: none; }

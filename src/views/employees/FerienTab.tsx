@@ -43,7 +43,7 @@ export default function FerienTab({ data, update, askConfirm, employees, absence
         const approveAbs = (id: string) => update("absences", (data.absences || []).map(a => a.id === id ? { ...a, status: "approved" } : a));
         const rejectAbs = async (id: string) => { if (await askConfirm("Absenzantrag ablehnen?", "Ablehnen")) update("absences", (data.absences || []).map(a => a.id === id ? { ...a, status: "rejected" } : a)); };
         return (
-          <div className="card" style={{ marginBottom: 20, borderLeft: "4px solid var(--warning)", padding: "14px 20px" }}>
+          <div className="card mark" style={{ marginBottom: 20, padding: "14px 20px", ["--mark" as string]: "var(--warning)" } as React.CSSProperties}>
             <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.1em", color: "var(--warning)", marginBottom: 12 }}>
               ⏳ PENDENTE ANTRÄGE ({total})
             </div>

@@ -66,8 +66,8 @@ export function ScheduleLegend({ items, breaks = 0, critical = false, baseline =
   );
   const barIcon = (v: string) => v === "serie"
     ? <><line x1={1} x2={21} y1={7} y2={7} stroke="var(--text4)" /><Marker m="sitzung" cx={5} cy={7} s={3.5} color="var(--text)" /><Marker m="sitzung" cx={16} cy={7} s={3.5} color="var(--text)" /></>
-    : <rect x={1} y={3} width={20} height={8} rx={2} fill={v === "reserve" ? "url(#gantt-legend-hatch)" : "var(--accent)"} fillOpacity={v === "extern" ? 0.06 : v === "reserve" ? 1 : 0.38}
-      stroke={v === "extern" ? "var(--accent)" : v === "reserve" ? "var(--text4)" : "none"} strokeWidth={1.3} />;
+    : <rect x={1} y={3} width={20} height={8} rx={2} fill={v === "reserve" ? "url(#gantt-legend-hatch)" : "var(--accent)"} fillOpacity={v === "extern" ? 0.06 : v === "reserve" ? 1 : 0.26}
+      stroke={v === "reserve" ? "var(--text4)" : "var(--accent)"} strokeOpacity={v ? 1 : 0.55} strokeWidth={v ? 1.3 : 1} />;
   return (
     <div style={{ display: "flex", flexWrap: "wrap", gap: compact ? "4px 14px" : "6px 18px", fontSize: compact ? 9 : 11, color: "var(--text3)", alignItems: "center" }}>
       <svg width={0} height={0} style={{ position: "absolute" }}>
@@ -82,7 +82,7 @@ export function ScheduleLegend({ items, breaks = 0, critical = false, baseline =
       {breaks > 0 && entry("breaks", <rect x={1} y={1} width={20} height={12} fill="url(#gantt-legend-hatch)" opacity={0.7} />, "Bauferien / Unterbruch")}
       {critical && entry("crit", <rect x={1} y={3} width={20} height={8} rx={2} fill="var(--negative)" fillOpacity={0.3} stroke="var(--negative)" />, "kritischer Weg")}
       {baseline && entry("base", <rect x={1} y={9} width={20} height={3} rx={1.5} fill="var(--text4)" />, "eingefrorener Stand")}
-      {entry("today", <line x1={11} x2={11} y1={0} y2={14} stroke="var(--negative)" strokeWidth={1.5} />, "heute")}
+      {entry("today", <line x1={11} x2={11} y1={0} y2={14} stroke="var(--accent)" strokeWidth={1.5} />, "heute")}
     </div>
   );
 }
@@ -372,12 +372,12 @@ export function GanttChart({
   ].filter(Boolean).join("\n");
 
   return (
-    <div className="gantt" style={{ display: "flex", border: "1px solid var(--border)", borderRadius: 6, overflow: "hidden", background: "var(--surface)", userSelect: "none" }}
+    <div className="gantt" style={{ display: "flex", border: "1px solid var(--border2)", borderRadius: "var(--r-card)", overflow: "hidden", background: "var(--surface)", userSelect: "none" }}
       onPointerLeave={() => setHoverRow(null)}>
       {/* Zeilenbeschriftung */}
-      <div style={{ width: `min(${labelWidth}px, 40vw)`, flexShrink: 0, borderRight: "1px solid var(--border)" }}>
-        <div style={{ height: HEADER_H, borderBottom: "1px solid var(--border)", background: "var(--surface2)", display: "flex", alignItems: "flex-end", justifyContent: "space-between", padding: "0 8px 6px 10px", fontSize: 10, letterSpacing: "0.08em", color: "var(--text4)" }}>
-          <span>{labelTitle.toUpperCase()}</span>
+      <div style={{ width: `min(${labelWidth}px, 40vw)`, flexShrink: 0, borderRight: "1px solid var(--border2)" }}>
+        <div style={{ height: HEADER_H, borderBottom: "1px solid var(--border)", background: "var(--surface)", display: "flex", alignItems: "flex-end", justifyContent: "space-between", padding: "0 8px 6px 10px", fontSize: 10, letterSpacing: "0.08em", color: "var(--text4)" }}>
+          <span style={{ letterSpacing: 0, fontSize: 11.5, fontWeight: 500, color: "var(--text4)" }}>{labelTitle}</span>
           {!fit && onSelect && dayNum(today) >= range.s && dayNum(today) <= range.e && (
             <button type="button" className="no-print" onClick={scrollToToday} title="Zum heutigen Tag scrollen"
               style={{ border: "1px solid var(--border)", background: "var(--surface)", borderRadius: 10, fontSize: 10, padding: "1px 8px", color: "var(--text3)", cursor: "pointer", letterSpacing: 0 }}>
@@ -388,17 +388,16 @@ export function GanttChart({
         {rows.map((r, i) => r.type === "group" ? (
           <div key={`g-${r.group}`} onClick={() => collapsible && toggle(r.group)} title={`${r.group}\n${fmtLong(r.start)} – ${fmtLong(r.end)}`}
             onPointerEnter={() => setHoverRow(i)}
-            style={{ height: ROW_H, display: "flex", alignItems: "center", gap: 6, padding: "0 10px", background: "var(--surface2)", borderBottom: "1px solid var(--border)", fontSize: ROW_H < 22 ? 10 : 11, fontWeight: 600, color: "var(--text3)", cursor: collapsible ? "pointer" : "default" }}>
+            style={{ height: ROW_H, display: "flex", alignItems: "center", gap: 6, padding: "0 10px", background: "var(--surface2)", borderBottom: "1px solid var(--border2)", fontSize: ROW_H < 22 ? 10.5 : 12, fontWeight: 600, color: "var(--text2)", cursor: collapsible ? "pointer" : "default" }}>
             {collapsible && <span style={{ fontSize: 9, width: 8 }}>{collapsed.has(r.group) ? "▸" : "▾"}</span>}
             <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>{r.group}</span>
             <span style={{ fontWeight: 400, color: "var(--text4)", fontSize: 10 }}>{collapsed.has(r.group) ? `${r.count} ausgeblendet` : `${fmtShort(r.start)}–${fmtShort(r.end)}`}</span>
           </div>
         ) : (
-          <div key={r.item.id} data-item={r.item.id} title={tip(r.item)}
+          <div key={r.item.id} data-item={r.item.id} title={tip(r.item)} className={r.item.id === selectedId ? "mark mark-tight" : undefined}
             onClick={() => onSelect?.(r.item.id)} onDoubleClick={() => onOpen?.(r.item.id)} onPointerEnter={() => setHoverRow(i)}
             style={{ height: ROW_H, display: "flex", alignItems: "center", gap: 6, padding: "0 10px 0 22px", borderBottom: "1px solid var(--border2, var(--border))", fontSize: ROW_H < 22 ? 10.5 : 12,
               background: r.item.id === selectedId ? "var(--surface3)" : linkTargetRow === i ? (linkOk ? "var(--positive-bg)" : "var(--negative-bg)") : hoverRow === i ? "var(--surface2)" : "transparent",
-              boxShadow: r.item.id === selectedId ? "inset 3px 0 0 var(--accent)" : undefined,
               cursor: onSelect ? "pointer" : "default" }}>
             <span style={{ color: r.item.kind === "milestone" ? "var(--text3)" : "var(--text)", fontStyle: r.item.kind === "milestone" ? "italic" : "normal", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>
               {isDone?.(r.item) ? <span style={{ fontStyle: "normal", color: "var(--positive)", marginRight: 4 }} title="erledigt">✓</span>
@@ -425,7 +424,7 @@ export function GanttChart({
             ))}
           </defs>
           {/* Kopf */}
-          <rect x={0} y={0} width={width} height={HEADER_H} fill="var(--surface2)" />
+          <rect x={0} y={0} width={width} height={HEADER_H} fill="var(--surface)" />
           {months.map(m => (
             <g key={m.x}>
               <line x1={m.x} x2={m.x} y1={0} y2={height} stroke="var(--border)" />
@@ -437,10 +436,10 @@ export function GanttChart({
             {days.map(d => (
               <g key={d.x}>
                 <line x1={d.x} x2={d.x} y1={18} y2={height} stroke="var(--border)" strokeOpacity={d.wd === "Mo" ? 0.7 : 0.22} />
-                {d.isToday && <rect x={d.x + 1} y={19} width={dw - 2} height={HEADER_H - 20} rx={3} fill="var(--negative)" opacity={0.14} />}
+                {d.isToday && <rect x={d.x + 1} y={19} width={dw - 2} height={HEADER_H - 20} rx={3} fill="var(--accent)" opacity={0.16} />}
                 <text x={d.x + dw / 2} y={27} fontSize={7.5} textAnchor="middle" fill={d.weekend || d.holiday ? "var(--text4)" : "var(--text3)"}>{d.wd}</text>
                 <text x={d.x + dw / 2} y={37} fontSize={9.5} textAnchor="middle" fontWeight={d.isToday ? 700 : 500}
-                  fill={d.isToday ? "var(--negative)" : d.weekend || d.holiday ? "var(--text4)" : "var(--text)"}>{d.d}</text>
+                  fill={d.isToday ? "var(--accent)" : d.weekend || d.holiday ? "var(--text4)" : "var(--text)"}>{d.d}</text>
               </g>
             ))}
             {/* Monatsnamen nur am Monatsanfang; jede KW trägt den Monat mit, damit er beim Scrollen sichtbar bleibt */}
@@ -486,11 +485,11 @@ export function GanttChart({
           {shade.map(s => <rect key={`${s.kind}-${s.x}`} x={s.x} y={HEADER_H} width={s.w} height={height - HEADER_H} fill={s.kind === "holiday" ? "var(--warning-bg)" : "var(--surface2)"} opacity={s.kind === "holiday" ? 0.9 : 0.6} pointerEvents="none" />)}
           {todayX >= 0 && todayX <= width && (
             <g pointerEvents="none">
-              <line x1={todayX} x2={todayX} y1={dayView ? HEADER_H : HEADER_H - 6} y2={height} stroke="var(--negative)" strokeWidth={1.5} />
+              <line x1={todayX} x2={todayX} y1={dayView ? HEADER_H : HEADER_H - 6} y2={height} stroke="var(--accent)" strokeWidth={1.5} />
               {/* In der Tagesansicht ist der Tag im Kopf markiert, sonst ein Schild «heute» */}
               {!dayView && <>
-                <rect x={Math.max(0, Math.min(width - 34, todayX - 17))} y={HEADER_H - 13} width={34} height={12} rx={6} fill="var(--negative)" />
-                <text x={Math.max(17, Math.min(width - 17, todayX))} y={HEADER_H - 4} fontSize={8.5} fill="#fff" textAnchor="middle" fontWeight={600}>heute</text>
+                <circle cx={todayX} cy={HEADER_H - 6} r={3.5} fill="var(--accent)" />
+                <text x={Math.max(4, Math.min(width - 30, todayX + 6))} y={HEADER_H - 3} fontSize={9.5} fill="var(--accent)" fontWeight={600}>heute</text>
               </>}
             </g>
           )}
@@ -511,8 +510,9 @@ export function GanttChart({
             const gx = x(r.start), gw = Math.max(2, x(r.end) + dw - gx);
             return (
               <g key={`gs-${r.group}`} pointerEvents="none">
-                <rect x={gx} y={gy + ROW_H / 2 - 3} width={gw} height={6} fill="var(--text3)" opacity={0.6} />
-                <path d={`M${gx},${gy + ROW_H / 2 + 3} l0,4 l4,-4 z M${gx + gw},${gy + ROW_H / 2 + 3} l0,4 l-4,-4 z`} fill="var(--text3)" opacity={0.6} />
+                <rect x={gx} y={gy + ROW_H / 2 - 1} width={gw} height={2} rx={1} fill="var(--text3)" opacity={0.75} />
+                <rect x={gx} y={gy + ROW_H / 2 - 4} width={2} height={8} rx={1} fill="var(--text3)" opacity={0.75} />
+                <rect x={gx + gw - 2} y={gy + ROW_H / 2 - 4} width={2} height={8} rx={1} fill="var(--text3)" opacity={0.75} />
               </g>
             );
           })}
@@ -568,9 +568,10 @@ export function GanttChart({
                 ) : <>
                   <rect x={bx} y={by} width={bw} height={bh} rx={3} pointerEvents="none"
                     fill={it.variant === "reserve" ? `url(#${hatchId})` : color}
-                    fillOpacity={it.variant === "extern" ? 0.06 : it.variant === "reserve" ? 1 : isCrit ? 0.28 : 0.38}
-                    stroke={sel ? "var(--text)" : isCrit ? "var(--negative)" : it.variant === "extern" ? color : it.variant === "reserve" ? "var(--text4)" : "none"}
-                    strokeWidth={sel ? 1.8 : isCrit || it.variant ? 1.3 : 0}
+                    fillOpacity={it.variant === "extern" ? 0.06 : it.variant === "reserve" ? 1 : isCrit ? 0.24 : 0.26}
+                    stroke={sel ? "var(--text)" : isCrit ? "var(--negative)" : it.variant === "reserve" ? "var(--text4)" : color}
+                    strokeOpacity={sel || isCrit || it.variant ? 1 : 0.55}
+                    strokeWidth={sel ? 1.8 : isCrit || it.variant ? 1.3 : 1}
                     strokeDasharray={it.variant === "reserve" && !sel ? "3 2" : undefined} />
                   {prog > 0 && <rect x={bx} y={by} width={bw * prog / 100} height={bh} rx={3} fill={color} opacity={0.85} pointerEvents="none" />}
                 </>}

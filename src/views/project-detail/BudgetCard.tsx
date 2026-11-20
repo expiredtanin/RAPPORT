@@ -28,7 +28,7 @@ export function BudgetCard({ project, data, entries, positions, projectInvoices,
   const invoicedAmount = projectInvoices.filter(i => i.status !== "entwurf").reduce((s, i) => s + (i.sub || 0), 0);
 
   if (budget === 0 && amountBudget === 0) return (
-    <div className="card" style={{ marginBottom: 20, borderLeft: "4px solid var(--border)", padding: "12px 20px" }}>
+    <div className="card mark" style={{ marginBottom: 20, padding: "12px 20px", ["--mark" as string]: "var(--border3)" } as React.CSSProperties}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <span style={{ fontSize: 12, color: "var(--text5)" }}>Kein Budget gesetzt</span>
         <button className="btn btn-ghost" style={{ fontSize: 11, padding: "4px 12px" }}
@@ -83,7 +83,7 @@ export function BudgetCard({ project, data, entries, positions, projectInvoices,
   const remaining = Math.max(0, budget - totalHours);
 
   return (
-    <div className="card" style={{ marginBottom: 20, borderLeft: `4px solid ${budgetColor}`, padding: "16px 20px" }}>
+    <div className="card mark" style={{ marginBottom: 20, padding: "16px 20px", ["--mark" as string]: budgetColor } as React.CSSProperties}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <div style={{ fontSize: 11, letterSpacing: "0.1em", color: "var(--text4)" }}>HONORAR- UND STUNDENBUDGET</div>

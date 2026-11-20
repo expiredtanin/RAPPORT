@@ -13,6 +13,7 @@ import { GanttChart } from "./schedule/GanttChart";
 import { ZOOM_LEVELS } from "./schedule/zoom";
 import type { ScheduleItem, ScheduleTrack, ViewProps } from "../types";
 import { requestProjectTab } from "../today";
+import { projectColor } from "./time/projectColor";
 
 
 type Mode = "projekte" | "mitarbeitende";
@@ -39,7 +40,8 @@ export default function Schedules({ data, setView, onSelectProject }: Pick<ViewP
       for (const track of tracks) {
         const list = trackItems(s, track);
         // Sammelbalken je Gruppe nur über Aufgaben (Meilensteine erscheinen einzeln); bei beiden Programmen mit Kennzeichen
-        const prefix = tracks.length > 1 ? (track === "planung" ? "Planung · " : "Bau · ") : "";
+        // Bei beiden Programmen nur das Bauprogramm kennzeichnen (Planung ist der Normalfall)
+        const prefix = tracks.length > 1 && track === "bau" ? "Bau · " : "";
         for (const g of groupSpans(list.filter(it => it.kind === "task"))) {
           out.push({ id: `${p.id}|${track}|${g.group}`, label: prefix + (g.group || TRACK_LABELS[track]), kind: "task", track, group, start: g.start, end: g.end });
         }
@@ -106,25 +108,26 @@ export default function Schedules({ data, setView, onSelectProject }: Pick<ViewP
   return (
     <div>
       <Header title="Terminplanung" />
-      <div className="filter-bar" style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center", marginBottom: 16 }}>
-        {(["projekte", "mitarbeitende"] as Mode[]).map(m => (
-          <button key={m} className="pill" onClick={() => setMode(m)} style={mode === m ? { background: "var(--text)", color: "var(--surface)" } : {}}>
-            {m === "projekte" ? "Projekte" : "Mitarbeitende"}
-          </button>
-        ))}
-        <span style={{ width: 12 }} />
-        {(["planung", "bau"] as ScheduleTrack[]).map(t => (
-          <label key={t} style={{ fontSize: 12, color: "var(--text3)", display: "flex", gap: 4, alignItems: "center" }}>
-            <input type="checkbox" checked={tracks.includes(t)} onChange={() => toggleTrack(t)} style={{ width: "auto" }} /> {t === "planung" ? "Planung" : "Bau"}
-          </label>
-        ))}
-        <label style={{ fontSize: 12, color: "var(--text3)", display: "flex", gap: 4, alignItems: "center" }}>
-          <input type="checkbox" checked={onlyActive} onChange={e => setOnlyActive(e.target.checked)} style={{ width: "auto" }} /> nur laufende Projekte
-        </label>
+      <div className="sched-bar sched-bar-page">
+        <div className="seg" role="tablist" aria-label="Ansicht">
+          {(["projekte", "mitarbeitende"] as Mode[]).map(m => (
+            <button key={m} role="tab" aria-selected={mode === m} className={mode === m ? "on" : ""} onClick={() => setMode(m)}>{m === "projekte" ? "Projekte" : "Mitarbeitende"}</button>
+          ))}
+        </div>
+        <div className="seg seg-sm" role="group" aria-label="Programme">
+          {(["planung", "bau"] as ScheduleTrack[]).map(t => (
+            <button key={t} className={tracks.includes(t) ? "on" : ""} onClick={() => toggleTrack(t)} aria-pressed={tracks.includes(t)} title="Ein-/ausblenden (mindestens eines bleibt)">{t === "planung" ? "Planung" : "Bau"}</button>
+          ))}
+        </div>
+        <button className={`btn btn-sm ${onlyActive ? "btn-ghost" : "btn-quiet"}`} onClick={() => setOnlyActive(v => !v)} aria-pressed={onlyActive}>
+          <span className="msr" style={{ fontSize: 16 }}>{onlyActive ? "check" : "filter_list"}</span>{onlyActive ? "nur laufende" : "alle Projekte"}
+        </button>
         <div style={{ flex: 1 }} />
-        {ZOOM_LEVELS.map(z => (
-          <button key={z.id} className="pill" onClick={() => setZoom(z.id)} style={zoom === z.id ? { background: "var(--surface3)", fontWeight: 600 } : {}}>{z.label}</button>
-        ))}
+        <div className="seg seg-sm" role="group" aria-label="Zoom">
+          {ZOOM_LEVELS.map(z => (
+            <button key={z.id} className={zoom === z.id ? "on" : ""} onClick={() => setZoom(z.id)}>{z.label}</button>
+          ))}
+        </div>
       </div>
 
       {mode === "mitarbeitende" && people.length > 0 && (
@@ -173,7 +176,7 @@ export default function Schedules({ data, setView, onSelectProject }: Pick<ViewP
           describe={it => (projectOf.has(it.id) ? "Klick öffnet das Projekt" : undefined)}
           from={addDays(today, -30)} to={to}
           onSelect={open}
-          barColor={it => (it.id.startsWith("ferien|") || it.id.startsWith("abs|") ? "var(--info)" : undefined)}
+          barColor={it => (it.id.startsWith("ferien|") || it.id.startsWith("abs|") ? "var(--text4)" : projectOf.has(it.id) ? projectColor(projectOf.get(it.id) as string).solid : undefined)}
         />
       )}
       {mode === "projekte" && items.length > 0 && without.length > 0 && (
