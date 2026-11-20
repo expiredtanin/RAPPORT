@@ -3,8 +3,6 @@
 // PB-Phase 1: Auth, Studios, Settings/Rollen, Personen, Projekte.
 // PB-Phase 2: restliche Entities (Rechnungen, Zeiterfassung, Mitarbeiter, …),
 // Invite-Flow, Seed-Defaults, Passwort-Reset-Confirm-Flow.
-// Noch offen: Person-Sharing über Studios hinweg (siehe README.md/ARCHITECTURE.md
-// "Bekannte Lücken").
 //
 // Öffentliches Interface ist bewusst 1:1 identisch zu SupabaseAdapter (gleiche Methoden,
 // gleiche Rückgabe-Shapes inkl. snake_case bei signIn().studios) — App.jsx/Login.jsx/
@@ -17,17 +15,20 @@
 // Ablauf: signIn() → setStudioId() → load() (alles auf einmal) → App hält den
 // State → bei jeder Änderung save(data) → _writeSnapshot().
 //
-// Sync-Modell («Full Replace»): save() bekommt immer den GANZEN Datenstand. Pro
-// Collection wird der Serverstand geladen, mit dem Snapshot verglichen und nur
-// das Nötige geschrieben (create / update / delete) — siehe _syncTable().
-// Unveränderte Collections werden per Referenzvergleich (`_lastData`) ganz
-// übersprungen. Konsequenz: Was lokal fehlt, wird auf dem Server GELÖSCHT.
-// Zwei Nutzer, die gleichzeitig dieselbe Collection ändern, überschreiben sich
-// (letzter Schreiber gewinnt); Realtime (subscribeToChanges) lädt Änderungen
-// anderer Nutzer gezielt nach (loadPartial).
+// Sync-Modell: save() bekommt immer den GANZEN Datenstand. Unveränderte Collections
+// werden per Referenzvergleich (`_lastData`) ganz übersprungen. Für die übrigen
+// plant pocketbase-sync.ts einen Drei-Wege-Abgleich gegen den Stand, der zuletzt mit
+// dem Server übereinstimmte (`_base`, gesetzt beim Laden und nach jedem erfolgreichen
+// Schreiben): nur selbst geänderte Zeilen werden geschrieben, und davon nur die
+// geänderten Felder; gelöscht wird nur, was wir selbst entfernt haben. Änderungen
+// anderer Nutzer, die noch nicht nachgeladen sind, bleiben dadurch erhalten (früher:
+// «Full Replace», letzter Schreiber gewinnt pro Zeile, fremde neue Zeilen wurden
+// gelöscht). Realtime (subscribeToChanges) lädt Änderungen anderer gezielt nach
+// (loadPartial). Gleiches Feld gleichzeitig geändert → letzter Schreiber gewinnt.
 //
 // Gleichzeitige save()-Aufrufe werden zusammengefasst: es läuft höchstens ein
-// Schreibvorgang, der letzte angeforderte Stand gewinnt (siehe save()).
+// Schreibvorgang, der letzte angeforderte Stand gewinnt (siehe save()). Netzfehler,
+// 429 (Rate-Limit) und 5xx werden mit kurzer Wartezeit wiederholt.
 //
 // Berechtigungen: serverseitige Hooks (pb/pb_hooks/permissions.pb.js) sperren
 // Collections je Rolle. 403/404 gilt hier als «keine Berechtigung» und wird
@@ -43,19 +44,19 @@ import type { AppData, Id } from "../types";
 import type { RawData } from "./migrations";
 import type { StorageAdapter } from "./adapter";
 import { fromDB, toDB } from "./pocketbase-mappers";
+import { baseFrom, changedFields, planSync, type SyncOp, type SyncRow } from "./pocketbase-sync";
 
-type Row = RecordModel;
 /** Fehlerform von PocketBase (ClientResponseError), soweit hier benutzt. */
 type PbError = { status?: number; message?: string; data?: { message?: string } };
 const pbError = (e: unknown): PbError => (e ?? {}) as PbError;
 /** Alle Mapper, die eine Zeile 1:1 in eine App-Entität übersetzen (ohne studioSettings). */
 type EntityMapper = Exclude<keyof typeof fromDB, "studioSettings">;
 type DataKey = keyof AppData;
-/** Eine create/update/delete-Operation, die _applyOps ausführt. */
-type Op =
-  | { type: "create"; body: Record<string, unknown> }
-  | { type: "update"; id: string; body: Record<string, unknown> }
-  | { type: "delete"; id: string };
+type Op = SyncOp;
+/** Seitengrösse für getFullList: PocketBase erlaubt höchstens 1000 pro Seite (SDK-Default 500). */
+const LIST_BATCH = 1000;
+/** Vorübergehende Fehler, bei denen sich ein erneuter Versuch lohnt (Netz weg, Rate-Limit, Server). */
+const isTransient = (e: unknown) => { const s = pbError(e).status; return s === 0 || s === 429 || (s !== undefined && s >= 500); };
 
 // [data-Key, Collection, Mapper-Name, natürlicher Schlüssel (Default "id"), Sort-Feld]
 // Deckt alle "Daten"-Entities ab, die 1:1 studio-gebunden sind und komplett per
@@ -98,19 +99,6 @@ const CONFIG_MAP: [DataKey, string, EntityMapper, string][] = [
   ["dashboardTemplates", "dashboardTemplates", "dashboardTemplate", "templateId"],
 ];
 
-// Normalisiert "kein Wert" auf einen einzigen Nenner: die App schreibt fehlende
-// Werte meist als null/undefined (siehe toDB.*, z.B. "client: p.clientId || null"),
-// PocketBase liefert dieselbe leere Relation/Textspalte aus getFullList() aber als
-// "" zurück. Ohne diese Normalisierung würde rowUnchanged() für jede Zeile mit
-// mindestens einem leeren Feld IMMER "geändert" melden und der Row-Skip unten liefe
-// für einen Grossteil der Datensätze ins Leere.
-const normalizeEmpty = (v: unknown) => (v === undefined || v === null || v === "" ? null : v);
-const fieldEqual = (a: unknown, b: unknown) => JSON.stringify(normalizeEmpty(a)) === JSON.stringify(normalizeEmpty(b));
-// Vergleicht nur die Felder, die der Payload tatsächlich mitschickt — "existing" (roh
-// von PocketBase) hat zusätzliche System-Felder (created, updated, collectionId, …),
-// die hier bewusst ignoriert werden.
-const rowUnchanged = (row: Record<string, unknown>, existing: Row) => Object.keys(row).every(k => fieldEqual(row[k], existing[k]));
-
 // Collection-Name -> data-Key, für den gezielten Realtime-Refresh (siehe
 // subscribeToChanges()/loadPartial()). studioSettings UND studioRoles bilden
 // gemeinsam den einen "settings"-Key ab (fromDB.studioSettings kombiniert
@@ -135,6 +123,10 @@ export class PocketBaseAdapter implements StorageAdapter {
   _unsub?: (() => void) | null;
   _pendingData?: AppData | null;
   _currentWrite?: Promise<void> | null;
+  /** Abgleichsstand pro Collection (Datenbankform, nach Schlüssel), siehe pocketbase-sync.ts. */
+  _base: Map<string, Map<string, SyncRow>>;
+  /** Wartezeiten (ms) zwischen den Wiederholungen bei vorübergehenden Fehlern. */
+  static RETRY_DELAYS = [1000, 3000, 10000];
 
   constructor(url: string) {
     if (!url) throw new Error("PocketBaseAdapter: URL ist erforderlich.");
@@ -154,12 +146,25 @@ export class PocketBaseAdapter implements StorageAdapter {
     // gegen DIESEN Server (siehe _applyOps). Eine Server-URL ändert sich nicht
     // innerhalb einer Adapter-Instanz, daher kein Reset bei Studio-Wechsel nötig.
     this._batchSupported = null;
+    this._base = new Map();
   }
 
   /** Aktives Studio setzen (nach Login/Studio-Wechsel). Wechsel verwirft den Sync-Snapshot. */
   setStudioId(studioId: Id | null) {
-    if (studioId !== this._studioId) this._lastData = null;
+    if (studioId !== this._studioId) { this._lastData = null; this._base = new Map(); }
     this._studioId = studioId;
+  }
+
+  /** Abgleichsstand einer Collection aus App-Zeilen setzen (nach dem Laden). */
+  _setBaseFromApp(table: string, mapper: EntityMapper, list: unknown, sid: Id, keyField: string) {
+    this._base.set(table, baseFrom(this._toRows(mapper, list, sid), keyField));
+  }
+
+  /** Wartet, bis kein Schreibvorgang mehr läuft (Fehler zählen als fertig). */
+  async whenIdle(): Promise<void> {
+    while (this._currentWrite) {
+      try { await this._currentWrite; } catch { /* Fehler meldet save() selbst */ }
+    }
   }
 
   /** Erreichbarkeit des Servers prüfen (Health-Endpoint). */
@@ -206,6 +211,7 @@ export class PocketBaseAdapter implements StorageAdapter {
     this.client.authStore.clear();
     this._studioId = null;
     this._lastData = null;
+    this._base = new Map();
   }
 
   /** Schickt die Passwort-Reset-Mail. */
@@ -386,11 +392,11 @@ export class PocketBaseAdapter implements StorageAdapter {
     // jeweilige View für diese Rolle ohnehin aus (App.jsx hasViewAccess).
     const entityMapNonPersons = ENTITY_MAP.filter(([dataKey]) => dataKey !== "persons");
     const entityLoads = entityMapNonPersons.map(([, coll, mapper, , sort]) =>
-      c.collection(coll).getFullList(sort ? { filter, sort } : { filter })
+      c.collection(coll).getFullList(sort ? { filter, sort, batch: LIST_BATCH } : { filter, batch: LIST_BATCH })
         .then(rows => rows.map(fromDB[mapper]))
         .catch((err: unknown) => { if (pbError(err).status !== 403 && pbError(err).status !== 404) throw err; return []; }));
     const configLoads = CONFIG_MAP.map(([, coll, mapper]) =>
-      c.collection(coll).getFullList({ filter })
+      c.collection(coll).getFullList({ filter, batch: LIST_BATCH })
         .then(rows => rows.map(fromDB[mapper]))
         .catch((err: unknown) => { if (pbError(err).status !== 403 && pbError(err).status !== 404) throw err; return []; }));
 
@@ -398,7 +404,7 @@ export class PocketBaseAdapter implements StorageAdapter {
       c.collection("studioSettings").getFullList({ filter }),
       c.collection("studioRoles").getFullList({ filter, sort: "sort" }),
       c.collection("studioMembers").getFullList({ filter: `${filter} && active = true`, expand: "user" }),
-      c.collection("persons").getFullList({ filter: personsFilter }),
+      c.collection("persons").getFullList({ filter: personsFilter, batch: LIST_BATCH }),
       ...entityLoads,
       ...configLoads,
     ]);
@@ -411,6 +417,15 @@ export class PocketBaseAdapter implements StorageAdapter {
     };
     entityMapNonPersons.forEach(([dataKey], i) => { result[dataKey] = entityResults[i]; });
     CONFIG_MAP.forEach(([dataKey], i) => { result[dataKey] = configResults[i]; });
+
+    // Abgleichsstand = gerade geladener Serverstand (Grundlage für den Drei-Wege-Abgleich
+    // beim nächsten Speichern, siehe pocketbase-sync.ts).
+    this._base = new Map();
+    this._base.set("studioRoles", baseFrom(toDB.studioRoles((result.settings as AppData["settings"]).roles, sid), "roleId"));
+    this._base.set("persons", baseFrom((result.persons as AppData["persons"]).map(p => toDB.person(p)), "id"));
+    for (const [dataKey, coll, mapper, keyField] of [...entityMapNonPersons, ...CONFIG_MAP]) {
+      this._setBaseFromApp(coll, mapper, result[dataKey], sid, keyField);
+    }
     // Verknüpfung Mitarbeiter↔Cloud-User existiert nur umgekehrt über
     // employees.appUserId — hier auflösen, sonst bleibt users[].employeeId
     // leer und Self-Service-Ansichten behandeln jeden Nutzer wie einen Admin.
@@ -447,29 +462,34 @@ export class PocketBaseAdapter implements StorageAdapter {
         c.collection("studioSettings").getFullList({ filter }),
         c.collection("studioRoles").getFullList({ filter, sort: "sort" }),
       ]);
-      result.settings = fromDB.studioSettings(settingsList[0], roles);
+      const settings = fromDB.studioSettings(settingsList[0], roles);
+      result.settings = settings;
+      if (this._studioId === sid) this._base.set("studioRoles", baseFrom(toDB.studioRoles(settings.roles, sid), "roleId"));
     }
 
     if (keys.has("persons")) {
       const personsFilter = `studio = "${sid}" || personStudioLinks_via_person.studio ?= "${sid}"`;
-      const rows = await c.collection("persons").getFullList({ filter: personsFilter });
-      result.persons = rows.map(r => fromDB.person(r));
+      const rows = await c.collection("persons").getFullList({ filter: personsFilter, batch: LIST_BATCH });
+      const persons = rows.map(r => fromDB.person(r));
+      result.persons = persons;
+      if (this._studioId === sid) this._base.set("persons", baseFrom(persons.map(p => toDB.person(p)), "id"));
     }
 
     const loads = [...ENTITY_MAP.filter(([dk]) => dk !== "persons"), ...CONFIG_MAP]
       .filter(([dataKey]) => keys.has(dataKey))
-      .map(([dataKey, coll, mapper, , sort]) =>
-        c.collection(coll).getFullList(sort ? { filter, sort } : { filter })
-          .then(rows => { result[dataKey] = rows.map(fromDB[mapper]); })
-          .catch((err: unknown) => { if (pbError(err).status !== 403 && pbError(err).status !== 404) throw err; result[dataKey] = []; }));
+      .map(([dataKey, coll, mapper, keyField, sort]) =>
+        c.collection(coll).getFullList(sort ? { filter, sort, batch: LIST_BATCH } : { filter, batch: LIST_BATCH })
+          .then(rows => rows.map(fromDB[mapper]))
+          .catch((err: unknown) => { if (pbError(err).status !== 403 && pbError(err).status !== 404) throw err; return []; })
+          .then(list => {
+            result[dataKey] = list;
+            if (this._studioId === sid) this._setBaseFromApp(coll, mapper, list, sid, keyField);
+          }));
     await Promise.all(loads);
 
     return result;
   }
 
-  // Full-Replace-Strategie wie SupabaseAdapter: pro save() ein kompletter Sync von
-  // Settings/Rollen/Personen/Projekten. Andere data-Keys werden in dieser Phase
-  // NICHT persistiert (siehe PB-Phase 2-Kommentar oben) — bewusste Einschränkung.
   /**
    * Speichert den kompletten Datenstand. Ruft während eines laufenden Schreibens
    * jemand erneut save() auf, wird nur der neueste Stand nachgeschrieben (kein Stau).
@@ -481,10 +501,21 @@ export class PocketBaseAdapter implements StorageAdapter {
     if (this._currentWrite) return this._currentWrite;
     this._currentWrite = (async () => {
       try {
+        let attempt = 0;
         while (this._pendingData) {
           const next = this._pendingData;
           this._pendingData = null;
-          await this._writeSnapshot(next);
+          try {
+            await this._writeSnapshot(next);
+            attempt = 0;
+          } catch (err) {
+            // Vorübergehender Fehler: kurz warten und erneut versuchen (der Abgleich ist
+            // idempotent). Kam inzwischen ein neuerer Stand, wird gleich dieser geschrieben.
+            const delays = PocketBaseAdapter.RETRY_DELAYS;
+            if (!isTransient(err) || attempt >= delays.length) throw err;
+            await new Promise(r => setTimeout(r, delays[attempt++]));
+            if (!this._pendingData) this._pendingData = next;
+          }
         }
       } finally {
         this._currentWrite = null;
@@ -532,7 +563,9 @@ export class PocketBaseAdapter implements StorageAdapter {
         const existingSettings = await c.collection("studioSettings").getFullList({ filter: `studio = "${sid}"` });
         const settingsPayload = toDB.studioSettings(data.settings || {}, sid);
         if (existingSettings[0]) {
-          if (!rowUnchanged(settingsPayload, existingSettings[0])) await c.collection("studioSettings").update(existingSettings[0].id, settingsPayload);
+          // Nur geänderte Felder senden (Logo als Data-URL nicht bei jeder Einstellung neu)
+          const body = changedFields(settingsPayload, existingSettings[0]);
+          if (Object.keys(body).length > 0) await c.collection("studioSettings").update(existingSettings[0].id, body);
         } else {
           await c.collection("studioSettings").create(settingsPayload);
         }
@@ -569,9 +602,6 @@ export class PocketBaseAdapter implements StorageAdapter {
     this._lastData = data;
   }
 
-  // UPSERT (per id bzw. natürlichem Schlüssel) + DELETE was nicht mehr im Snapshot ist.
-  // Sammelt nur die nötigen Operationen — die tatsächliche Ausführung (Batch
-  // oder sequenziell) übernimmt _applyOps().
   /**
    * Wendet den Mapper `toDB[mapper]` auf jede App-Zeile an. Die Mapper haben je
    * Entität einen anderen Parametertyp; hier ist die Zuordnung über ENTITY_MAP/
@@ -582,28 +612,20 @@ export class PocketBaseAdapter implements StorageAdapter {
     return ((list as unknown[] | undefined) || []).map(row => fn(row, sid));
   }
 
+  /**
+   * Gleicht eine Collection ab (Planung in pocketbase-sync.ts). Mit Abgleichsstand
+   * werden vom Server nur Schlüssel geladen (keine Belege/Data-URLs bei jedem
+   * Speichern); ohne ihn ganze Zeilen wie bisher. Nach Erfolg gilt `rows` als neuer
+   * Abgleichsstand.
+   */
   async _syncTable(table: string, sid: Id, rows: Record<string, unknown>[], keyField: string): Promise<void> {
     const c = this.client.collection(table);
-    const existing = await c.getFullList({ filter: `studio = "${sid}"` });
-    const existingByKey = new Map(existing.map(r => [String(r[keyField === "id" ? "id" : keyField]), r]));
-    const seenIds = new Set<string>();
-    const ops: Op[] = [];
-
-    for (const row of rows) {
-      const key = String(row[keyField === "id" ? "id" : keyField]);
-      const match = existingByKey.get(key);
-      if (match) {
-        seenIds.add(match.id);
-        if (!rowUnchanged(row, match)) ops.push({ type: "update", id: match.id, body: row });
-      } else {
-        ops.push({ type: "create", body: row });
-      }
-    }
-    for (const r of existing) {
-      if (!seenIds.has(r.id)) ops.push({ type: "delete", id: r.id });
-    }
-
-    await this._applyOps(table, ops);
+    const base = this._base.get(table) ?? null;
+    const filter = `studio = "${sid}"`;
+    const fields = keyField === "id" ? "id" : `id,${keyField}`;
+    const existing = await c.getFullList(base ? { filter, fields, batch: LIST_BATCH } : { filter, batch: LIST_BATCH });
+    await this._applyOps(table, planSync(rows, existing, keyField, base));
+    if (this._studioId === sid) this._base.set(table, baseFrom(rows, keyField));
   }
 
   // Führt create/update/delete-Operationen für eine Collection aus — bevorzugt
@@ -618,12 +640,21 @@ export class PocketBaseAdapter implements StorageAdapter {
   // (PocketBase-Setting, standardmäßig AUS) — vermeidet wiederholte, immer
   // gleich scheiternde Batch-Versuche gegen ältere/nicht migrierte Server.
   static BATCH_SIZE = 50; // Server-Default für settings.batch.maxRequests.
+  // PocketBase-Default-Rate-Limit für /api/batch: 3 pro Sekunde (pro Client-IP — im
+  // Büro hinter einem NAT bzw. hinter einem Reverse-Proxy ohne trustedProxy teilen sich
+  // alle Geräte diesen Topf). Abstand zwischen zwei eigenen Batches, und bei 429 einmal
+  // kurz warten, statt sofort auf viele Einzel-Requests auszuweichen (die zählen gegen
+  // die Limits für create bzw. /api/ und lösen dort weitere 429 aus).
+  static BATCH_GAP_MS = 350;
+  static BATCH_RETRY_MS = 1100;
+  _lastBatchAt = 0;
 
   async _applyOps(table: string, ops: Op[]): Promise<void> {
     const c = this.client.collection(table);
     for (let i = 0; i < ops.length; i += PocketBaseAdapter.BATCH_SIZE) {
       const chunk = ops.slice(i, i + PocketBaseAdapter.BATCH_SIZE);
-      if (this._batchSupported === false) {
+      // Eine einzelne Operation braucht keinen Batch (häufigster Fall: eine Zeile geändert)
+      if (this._batchSupported === false || chunk.length === 1) {
         await this._applyOpsSequential(c, chunk);
         continue;
       }
@@ -632,6 +663,9 @@ export class PocketBaseAdapter implements StorageAdapter {
       } catch (err) {
         if (pbError(err).status === 403 && /batch/i.test(pbError(err).data?.message || pbError(err).message || "")) {
           this._batchSupported = false;
+        } else if (pbError(err).status === 429) {
+          await new Promise(r => setTimeout(r, PocketBaseAdapter.BATCH_RETRY_MS));
+          try { await this._applyOpsBatched(table, chunk); continue; } catch { /* unten einzeln */ }
         }
         await this._applyOpsSequential(c, chunk);
       }
@@ -639,6 +673,9 @@ export class PocketBaseAdapter implements StorageAdapter {
   }
 
   async _applyOpsBatched(table: string, chunk: Op[]): Promise<void> {
+    const wait = this._lastBatchAt + PocketBaseAdapter.BATCH_GAP_MS - Date.now();
+    if (wait > 0) await new Promise(r => setTimeout(r, wait));
+    this._lastBatchAt = Date.now();
     const batch = this.client.createBatch();
     for (const op of chunk) {
       if (op.type === "create") batch.collection(table).create(op.body);
@@ -648,11 +685,20 @@ export class PocketBaseAdapter implements StorageAdapter {
     await batch.send();
   }
 
+  // 404 bei Update/Delete heisst: Datensatz ist inzwischen weg (von jemand anderem
+  // gelöscht) oder die Regel verbietet ihn. Früher brach das den Rest des Chunks ab und
+  // skip403() verschluckte den Fehler — die restlichen Operationen gingen still verloren.
+  // Jetzt wird nur diese eine Operation übersprungen.
   async _applyOpsSequential(c: ReturnType<PocketBase["collection"]>, chunk: Op[]): Promise<void> {
     for (const op of chunk) {
-      if (op.type === "create") await c.create(op.body);
-      else if (op.type === "update") await c.update(op.id, op.body);
-      else await c.delete(op.id);
+      try {
+        if (op.type === "create") await c.create(op.body);
+        else if (op.type === "update") await c.update(op.id, op.body);
+        else await c.delete(op.id);
+      } catch (err) {
+        if (op.type === "create" || pbError(err).status !== 404) throw err;
+        console.warn(`PocketBaseAdapter: ${op.type} ${op.id} nicht möglich (nicht gefunden), übersprungen.`);
+      }
     }
   }
 
@@ -667,27 +713,15 @@ export class PocketBaseAdapter implements StorageAdapter {
   // anderes Studio sie entfernt hat), bleiben unangetastet.
   async _syncPersons(sid: Id, persons: AppData["persons"]): Promise<void> {
     const c = this.client.collection("persons");
+    const base = this._base.get("persons") ?? null;
     const filter = `studio = "${sid}" || personStudioLinks_via_person.studio ?= "${sid}"`;
-    const existing = await c.getFullList({ filter });
-    const existingById = new Map(existing.map(r => [r.id, r]));
-    const seenIds = new Set<string>();
-    const ops: Op[] = [];
-
-    for (const p of persons) {
-      const payload = toDB.person(p);
-      const match = existingById.get(p.id);
-      if (match) {
-        seenIds.add(match.id);
-        if (!rowUnchanged(payload, match)) ops.push({ type: "update", id: match.id, body: payload });
-      } else {
-        ops.push({ type: "create", body: { ...payload, studio: sid } });
-      }
-    }
-    for (const r of existing) {
-      if (!seenIds.has(r.id) && r.studio === sid) ops.push({ type: "delete", id: r.id });
-    }
-
-    await this._applyOps("persons", ops);
+    const existing = await c.getFullList(base ? { filter, fields: "id,studio", batch: LIST_BATCH } : { filter, batch: LIST_BATCH });
+    const rows = persons.map(p => toDB.person(p));
+    await this._applyOps("persons", planSync(rows, existing, "id", base, {
+      deletable: r => r.studio === sid,
+      createExtra: { studio: sid },
+    }));
+    if (this._studioId === sid) this._base.set("persons", baseFrom(rows, "id"));
   }
 
   async clear(): Promise<void> {

@@ -9,8 +9,9 @@
 //    synchronisiert, Datei beschädigt) landen in `loadError`, statt mit leeren Daten zu starten.
 //  - Musste die Formprüfung beim Laden etwas reparieren oder fehlen Anhänge im Datenordner, sammelt
 //    `dataNotices` das für einen Hinweis in App.tsx (ausgeblendete Hinweise kommen nicht wieder).
-//  - Cloud: Realtime-Abgleich mit anderen Browsern (gezielte Teil-Reloads, Debounce 500 ms),
-//    Passwort-Reset-Link aus dem URL-Hash erkennen.
+//  - Cloud: Realtime-Abgleich mit anderen Browsern (gezielte Teil-Reloads, Debounce 500 ms;
+//    wartet auf laufende Schreibvorgänge und verrechnet währenddessen gemachte Eingaben per
+//    Drei-Wege-Merge), Passwort-Reset-Link aus dem URL-Hash erkennen.
 //  - Einmal pro Tag werden versendete Rechnungen nach Fälligkeit auf «überfällig» gesetzt.
 //
 // Wer den angemeldeten Nutzer hält, ist App.tsx; er wird nur für die Realtime-Subscription
@@ -20,6 +21,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { defaultData } from "../constants";
 import { storage, cloudStorage, isCloudBackend, isFileBackend, fileStorage } from "../storage/adapter";
 import { applyMigrations, type RawData } from "../storage/migrations";
+import { mergeValue } from "../storage/merge";
 import type { AppData, CurrentUser, Invoice } from "../types";
 import { localISODate } from "../utils";
 import { registerUndoSaver } from "../undo";
@@ -200,12 +202,28 @@ export function useStudioData(currentUser: CurrentUser | null) {
     let dirtyKeys = new Set<keyof AppData>();
     let needsFull = false;
 
+    // Nachgeladenes übernehmen, ohne Eingaben zu verlieren, die während des Ladens
+    // gemacht wurden: wer einen Key seit dem Start der Anfrage (`before`) geändert hat,
+    // bekommt einen Drei-Wege-Merge (merge.ts) statt des Serverstands. Vorher ersetzte
+    // das Nachladen (z.B. das Realtime-Echo der eigenen Speicherung) frische Eingaben
+    // durch den älteren Serverstand.
+    const adopt = (before: AppData, loaded: RawData) => {
+      const cur = dataRef.current;
+      const theirs = migrate({ ...cur, ...loaded });
+      const next = { ...cur } as Record<string, unknown>;
+      for (const k of Object.keys(loaded) as (keyof AppData)[]) {
+        if (!(k in theirs)) continue;
+        next[k] = cur[k] === before[k] ? theirs[k] : mergeValue(before[k], cur[k], theirs[k]);
+      }
+      setData(next as unknown as AppData);
+    };
+
     const applyFull = async () => {
       try {
+        await cloudStorage.whenIdle?.(); // zuerst eigene Änderungen fertig schreiben
+        const before = dataRef.current;
         const parsed = await storage.load();
-        if (!cancelled && parsed) {
-          setData(migrate(parsed));
-        }
+        if (!cancelled && parsed) adopt(before, parsed);
       } catch (e) {
         console.error("Cloud refresh failed:", e);
       }
@@ -213,10 +231,10 @@ export function useStudioData(currentUser: CurrentUser | null) {
 
     const applyPartial = async (keys: Set<keyof AppData>) => {
       try {
+        await cloudStorage.whenIdle?.();
+        const before = dataRef.current;
         const partial = await cloudStorage.loadPartial(Array.from(keys));
-        if (!cancelled && partial) {
-          setData(migrate({ ...dataRef.current, ...partial }));
-        }
+        if (!cancelled && partial) adopt(before, partial as RawData);
       } catch (e) {
         console.error("Cloud partial refresh failed:", e);
       }

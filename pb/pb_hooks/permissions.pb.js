@@ -82,6 +82,16 @@ onRecordsListRequest((e) => {
         allowed = false;
       }
     }
+    // Der Filter oben ist nur ein Hinweis, welches Studio gemeint ist. Ein gebastelter
+    // Filter wie `studio = "A" || studio = "B"` bestand die Prüfung für A und lieferte
+    // über die listRule (reine Mitgliedschaft) auch Datensätze aus B, wo die Rolle die
+    // Berechtigung nicht hat (Nutzer in mehreren Studios, Audit 20.11.2026). Deshalb
+    // zusätzlich jeden gelieferten Datensatz prüfen: alle müssen aus dem geprüften Studio sein.
+    if (allowed) {
+      for (const r of (e.records || [])) {
+        if (r.get("studio") !== studioId) { allowed = false; break; }
+      }
+    }
     if (!allowed) throw new ForbiddenError("Keine Berechtigung (" + permId + ") für diese Aktion.");
   }
   e.next();
@@ -283,9 +293,20 @@ onRealtimeSubscribeRequest((e) => {
     const permId = FULL_GATE[collName];
     if (!permId || isSuperuser) return true;
 
-    let decoded = topic;
-    try { decoded = decodeURIComponent(topic); } catch { /* topic bleibt roh */ }
-    const m = decoded.match(/studio\s*=\s*\\?"([a-zA-Z0-9_-]+)\\?"/);
+    // Nur der Filter, den der Client selbst schickt (`studio = "<id>"`, siehe
+    // subscribeToChanges()), wird akzeptiert — und zwar EXAKT. Früher reichte ein
+    // Treffer irgendwo im Topic: `studio = "A" || studio = "B"` bestand die Prüfung für A
+    // und lieferte über die viewRule live auch Änderungen aus B, wo die Rolle die
+    // Berechtigung nicht hat (Nutzer in mehreren Studios, Audit 20.11.2026).
+    let filter = null;
+    const qi = topic.indexOf("?options=");
+    if (qi >= 0) {
+      try {
+        const opts = JSON.parse(decodeURIComponent(topic.slice(qi + "?options=".length)));
+        filter = opts && opts.query ? opts.query.filter : null;
+      } catch { filter = null; }
+    }
+    const m = typeof filter === "string" ? filter.match(/^\s*studio\s*=\s*["']([a-zA-Z0-9_-]+)["']\s*$/) : null;
     const studioId = m ? m[1] : null;
     if (!authId || !studioId) return false;
 

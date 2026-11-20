@@ -110,19 +110,56 @@ pub struct ServiceDef {
     pub depends_on: Vec<String>,
 }
 
+/// Wert eines Schlüssels aus dem Inhalt einer `.env`-Datei (KEY=VALUE, `#`-Kommentare, optionale Anführungszeichen).
+fn env_value(content: &str, key: &str) -> Option<String> {
+    content.lines().find_map(|line| {
+        let line = line.trim();
+        if line.starts_with('#') {
+            return None;
+        }
+        let (k, v) = line.split_once('=')?;
+        (k.trim() == key).then(|| v.trim().trim_matches('"').trim_matches('\'').to_string())
+    })
+}
+
+/// Host-Port eines Dienstes wie Compose ihn veröffentlicht: `<key>` aus der `.env` des
+/// Compose-Ordners, sonst der Default aus `docker-compose.yml` (`${PB_PORT:-8090}` usw.).
+/// Der Setup-Wizard schreibt 18090/18080, die `.env.example` des Repos 8090/8080 — vorher war
+/// 18090/18080 fest eingetragen, damit zeigten Links und das PocketBase-Embed bei Repo-Installationen ins Leere.
+fn compose_port(key: &str, compose_default: u16) -> u16 {
+    std::fs::read_to_string(compose_dir().join(".env"))
+        .ok()
+        .and_then(|c| env_value(&c, key))
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(compose_default)
+}
+
 pub fn default_services() -> Vec<ServiceDef> {
     vec![
         ServiceDef {
             id: "pb".into(),
             display_name: "PocketBase".into(),
-            port: 18090, // Host-Port aus server/container/.env (PB_PORT)
+            port: compose_port("PB_PORT", 8090),
             depends_on: vec![],
         },
         ServiceDef {
             id: "app".into(),
             display_name: "RAPPORT".into(),
-            port: 18080, // APP_PORT
+            port: compose_port("APP_PORT", 8080),
             depends_on: vec!["pb".into()],
         },
     ]
+}
+
+#[cfg(test)]
+mod port_tests {
+    use super::env_value;
+
+    #[test]
+    fn liest_ports_aus_env() {
+        let env = "# Kommentar\nAPP_PORT=18080\nPB_PORT = \"18090\"\n#PB_PORT=1\n";
+        assert_eq!(env_value(env, "PB_PORT").as_deref(), Some("18090"));
+        assert_eq!(env_value(env, "APP_PORT").as_deref(), Some("18080"));
+        assert_eq!(env_value(env, "FEHLT"), None);
+    }
 }

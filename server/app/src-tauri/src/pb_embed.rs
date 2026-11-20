@@ -109,7 +109,7 @@ pub async fn show_pocketbase_embed(
 ) -> Result<(), String> {
     let port = {
         let sv = state.supervisor.lock().await;
-        sv.status("pb").map(|s| s.port).unwrap_or(18090)
+        sv.status("pb").map(|s| s.port).unwrap_or(8090)
     };
 
     if let Some(webview) = app.get_webview(EMBED_LABEL) {

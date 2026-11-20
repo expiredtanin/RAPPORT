@@ -31,13 +31,16 @@ services:
       # URL des Frontends (nicht der PocketBase-API!) — für Passwort-Reset-Mails,
       # siehe pb-entrypoint.sh.
       APP_URL: ${APP_URL:-}
+      # Hinter einem Reverse-Proxy: Header mit der echten Client-IP (z.B. X-Forwarded-For),
+      # damit die Rate-Limits pro Gerät statt für alle gemeinsam greifen. Siehe pb-entrypoint.sh.
+      TRUSTED_PROXY_HEADER: ${PB_TRUSTED_PROXY_HEADER:-}
     volumes:
       - pb-data:/pb/pb_data
     ports:
-      # Bewusst nur auf 127.0.0.1 — im LAN/extern läuft der Zugriff über die
-      # gleiche Adresse wie das Frontend (Reverse-Proxy), nicht direkt.
-      # Für reinen LAN-Betrieb ohne Proxy: 127.0.0.1 hier entfernen.
-      - "${PB_PORT:-8090}:8090"
+      # Standard: auf allen Schnittstellen (LAN-Betrieb mit API_EXTERNAL_URL=http://<host>:8090).
+      # Läuft der Zugriff über einen Reverse-Proxy oder über das Frontend (/api/ in nginx.conf),
+      # PB_BIND=127.0.0.1: setzen (mit Doppelpunkt) — dann ist PocketBase nur lokal erreichbar.
+      - "${PB_BIND:-}${PB_PORT:-8090}:8090"
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:8090/api/health"]
       interval: 10s

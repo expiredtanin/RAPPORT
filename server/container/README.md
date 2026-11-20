@@ -95,6 +95,17 @@ api.rapport.studio.ch {
 In `.env` dann `API_EXTERNAL_URL=https://api.rapport.studio.ch` setzen (bestimmt,
 welche URL beim Frontend-Build als `VITE_POCKETBASE_URL` eingebrannt wird).
 
+Hinter einem Proxy sieht PocketBase nur dessen IP; die Rate-Limits (z.B. Login 2 pro 3 s)
+gelten dann für alle Nutzer zusammen. Deshalb zusätzlich `PB_TRUSTED_PROXY_HEADER=X-Forwarded-For`
+und `PB_BIND=127.0.0.1:` setzen (Port 8090 nur lokal, sonst liesse sich der Header fälschen).
+
+Einfachere Variante mit nur einer Adresse: der app-Container reicht `/api/` an PocketBase
+weiter (komprimiert, Realtime ungepuffert). Dafür `API_EXTERNAL_URL` = Adresse des
+Frontends setzen (z.B. `https://rapport.studio.ch`), App-Image neu bauen und dieselben
+zwei Variablen wie oben setzen. PocketBase wertet den rechtesten Eintrag im Header aus:
+das passt, solange vor PocketBase genau ein Proxy steht (Caddy → 8090 oder Browser → app-Container).
+Bei zwei Proxys hintereinander (Caddy → app-Container → PocketBase) sähe es wieder nur Caddy.
+
 ---
 
 ## Passwort-Reset / SMTP

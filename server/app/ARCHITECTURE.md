@@ -69,6 +69,8 @@ Image-Tags und Konfiguration kommen aus [`server/container/docker-compose.yml`](
 | `pb` (PocketBase) | `rapport-pb:main` (baut aus [pb/](../../pb/)) | 18090 | LAN (`0.0.0.0:18090`) |
 | `app` (Frontend) | `rapport-app:main` (lokal gebaut) | 18080 | LAN (`0.0.0.0:18080`) |
 
+Die Host-Ports liest die App aus `PB_PORT`/`APP_PORT` der `.env` im Compose-Ordner (`services::compose_port`); ohne Eintrag gelten die Compose-Defaults 8090/8080. Der Setup-Wizard schreibt 18090/18080.
+
 PocketBase deckt Auth + Datenbank + Realtime + File-Storage in einem Prozess ab — kein separates API-Gateway (Kong) mehr nötig, das Frontend spricht `pb` direkt an.
 
 ---

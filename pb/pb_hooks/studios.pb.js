@@ -18,6 +18,25 @@ routerAdd("POST", "/api/rapport/create-studio", (e) => {
     throw new BadRequestError("name und slug sind erforderlich.");
   }
 
+  // Wer darf ein Studio anlegen? Nur bei der Ersteinrichtung (noch kein Studio auf der
+  // Instanz, CloudSetup) jeder angemeldete Nutzer, danach nur Admins eines bestehenden
+  // Studios (Einstellungen → «Weiteres Studio anlegen»). Vorher genügte irgendein Konto —
+  // zusammen mit der offenen Registrierung konnte jeder aus dem Netz Studios anlegen
+  // (Audit 20.11.2026, siehe auch signup.pb.js).
+  if (!e.hasSuperuserAuth() && e.app.countRecords("studios") > 0) {
+    let isAdmin = false;
+    try {
+      e.app.findFirstRecordByFilter(
+        "studioMembers", "user = {:uid} && appRoleId = 'r-admin' && active = true",
+        { uid: e.auth.id },
+      );
+      isAdmin = true;
+    } catch {
+      isAdmin = false;
+    }
+    if (!isAdmin) throw new ForbiddenError("Nur Admins können weitere Studios anlegen.");
+  }
+
   const sourceStudioIds = (data.sharePersonsFrom || []).filter(Boolean);
 
   // Caller muss aktives Mitglied JEDES Quell-Studios sein — sonst könnte man
