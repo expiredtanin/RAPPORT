@@ -221,7 +221,7 @@ function ProjectDetail({ data, update, saveAll, projectId, onBack, onSelect, run
   ];
   // Nur Stunden der Hauptofferte (ohne Nachtrags-Position) gegen das Phasenbudget der Hauptofferte —
   // Nachträge haben ihr eigenes Budget (PhaseCard).
-  const overrun = phaseStats.filter(ps => ps.phaseBudget > 0 && ps.hoMins / 60 > ps.phaseBudget * 1.02).map(ps => ps.id as string);
+  const overrun = phaseStats.filter(ps => ps.phaseBudget > 0 && ps.hoMins / 60 > ps.phaseBudget * 1.02).map(ps => ps.label || (ps.id as string)); // Label («32 Bauprojekt»), nicht nur die Nummer
   const hasPhases = (project.enabledPhases || []).length > 0 || positions.some(pos => entries.some(e => e.positionId === pos.code)) || customPhaseStats.length > 0;
   const phaseCard = hasPhases ? <PhaseCard project={project} data={data} entries={entries} positions={positions} phaseStats={phaseStats} customPhaseStats={customPhaseStats} customMinsTotal={customMinsTotal} unassignedMins={unassignedMins} phaseChartView={phaseChartView} setPhaseChartView={setPhaseChartView} /> : null;
   const openBudget = () => { openBudgetModal(); setBudgetModal(true); };

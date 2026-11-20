@@ -333,20 +333,35 @@ export class FileStorageAdapter implements StorageAdapter {
     };
   }
 
-  /** Vergleicht die Platte mit `known`; bei Abweichung neu laden und melden. Eigene Schreibvorgänge lösen nichts aus. */
+  /**
+   * Vergleicht die Platte mit `known`; bei Abweichung neu laden und melden. Eigene Schreibvorgänge lösen nichts aus.
+   * Läuft in derselben Kette wie das Speichern: ein Schreibvorgang darf nicht mitten in dieses Laden fallen.
+   */
   async checkExternal() {
     await this.flush();
-    const { names } = await this.dataNames();
-    let changed = names.length !== this.known.size || names.some(n => !this.known.has(n));
-    if (!changed) {
-      const stats = await Promise.all(names.map(n => this.fs.stat(this.path(n))));
-      changed = stats.some((st, i) => { const k = this.known.get(names[i])!; return !st || st.mtime !== k.mtime || st.size !== k.size; });
-    }
-    if (changed) await this.emitExternal();
+    const run = this.chain.then(async () => {
+      const { names } = await this.dataNames();
+      let changed = names.length !== this.known.size || names.some(n => !this.known.has(n));
+      if (!changed) {
+        const stats = await Promise.all(names.map(n => this.fs.stat(this.path(n))));
+        changed = stats.some((st, i) => { const k = this.known.get(names[i])!; return !st || st.mtime !== k.mtime || st.size !== k.size; });
+      }
+      if (changed) await this.emitExternal();
+    });
+    this.chain = run.catch(() => {});
+    return run;
   }
 
+  /**
+   * Lädt neu und meldet den Stand an die App. Wurde während des Ladens in der App geändert (`pending`), baut diese
+   * Änderung noch auf dem alten Stand auf: dann `known` zurücksetzen und nicht melden — das ausstehende Speichern
+   * sieht die fremde Änderung, verrechnet sie per Merge und meldet danach den gemeinsamen Stand. Sonst würde das
+   * Speichern die fremde Änderung überschreiben und die App die eigene verlieren.
+   */
   private async emitExternal() {
+    const before = this.known;
     const data = await this.load();
+    if (this.pending) { this.known = before; return; }
     if (data) this.listeners.forEach(cb => cb(data));
   }
 }

@@ -291,7 +291,7 @@ export function deriveQuoteBudget(
         }
       });
     } else if (q.mode === "free") {
-      totalAmount += (q.freeItems || []).reduce((s, it) => s + (it.qty * it.price), 0);
+      totalAmount += (q.freeItems || []).reduce((s, it) => s + lineAmount(it.qty, it.price), 0);
     }
   });
 
@@ -475,9 +475,12 @@ const SAFE_TAGS = new Set([
 const SAFE_ATTRS = new Set([
   "style", "color", "size", "face", "align", "href", "target", "rel",
 ]);
-function isSafeUrl(url: unknown): boolean {
+/** true, wenn ein Link in bereinigtem Rich-Text bleiben darf (kein javascript:/data:/vbscript:/file:, auch nicht verschleiert). */
+export function isSafeUrl(url: unknown): boolean {
   if (!url) return false;
-  const v = String(url).trim().toLowerCase();
+  // Browser ignorieren Leer- und Steuerzeichen im Schema («java\tscript:» wirkt wie «javascript:») → vorher entfernen
+  // eslint-disable-next-line no-control-regex
+  const v = String(url).replace(/[\u0000-\u0020\u007f-\u009f]/g, "").toLowerCase();
   // block javascript:, data:text/html, vbscript:, etc. — allow http(s), mailto, tel, relative
   return !/^(javascript|data|vbscript|file):/i.test(v);
 }
@@ -554,7 +557,18 @@ export function formatDate(dateStr?: string | null): string {
  * gespeicherten Werten zu Netto + MWST = Total zusammen.
  */
 export function roundCHF(amount?: number | null): number {
-  return Math.round((amount || 0) * 100) / 100;
+  const x = amount || 0;
+  // Kaufmännisch auf Rappen: x·100 erst auf 15 Stellen bereinigen (1.005·100 = 100.49999… → 100.5, 105 × 7.7 % =
+  // 8.084999… → 8.085), dann .5 vom Nullpunkt weg runden — eine Gutschrift rundet wie die Rechnung (−0.405 → −0.41).
+  const cents = Math.round(Math.abs(Number((x * 100).toPrecision(15))));
+  return (Math.sign(x) * cents) / 100 || 0;
+}
+
+/** Positionsbetrag Menge × Preis abzüglich Positionsrabatt in %, auf Rappen — die Positionen ergeben so genau das Zwischentotal. */
+export function lineAmount(qty?: number | null, price?: number | null, discountPct?: number | null): number {
+  const line = (qty || 0) * (price || 0);
+  const disc = (discountPct || 0) > 0 ? line * ((discountPct || 0) / 100) : 0;
+  return roundCHF(line - disc);
 }
 
 /** Absenderadresse (mehrzeilig) aus Strasse/PLZ/Ort; Fallback auf das alte Freitext-Feld `address`. */
@@ -606,6 +620,35 @@ export function generateQRReference(invoiceNumber?: string | null): string {
   // Nur Ziffern extrahieren, links mit Nullen auf 26 Stellen auffüllen, dann Prüfziffer
   const digits = (invoiceNumber || "").replace(/\D/g, "").padStart(26, "0").slice(-26);
   return digits + mod10(digits);
+}
+
+/**
+ * Creditor Reference nach ISO 11649 («RF…») aus der Rechnungsnummer, für Konten ohne QR-IBAN: Buchstaben und
+ * Ziffern der Nummer (höchstens die letzten 21), davor «RF» und zwei Prüfziffern (98 − Rest modulo 97).
+ * Leer, wenn die Nummer weder Buchstaben noch Ziffern enthält.
+ */
+export function creditorReference(invoiceNumber?: string | null): string {
+  const body = (invoiceNumber || "").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(-21);
+  if (!body) return "";
+  const numeric = (body + "RF00").replace(/[A-Z]/g, ch => String(ch.charCodeAt(0) - 55));
+  let rest = 0;
+  for (const d of numeric) rest = (rest * 10 + Number(d)) % 97;
+  return `RF${String(98 - rest).padStart(2, "0")}${body}`;
+}
+
+/**
+ * Zahlungsreferenz einer Rechnung je nach Konto: QR-IBAN → QR-Referenz (QRR, Pflicht), sonst Creditor
+ * Reference (SCOR); ohne verwertbare Rechnungsnummer keine Referenz (NON). `display` ist die Schreibweise
+ * auf Rechnung, Zahlteil und Mahnung — wer von Hand zahlt, braucht bei einer QR-IBAN genau diese Referenz.
+ */
+export function paymentReference(invoiceNumber: string | null | undefined, iban: string | null | undefined): { type: "QRR" | "SCOR" | "NON"; reference?: string; display: string } {
+  if (isQRIban(iban)) {
+    const reference = generateQRReference(invoiceNumber);
+    return { type: "QRR", reference, display: formatReference(reference) };
+  }
+  const reference = creditorReference(invoiceNumber);
+  if (!reference) return { type: "NON", display: invoiceNumber || "" };
+  return { type: "SCOR", reference, display: reference.match(/.{1,4}/g)!.join(" ") };
 }
 
 /** Referenz in 5er-Blöcken von rechts gruppiert (Anzeige auf dem Zahlteil). */
@@ -662,9 +705,63 @@ export function parseSeqFromNumber(num: string | null | undefined, fmt: string |
 }
 
 /**
+ * Nächste laufende Projektnummer des Jahres: grösste aus `settings.lastProjectSeq` (nur im selben Jahr) und den
+ * Nummern bestehender Projekte (`parseSeqFromNumber`) + 1. So entsteht keine doppelte Nummer, wenn Projekte
+ * importiert, von Hand nummeriert oder in einer Offerte angelegt wurden.
+ */
+export function nextProjectSeq(
+  settings: Pick<Settings, "lastProjectSeq" | "lastProjectYear" | "projectNumberFormat">,
+  projects: Pick<Project, "number">[] | undefined,
+): number {
+  const fmt = settings.projectNumberFormat || "YYYY/NN";
+  let max = settings.lastProjectYear === new Date().getFullYear() ? (settings.lastProjectSeq || 0) : 0;
+  for (const p of projects || []) {
+    const seq = parseSeqFromNumber(p.number, fmt);
+    if (seq !== null && seq > max) max = seq;
+  }
+  return max + 1;
+}
+
+/** Was beim Löschen eines Projekts seinen Verweis verlöre (für die Rückfrage), als lesbare Teile, leer = nichts. */
+export function projectReferences(
+  data: Pick<AppData, "timeEntries" | "invoices" | "quotes" | "protocols" | "contracts" | "deliveryNotes" | "expenses" | "leads">,
+  projectId: Id,
+): string[] {
+  const n = (list: { projectId?: Id | null }[] | undefined) => (list || []).filter(x => x.projectId === projectId).length;
+  const parts: [number, string, string][] = [
+    [n(data.timeEntries), "Zeiteintrag", "Zeiteinträge"],
+    [n(data.invoices), "Rechnung", "Rechnungen"],
+    [n(data.quotes), "Offerte", "Offerten"],
+    [n(data.contracts), "Vertrag", "Verträge"],
+    [n(data.protocols), "Protokoll", "Protokolle"],
+    [n(data.deliveryNotes), "Lieferschein", "Lieferscheine"],
+    [n(data.expenses), "Spesenbeleg", "Spesenbelege"],
+    [n(data.leads), "Lead", "Leads"],
+  ];
+  return parts.filter(([c]) => c > 0).map(([c, one, many]) => `${c} ${c === 1 ? one : many}`);
+}
+
+/** Was beim Löschen eines Kontakts seinen Verweis verlöre (Auftraggeber in Projekten, Offerten, Rechnungen …). */
+export function personReferences(
+  data: Pick<AppData, "projects" | "invoices" | "quotes" | "contracts" | "deliveryNotes" | "leads">,
+  personId: Id,
+): string[] {
+  const n = (list: { clientId?: Id | null }[] | undefined) => (list || []).filter(x => x.clientId === personId).length;
+  const parts: [number, string, string][] = [
+    [(data.projects || []).filter(p => p.clientId === personId || (p.projectContacts || []).some(pc => pc.contactId === personId)).length, "Projekt", "Projekte"],
+    [n(data.invoices), "Rechnung", "Rechnungen"],
+    [n(data.quotes), "Offerte", "Offerten"],
+    [n(data.contracts), "Vertrag", "Verträge"],
+    [n(data.deliveryNotes), "Lieferschein", "Lieferscheine"],
+    [(data.leads || []).filter(l => l.clientId === personId || l.referrerId === personId).length, "Lead", "Leads"],
+  ];
+  return parts.filter(([c]) => c > 0).map(([c, one, many]) => `${c} ${c === 1 ? one : many}`);
+}
+
+/**
  * Text für Zahlungserinnerung / Mahnung.
  * @param nr 1 = Zahlungserinnerung (10 Tage), 2 = 2. Mahnung (7 Tage), ≥3 = letzte Mahnung (5 Tage, Androhung rechtlicher Schritte)
- * @param sentDate (derzeit ungenutzt) Versanddatum
+ * @param sentDate Versanddatum der Mahnung; Stichtag für die Verzugstage (fehlt: heute)
  * @param clients alle Personen; der Kunde wird über `inv.clientId` gesucht
  */
 export function buildReminderLetter(
@@ -675,16 +772,18 @@ export function buildReminderLetter(
   settings: Pick<Settings, "iban" | "name">,
 ): { client: Person | undefined; subject: string; body: string } {
   const client = clients.find(c => c.id === inv.clientId);
-  const existingReminders = inv.reminders || [];
-  const now = new Date();
-  const todayLocal = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
-  const daysPast = Math.floor((new Date(`${todayLocal}T00:00:00Z`).getTime() - new Date(`${inv.dueDate}T00:00:00Z`).getTime()) / 86400000);
+  // Nur die früheren Stufen: beim Nachdrucken steht die gedruckte Mahnung selbst schon in `reminders`.
+  const existingReminders = (inv.reminders || []).filter((r, i) => (r.nr || i + 1) < nr);
+  // Verzugstage am Versanddatum der Mahnung (Nachdruck = gleicher Text wie damals), sonst heute
+  const refDate = sentDate || localISODate();
+  const daysPast = Math.floor((new Date(`${refDate}T00:00:00Z`).getTime() - new Date(`${inv.dueDate}T00:00:00Z`).getTime()) / 86400000);
+  const ref = paymentReference(inv.number, settings.iban);
   const intro = nr === 1
-    ? `Bei einer Überprüfung unserer Buchhaltung stellen wir fest, dass die Rechnung Nr. ${inv.number} vom ${formatDate(inv.date)} über ${formatCHF(inv.total)} seit ${daysPast} Tagen (Fälligkeit: ${formatDate(inv.dueDate)}) noch nicht beglichen ist.\n\nWir bitten Sie höflich, den offenen Betrag innert 10 Tagen zu überweisen.`
+    ? `Bei einer Überprüfung unserer Buchhaltung stellen wir fest, dass die Rechnung Nr. ${inv.number} vom ${formatDate(inv.date)} über ${formatCHF(inv.total)} ${inv.dueDate && daysPast > 0 ? `seit ${daysPast} ${daysPast === 1 ? "Tag" : "Tagen"} (Fälligkeit: ${formatDate(inv.dueDate)}) ` : ""}noch nicht beglichen ist.\n\nWir bitten Sie höflich, den offenen Betrag innert 10 Tagen zu überweisen.`
     : nr === 2
     ? `Leider mussten wir feststellen, dass unsere Zahlungserinnerung vom ${formatDate(existingReminders[0]?.sentDate || existingReminders[0]?.date)} bezüglich Rechnung Nr. ${inv.number} über ${formatCHF(inv.total)} bisher ohne Reaktion geblieben ist.\n\nWir fordern Sie hiermit auf, den ausstehenden Betrag innert 7 Tagen zu begleichen.`
-    : `Trotz unserer Zahlungserinnerungen vom ${existingReminders.map(r => formatDate(r.sentDate || r.date)).join(" und ")} ist die Rechnung Nr. ${inv.number} über ${formatCHF(inv.total)} nach wie vor unbeglichen.\n\nWir sehen uns gezwungen, bei weiterem Ausbleiben der Zahlung innerhalb von 5 Tagen rechtliche Schritte einzuleiten.`;
-  const body = `Sehr geehrte/r ${client?.name || "[Kunde]"}\n\n${intro}\n\nIBAN: ${settings.iban}\nReferenz: ${inv.number}\n\nFreundliche Grüsse\n${settings.name}`;
+    : `Trotz unserer Zahlungserinnerungen vom ${existingReminders.map(r => formatDate(r.sentDate || r.date)).join(", ").replace(/, ([^,]*)$/, " und $1")} ist die Rechnung Nr. ${inv.number} über ${formatCHF(inv.total)} nach wie vor unbeglichen.\n\nWir sehen uns gezwungen, bei weiterem Ausbleiben der Zahlung innerhalb von 5 Tagen rechtliche Schritte einzuleiten.`;
+  const body = `Sehr geehrte/r ${client?.name || "[Kunde]"}\n\n${intro}\n\nIBAN: ${formatIban(settings.iban)}\nReferenz: ${ref.display}\n\nFreundliche Grüsse\n${settings.name}`;
   const subject = nr === 1 ? `Zahlungserinnerung – Rechnung Nr. ${inv.number}` : `${nr}. Mahnung – Rechnung Nr. ${inv.number}`;
   return { client, subject, body };
 }
@@ -711,19 +810,28 @@ export function linkedClientForNote(
   return n.clientManual ? { name: n.clientManual, address: n.deliveryAddress || "" } : null;
 }
 
+/** Datum als lokales Datum: reines «YYYY-MM-DD» würde `new Date()` als UTC lesen (westlich von UTC = Vortag). */
+function localDay(date: string | number | Date): Date {
+  const m = typeof date === "string" ? date.match(/^(\d{4})-(\d{2})-(\d{2})$/) : null;
+  const d = m ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])) : new Date(date);
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
 /** ISO-8601-Kalenderwoche (Woche beginnt Montag, KW 1 enthält den 4. Januar). */
 export function getWeekNumber(date: string | number | Date): number {
-  const d = new Date(date);
-  d.setHours(0, 0, 0, 0);
+  const d = localDay(date);
   d.setDate(d.getDate() + 3 - ((d.getDay() + 6) % 7));
   const week1 = new Date(d.getFullYear(), 0, 4);
   return Math.round(((d.getTime() - week1.getTime()) / 86400000 + ((week1.getDay() + 6) % 7) - 2) / 7) + 1;
 }
 
-/** «KW 42 / 2026». Das Jahr ist das Kalenderjahr des Datums, nicht das ISO-Wochenjahr. */
+/** «KW 42 / 2026». Das Jahr ist das ISO-Wochenjahr (30.12.2019 = «KW 1 / 2020», 1.1.2021 = «KW 53 / 2020»). */
 export function formatKW(dateStr?: string | null): string {
   if (!dateStr) return "—";
-  return `KW ${getWeekNumber(dateStr)} / ${new Date(dateStr).getFullYear()}`;
+  const d = localDay(dateStr);
+  d.setDate(d.getDate() + 3 - ((d.getDay() + 6) % 7)); // Donnerstag derselben Woche bestimmt das Jahr
+  return `KW ${getWeekNumber(dateStr)} / ${d.getFullYear()}`;
 }
 
 /** @deprecated Altes Nummernschema («<Projekt>-P01»); neu: `applyProtoNumberFormat` + `nextProtoSeq`. */
@@ -741,19 +849,44 @@ export function nextProtoNumber(
 }
 
 /**
- * Nächste laufende Protokollnummer: grösste Zahl in den bestehenden Nummern + 1.
- * Jahreszahlen (4-stellig, 2000–2099) werden ignoriert, damit «2026-BS-03» → 3 zählt, nicht 2026.
+ * Laufende Nummer aus einer Protokollnummer. Passt die Nummer auf das Format (`applyProtoNumberFormat`),
+ * zählt genau die NN-Stelle — sonst würden Ziffern der Projektnummer (PP) oder von Monat/Tag mitgezählt
+ * («07-BS-01» → 7 statt 1). Passt sie nicht (z.B. altes Format), gilt die letzte Zahlengruppe, die keine
+ * Jahreszahl (4-stellig, 2000–2099) ist. Ohne Zahl → null.
  */
-export function nextProtoSeq(protocols: Pick<Protocol, "nummer">[] | undefined): number {
+export function protoSeqOf(nummer: string | undefined, fmt?: string): number | null {
+  const num = nummer || "";
+  if (fmt && /NNN|NN/.test(fmt)) {
+    let captured = false;
+    const pattern = fmt.replace(/YYYY|YY|NNN|NN|MM|DD|PPP|PP|TT|[-/\\^$*+?.()|[\]{}]/g, t => {
+      if (t === "YYYY") return "\\d{4}";
+      if (t === "YY" || t === "MM" || t === "DD") return "\\d{2}";
+      if (t === "PPP" || t === "PP") return ".+?";
+      if (t === "TT") return ".*?";
+      if (t === "NNN" || t === "NN") { if (captured) return "\\d+"; captured = true; return "(\\d+)"; }
+      return "\\" + t;
+    });
+    const m = num.match(new RegExp(`^${pattern}$`));
+    if (m) return parseInt(m[1]);
+  }
+  const groups = num.match(/\d+/g) || [];
+  for (let i = groups.length - 1; i >= 0; i--) {
+    const n = parseInt(groups[i]);
+    if (!(groups[i].length === 4 && n >= 2000 && n <= 2099)) return n;
+  }
+  return null;
+}
+
+/**
+ * Nächste laufende Protokollnummer: grösste laufende Nummer (`protoSeqOf`) der bestehenden Protokolle + 1.
+ * Jahreszahlen zählen nie, damit «2026-BS-03» → 3 zählt, nicht 2026.
+ * @param fmt Nummernformat (`settings.protokollNumberFormat`); ohne Format nur die Rückfallregel
+ */
+export function nextProtoSeq(protocols: Pick<Protocol, "nummer">[] | undefined, fmt?: string): number {
   let max = 0;
   (protocols || []).forEach(p => {
-    const groups = (p.nummer || "").match(/\d+/g) || [];
-    groups.forEach(n => {
-      const num = parseInt(n);
-      if (n.length <= 3 || !(num >= 2000 && num <= 2099)) {
-        if (num > max) max = num;
-      }
-    });
+    const n = protoSeqOf(p.nummer, fmt);
+    if (n !== null && n > max) max = n;
   });
   return max + 1;
 }
@@ -912,8 +1045,8 @@ export function contractAmounts(c: Pick<Contract, "amount" | "quoteId">, quotes:
   const legacyBrutto = !!q && q.mwst !== false && Math.abs((c.amount || 0) - (q.total || 0)) < 0.005 && Math.abs((q.total || 0) - (q.sub || 0)) > 0.005;
   const net = legacyBrutto ? (q!.sub || 0) : (c.amount || 0);
   const rate = q && q.mwst === false ? 0 : (q?.mwstRate ?? defaultRate);
-  const tax = Math.round(net * rate) / 100;
-  return { net, rate, tax, gross: Math.round((net + tax) * 100) / 100 };
+  const tax = roundCHF(net * rate / 100);
+  return { net, rate, tax, gross: roundCHF(net + tax) };
 }
 
 // ─── Sozialversicherungen: Grenzwerte (Stand 2025/2026, BSV) ───────────────────

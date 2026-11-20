@@ -19,12 +19,12 @@
 
 import React, { useState, useEffect } from "react";
 import { PROTOKOLL_TYPES } from "../constants";
-import { generateId, formatDate, htmlToText, initialsOf, participantKuerzel, responsibleLabel, protocolApproval, nextProtoSeq, applyProtoNumberFormat, localISODate } from "../utils";
+import { generateId, formatDate, htmlToText, initialsOf, participantKuerzel, responsibleLabel, protocolApproval, nextProtoSeq, protoSeqOf, applyProtoNumberFormat, localISODate } from "../utils";
 import { TableToolbar, Header, Modal, FormField, RichEditor, DateInput, ShareButton, SortTh, RowMenu, EmptyState } from "../components/UI";
 import { useConfirm } from "../hooks/useConfirm";
 import { changeWithUndo, removeWithUndo } from "../undo";
 import { openTasks, type OpenTask } from "../today";
-import { setLinkedStatus, baselineChanges, glyphOf, scheduleOf, TRACK_LABELS, trackItems, upcomingItems } from "../schedule";
+import { setLinkedStatus, baselineChanges, entryDue, glyphOf, scheduleOf, TRACK_LABELS, trackItems, upcomingItems } from "../schedule";
 import type { AppData, Protocol, ProtocolApproval, ProtocolEntry, ProtocolParticipant, ProtocolTraktandum, ViewProps } from "../types";
 
 /** Auswahl im Dialog «Folgesitzung erstellen»: pro Traktandum, welche Einträge übernommen werden. */
@@ -67,7 +67,7 @@ function Protokolle({ data, saveAll, setPrintContent, modal, setModal }: Pick<Vi
     const defaultType = PROTOKOLL_TYPES[0];
     const abbr = data.settings.protokollTypeAbbreviations || {};
     const typKuerzel = abbr[defaultType] || "SO";
-    const seq = nextProtoSeq(protokolle);
+    const seq = nextProtoSeq(protokolle, data.settings.protokollNumberFormat || "YYYY-TT-NN");
     const nummer = applyProtoNumberFormat(data.settings.protokollNumberFormat || "YYYY-TT-NN", {
       date: today, projectNumber: proj?.number || "", seq, typKuerzel,
     });
@@ -92,6 +92,19 @@ function Protokolle({ data, saveAll, setPrintContent, modal, setModal }: Pick<Vi
     setDetailId(p.id);
   };
 
+  // Protokoll öffnen, während diese Ansicht schon offen ist (Befehlspalette, «Heute», Projekt): App.tsx wechselt
+  // nur die Ansicht, die hier schon gemountet ist — ohne diesen Empfänger bliebe die Liste bzw. das alte Protokoll.
+  useEffect(() => {
+    const onOpen = (e: Event) => {
+      const id = (e as CustomEvent<{ id?: string }>).detail?.id;
+      if (!id) return;
+      setDetailId(id);
+      setTimeout(() => { if (window.__openProtokoll === id) window.__openProtokoll = null; });
+    };
+    window.addEventListener("openProtokoll", onOpen);
+    return () => window.removeEventListener("openProtokoll", onOpen);
+  }, []);
+
   // Befehlspalette (App.tsx): «Neues Protokoll»
   /* eslint-disable react-hooks/set-state-in-effect -- einmalige Übergabe aus der Befehlspalette */
   useEffect(() => {
@@ -105,11 +118,13 @@ function Protokolle({ data, saveAll, setPrintContent, modal, setModal }: Pick<Vi
   // ── Detail-Ansicht ────────────────────────────────────────────
   if (detail) {
     return <ProtokollDetail
+      key={detail.id}
       protokoll={detail}
       data={data}
       onBack={() => setDetailId(null)}
       onSave={p => { saveAll({ ...data, protocols: protokolle.map(x => x.id === p.id ? p : x) }); }}
       onDelete={id => { saveAll({ ...data, protocols: protokolle.filter(x => x.id !== id) }); setDetailId(null); }}
+      onOpen={setDetailId}
       setPrintContent={setPrintContent}
       saveAll={saveAll}
     />;
@@ -141,7 +156,8 @@ function Protokolle({ data, saveAll, setPrintContent, modal, setModal }: Pick<Vi
   const taskDone = (t: OpenTask) => changeWithUndo("Aufgabe erledigt", prev => ({
     ...prev, protocols: setLinkedStatus(prev.protocols || [], t.projectId, { protocolId: t.protocolId, entryId: t.entryId, kind: "aufgabe", text: t.textKey }, true),
   }));
-  const projName = (id: string) => data.projects.find(p => p.id === id)?.name || "";
+  // Pendenzen aus Protokollen ohne Projekt tragen «~Freitext» (protocolScope)
+  const projName = (id: string) => data.projects.find(p => p.id === id)?.name || (id.startsWith("~") ? id.slice(1) : "");
 
   return (
     <div>
@@ -321,8 +337,10 @@ function ItemEditor({ item, pos, handle, today, whoListId, onUpdate, onRemove }:
 }
 
 export
-function ProtokollDetail({ protokoll, data, onBack, onSave, onDelete, setPrintContent, saveAll }: {
+function ProtokollDetail({ protokoll, data, onBack, onSave, onDelete, onOpen, setPrintContent, saveAll }: {
   protokoll: Protocol; data: AppData; onBack: () => void; onSave: (p: Protocol) => void; onDelete: (id: string) => void;
+  /** anderes Protokoll öffnen (z.B. die eben erstellte Folgesitzung) */
+  onOpen: (id: string) => void;
   setPrintContent: ViewProps["setPrintContent"]; saveAll: ViewProps["saveAll"];
 }) {
   const [p, setP] = useState<Protocol>(() => JSON.parse(JSON.stringify(protokoll)));
@@ -347,14 +365,7 @@ function ProtokollDetail({ protokoll, data, onBack, onSave, onDelete, setPrintCo
       const abbr = data.settings.protokollTypeAbbreviations || {};
       const proj = data.projects.find(x => x.id === updated.projectId);
       const typKuerzel = abbr[updated.type] || "SO";
-      const groups = (prev.nummer || "").match(/\d+/g) || [];
-      const seq = (() => {
-        for (let i = groups.length - 1; i >= 0; i--) {
-          const n = parseInt(groups[i]);
-          if (!(groups[i].length === 4 && n >= 2000 && n <= 2099)) return n;
-        }
-        return 1;
-      })();
+      const seq = protoSeqOf(prev.nummer, data.settings.protokollNumberFormat || "YYYY-TT-NN") ?? 1;
       updated.nummer = applyProtoNumberFormat(data.settings.protokollNumberFormat || "YYYY-TT-NN", {
         date: updated.date, projectNumber: proj?.number || "", seq, typKuerzel,
       });
@@ -415,11 +426,13 @@ function ProtokollDetail({ protokoll, data, onBack, onSave, onDelete, setPrintCo
     setP(prev => ({ ...prev, participants: [...prev.participants, { ...person, status: "anwesend", kuerzel: initialsOf(person.name) }] }));
   };
 
+  // Eigener Dialog statt window.prompt (im Tauri-WKWebView stumm, der Knopf tat dort nichts)
+  const [manual, setManual] = useState<{ name: string; role: string } | null>(null);
   const addManualParticipant = () => {
-    const name = prompt("Name der Person:");
-    if (!name?.trim()) return;
-    const role = prompt("Funktion / Firma (optional):") || "";
-    setP(prev => ({ ...prev, participants: [...prev.participants, { id: generateId(), name: name.trim(), role, source: "manuell", status: "anwesend", kuerzel: initialsOf(name.trim()) }] }));
+    const name = manual?.name.trim();
+    if (!name) return;
+    setP(prev => ({ ...prev, participants: [...prev.participants, { id: generateId(), name, role: manual!.role.trim(), source: "manuell", status: "anwesend", kuerzel: initialsOf(name) }] }));
+    setManual(null);
   };
 
   const setParticipantStatus = (id: string, status: string) =>
@@ -764,7 +777,7 @@ function ProtokollDetail({ protokoll, data, onBack, onSave, onDelete, setPrintCo
                   {unaddedPersons.filter(x => x.source === "extern").map(x => <option key={x.id} value={x.id}>{x.name}</option>)}
                 </optgroup>}
               </select>
-              <button className="btn btn-ghost" style={{ fontSize: 11, padding: "0 10px", whiteSpace: "nowrap", height: 32 }} onClick={addManualParticipant}>+ Manuell</button>
+              <button className="btn btn-ghost" style={{ fontSize: 11, padding: "0 10px", whiteSpace: "nowrap", height: 32 }} onClick={() => setManual({ name: "", role: "" })}>+ Manuell</button>
             </div>
 
             {/* Teilnehmerliste */}
@@ -817,7 +830,9 @@ function ProtokollDetail({ protokoll, data, onBack, onSave, onDelete, setPrintCo
                 <div style={{ fontSize: 11, letterSpacing: "0.1em", color: "var(--text4)", marginBottom: 12 }}>OFFENE PENDENZEN ({offen.length})</div>
                 {offen.map(({ it, pos }) => {
                   const due = it.dueDateType === "kw" ? (it.dueKW ? `KW ${it.dueKW}/${it.dueYear || new Date().getFullYear()}` : "") : it.dueDate ? formatDate(it.dueDate) : "";
-                  const isLate = !!it.dueDate && it.dueDateType === "datum" && it.dueDate < today;
+                  // überfällig auch bei Frist als KW (Freitag der Woche), gleiche Regel wie in den Pendenzen (entryDue)
+                  const dueDay = entryDue(it, new Date().getFullYear());
+                  const isLate = !!dueDay && dueDay < today;
                   return (
                     <div key={it.id} style={{ display: "flex", gap: 8, padding: "6px 0", borderBottom: "1px solid var(--border2)", fontSize: 12 }}>
                       <span style={{ color: "var(--text4)", flexShrink: 0, width: 28 }}>{pos}</span>
@@ -833,6 +848,19 @@ function ProtokollDetail({ protokoll, data, onBack, onSave, onDelete, setPrintCo
           })()}
         </div>
       </div>
+
+      {manual && (
+        <Modal title="Teilnehmer manuell erfassen" onClose={() => setManual(null)} onSave={addManualParticipant} saveLabel="Hinzufügen">
+          <FormField label="Name *">
+            <input value={manual.name} onChange={e => setManual({ ...manual, name: e.target.value })} autoFocus
+              onKeyDown={e => { if (e.key === "Enter") addManualParticipant(); }} />
+          </FormField>
+          <FormField label="Funktion / Firma">
+            <input value={manual.role} onChange={e => setManual({ ...manual, role: e.target.value })}
+              onKeyDown={e => { if (e.key === "Enter") addManualParticipant(); }} />
+          </FormField>
+        </Modal>
+      )}
 
       {/* ── Folgesitzung-Dialog ── */}
       {showFolge && (() => {
@@ -866,7 +894,7 @@ function ProtokollDetail({ protokoll, data, onBack, onSave, onDelete, setPrintCo
           const typKuerzel = abbr[p.type] || "SO";
           const folgeDate = p.nextDate || localISODate();
           const proj = data.projects.find(x => x.id === p.projectId);
-          const seq = nextProtoSeq(allProts);
+          const seq = nextProtoSeq(allProts, data.settings.protokollNumberFormat || "YYYY-TT-NN");
           const newNummer = applyProtoNumberFormat(data.settings.protokollNumberFormat || "YYYY-TT-NN", {
             date: folgeDate, projectNumber: proj?.number || "", seq, typKuerzel,
           });
@@ -902,16 +930,12 @@ function ProtokollDetail({ protokoll, data, onBack, onSave, onDelete, setPrintCo
             verteiler: p.verteiler || "",
             createdAt: new Date().toISOString(),
           };
-          const updated = { ...data, protocols: [...allProts, folge] };
-          // Save and navigate to new protokoll
-          if (typeof saveAll === "function") saveAll(updated);
+          // Aktuelles Protokoll und Folgesitzung in einem Schritt speichern: zwei getrennte saveAll-Aufrufe
+          // mit dem Stand dieses Renders überschrieben sich gegenseitig (die Folgesitzung ging verloren).
+          saveAll(prev => ({ ...prev, protocols: [...(prev.protocols || []).map(x => x.id === p.id ? p : x), folge] }));
           setShowFolge(false);
           setFolgeSelection(null);
-          onSave(p); // save current first
-          setTimeout(() => {
-            window.__openProtokoll = folge.id;
-            window.dispatchEvent(new CustomEvent("openProtokoll", { detail: { id: folge.id } }));
-          }, 100);
+          onOpen(folge.id);
         };
 
         // Art als Buchstabe wie in Bearbeitung und Druck (I = Information, B = Beschluss, A = Aufgabe)

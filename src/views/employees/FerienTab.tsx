@@ -38,8 +38,24 @@ export default function FerienTab({ data, update, askConfirm, employees, absence
         const pendingAbs = (data.absences || []).filter(a => a.status === "pending");
         const total = pendingFerien.length + pendingAbs.length;
         if (total === 0) return null;
-        const approveFerien = (id: string) => update("ferienEntries", (data.ferienEntries || []).map(f => f.id === id ? { ...f, status: "approved" } : f));
-        const rejectFerien = async (id: string) => { if (await askConfirm("Ferienantrag ablehnen?", "Ablehnen")) update("ferienEntries", (data.ferienEntries || []).map(f => f.id === id ? { ...f, status: "rejected" } : f)); };
+        // Änderungsantrag (originalData): genehmigen übernimmt die neuen Daten, ablehnen stellt die bisher
+        // genehmigten wieder her — vorher verschwanden die schon bewilligten Ferien beim Ablehnen ganz.
+        const approveFerien = (id: string) => update("ferienEntries", (data.ferienEntries || []).map(f => {
+          if (f.id !== id) return f;
+          const { originalData: _orig, ...rest } = f;
+          return { ...rest, status: "approved" } as FerienEntry;
+        }));
+        const rejectFerien = async (id: string) => {
+          const f0 = (data.ferienEntries || []).find(f => f.id === id);
+          const isChange = !!f0?.originalData;
+          if (!(await askConfirm(isChange ? "Änderung ablehnen? Die bisher genehmigten Ferien bleiben bestehen." : "Ferienantrag ablehnen?", "Ablehnen"))) return;
+          update("ferienEntries", (data.ferienEntries || []).map(f => {
+            if (f.id !== id) return f;
+            if (!f.originalData) return { ...f, status: "rejected" };
+            const { originalData, ...rest } = f;
+            return { ...rest, dateFrom: originalData.dateFrom, dateTo: originalData.dateTo, note: originalData.note, status: "approved" } as FerienEntry;
+          }));
+        };
         const approveAbs = (id: string) => update("absences", (data.absences || []).map(a => a.id === id ? { ...a, status: "approved" } : a));
         const rejectAbs = async (id: string) => { if (await askConfirm("Absenzantrag ablehnen?", "Ablehnen")) update("absences", (data.absences || []).map(a => a.id === id ? { ...a, status: "rejected" } : a)); };
         return (
@@ -67,7 +83,7 @@ export default function FerienTab({ data, update, askConfirm, employees, absence
                       <td style={{ padding: "7px 8px" }}><span style={{ background: "var(--st-bg-pausiert)", color: "var(--st-c-pausiert)", border: `1px solid color-mix(in srgb, var(--st-c-pausiert) 30%, transparent)`, borderRadius: 20, padding: "2px 7px", fontSize: 10, fontWeight: 600 }}>🌴 Ferien</span></td>
                       <td style={{ padding: "7px 8px" }}>{formatDate(f.dateFrom)}</td>
                       <td style={{ padding: "7px 8px" }}>{formatDate(f.dateTo)}</td>
-                      <td style={{ padding: "7px 8px", color: "var(--text4)" }}>{f.note || "—"}</td>
+                      <td style={{ padding: "7px 8px", color: "var(--text4)" }}>{f.originalData ? `Änderung (bisher ${formatDate(f.originalData.dateFrom)}–${formatDate(f.originalData.dateTo)})${f.note ? " · " + f.note : ""}` : f.note || "—"}</td>
                       <td style={{ padding: "7px 0", textAlign: "right", whiteSpace: "nowrap" }}>
                         <button className="btn btn-primary" style={{ padding: "3px 10px", fontSize: 11, marginRight: 6, background: "var(--positive)" }} onClick={() => approveFerien(f.id)}>✓ Genehmigen</button>
                         <button className="btn btn-danger" style={{ padding: "3px 10px", fontSize: 11 }} onClick={() => rejectFerien(f.id)}><span className="msr" style={{ fontSize: 16 }}>close</span> Ablehnen</button>
@@ -82,8 +98,8 @@ export default function FerienTab({ data, update, askConfirm, employees, absence
                     <tr key={a.id} style={{ borderBottom: "1px solid #f5f2ed" }}>
                       <td style={{ padding: "7px 8px 7px 0", fontWeight: 500 }}>{emp?.name || "—"}</td>
                       <td style={{ padding: "7px 8px" }}><span className="tag" style={{ background: t?.color || "#888", fontSize: 10 }}>{t?.label || a.type || "Absenz"}</span></td>
-                      <td style={{ padding: "7px 8px" }}>{formatDate(a.dateFrom)}</td>
-                      <td style={{ padding: "7px 8px" }}>{formatDate(a.dateTo)}</td>
+                      <td style={{ padding: "7px 8px" }}>{formatDate(a.dateFrom || a.date)}{a.startTime && a.endTime ? ` ${a.startTime}–${a.endTime}` : ""}</td>
+                      <td style={{ padding: "7px 8px" }}>{formatDate(a.dateTo || a.date)}</td>
                       <td style={{ padding: "7px 8px", color: "var(--text4)" }}>{a.note || "—"}</td>
                       <td style={{ padding: "7px 0", textAlign: "right", whiteSpace: "nowrap" }}>
                         <button className="btn btn-primary" style={{ padding: "3px 10px", fontSize: 11, marginRight: 6, background: "var(--positive)" }} onClick={() => approveAbs(a.id)}>✓ Genehmigen</button>

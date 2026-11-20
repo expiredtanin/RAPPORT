@@ -2,6 +2,7 @@
 
 import React from "react";
 import { formatCHF } from "../../utils";
+import { overtimeHourlyRate } from "../../worktime";
 import type { Employee, ViewProps } from "../../types";
 import type { EmployeeCalc } from "./calc";
 import type { AbschlussForm } from "./types";
@@ -43,9 +44,7 @@ export default function YearCloseTab({ data, employees, abschlussYear, setAbschl
         const formDef = { ferienUebertrag: fs.restH > 0 ? fs.restH : 0, ubHours: ubSaldo > 0 ? ubSaldo : 0, ubZuschlag: 25 };
         const form = { ...formDef, ...(abschlussForm[emp.id] || {}) };
         const setForm = (val: Partial<AbschlussForm>) => setAbschlussForm(prev => ({ ...prev, [emp.id]: { ...form, ...val } }));
-        const stundenlohn = emp.monatslohn
-          ? Math.round((emp.monatslohn * 12 / ((emp.wochenstunden || 35) * 52)) * 100) / 100
-          : 0;
+        const stundenlohn = overtimeHourlyRate(emp);
         const auszahlungBetrag = Math.round(form.ubHours * stundenlohn * (1 + form.ubZuschlag / 100) * 100) / 100;
         const existingPayouts = (data.uberstundenAbschluss || []).filter(a => a.empId === emp.id && a.year === abschlussYear);
 

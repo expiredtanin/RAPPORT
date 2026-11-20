@@ -7,6 +7,7 @@
 
 import type { AppData } from "./types";
 import { showToast } from "./toast";
+import { jsonEqual } from "./storage/merge";
 
 type Saver = (fn: (prev: AppData) => AppData) => void;
 let saver: Saver | null = null;
@@ -26,6 +27,8 @@ const isIdList = (v: unknown): v is WithId[] =>
  * Einträge zu verlieren. Listen mit `id`: gelöschte Einträge wieder einfügen (alte Position), geänderte nur
  * zurücksetzen, wenn sie in `current` noch genau dem Stand nach der Änderung entsprechen; neu hinzugekommene
  * wieder entfernen. Andere Felder: zurücksetzen, wenn sie seither unverändert sind.
+ * «Unverändert» heisst inhaltsgleich (nicht dasselbe Objekt): Cloud-Nachladen und Datenordner ersetzen die
+ * Objekte durch gleiche Kopien, Rückgängig muss danach trotzdem greifen.
  */
 export function revertChange(before: AppData, after: AppData, current: AppData): AppData {
   const out = { ...current } as Record<string, unknown>;
@@ -35,20 +38,25 @@ export function revertChange(before: AppData, after: AppData, current: AppData):
     const bv = b[key], av = a[key], cv = out[key];
     if (isIdList(bv) && isIdList(av) && isIdList(cv)) {
       const afterById = new Map(av.map(x => [x.id, x]));
-      const beforeIds = new Set(bv.map(x => x.id));
+      const beforeById = new Map(bv.map(x => [x.id, x]));
+      /** Eintrag steht noch genau so da, wie die Änderung ihn hinterlassen hat. */
+      const untouched = (x: WithId) => afterById.has(x.id) && (afterById.get(x.id) === x || jsonEqual(afterById.get(x.id), x));
       // geändert → zurück, hinzugefügt → weg
       let list = cv
-        .filter(x => beforeIds.has(x.id) || afterById.get(x.id) !== x)
-        .map(x => (afterById.get(x.id) === x ? bv.find(y => y.id === x.id) ?? x : x));
-      // gelöscht → an alter Stelle wieder einfügen
+        .filter(x => beforeById.has(x.id) || !untouched(x))
+        .map(x => (beforeById.has(x.id) && untouched(x) ? beforeById.get(x.id)! : x));
+      // gelöscht → an alter Stelle wieder einfügen (hinter dem nächsten noch vorhandenen Vorgänger)
       bv.forEach((item, idx) => {
         if (afterById.has(item.id) || list.some(x => x.id === item.id)) return;
-        const prevId = idx > 0 ? bv[idx - 1].id : null;
-        const at = prevId ? list.findIndex(x => x.id === prevId) + 1 : 0;
+        let at = 0;
+        for (let j = idx - 1; j >= 0; j--) {
+          const pos = list.findIndex(x => x.id === bv[j].id);
+          if (pos !== -1) { at = pos + 1; break; }
+        }
         list = [...list.slice(0, at), item, ...list.slice(at)];
       });
       out[key] = list;
-    } else if (cv === av) {
+    } else if (cv === av || jsonEqual(cv, av)) {
       out[key] = bv;
     }
   }

@@ -48,7 +48,7 @@ export default function MonthCloseTab({ data, closedMonths, toggleMonth, viewYea
           const isBeforeStart = viewYear < startYear || (viewYear === startYear && i < startMonth);
           if (isBeforeStart) return null;
           return (
-            <div key={monthStr} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 20px", borderBottom: i < 11 ? "1px solid var(--border2)" : "none", background: isClosed ? "#f9f7f4" : "transparent", opacity: isFuture ? 0.4 : 1 }}>
+            <div key={monthStr} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 20px", borderBottom: i < 11 ? "1px solid var(--border2)" : "none", background: isClosed ? "var(--surface2)" : "transparent", opacity: isFuture ? 0.4 : 1 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                 <div style={{ fontSize: 13, fontWeight: 500, minWidth: 100 }}>{m} {viewYear}</div>
                 {isCurrent && <span style={{ fontSize: 10, color: "var(--st-c-gesendet)", background: "var(--st-bg-gesendet)", padding: "2px 7px", borderRadius: 20 }}>Aktuell</span>}
@@ -58,7 +58,7 @@ export default function MonthCloseTab({ data, closedMonths, toggleMonth, viewYea
               {!isFuture && (
                 <button
                   className={isClosed ? "btn btn-ghost" : "btn btn-ghost"}
-                  style={{ fontSize: 11, padding: "4px 14px", color: isClosed ? "var(--positive)" : "var(--negative)", borderColor: isClosed ? "#b0d8c0" : "#e8b0b0" }}
+                  style={{ fontSize: 11, padding: "4px 14px", color: isClosed ? "var(--positive)" : "var(--negative)", borderColor: isClosed ? "color-mix(in srgb, var(--positive) 35%, transparent)" : "color-mix(in srgb, var(--negative) 35%, transparent)" }}
                   onClick={() => toggleMonth(monthStr)}
                 >
                   {isClosed ? "Öffnen" : "Schliessen"}

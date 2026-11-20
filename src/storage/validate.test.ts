@@ -1,7 +1,7 @@
 // Tests für die Formprüfung geladener Daten (validate.ts) und ihr Zusammenspiel mit applyMigrations.
 
 import { describe, expect, it } from "vitest";
-import { validateRawData } from "./validate";
+import { checkBackup, validateRawData } from "./validate";
 import { applyMigrations } from "./migrations";
 import { defaultData } from "../constants";
 
@@ -63,5 +63,23 @@ describe("validateRawData", () => {
     applyMigrations({}, defaultData, p => seen.push(p));
     expect(seen).toHaveLength(1);
     expect(seen[0][0]).toContain("invoices");
+  });
+});
+
+describe("checkBackup", () => {
+  const user = { id: "u", username: "admin", passwordHash: "ab", passwordSalt: "cd", role: "admin" };
+  it("akzeptiert ein Rapport-Backup", () => {
+    expect(checkBackup({ settings: { name: "X" }, users: [user] }, true)).toBeNull();
+    expect(checkBackup({ settings: {}, users: [{ username: "alt", password: "klartext" }] }, true)).toBeNull();
+  });
+  it("lehnt fremde Dateien ab", () => {
+    expect(checkBackup([{ name: "Kontakt" }], true)).toMatch(/kein Rapport-Backup/);
+    expect(checkBackup({ contacts: [] }, true)).toMatch(/Einstellungen fehlen/);
+    expect(checkBackup("x", false)).toMatch(/kein Datenobjekt/);
+  });
+  it("lokal: ohne Benutzer mit Passwort nicht einspielen (Aussperren); Cloud braucht keine Benutzer", () => {
+    expect(checkBackup({ settings: {}, users: [] }, true)).toMatch(/keinen Benutzer/);
+    expect(checkBackup({ settings: {}, users: [{ username: "x" }] }, true)).toMatch(/keinen Benutzer/);
+    expect(checkBackup({ settings: {} }, false)).toBeNull();
   });
 });

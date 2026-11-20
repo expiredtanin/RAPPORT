@@ -25,6 +25,8 @@ export function useWeekResize(
     const onMove = (ev: MouseEvent) => {
       const r = resizingRef.current;
       if (!r) return;
+      // Verrechnete Einträge sind gesperrt (wie in der Tagesliste): Klick öffnet nur die Ansicht, kein Ziehen
+      if (!r.isAbs && dataRef.current.timeEntries.find(e => e.id === r.entryId)?.invoiceId) return;
       const scrollTop = weekGridRef.current?.scrollTop || 0;
       const absY = ev.clientY + scrollTop;
       const deltaSlots = Math.round((absY - r.startAbsY) / SLOT_H);
@@ -46,7 +48,8 @@ export function useWeekResize(
         e2.date === r.dayStr && e2.startTime && e2.id !== r.entryId && (!r.empId || e2.employeeId === r.empId)
       ).map(e2 => { const [h,m] = (e2.startTime as string).split(":").map(Number); const s = Math.round((h*60+m-SLOT_START_H*60)/15); return { start: s, end: s + Math.round(e2.minutes/15) }; })
       .some(o => newStart < o.end && newStart + newDur > o.start);
-      if (!overlaps) { r.previewStart = slotToTime(newStart); r.previewMins = newDur * 15; }
+      // Verschieben behält die genaue Dauer (z.B. 17 min aus der Stoppuhr), nur Ziehen an den Kanten rastet auf 15 min
+      if (!overlaps) { r.previewStart = slotToTime(newStart); r.previewMins = r.edge === "move" ? Math.min(r.origMinutes, (SLOT_COUNT - newStart) * 15) : newDur * 15; }
       syncResizing();
     };
     const onUp = () => {
@@ -56,7 +59,8 @@ export function useWeekResize(
           setWeekEditForm({ entryId: r.entryId, isAbs: r.isAbs || false });
         } else if (r.previewMins !== undefined) {
           const [sh, sm] = (r.previewStart as string).split(":").map(Number);
-          const endTime = slotToTime((sh * 60 + sm - SLOT_START_H * 60) / 15 + r.previewMins / 15);
+          const endMin = sh * 60 + sm + r.previewMins;
+          const endTime = `${String(Math.floor(endMin / 60)).padStart(2, "0")}:${String(endMin % 60).padStart(2, "0")}`;
           const pStart = Math.round((sh * 60 + sm - SLOT_START_H * 60) / 15);
           const pEnd = pStart + Math.round(r.previewMins / 15);
           if (r.isAbs) {
@@ -71,13 +75,15 @@ export function useWeekResize(
               newEntries = newEntries.map(e2 => {
                 if (e2.id === r.entryId || e2.date !== r.dayStr || !e2.startTime) return e2;
                 if (r.empId && e2.employeeId !== r.empId) return e2;
+                if (e2.invoiceId) return e2; // verrechnete Einträge nie mitschieben
                 const [h, m] = (e2.startTime as string).split(":").map(Number);
                 const s = Math.round((h * 60 + m - SLOT_START_H * 60) / 15);
                 const dur = Math.round((e2.minutes || 0) / 15);
                 if (s >= pEnd || s + dur <= pStart) return e2;
                 const newS = s >= pStart ? pEnd : pStart - dur;
                 if (newS < 0 || newS + dur > SLOT_COUNT) return e2;
-                return { ...e2, startTime: slotToTime(newS), endTime: slotToTime(newS + dur) };
+                const e2End = SLOT_START_H * 60 + newS * 15 + (e2.minutes || 0);
+                return { ...e2, startTime: slotToTime(newS), endTime: `${String(Math.floor(e2End / 60)).padStart(2, "0")}:${String(e2End % 60).padStart(2, "0")}` };
               });
             }
             updateRef.current("timeEntries", newEntries);

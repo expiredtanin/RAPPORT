@@ -11,7 +11,8 @@
 // (dort bleibt dann nur die Id).
 
 import React, { useState, useEffect } from "react";
-import { generateId, formatCHF, formatDate, contactCategory } from "../utils";
+import { generateId, formatCHF, formatDate, contactCategory, personReferences } from "../utils";
+import { useConfirm } from "../hooks/useConfirm";
 import { isCloudBackend } from "../storage/adapter";
 import { CONTACT_CATEGORIES, CONTACT_TYPES, DEFAULT_LEAD_SOURCES } from "../constants";
 import { clientRevenue, lastContact, referredLeadCount, referredRevenue } from "../crm";
@@ -397,8 +398,12 @@ export default function Persons({ data, update, modal, setModal }: Pick<ViewProp
     setFirmModal(null);
   };
   // Löschen sofort, mit «Rückgängig» (undo.ts); Referenzen in Projekten und Rechnungen bleiben erhalten.
-  const deleteFirm = (id: string) => {
+  // Wird der Kontakt noch verwendet, vorher nachfragen: Rechnungen/Offerten verlören sonst Name und Adresse.
+  const { askConfirm, ConfirmModalEl } = useConfirm();
+  const deleteFirm = async (id: string) => {
     const f = persons.find(p => p.id === id);
+    const refs = personReferences(data, id);
+    if (refs.length && !await askConfirm(<>«{f?.name}» wird noch verwendet: {refs.join(", ")}. Dort fehlen nach dem Löschen Name und Adresse (auch im PDF).</>, "Trotzdem löschen")) return;
     removeWithUndo(`Kontakt «${f?.name || ""}» gelöscht`, "persons", p => p.id === id);
     if (selectedId === id) setSelectedId(null);
   };
@@ -450,6 +455,7 @@ export default function Persons({ data, update, modal, setModal }: Pick<ViewProp
           onDeletePerson={deleteContactFromFirm}
           onDeleteFirm={deleteFirm}
         />
+        {ConfirmModalEl}
         {firmModal && renderFirmModal()}
         {personModal && renderPersonModal()}
       </div>
@@ -571,7 +577,7 @@ export default function Persons({ data, update, modal, setModal }: Pick<ViewProp
           <select value={personForm.firmaId || ""} onChange={e => setPersonForm({ ...personForm, firmaId: e.target.value })}
             style={!personForm.firmaId ? { borderColor: "var(--warning)" } : {}} disabled={!!personModal.personId}>
             <option value="">— Firma auswählen —</option>
-            {persons.sort((a, b) => a.name.localeCompare(b.name, "de")).map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+            {[...persons].sort((a, b) => a.name.localeCompare(b.name, "de")).map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
           </select>
         </FormField>
         <FormField label="Name *">
@@ -592,7 +598,7 @@ export default function Persons({ data, update, modal, setModal }: Pick<ViewProp
   // ── List render ────────────────────────────────────────────────────────────
   return (
     <div>
-
+      {ConfirmModalEl}
       <Header title="Kontakte" action={
         <div style={{ display: "flex", gap: 8 }}>
           <button className="btn btn-ghost" onClick={() => openNewPerson()} disabled={persons.length === 0} title={persons.length === 0 ? "Zuerst einen Kontakt anlegen" : ""}>+ Ansprechpartner</button>

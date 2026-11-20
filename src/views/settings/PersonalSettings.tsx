@@ -5,6 +5,7 @@ import React, { useState } from "react";
 import { formatIban, imageFileToJpeg } from "../../utils";
 import { Header, FormField } from "../../components/UI";
 import { Section } from "./shared";
+import { showToast } from "../../toast";
 import type { ViewProps } from "../../types";
 
 /** Persönliche Einstellungen des angemeldeten Benutzers; `nav` sind die Reiter, wenn eingebettet. */
@@ -13,7 +14,12 @@ export function PersonalSettings({ data, update, currentUser, uiZoom, setUiZoom,
   /** Reiter-Navigation, wenn «Mein Profil» als Reiter eingebettet ist */
   nav?: React.ReactNode;
 }) {
-  const emp = (data.employees || []).find(e => e.id === currentUser.employeeId || e.name === currentUser.displayName);
+  // Zuerst über die Verknüpfung; den Namen nur ohne Verknüpfung (Altbestand) — sonst könnte ein gleichnamiger
+  // Eintrag weiter vorne in der Liste getroffen werden (fremde Lohn-IBAN ändern)
+  const employees = data.employees || [];
+  const emp = currentUser.employeeId
+    ? employees.find(e => e.id === currentUser.employeeId)
+    : employees.find(e => !!currentUser.displayName && e.name === currentUser.displayName);
   const userRec = (data.users || []).find(u => u.id === currentUser.id);
   const [empForm, setEmpForm] = useState({
     street: emp?.street || "",
@@ -36,12 +42,12 @@ export function PersonalSettings({ data, update, currentUser, uiZoom, setUiZoom,
     const file = e.target.files?.[0];
     e.target.value = "";
     if (!file) return;
-    if (!file.type.startsWith("image/")) { alert("Bitte ein Bild auswählen."); return; }
+    if (!file.type.startsWith("image/")) { showToast("Bitte ein Bild auswählen."); return; }
     try {
       const avatar = await imageFileToJpeg(file, 256, 0.85, "longest"); // klein halten, liegt im Datenstand
       update("users", prev => (prev || []).map(u => u.id === currentUser.id ? { ...u, avatar } : u));
     } catch (err) {
-      alert((err as Error).message);
+      showToast((err as Error).message, { timeout: 8000 });
     }
   };
 

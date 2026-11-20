@@ -5,6 +5,7 @@ import { SIA_PHASES } from "../../constants";
 import type { AppData, TimeEntry, UpdateFn } from "../../types";
 import { slotToTime, getFirstPhaseForProject, type SlotPoint, type WeekForm, type WeekEditForm } from "./timeUtils";
 import { projectColor } from "./projectColor";
+import { removeWithUndo } from "../../undo";
 
 /** Props der Formulare unter dem Wochenraster. */
 interface WeekFormsProps {
@@ -119,7 +120,7 @@ export function WeekForms({ data, update, weekSelectStart, setWeekSelectStart, w
           return (
             <div style={{ borderTop: `2px solid ${accentColor}`, padding: "12px 16px", background: "var(--surface2)" }}>
               <div style={{ fontSize: 10, color: accentColor, fontWeight: 600, letterSpacing: "0.1em", marginBottom: 10 }}>
-                {new Date(a.date as string).toLocaleDateString("de-CH", { weekday: "long", day: "numeric", month: "long" }).toUpperCase()} · {a.startTime} – {a.endTime} · {(durE/60).toFixed(1)}h
+                {new Date(`${a.date}T12:00:00`).toLocaleDateString("de-CH", { weekday: "long", day: "numeric", month: "long" }).toUpperCase()} · {a.startTime} – {a.endTime} · {(durE/60).toFixed(1)}h
               </div>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-end" }}>
                 <div style={{ flex: "1 1 180px" }}>
@@ -134,7 +135,7 @@ export function WeekForms({ data, update, weekSelectStart, setWeekSelectStart, w
                   <input value={a.note || ""} onChange={ev => update("absences", (data.absences||[]).map(x => x.id === a.id ? {...x, note: ev.target.value} : x))} placeholder="Notiz…" style={{ height: 34, fontSize: 12, width: "100%", boxSizing: "border-box" }} />
                 </div>
                 <div style={{ display: "flex", gap: 6 }}>
-                  <button className="btn btn-danger" onClick={() => { update("absences", (data.absences||[]).filter(x => x.id !== a.id)); setWeekEditForm(null); }} style={{ fontSize: 12, height: 34 }}>Löschen</button>
+                  <button className="btn btn-danger" disabled={isMonthClosed(a.date)} onClick={() => { removeWithUndo("Absenz gelöscht", "absences", x => x.id === a.id); setWeekEditForm(null); }} style={{ fontSize: 12, height: 34 }}>Löschen</button>
                   <button className="btn btn-ghost" onClick={() => setWeekEditForm(null)} style={{ fontSize: 12, height: 34 }}><span className="msr" style={{fontSize:16,verticalAlign:"middle"}}>close</span></button>
                 </div>
               </div>

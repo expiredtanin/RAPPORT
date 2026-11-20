@@ -4,18 +4,18 @@
 // können also nicht auseinanderlaufen.
 
 import { SIA_PHASES } from "../../constants";
-import { generateId, invoiceNet, localISODate, projectFee } from "../../utils";
+import { generateId, invoiceNet, localISODate, projectFee, roundCHF } from "../../utils";
 import type { AppData, Invoice, InvoiceItem, TimeEntry } from "../../types";
 import { invoicesForQuote, phaseInvoiceAmount, selectAllEntries } from "./invoiceHelpers";
 import type { InvoiceForm, NewInvoiceState } from "./invoiceHelpers";
 
 /** Abzugszeile und Notiz für bisherige Akonto-/Teilrechnungen einer Schlussrechnung (leer, wenn nichts abzuziehen ist). */
 const deduction = (prior: Invoice[], intro: string) => {
-  const total = prior.reduce((s, i) => s + invoiceNet(i), 0);
+  const total = roundCHF(prior.reduce((s, i) => s + invoiceNet(i), 0));
   if (!(Math.abs(total) > 0)) return { items: [] as InvoiceItem[], notes: "Zahlbar innert 30 Tagen netto." };
   return {
-    items: [{ id: generateId(), desc: `Abzgl. bisherige Akonto-/Teilzahlungen (${prior.map(i => i.number).filter(Boolean).join(", ")})`, qty: 1, price: -total, discount: 0 }],
-    notes: `${intro}\nBisherige Akonto-/Teilzahlungen:\n${prior.map(i => `  – ${i.number}: CHF ${invoiceNet(i).toFixed(2)}`).join("\n")}\n\nZahlbar innert 30 Tagen netto.`,
+    items: [{ id: generateId(), desc: `Abzgl. bisherige Akonto-/Teilrechnungen (${prior.map(i => i.number).filter(Boolean).join(", ")})`, qty: 1, price: -total, discount: 0 }],
+    notes: `${intro}\nBisherige Akonto-/Teilrechnungen (netto):\n${prior.map(i => `  – ${i.number}: CHF ${invoiceNet(i).toFixed(2)}`).join("\n")}\n\nZahlbar innert 30 Tagen netto.`,
   };
 };
 
@@ -23,8 +23,9 @@ const deduction = (prior: Invoice[], intro: string) => {
  * Baut das Formular für eine neue Rechnung aus dem Dialogzustand `ni`. `null` = Projekt/Offerte nicht
  * gefunden (Dialog bleibt offen); `{ form: null }` = nichts vorzubefüllen.
  *
- * Schlussrechnungen ziehen die bisherigen gestellten Rechnungen (ohne Entwürfe, ohne frühere
- * Schlussrechnungen) netto nach Rabatt ab: Pauschal alle des Projekts; Stundensatz nur die nicht nach
+ * Schlussrechnungen ziehen die bisherigen gestellten Rechnungen (ohne Entwürfe; eine frühere
+ * Schlussrechnung zählt mit, sonst würde eine zweite — z.B. nach einem Nachtrag — den schon
+ * schlussverrechneten Betrag nochmals stellen) netto nach Rabatt ab: Pauschal alle des Projekts; Stundensatz nur die nicht nach
  * Stunden gestellten (deren Zeiteinträge sind schon verrechnet und fehlen in den offenen Stunden);
  * aus einer Offerte nur die Rechnungen dieser Offerte (`invoicesForQuote`).
  */
@@ -44,7 +45,7 @@ export const buildNewInvoiceForm = (
     notes: "Zahlbar innert 30 Tagen netto.", status: "entwurf",
     discountType: "none", discountValue: 0, discountLabel: "Rabatt",
   };
-  const isPrior = (i: Invoice) => i.invoiceKind !== "schluss" && i.status !== "entwurf";
+  const isPrior = (i: Invoice) => i.status !== "entwurf";
 
   if (ni.tab === "frei") {
     form = ({ ...base, clientId: "", projectId: "", entrySelections: {}, items: [{ id: generateId(), desc: "", qty: 1, price: 0, discount: 0 }] });

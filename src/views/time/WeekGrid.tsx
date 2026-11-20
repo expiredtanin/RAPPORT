@@ -77,7 +77,7 @@ export function WeekGrid({ data, weekDays, weekFTs, todayStr, currentDate, selec
       <div className="zeit-head">
         <div className="zeit-gutter" />
         {weekDays.map(ds => {
-          const d = new Date(ds);
+          const d = new Date(`${ds}T12:00:00`);
           const isThisToday = ds === todayStr;
           const ft = weekFTs.find(f => f.date === ds);
           const isFeiertag = isFreeFT(ft);
@@ -96,7 +96,7 @@ export function WeekGrid({ data, weekDays, weekFTs, todayStr, currentDate, selec
           const sollH = selectedEmp ? getSollForDay(data, selectedEmp, ds) : 0;
           const isVacDay = selectedEmpId ? isApprovedVacationDay(data, selectedEmpId, ds) : false;
           const isPendingVacDay = !isVacDay && selectedEmpId ? (data.ferienEntries || []).some(f => f.employeeId === selectedEmpId && f.status === "pending" && !f.originalData && ds >= f.dateFrom && ds <= f.dateTo) : false;
-          const daysAway = Math.ceil((new Date(ds).getTime() - new Date(todayStr).getTime()) / 86400000);
+          const daysAway = Math.round((Date.parse(`${ds}T00:00:00Z`) - Date.parse(`${todayStr}T00:00:00Z`)) / 86400000);
           // Nur ein vergangener Arbeitstag, der mehr als eine halbe Stunde unter Soll liegt, wird orange
           const under = !!selectedEmp && !noWork && !isBeforeEintritt && !isVacDay && sollH > 0 && ds < todayStr && sollH - istH > 0.5;
 

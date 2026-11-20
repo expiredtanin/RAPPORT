@@ -114,3 +114,24 @@ function checkNested(listKey: string, item: Record<string, unknown>, problems: s
   }
   return out || item;
 }
+
+/**
+ * Prüft eine Backup-Datei vor dem Einspielen (Einstellungen → System → «Backup importieren»), das den ganzen
+ * Bestand ersetzt. Verhindert, dass eine fremde JSON-Datei (Export eines anderen Programms, Liste statt Objekt)
+ * die Daten überschreibt oder ein Backup ohne Benutzer mit Passwort alle aussperrt.
+ *
+ * @param raw geparster Dateiinhalt
+ * @param needsLogin true = lokale Anmeldung gegen `users` (localStorage, Datenordner)
+ * @returns Fehlermeldung für die Anzeige, null = einspielbar
+ */
+export function checkBackup(raw: unknown, needsLogin: boolean): string | null {
+  if (!isPlainObject(raw)) return "Die Datei ist kein Rapport-Backup (kein Datenobjekt).";
+  if (!isPlainObject(raw.settings)) return "Die Datei ist kein Rapport-Backup (Studio-Einstellungen fehlen).";
+  if (needsLogin) {
+    const users = Array.isArray(raw.users) ? raw.users.filter(isPlainObject) : [];
+    const canLogin = users.some(u => typeof u.username === "string" && u.username !== ""
+      && ((typeof u.passwordHash === "string" && typeof u.passwordSalt === "string") || typeof u.password === "string"));
+    if (!canLogin) return "Das Backup enthält keinen Benutzer mit Passwort — nach dem Einspielen könnte sich niemand mehr anmelden.";
+  }
+  return null;
+}

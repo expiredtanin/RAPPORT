@@ -4,8 +4,8 @@
 // Vorschau mit Duplikat-Erkennung → Import.
 //
 // Aufbau:
-//   - Parser: `parseCSV` (Semikolon oder Komma, Anführungszeichen) und
-//     `parseSpreadsheet` (ExcelJS); beide liefern Zeilen als String-Arrays.
+//   - Parser: `parseCSV` (Semikolon, Komma oder Tabulator, Kodierung erkannt; importParse.ts) und
+//     `parseSpreadsheet` (ExcelJS); beide liefern Zeilen als String-Arrays. Zahlen/Daten: importParse.ts.
 //   - Pro Datentyp eine Konfiguration in `ENTITY_CONFIGS`: Felder mit Aliasen für
 //     die automatische Spaltenerkennung, `buildRecord` (Standardwerte + Mapping →
 //     fertiger Datensatz), optional `postProcess` (abgeleitete Felder wie Minuten
@@ -27,10 +27,10 @@ import { PROJECT_TYPES, CONTACT_TYPES, CONTACT_CATEGORIES, EXPENSE_CATEGORIES, I
 import { Header, FormField } from "../components/UI";
 import { isCloudBackend } from "../storage/adapter";
 import type { AppData, ViewProps } from "../types";
+import { decodeText, excelCellText, parseCSV, parseFlexibleDate, parseNumber, type Row } from "../importParse";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type ImportRecord = Record<string, any>;
-type Row = string[];
 
 /** Beschreibung einer importierbaren Spalte/eines Zielfelds. */
 interface ImportField {
@@ -91,14 +91,6 @@ function wordTokens(s: unknown): string[] {
     .split(/[^a-z0-9]+/).filter(Boolean);
 }
 
-/** `YYYY-MM-DD` oder `TT.MM.JJJJ` / `TT/MM/JJJJ` → ISO-Datum; sonst "". */
-function parseFlexibleDate(raw: string): string {
-  if (/^\d{4}-\d{2}-\d{2}/.test(raw)) return raw.slice(0, 10);
-  const m = raw.match(/^(\d{1,2})[./](\d{1,2})[./](\d{4})$/);
-  if (m) return `${m[3]}-${m[2].padStart(2, "0")}-${m[1].padStart(2, "0")}`;
-  return "";
-}
-
 // "08:00", "8:00:00" -> Minuten seit Mitternacht. Für die Dauer-Berechnung
 // bei Zeiterfassungs-Import aus Von/Bis-Spalten.
 function parseTimeToMinutesOfDay(raw: unknown): number | null {
@@ -107,40 +99,11 @@ function parseTimeToMinutesOfDay(raw: unknown): number | null {
   return parseInt(m[1], 10) * 60 + parseInt(m[2], 10);
 }
 
-// Einfacher RFC4180-naher CSV-Parser (quotierte Felder, "" für escaped Quotes).
-// Semikolon statt Komma als Trenner, weil DE/CH-Excel-Exporte meist Semikolon
-// verwenden (Komma ist dort das Dezimaltrennzeichen).
-function parseCSV(text: string): Row[] {
-  const firstLine = text.split(/\r?\n/, 1)[0] || "";
-  const delimiter = firstLine.split(";").length > firstLine.split(",").length ? ";" : ",";
-  const rows: Row[] = [];
-  let row: string[] = [], field = "", inQuotes = false;
-  for (let i = 0; i < text.length; i++) {
-    const c = text[i];
-    if (inQuotes) {
-      if (c === '"') {
-        if (text[i + 1] === '"') { field += '"'; i++; } else inQuotes = false;
-      } else field += c;
-    } else if (c === '"') {
-      inQuotes = true;
-    } else if (c === delimiter) {
-      row.push(field); field = "";
-    } else if (c === "\n" || c === "\r") {
-      if (c === "\r" && text[i + 1] === "\n") i++;
-      row.push(field); field = "";
-      rows.push(row); row = [];
-    } else {
-      field += c;
-    }
-  }
-  if (field !== "" || row.length > 0) { row.push(field); rows.push(row); }
-  return rows.filter(r => r.some(c => c.trim() !== ""));
-}
-
 /** Liest die erste Tabelle einer .csv- oder .xlsx-Datei als Zeilen von Texten. */
 async function parseSpreadsheet(file: File): Promise<Row[]> {
-  if (file.name.toLowerCase().endsWith(".csv")) {
-    return parseCSV(await file.text());
+  if (/\.(csv|txt|tsv)$/i.test(file.name)) {
+    // Kodierung selbst erkennen (UTF-8, Windows-1252, UTF-16) statt file.text(), das immer UTF-8 annimmt
+    return parseCSV(decodeText(new Uint8Array(await file.arrayBuffer())));
   }
   // ExcelJS (~1 MB) erst laden, wenn wirklich eine Excel-Datei kommt
   const { default: ExcelJS } = await import("exceljs");
@@ -150,20 +113,8 @@ async function parseSpreadsheet(file: File): Promise<Row[]> {
   if (!sheet) return [];
   const rows: Row[] = [];
   sheet.eachRow({ includeEmpty: false }, row => {
-    rows.push((row.values as unknown[]).slice(1).map((v: unknown) => {
-      if (v == null) return "";
-      if (v instanceof Date) {
-        // Excel legt reine Uhrzeit-Zellen (z.B. eine Von/Bis-Spalte) als Datum auf
-        // seinem internen Epoch-Tag (30.12.1899) ab — sonst würde daraus fälschlich
-        // ein Datum statt einer Uhrzeit "HH:MM".
-        const isPureTime = v.getUTCFullYear() === 1899 && v.getUTCMonth() === 11 && v.getUTCDate() === 30;
-        return isPureTime
-          ? `${String(v.getUTCHours()).padStart(2, "0")}:${String(v.getUTCMinutes()).padStart(2, "0")}`
-          : v.toISOString().slice(0, 10);
-      }
-      if (typeof v === "object") return String((v as { text?: unknown; result?: unknown }).text ?? (v as { result?: unknown }).result ?? "");
-      return String(v);
-    }));
+    // Array.from statt map: leere Zellen sind Lücken im Array, map würde sie als Lücken stehen lassen
+    rows.push(Array.from((row.values as unknown[]).slice(1), v => excelCellText(v)));
   });
   return rows;
 }
@@ -673,7 +624,7 @@ function buildMappedValues(
     } else if (f.boolLike) {
       values[f.key] = /^(ja|yes|true|1|x)$/i.test(raw);
     } else if (f.numeric) {
-      const n = parseFloat(raw.replace(/'/g, "").replace(",", "."));
+      const n = parseNumber(raw);
       values[f.key] = isNaN(n) ? 0 : n;
     } else if (f.date) {
       values[f.key] = parseFlexibleDate(raw);
@@ -879,7 +830,7 @@ export default function DataImport({ data, saveAll, setView }: Pick<ViewProps, "
           )}
           <label className="btn btn-primary" style={{ display: "inline-block", cursor: "pointer", marginTop: cfg.uploadHint ? 0 : 8 }}>
             Datei auswählen…
-            <input type="file" accept=".csv,.xlsx" onChange={handleFile} style={{ display: "none" }} />
+            <input type="file" accept=".csv,.tsv,.txt,.xlsx" onChange={handleFile} style={{ display: "none" }} />
           </label>
           <div style={{ marginTop: 20 }}>
             <button className="btn btn-ghost" onClick={() => setStep("entity")}>← Zurück</button>

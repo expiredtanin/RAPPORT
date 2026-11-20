@@ -1,7 +1,11 @@
 // Zeiterfassung: Aktionen auf Zeiteinträgen (anlegen, ändern, löschen, auf den nächsten Tag kopieren).
-// Sperren (verrechnet, Monat abgeschlossen) wie bisher mit alert().
+// Sperren (verrechnet, Monat abgeschlossen) melden sich mit einer kurzen Meldung (showToast; showToast() ist im
+// Tauri-Fenster stumm). Löschen mit «Rückgängig».
 
 import { generateId } from "../../utils";
+import { showToast } from "../../toast";
+import { removeWithUndo } from "../../undo";
+import { shiftDate } from "../../worktime";
 import type { TimeEntry, UpdateFn, AppData } from "../../types";
 import { getFirstPhaseForProject } from "./timeUtils";
 
@@ -17,7 +21,7 @@ interface EntryActionsArgs {
 /** Liefert addEntry / updateEntry / delEntry / duplicateToNextDay für die Tagesliste und das Wochenraster. */
 export function createEntryActions({ data, update, currentDate, selectedEmpId, isMonthClosed }: EntryActionsArgs) {
   const addEntry = () => {
-    if (isMonthClosed(currentDate)) { alert("Dieser Monat ist abgeschlossen und kann nicht mehr bearbeitet werden."); return; }
+    if (isMonthClosed(currentDate)) { showToast("Dieser Monat ist abgeschlossen und kann nicht mehr bearbeitet werden."); return; }
     const firstActive = data.projects.find(p => p.status === "aktiv") || data.projects[0];
     const { phaseId, positionId } = getFirstPhaseForProject(firstActive);
     const toTime = (m: number) => `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
@@ -34,29 +38,33 @@ export function createEntryActions({ data, update, currentDate, selectedEmpId, i
 
   const updateEntry = (id: string, changes: Partial<TimeEntry>) => {
     const entry = data.timeEntries.find(e => e.id === id);
-    if (entry?.invoiceId) { alert("Dieser Eintrag ist bereits verrechnet und kann nicht mehr geändert werden. Lösche zuerst die zugehörige Rechnung."); return; }
-    if (isMonthClosed(entry?.date)) { alert("Dieser Monat ist abgeschlossen und kann nicht mehr bearbeitet werden."); return; }
+    if (entry?.invoiceId) { showToast("Dieser Eintrag ist bereits verrechnet und kann nicht mehr geändert werden. Lösche zuerst die zugehörige Rechnung."); return; }
+    if (isMonthClosed(entry?.date)) { showToast("Dieser Monat ist abgeschlossen und kann nicht mehr bearbeitet werden."); return; }
     const merged = { ...entry, ...changes };
     if ("minutes" in changes && merged.startTime) {
       const [h, m] = merged.startTime.split(":").map(Number);
-      const endMins = h * 60 + m + (merged.minutes || 0);
-      changes = { ...changes, endTime: `${String(Math.floor(endMins / 60)).padStart(2, "0")}:${String(endMins % 60).padStart(2, "0")}` };
+      // Ein Eintrag endet spätestens um Mitternacht (sonst entstand «25:00»); Rest am Folgetag erfassen
+      const minutes = Math.max(0, Math.min(merged.minutes || 0, 24 * 60 - (h * 60 + m)));
+      const endMins = h * 60 + m + minutes;
+      changes = { ...changes, minutes, endTime: `${String(Math.floor(endMins / 60)).padStart(2, "0")}:${String(endMins % 60).padStart(2, "0")}` };
     }
     update("timeEntries", data.timeEntries.map(e => e.id === id ? { ...e, ...changes } : e));
   };
 
   const delEntry = (id: string) => {
     const entry = data.timeEntries.find(e => e.id === id);
-    if (entry?.invoiceId) { alert("Dieser Eintrag ist bereits verrechnet und kann nicht gelöscht werden. Lösche zuerst die zugehörige Rechnung."); return; }
-    if (isMonthClosed(entry?.date)) { alert("Dieser Monat ist abgeschlossen und kann nicht mehr gelöscht werden."); return; }
-    update("timeEntries", data.timeEntries.filter(e => e.id !== id));
+    if (entry?.invoiceId) { showToast("Dieser Eintrag ist bereits verrechnet und kann nicht gelöscht werden. Lösche zuerst die zugehörige Rechnung."); return; }
+    if (isMonthClosed(entry?.date)) { showToast("Dieser Monat ist abgeschlossen und kann nicht mehr gelöscht werden."); return; }
+    removeWithUndo("Zeiteintrag gelöscht", "timeEntries", e => e.id === id);
   };
 
   const duplicateToNextDay = (entry: TimeEntry) => {
-    const d = new Date(`${entry.date}T00:00:00Z`);
-    d.setUTCDate(d.getUTCDate() + 1);
-    const nextDay = d.toISOString().slice(0, 10);
-    update("timeEntries", [...data.timeEntries, { ...entry, id: generateId(), date: nextDay, createdAt: new Date().toISOString() }]);
+    const nextDay = shiftDate(entry.date, 1);
+    if (isMonthClosed(nextDay)) { showToast("Der Folgetag liegt in einem abgeschlossenen Monat."); return; }
+    // Die Kopie ist ein neuer, unverrechneter Eintrag (vorher wurde `invoiceId` mitkopiert → gesperrt und
+    // fälschlich als verrechnet gezählt)
+    const { invoiceId: _inv, ...rest } = entry;
+    update("timeEntries", [...data.timeEntries, { ...rest, id: generateId(), date: nextDay, createdAt: new Date().toISOString() }]);
   };
   return { addEntry, updateEntry, delEntry, duplicateToNextDay };
 }

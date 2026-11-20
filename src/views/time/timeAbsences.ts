@@ -1,6 +1,8 @@
 // Zeiterfassung: Absenzen des gewählten Tages (Tagesliste, Ist/Soll-Differenz) und ihre Aktionen.
 
 import { generateId, getAbsenzTypes } from "../../utils";
+import { removeWithUndo } from "../../undo";
+import { showToast } from "../../toast";
 import type { AppData, Absence, Employee, UpdateFn } from "../../types";
 
 /** Parameter der Absenz-Ableitungen (Tag, Mitarbeiter, Tages-Soll und gebuchte Minuten). */
@@ -31,8 +33,16 @@ export function buildAbsenceState({ data, update, currentDate, selectedEmpId, se
   const dayIst = (dayTotalMins + dayAbsMins) / 60;
   const dayDiff = Math.round((dayIst - daySoll) * 10) / 10;
 
+  // Abgeschlossener Monat (Monatsabschluss): Absenzen wie Zeiteinträge sperren — sie zählen ebenfalls zum Saldo
+  const closedMsg = (ds?: string) => {
+    if (!(data.settings?.closedMonths || []).includes((ds || "").slice(0, 7))) return false;
+    showToast("Dieser Monat ist abgeschlossen und kann nicht mehr bearbeitet werden.");
+    return true;
+  };
+  const absDate = (id: string) => { const a = (data.absences || []).find(x => x.id === id); return a?.date || a?.dateFrom; };
   const toAbsTime = (m: number) => `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
   const addAbs = () => {
+    if (closedMsg(currentDate)) return;
     const todayAbs = (data.absences || []).filter(a =>
       (a.date === currentDate || (a.dateFrom && a.dateTo && currentDate >= a.dateFrom && currentDate <= a.dateTo)) &&
       (!selectedEmpId || a.employeeId === selectedEmpId)
@@ -52,7 +62,7 @@ export function buildAbsenceState({ data, update, currentDate, selectedEmpId, se
   };
   const updateAbs = (id: string, changes: Partial<Absence>) => {
     const abs = (data.absences || []).find(a => a.id === id);
-    if (!abs) return;
+    if (!abs || closedMsg(abs.date || abs.dateFrom)) return;
     if (abs.startTime && ("hours" in changes || "minutes" in changes)) {
       const [sh, sm] = abs.startTime.split(":").map(Number);
       const newH = ("hours" in changes ? changes.hours : (abs.hours || 0)) as number;
@@ -62,6 +72,6 @@ export function buildAbsenceState({ data, update, currentDate, selectedEmpId, se
     }
     update("absences", (data.absences || []).map(a => a.id === id ? { ...a, ...changes } : a));
   };
-  const delAbs = (id: string) => update("absences", (data.absences || []).filter(a => a.id !== id));
+  const delAbs = (id: string) => !closedMsg(absDate(id)) && removeWithUndo("Absenz gelöscht", "absences", a => a.id === id);
   return { absenzTypes, dayAbs, dayIst, dayDiff, addAbs, updateAbs, delAbs };
 }

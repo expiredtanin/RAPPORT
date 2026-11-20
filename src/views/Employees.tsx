@@ -7,18 +7,20 @@
 //   Monatsabschluss  – Monate sperren (`settings.closedMonths`: dann keine Zeiteinträge mehr)
 //   Jahresabschluss  – Ferienübertrag ins Folgejahr, Überstunden auszahlen
 //
-// Rechenregeln (`calcEmpMonth`):
-//   Soll = Σ Werktage ab Eintrittsdatum bis heute × Tagessoll (Wochenstunden × Pensum ÷ 5);
-//          Feiertage zählen nicht (Halbtage mit `stundenDelta` reduzieren das Soll).
-//   Ist  = erfasste Zeit des Monats; Absenzen und Ferien (genehmigte) zählen als Ist.
-//   Saldo = Ist + Absenz + Ferien − Soll.
-// Überstundensaldo = Summe aller Monatssaldi seit Eintritt − bereits ausbezahlte Stunden
-// (`uberstundenAbschluss`, Typ «payout»). Ferienanspruch = Wochen × Wochenstunden × Pensum,
-// im Eintrittsjahr anteilig pro Monat; Übertrag aus dem Vorjahr in `ferienUebertragVorjahr`.
+// Rechenregeln: worktime.ts (gemeinsam mit Zeiterfassung, «Heute» und Übersicht), hier über `calcEmpMonth` & Co.:
+//   Soll = Werktage zwischen Ein- und Austritt bis heute × Tagessoll (Wochenstunden × Pensum ÷ 5); ganze
+//          Feiertage frei, Halbtage/Vortage anteilig nach Pensum.
+//   Saldo = Ist + Absenzen (Teilabsenzen mit ihrer Dauer) + Ferien − Soll.
+// Überstundensaldo = Saldo seit Eintritt − ausbezahlte Stunden (`uberstundenAbschluss`, Typ «payout»;
+// Stundenlohn inkl. 13. Monatslohn). Ferienanspruch = Wochen (mind. 4, bis 20 J. 5) × Wochenstunden × Pensum,
+// anteilig bei Ein-/Austritt; Übertrag aus dem Vorjahr in `ferienUebertragVorjahr`.
 // Passwörter werden beim Speichern gehasht (`hashPassword`), nie im Klartext abgelegt.
 
 import React, { useState } from "react";
 import { generateId, getAbsenzTypes, hashPassword, localISODate } from "../utils";
+import { overtimeHourlyRate } from "../worktime";
+import { showToast } from "../toast";
+import { removeWithUndo } from "../undo";
 import { Header, PageTabs, ShareButton } from "../components/UI";
 import { useConfirm } from "../hooks/useConfirm";
 import type { Absence, Employee, FerienEntry, OvertimeClosing, User, ViewProps } from "../types";
@@ -64,9 +66,7 @@ function Employees({ data, update, saveAll, setPrintContent }: Pick<ViewProps, "
   };
 
   const saveUbAbschluss = (emp: Employee, form: AbschlussForm) => {
-    const stundenlohn = emp.monatslohn
-      ? Math.round((emp.monatslohn * 12 / ((emp.wochenstunden || 35) * 52)) * 100) / 100
-      : 0;
+    const stundenlohn = overtimeHourlyRate(emp);
     if (!stundenlohn || !(form.ubHours > 0)) return;
     const auszahlungBetrag = Math.round(form.ubHours * stundenlohn * (1 + form.ubZuschlag / 100) * 100) / 100;
     const entry: OvertimeClosing = {
@@ -95,9 +95,9 @@ function Employees({ data, update, saveAll, setPrintContent }: Pick<ViewProps, "
   };
 
   const saveEmp = async () => {
-    if (!empForm.name?.trim()) { alert("Bitte einen Namen eingeben."); return; }
-    if (!empForm.eintrittsdatum) { alert("Bitte ein Eintrittsdatum angeben."); return; }
-    if (empForm._appAccess && !empForm._appUsername?.trim()) { alert("Bitte einen Benutzernamen eingeben."); return; }
+    if (!empForm.name?.trim()) { showToast("Bitte einen Namen eingeben."); return; }
+    if (!empForm.eintrittsdatum) { showToast("Bitte ein Eintrittsdatum angeben."); return; }
+    if (empForm._appAccess && !empForm._appUsername?.trim()) { showToast("Bitte einen Benutzernamen eingeben."); return; }
     const isNew = !empForm.id;
     const { _appAccess, _appUsername, _appPassword, _appRoleId, _appUserId, ...empData } = empForm;
     const empId = empData.id || generateId();
@@ -110,7 +110,7 @@ function Employees({ data, update, saveAll, setPrintContent }: Pick<ViewProps, "
       const existing = updatedUsers.find(u => u.id === userId);
       const newPwTrimmed = _appPassword?.trim();
       const hasExistingCreds = !!(existing?.passwordHash || existing?.password);
-      if (!newPwTrimmed && !hasExistingCreds) { alert("Bitte ein Passwort vergeben."); return; }
+      if (!newPwTrimmed && !hasExistingCreds) { showToast("Bitte ein Passwort vergeben."); return; }
 
       let credFields: Partial<User>;
       if (newPwTrimmed) {
@@ -138,7 +138,7 @@ function Employees({ data, update, saveAll, setPrintContent }: Pick<ViewProps, "
       const targetUser = (data.users || []).find(u => u.id === existingUserId);
       const isLastAdmin = (data.users || []).filter(u => u.role === "admin").length <= 1
         && targetUser?.role === "admin";
-      if (isLastAdmin) { alert("Mindestens ein Administrator muss bestehen bleiben."); return; }
+      if (isLastAdmin) { showToast("Mindestens ein Administrator muss bestehen bleiben."); return; }
       updatedUsers = updatedUsers.filter(u => u.id !== existingUserId);
       delete emp.appUserId;
     }
@@ -151,20 +151,26 @@ function Employees({ data, update, saveAll, setPrintContent }: Pick<ViewProps, "
   const delEmp = async (id: string) => { if (await askConfirm("Mitarbeiter löschen?")) { update("employees", employees.filter(e => e.id !== id)); if (selectedEmpId === id) setSelectedEmpId(null); } };
 
   const saveAbs = () => {
+    if (!absForm.employeeId || !absForm.type || !absForm.dateFrom) { showToast("Bitte Mitarbeiter, Absenztyp und Datum angeben."); return; }
     const isNew = !absForm.id;
-    const a = { ...absForm, id: absForm.id || generateId() } as Absence;
+    const [from, to] = [absForm.dateFrom, absForm.dateTo || absForm.dateFrom].sort();
+    const a = { ...absForm, dateFrom: from, dateTo: to, id: absForm.id || generateId() } as Absence;
     update("absences", isNew ? [...absences, a] : absences.map(x => x.id === a.id ? a : x));
     setModal(null);
   };
-  const delAbs = (id: string) => update("absences", absences.filter(a => a.id !== id));
+  const delAbs = (id: string) => removeWithUndo("Absenz gelöscht", "absences", a => a.id === id);
 
   const saveFerien = () => {
+    if (!ferienForm.employeeId || !ferienForm.dateFrom) { showToast("Bitte Mitarbeiter und Datum angeben."); return; }
     const isNew = !ferienForm.id;
-    const f = { ...ferienForm, id: ferienForm.id || generateId() } as FerienEntry;
+    // Von/Bis vertauscht → tauschen; vom Büro eingetragene oder bearbeitete Ferien gelten als genehmigt
+    const [from, to] = [ferienForm.dateFrom, ferienForm.dateTo || ferienForm.dateFrom].sort();
+    const { originalData: _orig, ...rest } = ferienForm;
+    const f = { ...rest, dateFrom: from, dateTo: to, status: "approved", id: ferienForm.id || generateId() } as FerienEntry;
     update("ferienEntries", isNew ? [...ferienEntries, f] : ferienEntries.map(x => x.id === f.id ? f : x));
     setModal(null);
   };
-  const delFerien = (id: string) => update("ferienEntries", ferienEntries.filter(f => f.id !== id));
+  const delFerien = (id: string) => removeWithUndo("Ferien gelöscht", "ferienEntries", f => f.id === id);
 
 
   const closedMonths = data.settings.closedMonths || [];

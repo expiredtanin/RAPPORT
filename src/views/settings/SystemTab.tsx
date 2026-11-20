@@ -7,6 +7,10 @@ import { storage, isCloudBackend, isFileBackend, fileStorage } from "../../stora
 import { canUseDataFolder, chooseDataFolder, folderHasData, writeDataToFolder, activateDataFolder, getDataDir } from "../../storage/data-folder";
 import type { PocketBaseAdapter } from "../../storage/pocketbase-adapter";
 import { localISODate } from "../../utils";
+import { checkBackup } from "../../storage/validate";
+import { applyMigrations } from "../../storage/migrations";
+import { defaultData } from "../../constants";
+import { showToast } from "../../toast";
 import { FormField, Modal } from "../../components/UI";
 import { useConfirm } from "../../hooks/useConfirm";
 import { Section, type DraftProps } from "./shared";
@@ -66,7 +70,7 @@ export function SystemTab({ s, setField, data, setView, isAdmin }: DraftProps & 
       }
       activateDataFolder(dir);
     } catch (e) {
-      alert(`Der Ordner konnte nicht verwendet werden: ${(e as Error).message || e}`);
+      showToast(`Der Ordner konnte nicht verwendet werden: ${(e as Error).message || e}`, { timeout: 10000 });
     } finally {
       setFolderBusy(false);
     }
@@ -98,15 +102,26 @@ export function SystemTab({ s, setField, data, setView, isAdmin }: DraftProps & 
     const file = e.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
+    // gleiche Datei erneut wählbar (sonst feuert onChange nach einem Abbruch nicht mehr)
+    e.target.value = "";
     reader.onload = async evt => {
+      let imported: unknown;
       try {
-        const imported = JSON.parse(evt.target?.result as string);
-        if (await askConfirm("Aktuelle Daten wirklich überschreiben?", "Überschreiben")) {
-          await storage.save(imported);
-          window.location.reload();
-        }
+        imported = JSON.parse(evt.target?.result as string);
       } catch {
-        alert("Datei konnte nicht gelesen werden.");
+        showToast("Datei konnte nicht gelesen werden (kein gültiges JSON).", { timeout: 10000 });
+        return;
+      }
+      // Fremde Dateien und Backups ohne Anmeldung nicht einspielen (siehe checkBackup)
+      const problem = checkBackup(imported, !isCloudBackend);
+      if (problem) { showToast(problem, { timeout: 10000 }); return; }
+      if (!await askConfirm("Aktuelle Daten wirklich überschreiben?", "Überschreiben")) return;
+      try {
+        // In aktuelle Form bringen, bevor der Adapter es zerlegt (Datenordner erwartet z.B. Listen)
+        await storage.save(applyMigrations(imported as Parameters<typeof applyMigrations>[0], defaultData));
+        window.location.reload();
+      } catch (err) {
+        showToast(`Backup konnte nicht gespeichert werden: ${(err as Error).message || err}`, { timeout: 10000 });
       }
     };
     reader.readAsText(file);
@@ -330,7 +345,7 @@ export function SystemTab({ s, setField, data, setView, isAdmin }: DraftProps & 
                   sessionStorage.setItem("rapport_studio_id", newId);
                   window.location.reload();
                 } catch (e) {
-                  alert("Fehler beim Anlegen: " + (e as Error).message);
+                  showToast("Fehler beim Anlegen: " + (e as Error).message, { timeout: 10000 });
                 }
               }}
             >

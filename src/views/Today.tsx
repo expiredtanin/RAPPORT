@@ -82,7 +82,7 @@ export default function Today({ data, currentUser, userPermissions, run, onOpenP
   const monday = addDays(today, -((new Date(today + "T12:00:00").getDay() + 6) % 7));
   const weekDays = Array.from({ length: 7 }, (_, i) => addDays(monday, i));
   const weekMins = myEntries.filter(e => e.date >= monday && e.date <= weekDays[6]).reduce((s, e) => s + (e.minutes || 0), 0)
-    + (timer ? Math.round(timerElapsedMs(timer, now) / 60000) : 0);
+    + (timer && timer.employeeId === me?.id ? Math.round(timerElapsedMs(timer, now) / 60000) : 0);
   const weekSoll = me ? weekDays.reduce((s, d) => s + getSollForDay(data, me, d), 0) : 0;
   const todaySoll = me ? getSollForDay(data, me, today) : 0;
 

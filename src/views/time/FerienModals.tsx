@@ -34,7 +34,8 @@ export function FerienModals({ data, selectedEmp, employees, ferienUebersicht, s
             if (empFerien.length === 0) return <div style={{ fontSize: 13, color: "var(--text5)", padding: "12px 0" }}>Keine Ferieneinträge vorhanden.</div>;
             const groups = [
               { label: "Pendent", entries: empFerien.filter(f => f.status === "pending") },
-              { label: "Bestätigt", entries: empFerien.filter(f => f.status !== "pending") },
+              { label: "Bestätigt", entries: empFerien.filter(f => !f.status || f.status === "approved") },
+              { label: "Abgelehnt", entries: empFerien.filter(f => f.status === "rejected") },
             ];
             return groups.filter(g => g.entries.length > 0).map(g => (
               <div key={g.label} style={{ marginBottom: 16 }}>
@@ -57,8 +58,8 @@ export function FerienModals({ data, selectedEmp, employees, ferienUebersicht, s
                         )}
                         {f.note && <div style={{ fontSize: 11, color: "var(--text5)", marginTop: 2 }}>{f.note}</div>}
                       </div>
-                      <span style={{ fontSize: 10, padding: "2px 10px", borderRadius: 20, background: isPending ? "var(--warning-bg)" : "var(--positive-bg)", color: isPending ? "var(--warning)" : "var(--positive)", fontWeight: 600, flexShrink: 0, whiteSpace: "nowrap" }}>
-                        {isEditPending ? "Änderung" : isPending ? "pendent" : "bestätigt"}
+                      <span style={{ fontSize: 10, padding: "2px 10px", borderRadius: 20, background: isPending ? "var(--warning-bg)" : f.status === "rejected" ? "var(--surface2)" : "var(--positive-bg)", color: isPending ? "var(--warning)" : f.status === "rejected" ? "var(--text4)" : "var(--positive)", fontWeight: 600, flexShrink: 0, whiteSpace: "nowrap" }}>
+                        {isEditPending ? "Änderung" : isPending ? "pendent" : f.status === "rejected" ? "abgelehnt" : "bestätigt"}
                       </span>
                       {!isPast && !isPending && (
                         <button onClick={() => { setFerienUebersicht(false); editFerien(f); }} style={{ background: "none", border: "none", color: "var(--text4)", cursor: "pointer", fontSize: 13, padding: "0 3px", lineHeight: 1, flexShrink: 0 }} title="Bearbeiten"><span className="msr" style={{fontSize:16,verticalAlign:"middle"}}>edit</span></button>

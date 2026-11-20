@@ -11,6 +11,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { LoginError } from "../storage/login-error";
 import { storage, isCloudBackend, isServerMode } from "../storage/adapter";
+import { canUseDataFolder, getDataDir } from "../storage/data-folder";
 import type { PocketBaseAdapter } from "../storage/pocketbase-adapter";
 import type { CurrentUser, Settings } from "../types";
 
@@ -73,6 +74,7 @@ export default function Login({ verifyLogin, settings, version, cloudUnreachable
   const [forgotErr, setForgotErr] = useState("");
 
   const isCloud = backend === "cloud";
+  const dataDir = getDataDir();
 
   useEffect(() => {
     if (!isCloudBackend || !cloudUrl) return;
@@ -98,6 +100,9 @@ export default function Login({ verifyLogin, settings, version, cloudUnreachable
 
   const switchBackend = (next: string) => {
     if (next === backend) return;
+    // Bewusster Wechsel: die einmalige 0.8.0-Aufräumregel in storage/adapter.ts (Cloud gewählt + lokale Daten +
+    // noch kein Cloud-Login → zurück auf lokal) darf ihn nicht rückgängig machen.
+    if (next === "cloud") localStorage.setItem("rapport_080_recovery", "1");
     localStorage.setItem("rapport_backend", next);
     window.location.reload();
   };
@@ -439,7 +444,10 @@ export default function Login({ verifyLogin, settings, version, cloudUnreachable
               value={backend}
               onChange={e => switchBackend(e.target.value)}
             >
-              <option value="local">Lokal</option>
+              {/* Datenordner als eigene Wahl: sonst zeigte die Liste im Ordner-Modus «Lokal», und ein Wechsel
+                  Cloud → «Lokal» führte in den leeren lokalen Speicher statt zurück in den Ordner */}
+              {dataDir && <option value="file">Datenordner</option>}
+              {(!canUseDataFolder || !dataDir || backend === "local") && <option value="local">Lokal</option>}
               <option value="cloud">Cloud</option>
             </select>
           </div>

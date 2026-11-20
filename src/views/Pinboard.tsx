@@ -10,6 +10,7 @@ import React, { useState, useRef } from "react";
 import { generateId, getFeiertageForYear, imageFileToJpeg, localISODate } from "../utils";
 import type { BlogPost, CurrentUser, AppData, Poll, ViewProps } from "../types";
 import { EmptyState, Header, PageTabs } from "../components/UI";
+import { showToast } from "../toast";
 
 type PostForm = Partial<BlogPost> & Pick<BlogPost, "title" | "body" | "type" | "pinned"> & { eventDate: string; image: string; poll: Poll | null };
 
@@ -103,7 +104,7 @@ function PostCard({ post, currentUser, canWrite, onEdit, onDelete, onPin, onVote
             {post.pinned && <span style={{ fontSize: 10, color: "var(--accent)", fontWeight: 600, letterSpacing: "0.06em", display: "flex", alignItems: "center", gap: 3 }}><span className="msr" style={{ fontSize: 12 }}>push_pin</span> ANGEPINNT</span>}
             {post.eventDate && (
               <span style={{ fontSize: 11, color: "var(--positive)", background: "var(--positive-bg)", padding: "2px 10px", borderRadius: 20 }}>
-                📅 {new Date(post.eventDate).toLocaleDateString("de-CH", { weekday: "short", day: "numeric", month: "long" })}
+                📅 {new Date(post.eventDate + "T12:00:00").toLocaleDateString("de-CH", { weekday: "short", day: "numeric", month: "long" })}
               </span>
             )}
           </div>
@@ -171,7 +172,7 @@ function PostModal({ initial, onSave, onClose }: {
     try {
       setF({ image: await imageFileToJpeg(file, 1200, 0.8) });
     } catch (err) {
-      alert((err as Error).message);
+      showToast((err as Error).message);
     }
   };
 
@@ -180,7 +181,8 @@ function PostModal({ initial, onSave, onClose }: {
     const finalPoll = pollEnabled && poll.question.trim() && poll.options.filter(o => o.label.trim()).length >= 2
       ? { ...poll, options: poll.options.filter(o => o.label.trim()), votes: initial?.poll?.votes || {} }
       : null;
-    onSave({ ...form, poll: finalPoll }, draft);
+    // Datum nur bei Events (sonst bliebe nach dem Typwechsel ein Datums-Chip am Beitrag)
+    onSave({ ...form, eventDate: form.type === "event" ? form.eventDate : "", poll: finalPoll }, draft);
   };
 
   const isDraft = initial?.status === "entwurf";
@@ -322,6 +324,7 @@ export default function Pinboard({ data, update, currentUser }: Pick<ViewProps, 
   const togglePin  = (id: string) => update("blogPosts", posts.map(p => p.id === id ? { ...p, pinned: !p.pinned } : p));
 
   const vote = (postId: string, optionId: string) => {
+    if (!currentUser?.id) return; // ohne Login keine Stimme (sonst zählte «undefined» als Person)
     update("blogPosts", posts.map(p => {
       if (p.id !== postId || !p.poll) return p;
       const votes = { ...p.poll.votes, [currentUser?.id as string]: optionId };
@@ -380,14 +383,17 @@ export default function Pinboard({ data, update, currentUser }: Pick<ViewProps, 
           <span className="msr" style={{ fontSize: 20, color: "var(--positive)" }}>celebration</span>
           <div>
             <div style={{ fontSize: 12, fontWeight: 600, color: "var(--positive)", marginBottom: 2 }}>Feiertag diese Woche</div>
-            <div style={{ fontSize: 12, color: "#3a7a5a" }}>
-              {feiertageThisWeek.map(f => `${new Date(f.date).toLocaleDateString("de-CH", { weekday: "long", day: "numeric", month: "long" })}: ${f.label}`).join(" · ")}
+            <div style={{ fontSize: 12, color: "var(--positive)" }}>
+              {feiertageThisWeek.map(f => `${new Date(f.date.slice(0, 10) + "T12:00:00").toLocaleDateString("de-CH", { weekday: "long", day: "numeric", month: "long" })}: ${f.label}`).join(" · ")}
             </div>
           </div>
         </div>
       )}
 
-      {sorted.length === 0 && (
+      {sorted.length === 0 && posts.length > 0 && filter !== "alle" && (
+        <EmptyState icon="filter_alt_off" title="Keine Beiträge in dieser Auswahl" text="Unter «Alle» erscheinen die übrigen Beiträge." />
+      )}
+      {sorted.length === 0 && (posts.length === 0 || filter === "alle") && (
         <EmptyState icon="campaign" title="Noch keine Beiträge"
           text="Die Pinnwand ist für Ankündigungen, Events und Umfragen im Büro — alle sehen sie auf der Übersicht."
           action={canWrite ? <button className="btn btn-primary" onClick={() => setModal({ mode: "create" })}>+ Erster Beitrag</button> : undefined} />

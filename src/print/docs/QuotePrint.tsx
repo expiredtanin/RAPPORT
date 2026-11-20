@@ -1,7 +1,7 @@
 // Druckvorlage Offerte (`quote`).
 
 import React from "react";
-import { calcSIAHours, calcManualHours, formatCHF, formatDate, formatHours, formatSenderAddress } from "../../utils";
+import { calcSIAHours, calcManualHours, formatCHF, formatDate, formatHours, formatSenderAddress, lineAmount } from "../../utils";
 import { StudioLogo } from "../../components/UI";
 import type { Quote, Settings } from "../../types";
 import { HEADING, type Client } from "./shared";
@@ -172,7 +172,7 @@ export function QuotePrint({ quote, client, settings }: { quote: Quote; client: 
                   <td style={{ padding: "6px 0" }}>{it.desc || "—"}</td>
                   <td className="align-right" style={{ textAlign: "right", padding: "6px 6px" }}>{it.qty}</td>
                   <td className="align-right" style={{ textAlign: "right", padding: "6px 6px" }}>{formatCHF(it.price)}</td>
-                  <td className="align-right" style={{ textAlign: "right", padding: "6px 0", fontWeight: 500 }}>{formatCHF(it.qty * it.price)}</td>
+                  <td className="align-right" style={{ textAlign: "right", padding: "6px 0", fontWeight: 500 }}>{formatCHF(lineAmount(it.qty, it.price))}</td>
                 </tr>
               ))}
             </tbody>

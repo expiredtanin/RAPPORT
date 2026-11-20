@@ -33,7 +33,7 @@ export function MahnModal({ inv, data, update, setPrintContent, onClose, mahnMod
     } else {
       const { client, subject, body } = buildReminderLetter(inv, nextNr, mahnSentDate, (data.persons||[]), data.settings);
       setPrintContent({ type: "letter", client, subject, body, settings: data.settings });
-      const newReminder: InvoiceReminder = { nr: nextNr, date: localISODate(), sentDate: mahnSentDate, daysPast: Math.floor((new Date(`${localISODate()}T00:00:00Z`).getTime() - new Date(`${inv.dueDate}T00:00:00Z`).getTime()) / 86400000) };
+      const newReminder: InvoiceReminder = { nr: nextNr, date: localISODate(), sentDate: mahnSentDate, daysPast: Math.floor((new Date(`${mahnSentDate || localISODate()}T00:00:00Z`).getTime() - new Date(`${inv.dueDate}T00:00:00Z`).getTime()) / 86400000) };
       update("invoices", data.invoices.map(i => i.id === inv.id
         ? { ...i, status: "überfällig", reminders: [...reminders, newReminder] }
         : i

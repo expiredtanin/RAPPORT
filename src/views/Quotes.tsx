@@ -23,7 +23,7 @@
 
 import React, { useState, useEffect } from "react";
 import { SIA_PHASES, SIA_PHASE_WEIGHTS } from "../constants";
-import { calcSIAHours, calcManualHours, generateId, formatCHF, formatDate, formatHours, roundCHF, applyProjectNumberFormat, migrateLinkedQuotes, localISODate, invoiceNet, quoteBudgetFields } from "../utils";
+import { calcSIAHours, calcManualHours, generateId, formatCHF, formatDate, formatHours, roundCHF, lineAmount, applyProjectNumberFormat, migrateLinkedQuotes, localISODate, invoiceNet, quoteBudgetFields } from "../utils";
 import { invoicesForQuote } from "./invoices/invoiceHelpers";
 import { Header, Modal, FormField, StatusSelect, DateInput, SortTh, RowMenu, TableToolbar } from "../components/UI";
 import { removeWithUndo } from "../undo";
@@ -159,7 +159,7 @@ function Quotes({ data, update, saveAll, modal, setModal, setPrintContent, setVi
       : data.settings.defaultHourlyRate;
     const billingType = q.mode === "manual" ? "stundensatz" : "pauschal";
     const budgetFromQuote = roundCHF(q.mode === "free"
-      ? (q.freeItems || []).reduce((s, it) => s + it.qty * it.price, 0)
+      ? (q.freeItems || []).reduce((s, it) => s + lineAmount(it.qty, it.price), 0)
       : q.sub || 0);
     const newProj: Project = {
       id: generateId(),
@@ -191,7 +191,8 @@ function Quotes({ data, update, saveAll, modal, setModal, setPrintContent, setVi
   const activeRoles = form.quoteRoles || roles;
   const siaCalc = form.mode === "sia" ? calcSIAHours(form.sia.baukosten, form.sia.schwierigkeit, form.sia.phases) : null;
   const manCalc = form.mode === "manual" ? calcManualHours(form.manualPhases, activeRoles) : null;
-  const freeSubTotal = form.mode === "free" ? (form.freeItems || []).reduce((s, it) => s + (it.qty * it.price), 0) : 0;
+  // Freie Positionen je auf Rappen (wie gedruckt), Netto = ihre Summe
+  const freeSubTotal = form.mode === "free" ? (form.freeItems || []).reduce((s, it) => s + lineAmount(it.qty, it.price), 0) : 0;
   // Netto und MWST auf Rappen, Total = Netto + MWST (wie Rechnungen, calcTotal) — gespeicherte Offerten
   // behalten ihre Summen, bis sie bearbeitet und neu gespeichert werden.
   const subTotal = roundCHF(form.mode === "sia" ? (siaCalc?.total || 0) * (form.sia.stundenansatz || 0) : form.mode === "manual" ? (manCalc?.totalAmount || 0) : freeSubTotal);
@@ -206,6 +207,10 @@ function Quotes({ data, update, saveAll, modal, setModal, setPrintContent, setVi
 
   const save = () => {
     if (!form.clientId) { showToast("Bitte einen Kunden auswählen."); return; }
+    const num = (form.number || "").trim();
+    if (num && (data.quotes || []).some(x => x.id !== modal?.id && (x.number || "").trim() === num)) {
+      showToast(`Die Offertnummer ${num} ist schon vergeben.`); return;
+    }
     // Projektname oder verknüpftes Projekt
     if (!form.projectId && !form.projectName?.trim()) {
       showToast("Bitte einen Projektnamen eingeben oder ein Projekt verknüpfen."); return;
@@ -630,7 +635,7 @@ function Quotes({ data, update, saveAll, modal, setModal, setPrintContent, setVi
                         <td style={{ padding: "4px 4px" }}>
                           <input type="number" step="0.05" min={0} value={it.price} onChange={e => setForm({...form, freeItems: form.freeItems.map((x,i) => i===idx ? {...x, price: +e.target.value} : x)})} style={{ border: "1px solid var(--border)", height: 28, fontSize: 12, textAlign: "right" }} />
                         </td>
-                        <td style={{ padding: "4px 6px", textAlign: "right", color: "var(--text4)" }}>{formatCHF(it.qty * it.price)}</td>
+                        <td style={{ padding: "4px 6px", textAlign: "right", color: "var(--text4)" }}>{formatCHF(lineAmount(it.qty, it.price))}</td>
                         <td style={{ padding: "4px 4px", textAlign: "center" }}>
                           <button className="btn-icon" title="Position entfernen" aria-label="Position entfernen" onClick={() => setForm({...form, freeItems: form.freeItems.filter((_,i) => i!==idx)})}><span className="msr" style={{ fontSize: 18 }}>close</span></button>
                         </td>

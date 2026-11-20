@@ -67,7 +67,10 @@ export function applyMigrations(raw: RawData, defaultData: AppData, onProblems?:
   // den Flags isAuftraggeber/isPartner. Ein Kontakt, der auf einen Client
   // verlinkt war (linkedContactId), wird mit diesem zusammengeführt; die
   // alten Kontakt-IDs werden in Projekten und Protokollen auf die neue ID umgebogen.
-  if (!merged.persons && (merged.clients?.length || merged.contacts?.length)) {
+  // Früher stand hier `!merged.persons` — `persons` ist aus defaultData aber immer schon eine (leere) Liste,
+  // die Umstellung lief deshalb nie, und die alten Listen blieben unsichtbar liegen (teils neben inzwischen neu
+  // angelegten Kontakten). Deshalb: läuft, solange alte Listen da sind; schon vorhandene Ids in `persons` gewinnen.
+  if (merged.clients?.length || merged.contacts?.length) {
     const idMap: Record<Id, Id> = {};
     const persons: Person[] = [];
     const usedContactIds = new Set<Id>();
@@ -101,15 +104,18 @@ export function applyMigrations(raw: RawData, defaultData: AppData, onProblems?:
       ...p,
       entries: (p.entries || []).map(e => ({ ...e, assignee: e.assignee ? (idMap[e.assignee] || e.assignee) : e.assignee })),
     }));
-    merged = { ...merged, persons, projects: remapProjects, protocols: remapProtocols, clients: undefined, contacts: undefined };
+    const existing = new Set((merged.persons || []).map(p => p.id));
+    const added = persons.filter(p => !existing.has(p.id));
+    merged = { ...merged, persons: [...(merged.persons || []), ...added], projects: remapProjects, protocols: remapProtocols, clients: undefined, contacts: undefined };
   }
 
   // Migrate: projects linked to SIA/manual quotes should be pauschal (not stundensatz)
   // Früher waren solche Projekte oft fälschlich auf Stundensatz; `p.type` ist
-  // der alte Name von `billingType`.
+  // der alte Name von `billingType`. Nur für Altbestand ohne `billingType`: ein bewusst gesetzter
+  // Stundensatz (z.B. Projekt aus einer manuellen Offerte, ProjectDetail) bleibt sonst nicht stehen.
   const allQuotes = merged.quotes || [];
   const projects = (merged.projects || []).map(p => {
-    if ((p.billingType || p.type || "stundensatz") === "stundensatz" && (p.linkedQuotes || []).length > 0) {
+    if (!p.billingType && (p.type || "stundensatz") === "stundensatz" && (p.linkedQuotes || []).length > 0) {
       const linkedQs = (p.linkedQuotes || []).map(lq => allQuotes.find(q => q.id === lq.quoteId)).filter(Boolean);
       if (linkedQs.some(q => q!.mode === "sia" || q!.mode === "manual")) {
         return { ...p, billingType: "pauschal", budget: p.budget || p.budgetAmount || 0 };
@@ -124,17 +130,21 @@ export function applyMigrations(raw: RawData, defaultData: AppData, onProblems?:
     ...r,
     dashboardTemplateId: r.dashboardTemplateId || roleDefMap[r.id]?.dashboardTemplateId || null,
   }));
-  if (!roles.find(r => r.id === "r-projektleiter") && roleDefMap["r-projektleiter"]) {
+  // Nur bei Beständen aus der Zeit vor den Dashboard-Vorlagen (die Vorlage «tpl-projektleiter» kam mit der
+  // Rolle): sonst käme eine bewusst gelöschte Rolle bei jedem Laden zurück.
+  const predatesProjektleiter = !(parsed.dashboardTemplates || []).some(t => t.id === "tpl-projektleiter");
+  if (predatesProjektleiter && !roles.find(r => r.id === "r-projektleiter") && roleDefMap["r-projektleiter"]) {
     const adminIdx = roles.findIndex(r => r.id === "r-admin");
     roles.splice(adminIdx + 1, 0, roleDefMap["r-projektleiter"]);
   }
 
   // Migrate user-level dashboardWidgets to Row[] format
   // (altes Format: flache Liste von Widget-Ids; neu: Zeilen mit Spalten).
-  const users: User[] = (merged.users || []).map(u => ({
-    ...u,
-    dashboardWidgets: u.dashboardWidgets ? migrateDashboardLayout(u.dashboardWidgets) : undefined,
-  }));
+  // Leeres Ergebnis (nur unbekannte Widget-Ids) wie eine leere Liste → null, sonst wechselt es beim nächsten Laden.
+  const users: User[] = (merged.users || []).map(u => {
+    const rows = u.dashboardWidgets ? migrateDashboardLayout(u.dashboardWidgets) : undefined;
+    return { ...u, dashboardWidgets: rows?.length ? rows : u.dashboardWidgets === undefined ? undefined : null };
+  });
 
   // Ensure dashboardTemplates exist (old data won't have them)
   const dashboardTemplates = merged.dashboardTemplates?.length ? merged.dashboardTemplates : defaultData.dashboardTemplates;

@@ -16,7 +16,7 @@
 // Gesperrt sind Monate in `settings.closedMonths` (Monatsabschluss) und Einträge,
 // die bereits auf einer Rechnung stehen (`invoiceId`).
 // Feiertage kommen aus `data.feiertage` (jährlich wiederkehrende werden aufs Jahr
-// aufgelöst); der Tag vor einem Feiertag zählt 1 h weniger Soll (`resolveFTs`).
+// aufgelöst); der Tag vor einem Feiertag zählt 1 h weniger Soll. Alle Soll-/Saldo-/Ferienregeln: worktime.ts.
 
 import { useState, useRef, useEffect } from "react";
 import { generateId, localISODate, getKW } from "../utils";
@@ -113,7 +113,7 @@ function Time({ data, update, currentUser, userPermissions, setPrintContent }: P
   const daySoll = getSollForDay(data, selectedEmp, currentDate);
 
   // Monatssaldo
-  const viewDate2 = new Date(currentDate);
+  const viewDate2 = new Date(`${currentDate}T12:00:00`);
   const monthSaldo = calcMonthSaldo(data, selectedEmp, viewDate2);
 
   // Totalsaldo (Eintrittsdatum bis heute)
@@ -134,13 +134,13 @@ function Time({ data, update, currentUser, userPermissions, setPrintContent }: P
   const { antragModal, setAntragModal, antragForm, setAntragForm, openFerienAntrag, saveAntrag, deleteFerien, cancelFerienEdit, editFerien, ferienUebersicht, setFerienUebersicht } = useFerienAntrag(data, update, employees, selectedEmpId, currentDate);
   const { ref: navCalRef, open: navCalOpen, setOpen: setNavCalOpen } = useCalendarNav();
 
-  const viewDate = new Date(currentDate);
+  const viewDate = new Date(`${currentDate}T12:00:00`);
   const todayStr = localISODate();
   const monthCells: (MonthCell | null)[] = buildMonthCells(data, currentDate, selectedEmpId, selectedEmp);
 
   const monthTotalMins = monthCells.filter((c): c is MonthCell => !!c).reduce((s, c) => s + c.mins, 0);
 
-  const weekdayLabel = new Date(currentDate).toLocaleDateString("de-CH", { weekday: "long" });
+  const weekdayLabel = new Date(`${currentDate}T12:00:00`).toLocaleDateString("de-CH", { weekday: "long" });
   const monthLabel = viewDate.toLocaleDateString("de-CH", { month: "long", year: "numeric" });
   const isToday = currentDate === localISODate();
 
@@ -161,7 +161,7 @@ function Time({ data, update, currentUser, userPermissions, setPrintContent }: P
   // Markierung in der Wochenansicht deshalb pro Tag das jeweils richtige Jahr auflösen,
   // sonst wird Neujahr/Berchtoldstag in der Jahreswechsel-Woche fälschlich nicht als
   // Feiertag erkannt (repeatsYearly-Einträge matchen nur im aufgelösten Jahr).
-  const weekFTs = [...new Set(weekDays.map(ds => new Date(ds).getFullYear()))].flatMap(y => resolveFTs(data, y));
+  const weekFTs = [...new Set(weekDays.map(ds => Number(ds.slice(0, 4))))].flatMap(y => resolveFTs(data, y));
   // «16.–22. November 2026», über Monats- bzw. Jahresgrenzen ausgeschrieben
   const weekLabel = (() => {
     const from = new Date(`${weekDays[0]}T12:00:00`); const to = new Date(`${weekDays[6]}T12:00:00`);

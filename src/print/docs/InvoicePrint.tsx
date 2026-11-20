@@ -2,11 +2,12 @@
 // Der Zahlteil kommt als SVG von swissqrbill (lazy geladen) und ist pixelgenau — Änderungen im Druck prüfen.
 
 import { useState, useEffect } from "react";
-import { formatCHF, formatDate, formatSenderAddress, isQRIban, generateQRReference, invoiceNet } from "../../utils";
+import { formatCHF, formatDate, formatIban, formatSenderAddress, invoiceNet, lineAmount, paymentReference } from "../../utils";
 import { StudioLogo } from "../../components/UI";
 import type { Data } from "swissqrbill/types";
 import type { Invoice, Settings } from "../../types";
 import { HEADING, type Client } from "./shared";
+import { buildQrBillData } from "./qrBillData";
 
 export function InvoicePrint({ inv, client, settings }: { inv: Invoice; client: Client; settings: Settings }) {
   return (
@@ -56,8 +57,6 @@ export function InvoicePrint({ inv, client, settings }: { inv: Invoice; client: 
         </thead>
         <tbody>
           {(inv.items || []).map((item, i) => {
-            const lineTotal = item.qty * item.price;
-            const lineDisc = (item.discount || 0) > 0 ? lineTotal * ((item.discount as number) / 100) : 0;
             const hasAnyDiscount = (inv.items || []).some(it => (it.discount || 0) > 0);
             return (
               <tr key={i} style={{ borderBottom: "1px solid #eee" }}>
@@ -69,7 +68,7 @@ export function InvoicePrint({ inv, client, settings }: { inv: Invoice; client: 
                     {(item.discount || 0) > 0 ? `−${item.discount}%` : "—"}
                   </td>
                 )}
-                <td className="align-right" style={{ textAlign: "right", padding: "10px 0" }}>{formatCHF(lineTotal - lineDisc)}</td>
+                <td className="align-right" style={{ textAlign: "right", padding: "10px 0" }}>{formatCHF(lineAmount(item.qty, item.price, item.discount))}</td>
               </tr>
             );
           })}
@@ -79,7 +78,7 @@ export function InvoicePrint({ inv, client, settings }: { inv: Invoice; client: 
       <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 50 }}>
         <div style={{ width: 300 }}>
           {(inv.globalDisc || 0) > 0 && <>
-            <div style={{ display: "flex", justifyContent: "space-between", padding: "4px 0" }}><span style={{ color: "#666" }}>Zwischentotal</span><span>{formatCHF((inv.items || []).reduce((s, it) => { const l = it.qty * it.price; return s + l - ((it.discount||0) > 0 ? l*((it.discount as number)/100) : 0); }, 0))}</span></div>
+            <div style={{ display: "flex", justifyContent: "space-between", padding: "4px 0" }}><span style={{ color: "#666" }}>Zwischentotal</span><span>{formatCHF(inv.sub)}</span></div>
             <div style={{ display: "flex", justifyContent: "space-between", padding: "4px 0", color: "#b5621e" }}><span>{inv.discountLabel || "Rabatt"}</span><span>−{formatCHF(inv.globalDisc)}</span></div>
           </>}
           {inv.mwst && <>
@@ -97,8 +96,9 @@ export function InvoicePrint({ inv, client, settings }: { inv: Invoice; client: 
       <div style={{ marginTop: 60, paddingTop: 20, borderTop: "1px solid #ddd", fontSize: 9, color: "#888", display: "flex", justifyContent: "space-between" }}>
         <div>
           <div style={{ letterSpacing: "0.1em", marginBottom: 3 }}>ZAHLUNG AUF</div>
-          <div>{settings.iban}</div>
-          <div style={{ marginTop: 3 }}>Referenz: {inv.number}</div>
+          <div>{formatIban(settings.iban)}</div>
+          {/* Bei einer QR-IBAN gilt nur die QR-Referenz — wer von Hand zahlt, muss genau diese angeben */}
+          <div style={{ marginTop: 3 }}>Referenz: {paymentReference(inv.number, settings.iban).display}</div>
         </div>
         <div className="align-right" style={{ textAlign: "right" }}>
           <div>{settings.mwst}</div>
@@ -111,6 +111,7 @@ export function InvoicePrint({ inv, client, settings }: { inv: Invoice; client: 
 export function QRBillPrint({ inv, client, settings }: { inv: Invoice; client: Client; settings: Settings }) {
   const [qrSvg, setQrSvg] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -120,35 +121,12 @@ export function QRBillPrint({ inv, client, settings }: { inv: Invoice; client: C
         const { SwissQRBill: SVG } = await import("swissqrbill/svg");
         if (cancelled) return;
 
-        const ibanClean = (settings.iban || "").replace(/\s/g, "").toUpperCase();
-        const hasQRIban = isQRIban(ibanClean);
-        const data: Data = {
-          currency: "CHF",
-          amount: inv.total,
-          creditor: {
-            name: settings.name || "—",
-            address: settings.street || "—",
-            zip: settings.zip || "",
-            city: settings.city || "",
-            account: ibanClean,
-            country: settings.country || "CH",
-          },
-        };
-        if (client) {
-          data.debtor = {
-            name: client.company || client.name || "—",
-            address: client.street || "—",
-            zip: client.zip || "",
-            city: client.city || "",
-            country: client.country || "CH",
-          };
+        const res = buildQrBillData(inv, client, settings);
+        if (!res.ok) {
+          if (!cancelled) { if (res.error) setError(res.reason); else setNotice(res.reason); }
+          return;
         }
-        if (hasQRIban) {
-          data.reference = generateQRReference(inv.number);
-        }
-        if (inv.notes || inv.number) {
-          data.message = `Rechnung ${inv.number}`;
-        }
+        const data: Data = res.data;
 
         const qr = new SVG(data);
         const svgString = typeof qr.toString === "function"
@@ -171,10 +149,14 @@ export function QRBillPrint({ inv, client, settings }: { inv: Invoice; client: C
         <div style={{ fontSize: 14, fontWeight: 500, color: "#8a1a1a", marginBottom: 10 }}>Fehler beim Generieren</div>
         <div style={{ fontSize: 12, color: "#666", lineHeight: 1.6 }}>{error}</div>
         <div style={{ fontSize: 11, color: "#888", marginTop: 20, lineHeight: 1.7 }}>
-          Mögliche Ursachen: fehlende Empfänger-Adresse (Strasse, PLZ, Ort) oder ungültige IBAN.
+          Mögliche Ursachen: ungültige IBAN oder unvollständige Absenderadresse (Einstellungen → Studio).
         </div>
       </div>
     );
+  }
+
+  if (notice) {
+    return <div style={{ padding: 40, fontSize: 12, color: "#666" }}>{notice}</div>;
   }
 
   if (!qrSvg) {

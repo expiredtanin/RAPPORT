@@ -10,7 +10,7 @@
 //  - Projektphase: aktuelle SIA-Phase eines Projekts für die Phasenleiste (`phaseStrip`).
 
 import { SIA_PHASES } from "./constants";
-import { addDays, entryDue, entryKey, glyphOf, matchEmployee, plainText, scheduleOf, seriesDates } from "./schedule";
+import { addDays, byProtocolDate, entryDue, entryKey, glyphOf, matchEmployee, plainText, protocolScope, scheduleOf, seriesDates } from "./schedule";
 import type { AppData, DateStr, Employee, Id, Project, Protocol, TimeEntry } from "./types";
 
 // ── Stoppuhr ────────────────────────────────────────────────────────────────
@@ -49,12 +49,15 @@ export function timerToEntry(t: RunningTimer, now: Date, id: Id): TimeEntry | nu
   if (Number.isNaN(start.getTime())) return null;
   const dayEnd = new Date(start.getFullYear(), start.getMonth(), start.getDate(), 23, 59, 0);
   const end = now.getTime() > dayEnd.getTime() ? dayEnd : now;
-  const minutes = Math.round((end.getTime() - start.getTime()) / 60000);
+  const startMin = start.getHours() * 60 + start.getMinutes();
+  // Ende = Beginn + Dauer, damit «07:30–09:12» und die Minuten immer zusammenpassen (Sekunden gerundet)
+  const minutes = Math.min(Math.round((end.getTime() - start.getTime()) / 60000), 23 * 60 + 59 - startMin);
   if (minutes < 1) return null;
+  const endMin = startMin + minutes;
   return {
     id, date: localDate(start), employeeId: t.employeeId, projectId: t.projectId,
     ...(t.phaseId ? { phaseId: t.phaseId } : {}), ...(t.positionId ? { positionId: t.positionId } : {}),
-    minutes, startTime: localTime(start), endTime: localTime(end),
+    minutes, startTime: localTime(start), endTime: `${pad(Math.floor(endMin / 60))}:${pad(endMin % 60)}`,
     description: t.description || "", createdAt: now.toISOString(),
   };
 }
@@ -88,6 +91,7 @@ export function parseTimer(raw: string | null): RunningTimer | null {
 /** Offene Aufgabe aus einem Protokoll (neueste Kopie). */
 export interface OpenTask {
   key: string;
+  /** Projekt-Id; bei Protokollen ohne Projekt «~Freitext» (`protocolScope`), passt so zu `setLinkedStatus` */
   projectId: Id;
   protocolId: Id;
   protocolLabel: string;
@@ -103,13 +107,13 @@ export interface OpenTask {
 
 /**
  * Offene Protokoll-Aufgaben, je Projekt und Stelle (Art + Text) nur die neueste Kopie; erledigte fallen weg.
+ * Protokolle ohne Projekt zählen je Freitext-Projekt (`protocolScope`).
  * `employeeId` filtert auf eine Person (über Name/Kürzel im Feld «Wer»), `projectId` auf ein Projekt.
  * Sortiert: überfällig zuerst, dann nach Frist, ohne Frist zuletzt.
  */
 export function openTasks(protocols: Protocol[], employees: Pick<Employee, "id" | "name">[], today: DateStr,
   opts: { employeeId?: Id; projectId?: Id } = {}): OpenTask[] {
-  const sorted = [...(protocols || [])].filter(p => p.projectId && (!opts.projectId || p.projectId === opts.projectId))
-    .sort((a, b) => (a.date || "").localeCompare(b.date || ""));
+  const sorted = [...(protocols || [])].filter(p => !opts.projectId || p.projectId === opts.projectId).sort(byProtocolDate);
   const byKey = new Map<string, OpenTask | null>();
   for (const p of sorted) {
     const year = Number((p.date || today).slice(0, 4));
@@ -118,11 +122,12 @@ export function openTasks(protocols: Protocol[], employees: Pick<Employee, "id" 
       const label = plainText(e.text);
       if (!label) continue;
       const textKey = entryKey(e.type, e.text);
-      const key = `${p.projectId}:${textKey}`;
+      const scope = protocolScope(p);
+      const key = `${scope}:${textKey}`;
       if (e.status === "erledigt") { byKey.set(key, null); continue; }
       const due = entryDue(e, year);
       byKey.set(key, {
-        key, projectId: p.projectId as Id, protocolId: p.id, protocolLabel: p.nummer || p.title || "Protokoll", entryId: e.id, textKey,
+        key, projectId: scope, protocolId: p.id, protocolLabel: p.nummer || p.title || "Protokoll", entryId: e.id, textKey,
         label, responsible: e.responsible, assigneeId: matchEmployee(e.responsible, employees),
         due, overdue: !!due && due < today,
       });

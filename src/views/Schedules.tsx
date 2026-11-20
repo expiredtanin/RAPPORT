@@ -77,7 +77,9 @@ export default function Schedules({ data, setView, onSelectProject }: Pick<ViewP
         if (!start || !end || end < addDays(today, -60)) continue;
         off.push({ id: `abs|${a.id}`, label: absenzTypes.find(t => t.id === a.type)?.label || a.type || "Absenz", kind: "task", track: "planung", group: emp.name, start, end });
       }
-      const ranges = tasks.filter(t => t.kind === "task");
+      // Nur eigene Arbeit zählt: Terminserien (z.B. Bausitzung über Monate), Leistungen Dritter und Reserven
+      // würden sonst jeden Tag als belegt melden.
+      const ranges = tasks.filter(t => t.kind === "task" && !t.variant);
       return { emp, tasks, off, overlap: overlapDays(ranges), blocked: blockedDays(ranges, off) };
     });
   }, [data, onlyActive, tracks, today, absenzTypes]);
@@ -149,7 +151,7 @@ export default function Schedules({ data, setView, onSelectProject }: Pick<ViewP
             </tbody>
           </table>
           <div style={{ padding: "8px 14px", fontSize: 11, color: "var(--text4)" }}>
-            Grundlage: Aufgaben mit «Verantwortlich» in den Terminprogrammen, Ferien und Absenzen. Überschneidung = mehrere Aufgaben am selben Tag (Hinweis, keine Stundenplanung).
+            Grundlage: Aufgaben mit «Verantwortlich» in den Terminprogrammen, Ferien und Absenzen. Überschneidung = mehrere eigene Aufgaben am selben Tag (ohne Terminserien, Leistungen Dritter und Reserven; Hinweis, keine Stundenplanung).
           </div>
         </div>
       )}

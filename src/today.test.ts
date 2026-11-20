@@ -1,6 +1,7 @@
 // Tests für «Heute»: Stoppuhr → Zeiteintrag, offene Pendenzen, Agenda, Phasenleiste.
 import { describe, expect, it } from "vitest";
 import { formatElapsed, openTasks, parseTimer, phaseStrip, timerToEntry, weekAgenda } from "./today";
+import { setLinkedStatus } from "./schedule";
 import type { AppData, Protocol } from "./types";
 
 describe("Stoppuhr", () => {
@@ -15,6 +16,10 @@ describe("Stoppuhr", () => {
   it("über Mitternacht: endet um 23:59 des Starttags", () => {
     const e = timerToEntry({ ...t, start: new Date(2026, 10, 19, 22, 0).toISOString() }, new Date(2026, 10, 20, 1, 0), "x")!;
     expect(e.endTime).toBe("23:59"); expect(e.minutes).toBe(119); expect(e.date).toBe("2026-11-19");
+  });
+  it("Ende = Beginn + Minuten (Sekunden gerundet, Zeiten passen zur Dauer)", () => {
+    const e = timerToEntry({ ...t, start: new Date(2026, 10, 19, 7, 30, 50).toISOString() }, new Date(2026, 10, 19, 7, 47, 25), "x")!;
+    expect(e).toMatchObject({ startTime: "07:30", endTime: "07:47", minutes: 17 });
   });
   it("Anzeige und robustes Einlesen", () => {
     expect(formatElapsed((1 * 3600 + 42 * 60 + 10) * 1000)).toBe("01:42:10");
@@ -39,6 +44,26 @@ describe("openTasks", () => {
   });
   it("filtert auf eine Person", () => {
     expect(openTasks(protocols, employees, "2026-11-19", { employeeId: "e2" }).map(x => x.label)).toEqual(["Muster bestellen"]);
+  });
+  it("Protokolle ohne Projekt: Pendenzen erscheinen (je Freitext-Projekt) und lassen sich erledigen", () => {
+    const loose = [
+      { id: "x1", date: "2026-11-02", projectId: "", projectManual: "Studie Seeweg", traktanden: [{ id: "t", nr: "1", title: "", items: [task("a", "Varianten skizzieren")] }] },
+      { id: "x2", date: "2026-11-03", projectManual: "Wettbewerb Au", traktanden: [{ id: "t", nr: "1", title: "", items: [task("b", "Varianten skizzieren")] }] },
+    ] as unknown as Protocol[];
+    const r = openTasks(loose, employees, "2026-11-19");
+    expect(r.map(x => x.projectId).sort()).toEqual(["~Studie Seeweg", "~Wettbewerb Au"]);
+    const t0 = r.find(x => x.projectId === "~Studie Seeweg")!;
+    const after = setLinkedStatus(loose, t0.projectId, { protocolId: t0.protocolId, entryId: t0.entryId, kind: "aufgabe", text: t0.textKey }, true);
+    expect(openTasks(after, employees, "2026-11-19").map(x => x.projectId)).toEqual(["~Wettbewerb Au"]);
+    // mit Projektfilter bleiben sie draussen
+    expect(openTasks(loose, employees, "2026-11-19", { projectId: "p1" })).toEqual([]);
+  });
+  it("Folgeprotokoll am selben Tag: massgebend ist das später erstellte", () => {
+    const same = [
+      { id: "f", date: "2026-11-15", createdAt: "2026-11-15T12:00:00Z", projectId: "p1", traktanden: [{ id: "t", nr: "1", title: "", items: [task("9", "Pläne Attika", { status: "erledigt" })] }] },
+      { id: "o", date: "2026-11-15", createdAt: "2026-11-15T08:00:00Z", projectId: "p1", traktanden: [{ id: "t", nr: "1", title: "", items: [task("8", "Pläne Attika")] }] },
+    ] as unknown as Protocol[];
+    expect(openTasks(same, employees, "2026-11-19")).toEqual([]);
   });
 });
 

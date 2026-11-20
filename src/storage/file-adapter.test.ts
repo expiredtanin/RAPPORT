@@ -187,3 +187,40 @@ describe("Datenordner mit Dateiablage", () => {
     expect(await a.readAttachment(`${FILE_REF_PREFIX}Dateien/Belege/../../geheim.txt`)).toBeNull();
   });
 });
+
+describe("Datenordner mit zwei Personen", () => {
+  it("Änderung in der App während des Nachladens einer fremden Änderung: beide bleiben erhalten", async () => {
+    // Lesen verlangsamt, damit die Eingabe genau in das Nachladen fällt
+    let slow = false;
+    const slowFs: FsApi = { ...nodeFs, readText: async p => { if (slow) await new Promise(r => setTimeout(r, 120)); return nodeFs.readText(p); } };
+    const base = sampleData();
+    const mine = new FileStorageAdapter(dir, slowFs, "ich");
+    await mine.save(base);
+    await mine.load();
+    const seen: unknown[] = [];
+    mine.onExternalChange(d => seen.push(d));
+
+    // die andere Person legt einen Kontakt an
+    const other = new FileStorageAdapter(dir, nodeFs, "du");
+    const theirs = (await other.load())!;
+    await other.save({ ...(theirs as AppData), persons: [{ id: "p-du", name: "Kontakt der anderen" } as never] });
+
+    slow = true;
+    const check = mine.checkExternal();
+    await new Promise(r => setTimeout(r, 30));
+    // ich erfasse eine Rechnung — auf meinem (alten) Stand ohne den neuen Kontakt
+    const saved = mine.save({ ...base, invoices: [{ id: "r-ich", number: "R1" } as never] });
+    await check;
+    await saved;
+    slow = false;
+    await mine.flush();
+
+    const disk = JSON.parse(await readFile(join(dir, "studio.json"), "utf8"));
+    expect(disk.data.persons.map((p: { id: string }) => p.id)).toEqual(["p-du"]);
+    expect(disk.data.invoices.map((i: { id: string }) => i.id)).toEqual(["r-ich"]);
+    // die App bekommt am Ende den gemeinsamen Stand (nicht den ohne meine Rechnung)
+    const last = seen[seen.length - 1] as AppData;
+    expect(last.persons.map(p => p.id)).toEqual(["p-du"]);
+    expect(last.invoices.map(i => i.id)).toEqual(["r-ich"]);
+  });
+});

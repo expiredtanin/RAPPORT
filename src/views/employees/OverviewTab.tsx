@@ -2,7 +2,7 @@
 // Reine Darstellung; die Kennzahlen kommen aus `calc.ts`.
 
 import React from "react";
-import { getWorkdaysInMonth } from "../../utils";
+import { monthEnd, monthStart, shiftDate } from "../../worktime";
 import type { Absence, AbsenzType, Employee, ViewProps } from "../../types";
 import { MONTHS as months, type EmployeeCalc } from "./calc";
 
@@ -21,7 +21,7 @@ interface OverviewTabProps {
 
 /** Reiter «Übersicht» der Mitarbeiter-Ansicht (Monats- und Jahresauswertungen). */
 export default function OverviewTab({ data, employees, absences, absenzTypes, closedMonths, viewYear, viewMonth, setViewYear, setViewMonth, calc }: OverviewTabProps) {
-  const { calcEmpMonth, calcFerienYear, getFTYear } = calc;
+  const { calcEmpMonth, calcFerienYear, wt } = calc;
   return (
     <div>
       {employees.length === 0 ? (
@@ -155,16 +155,11 @@ export default function OverviewTab({ data, employees, absences, absenzTypes, cl
             const curMonth = new Date().getMonth();
             const curYear = new Date().getFullYear();
 
-            const calcAbsH = (emp: Employee, year: number, monthIdx: number) => {
-              const tagessoll = ((emp.wochenstunden || 35) * (emp.pensum || 100) / 100) / 5;
-              const monthStr = `${year}-${String(monthIdx + 1).padStart(2, "0")}`;
-              const workdays = getWorkdaysInMonth(year, monthIdx, getFTYear(year));
-              return absences.filter(a => a.employeeId === emp.id && (!a.status || a.status === "approved")).reduce((s, a) => {
-                const from = a.dateFrom || a.date; const to = (a.dateTo || a.date) as string;
-                if (!from || from.slice(0, 7) > monthStr || to.slice(0, 7) < monthStr) return s;
-                const days = workdays.filter(d => d.date >= from && d.date <= to);
-                return s + days.length * tagessoll;
-              }, 0);
+            // Absenz-Stunden wie im Saldo (worktime.ts): nur Tage mit Soll, Teilabsenzen mit ihrer Dauer
+            const calcAbsH = (emp: Employee, year: number, monthIdx: number, typeId?: string) => {
+              let h = 0;
+              for (let ds = monthStart(year, monthIdx), end = monthEnd(year, monthIdx); ds <= end; ds = shiftDate(ds, 1)) h += wt.absenceHoursForDay(emp, ds, typeId);
+              return h;
             };
 
             const calcInternH = (emp: Employee, year: number, monthIdx: number) => {
@@ -224,19 +219,8 @@ export default function OverviewTab({ data, employees, absences, absenzTypes, cl
 
                 {/* Absenzen nach Kategorie */}
                 {(() => {
-                  const calcAbsHByType = (typeId: string, year: number, monthIdx: number) => {
-                    const monthStr = `${year}-${String(monthIdx + 1).padStart(2, "0")}`;
-                    const workdays = getWorkdaysInMonth(year, monthIdx, getFTYear(year));
-                    return absences.filter(a => a.type === typeId && (!a.status || a.status === "approved")).reduce((s, a) => {
-                      const emp = employees.find(e => e.id === a.employeeId);
-                      if (!emp) return s;
-                      const tagessoll = ((emp.wochenstunden || 35) * (emp.pensum || 100) / 100) / 5;
-                      const from = a.dateFrom || a.date; const to = (a.dateTo || a.date) as string;
-                      if (!from || from.slice(0, 7) > monthStr || to.slice(0, 7) < monthStr) return s;
-                      const days = workdays.filter(d => d.date >= from && d.date <= to);
-                      return s + days.length * tagessoll;
-                    }, 0);
-                  };
+                  const calcAbsHByType = (typeId: string, year: number, monthIdx: number) =>
+                    employees.reduce((s, emp) => s + calcAbsH(emp, year, monthIdx, typeId), 0);
 
                   const usedTypes = absenzTypes.filter(t =>
                     absences.some(a => a.type === t.id)

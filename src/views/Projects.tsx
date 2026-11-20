@@ -20,7 +20,9 @@
 
 import React, { useState, useEffect } from "react";
 import { PROJECT_TYPES } from "../constants";
-import { generateId, formatHours, applyProjectNumberFormat, parseSeqFromNumber, localISODate } from "../utils";
+import { generateId, formatHours, applyProjectNumberFormat, nextProjectSeq, parseSeqFromNumber, projectReferences, localISODate } from "../utils";
+import { useConfirm } from "../hooks/useConfirm";
+import { showToast } from "../toast";
 import { Header, Modal, StatusBadge, ShareButton, SortTh, RowMenu, TableToolbar } from "../components/UI";
 import { removeWithUndo } from "../undo";
 import type { Project, ViewProps } from "../types";
@@ -41,18 +43,12 @@ function Projects({ data, saveAll, modal, setModal, onSelect, setPrintContent }:
   const [addContactId, setAddContactId] = useState("");
   const [addPersonIds, setAddPersonIds] = useState<string[]>([]);
 
-  const nextProjectNumber = () => {
-    const fmt = data.settings.projectNumberFormat || "YYYY/NN";
-    const currentYear = new Date().getFullYear();
-    const lastSeq = data.settings.lastProjectYear === currentYear ? (data.settings.lastProjectSeq || 0) : 0;
-    // Kein Wrap auf 1 nach 99 — das erzeugte eine Kollision mit dem ersten
-    // Projekt des Jahres. applyProjectNumberFormat unterstützt beliebig
-    // lange N-Läufe (NNN etc.), falls mehr als 99 Projekte/Jahr nötig sind.
-    return applyProjectNumberFormat(fmt, lastSeq + 1);
-  };
+  // Kein Wrap auf 1 nach 99 — applyProjectNumberFormat unterstützt beliebig lange N-Läufe (NNN etc.).
+  // Bestehende Nummern zählen mit (nextProjectSeq), damit keine doppelte Nummer vorgeschlagen wird.
+  const nextProjectNumber = () => applyProjectNumberFormat(data.settings.projectNumberFormat || "YYYY/NN", nextProjectSeq(data.settings, data.projects));
 
   const saveProject = () => {
-    if (!form.name?.trim()) { alert("Bitte einen Projektnamen eingeben."); return; }
+    if (!form.name?.trim()) { showToast("Bitte einen Projektnamen eingeben."); return; }
     const isNew = !modal?.id;
     const projects = isNew
       ? [...data.projects, { ...form, id: generateId(), createdAt: new Date().toISOString() }]
@@ -60,7 +56,10 @@ function Projects({ data, saveAll, modal, setModal, onSelect, setPrintContent }:
     let settings = data.settings;
     if (isNew) {
       const seq = parseSeqFromNumber(form.number, data.settings.projectNumberFormat || "YYYY/NN");
-      if (seq !== null) settings = { ...data.settings, lastProjectSeq: seq, lastProjectYear: new Date().getFullYear() };
+      // Nie zurückzählen: eine von Hand eingetragene kleinere Nummer darf den Zähler nicht senken
+      const year = new Date().getFullYear();
+      const last = data.settings.lastProjectYear === year ? (data.settings.lastProjectSeq || 0) : 0;
+      if (seq !== null && seq > last) settings = { ...data.settings, lastProjectSeq: seq, lastProjectYear: year };
     }
     saveAll({ ...data, projects, settings });
     setModal(null);
@@ -69,7 +68,14 @@ function Projects({ data, saveAll, modal, setModal, onSelect, setPrintContent }:
   const resetBeteiligter = () => { setShowAddBeteiligter(false); setEditingContactId(null); setAddContactId(""); setAddPersonIds([]); };
   const openEdit = (p: Project, e?: React.MouseEvent) => { e?.stopPropagation(); setForm({ ...emptyForm, ...p, enabledPhases: p.enabledPhases || [], projectContacts: p.projectContacts || [] }); resetBeteiligter(); setModal({ type: "project", id: p.id }); };
   const openNew = () => { setForm({ ...emptyForm, number: nextProjectNumber(), startDate: localISODate() }); resetBeteiligter(); setModal({ type: "project" }); };
-  const del = (id: string) => { const p = data.projects.find(x => x.id === id); removeWithUndo(`Projekt «${p?.name || ""}» gelöscht`, "projects", x => x.id === id); };
+  const { askConfirm, ConfirmModalEl } = useConfirm();
+  /** Löschen mit «Rückgängig»; hängen Zeiteinträge, Rechnungen usw. daran, vorher nachfragen (sie verlören die Zuordnung). */
+  const del = async (id: string) => {
+    const p = data.projects.find(x => x.id === id);
+    const refs = projectReferences(data, id);
+    if (refs.length && !await askConfirm(<>Am Projekt «{p?.name}» hängen {refs.join(", ")}. Sie bleiben erhalten, verlieren aber die Zuordnung zum Projekt. Abgeschlossene Projekte besser auf «abgeschlossen» setzen.</>, "Trotzdem löschen")) return;
+    removeWithUndo(`Projekt «${p?.name || ""}» gelöscht`, "projects", x => x.id === id);
+  };
 
   // Befehlspalette (App.tsx): «Neues Projekt»
   useEffect(() => {
@@ -111,7 +117,9 @@ function Projects({ data, saveAll, modal, setModal, onSelect, setPrintContent }:
     if (groupBy === "status") {
       const groups: Record<string, Project[]> = {};
       sorted.forEach(p => { const key = p.status || "unbekannt"; if (!groups[key]) groups[key] = []; groups[key].push(p); });
-      const order = ["aktiv", "pausiert", "abgeschlossen", "unbekannt"];
+      // Unbekannte Status (z.B. aus einem Import) hinten anhängen statt die Projekte auszublenden
+      const known = ["aktiv", "pausiert", "abgeschlossen"];
+      const order = [...known, ...Object.keys(groups).filter(k => !known.includes(k) && k !== "unbekannt").sort(), "unbekannt"];
       return order.filter(k => groups[k]).map(key => ({ key, label: key.charAt(0).toUpperCase() + key.slice(1), items: groups[key] }));
     }
     if (groupBy === "category") {
@@ -134,6 +142,7 @@ function Projects({ data, saveAll, modal, setModal, onSelect, setPrintContent }:
 
   return (
     <div>
+      {ConfirmModalEl}
       <Header title="Projekte" action={
         <div style={{ display: "flex", gap: 8 }}>
           <ShareButton options={[{ label: "Gesamt-PDF", onClick: () => setPrintContent({ type: "projectsOverview", projects: data.projects, data }) }]} />
@@ -260,7 +269,7 @@ function Projects({ data, saveAll, modal, setModal, onSelect, setPrintContent }:
                     {(data.employees || []).map(emp => {
                       const checked = (form.internalMembers || []).includes(emp.id);
                       return (
-                        <label key={emp.id} style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", fontSize: 13, background: checked ? "#f0ede8" : "#faf9f7", border: `1px solid ${checked ? "#c8b89a" : "#ece8e2"}`, borderRadius: 8, padding: "4px 10px" }}>
+                        <label key={emp.id} style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", fontSize: 13, background: checked ? "var(--surface3)" : "var(--surface2)", border: `1px solid ${checked ? "var(--border3)" : "var(--border2)"}`, borderRadius: 8, padding: "4px 10px" }}>
                           <input type="checkbox" checked={checked} onChange={() => setForm(f => ({ ...f, internalMembers: checked ? (f.internalMembers || []).filter(id => id !== emp.id) : [...(f.internalMembers || []), emp.id] }))} style={{ margin: 0 }} />
                           <span>{emp.name}</span>
                           {emp.role && <span style={{ fontSize: 10, color: "var(--text5)" }}>{emp.role}</span>}

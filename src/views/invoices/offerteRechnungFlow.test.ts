@@ -4,7 +4,7 @@
 // nachgebildet; Verknüpfen eines Nachtrags läuft über `quoteBudgetFields` wie in Quotes.tsx/ProjectDetail.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { calcManualHours, calcSIAHours, deriveQuoteBudget, generateQRReference, invoiceNet, mod10, projectFee, quoteBudgetFields, roundCHF, yearRevenue } from "../../utils";
+import { calcManualHours, calcSIAHours, deriveQuoteBudget, generateQRReference, invoiceNet, lineAmount, mod10, projectFee, quoteBudgetFields, roundCHF, yearRevenue } from "../../utils";
 import { SIA_PHASE_WEIGHTS } from "../../constants";
 import { akontoPlanRows, applyEntryHours, billedNetForProject, buildAkontoInvoices, calcTotal, defaultInvoiceMode, entrySelectionsForEdit, generateSequentialNumbers, invoicesForQuote, isInvoiceNumberTaken, nextInvoiceNumber, selectedEntrySelections } from "./invoiceHelpers";
 import type { AkontoPlan, InvoiceForm, NewInvoiceState } from "./invoiceHelpers";
@@ -25,7 +25,7 @@ function quoteTotals(q: Omit<Quote, "sub" | "tax" | "total">): Pick<Quote, "sub"
   const qRoles = q.quoteRoles || roles;
   const sia = q.mode === "sia" ? calcSIAHours(q.sia?.baukosten, q.sia?.schwierigkeit, q.sia?.phases || []) : null;
   const man = q.mode === "manual" ? calcManualHours(q.manualPhases || [], qRoles) : null;
-  const free = q.mode === "free" ? (q.freeItems || []).reduce((s, it) => s + it.qty * it.price, 0) : 0;
+  const free = q.mode === "free" ? (q.freeItems || []).reduce((s, it) => s + lineAmount(it.qty, it.price), 0) : 0;
   const sub = roundCHF(q.mode === "sia" ? (sia?.total || 0) * (q.sia?.stundenansatz || 0) : q.mode === "manual" ? (man?.totalAmount || 0) : free);
   const tax = q.mwst ? roundCHF(sub * ((q.mwstRate ?? MWST) / 100)) : 0;
   return { sub, tax, total: roundCHF(sub + tax), totalHours: q.mode === "sia" ? sia?.total : man?.totalHours };
@@ -409,5 +409,46 @@ describe("Kennzahlen netto nach Rabatt (Nr. 8/18)", () => {
     ] as Invoice[];
     expect(invoicesForQuote(hoSia, list, [p]).map(i => i.id)).toEqual(["a", "b"]);
     expect(invoicesForQuote(ntFree, list, [p]).map(i => i.id)).toEqual(["c"]);
+  });
+});
+
+// Nachprüfung 26.11 (unabhängige Python-Rechnung mit Dezimalarithmetik, kaufmännisch gerundet)
+describe("Rundung und Grenzfälle", () => {
+  const one = (price: number, rate = MWST, qty = 1) => calcTotal([{ id: "1", desc: "", qty, price, discount: 0 }], true, rate);
+
+  it("MWST auf x.xx5 wird aufgerundet, auch wo die Gleitkommazahl knapp darunter liegt", () => {
+    expect(one(105, 7.7).tax).toBe(8.09);     // 8.085 — früher 8.08
+    expect(one(7.5, 3.8).tax).toBe(0.29);     // 0.285 — früher 0.28
+    expect(one(12_345).tax).toBe(999.95);     // 999.945
+    expect(one(15).total).toBe(16.22);
+  });
+
+  it("Gutschrift rundet wie die Rechnung (vom Nullpunkt weg)", () => {
+    expect(one(-5).tax).toBe(-0.41);          // −0.405 — früher −0.40
+    expect(one(-25).total).toBe(-27.03);
+  });
+
+  it("Positionen auf Rappen: gedruckte Zeilen ergeben das Zwischentotal", () => {
+    // 2.5 h × 142.25 = 355.625 → je 355.63; Summe der Zeilen 711.26 (nicht 711.25)
+    const t = calcTotal([{ id: "1", desc: "A", qty: 2.5, price: 142.25 }, { id: "2", desc: "B", qty: 2.5, price: 142.25 }], true, MWST);
+    expect(t.sub).toBe(711.26);
+    expect(t.tax).toBe(57.61);
+    expect(t.total).toBe(768.87);
+  });
+
+  it("Akonto-Plan: die letzte Rate gleicht die Rappen aus (Summe = Planbetrag)", () => {
+    const ap: AkontoPlan = { projectId: "", clientId: "", totalAmt: 10_000, mode: "interval", intervalMonths: 1, count: 3, startDate: "2026-01-31", manualRows: [] };
+    expect(akontoPlanRows(ap).map(r => [r.date, r.amt])).toEqual([["2026-01-31", 3333.33], ["2026-02-28", 3333.33], ["2026-03-31", 3333.34]]);
+    expect(akontoPlanRows({ ...ap, totalAmt: 100_000, count: 7 }).reduce((s, r) => roundCHF(s + r.amt), 0)).toBe(100_000);
+  });
+
+  it("zweite Schlussrechnung (nach Nachtrag) zieht die erste ab statt den Rest nochmals zu stellen", () => {
+    const p = { ...projectFromSia(hoSia), budget: 110_000, budgetAmount: 110_000, linkedQuotes: [] } as Project;
+    const data = mkData([p], []);
+    const ak = { ...saveInvoice({ items: [{ id: "1", desc: "Akonto", qty: 1, price: 30_000 }], mwst: true, mwstRate: MWST, projectId: "p1", invoiceKind: "akonto", number: "2026-001" }, "a1") };
+    const s1 = saveInvoice({ items: [{ id: "1", desc: "Honorar", qty: 1, price: 100_000 }, { id: "2", desc: "Abzug", qty: 1, price: -30_000 }], mwst: true, mwstRate: MWST, projectId: "p1", invoiceKind: "schluss", number: "2026-002" }, "s1");
+    const f = buildNewInvoiceForm(ni({ mode: "schluss" }), data, [ak, s1], "2026-003", noEntries)!.form!;
+    expect(f.items.map(it => it.price)).toEqual([110_000, -100_000]);
+    expect(saveInvoice(f, "s2").sub).toBe(10_000);
   });
 });

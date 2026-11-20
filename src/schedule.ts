@@ -447,9 +447,20 @@ export interface ProtocolSuggestion {
   track: ScheduleTrack;
 }
 
-/** Protokolle eines Projekts, neueste zuletzt. */
+/**
+ * Bereich, in dem gleiche Protokollstellen als Kopien gelten: die Projekt-Id, bei Protokollen ohne Projekt
+ * «~» + Freitext-Projekt (Projekt-Ids beginnen nie mit «~»). So gehen auch deren Pendenzen nicht verloren.
+ */
+export const protocolScope = (p: Pick<Protocol, "projectId" | "projectManual">): string =>
+  p.projectId || `~${(p.projectManual || "").trim()}`;
+
+/** Reihenfolge der Protokolle: nach Datum, am selben Tag nach Erstellung (Folgeprotokoll nach dem Vorgänger). */
+export const byProtocolDate = (a: Pick<Protocol, "date" | "createdAt">, b: Pick<Protocol, "date" | "createdAt">): number =>
+  (a.date || "").localeCompare(b.date || "") || (a.createdAt || "").localeCompare(b.createdAt || "");
+
+/** Protokolle eines Projekts (bzw. Bereichs, siehe `protocolScope`), neueste zuletzt. */
 const projectProtocols = (protocols: Protocol[], projectId: Id) =>
-  (protocols || []).filter(p => p.projectId === projectId).sort((a, b) => (a.date || "").localeCompare(b.date || ""));
+  (protocols || []).filter(p => protocolScope(p) === projectId).sort(byProtocolDate);
 
 /** Mitarbeitende/r zu einem Verantwortlichen-Text (Name, Vorname oder Kürzel). */
 export function matchEmployee(responsible: string | undefined, employees: Pick<Employee, "id" | "name">[]): Id | undefined {

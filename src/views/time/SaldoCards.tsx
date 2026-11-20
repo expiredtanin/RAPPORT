@@ -1,5 +1,6 @@
 // Zeiterfassung: Saldo-Karte des gewählten Mitarbeiters — eine Tabelle Ist/Soll/Saldo für Monat und
-// «seit Eintritt» (mit Hinweis bei unplausibel grossem Minus) und darunter der Ferienrest in Tagen.
+// «seit Eintritt» (nach Abzug ausbezahlter Überstunden, mit Hinweis bei unplausibel grossem Minus) und darunter
+// der Ferienrest in Tagen.
 
 import { formatDays } from "../../utils";
 import type { Employee } from "../../types";
@@ -57,12 +58,12 @@ export function SaldoCards({ selectedEmp, currentDate, totalSaldo, monthSaldo, f
             <span className="l" title={selectedEmp.eintrittsdatum ? `seit ${new Date(selectedEmp.eintrittsdatum + "T12:00:00").toLocaleDateString("de-CH")}` : undefined}>Seit Eintritt</span>
             <span className="num" title={totalSaldo.absenz > 0 ? `inkl. ${fh(totalSaldo.absenz)} Absenzen` : undefined}>{fh(totalSaldo.ist + totalSaldo.absenz, false, false)}</span>
             <span className="num">{fh(totalSaldo.soll, false, false)}</span>
-            <span className={`num s${suspectSaldo ? "" : saldoCls(totalSaldo.saldo)}`}>{fh(totalSaldo.saldo, true, false)}</span>
+            <span className={`num s${suspectSaldo ? "" : saldoCls(totalSaldo.saldo)}`} title={totalSaldo.paidOut ? `nach Abzug von ${fh(totalSaldo.paidOut)} ausbezahlten Überstunden` : undefined}>{fh(totalSaldo.saldo, true, false)}</span>
           </>
         )}
       </div>
       {suspectSaldo && (
-        <div className="zeit-hint">Sehr grosser Minussaldo — fehlen ältere Einträge? Stichtag/Übertrag unter Mitarbeiter → Personen anpassen.</div>
+        <div className="zeit-hint">Sehr grosser Minussaldo — fehlen ältere Einträge? Eintrittsdatum unter Mitarbeiter → Personen prüfen.</div>
       )}
 
       {ferienSaldo && (

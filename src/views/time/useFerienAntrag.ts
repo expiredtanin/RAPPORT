@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { generateId } from "../../utils";
+import { removeWithUndo } from "../../undo";
 import type { AppData, Employee, FerienEntry, UpdateFn } from "../../types";
 
 /** Zustand und Aktionen für «Ferien beantragen» und die Ferien-Übersicht des gewählten Mitarbeiters. */
@@ -16,26 +17,29 @@ export function useFerienAntrag(data: AppData, update: UpdateFn, employees: Empl
   };
   const saveAntrag = () => {
     if (!antragForm.employeeId || !antragForm.dateFrom || !antragForm.dateTo) return;
-    if (antragForm.id) {
-      const existing = (data.ferienEntries || []).find(f => f.id === antragForm.id);
+    // Von/Bis vertauscht → tauschen (sonst zählte der Antrag 0 Tage und blieb trotzdem stehen)
+    const form = antragForm.dateTo < antragForm.dateFrom ? { ...antragForm, dateFrom: antragForm.dateTo, dateTo: antragForm.dateFrom } : antragForm;
+    if (form.id) {
+      const existing = (data.ferienEntries || []).find(f => f.id === form.id);
       let entry: FerienEntry;
       if (existing?.status === "approved" || !existing?.status) {
+        // Bisher genehmigte Daten sind die des Eintrags selbst (ein altes `originalData` wäre überholt)
         entry = {
-          ...antragForm,
+          ...form,
           status: "pending",
-          originalData: existing?.originalData || { dateFrom: existing!.dateFrom, dateTo: existing!.dateTo, note: existing!.note || "" },
+          originalData: existing ? { dateFrom: existing.dateFrom, dateTo: existing.dateTo, note: existing.note || "" } : null,
         } as FerienEntry;
       } else {
-        entry = { ...antragForm, status: "pending" } as FerienEntry;
+        entry = { ...form, status: "pending" } as FerienEntry;
       }
       update("ferienEntries", (data.ferienEntries || []).map(f => f.id === entry.id ? entry : f));
     } else {
-      const entry = { ...antragForm, id: generateId(), status: "pending", createdAt: new Date().toISOString() } as FerienEntry;
+      const entry = { ...form, id: generateId(), status: "pending", createdAt: new Date().toISOString() } as FerienEntry;
       update("ferienEntries", [...(data.ferienEntries || []), entry]);
     }
     setAntragModal(null);
   };
-  const deleteFerien = (id: string) => update("ferienEntries", (data.ferienEntries || []).filter(f => f.id !== id));
+  const deleteFerien = (id: string) => removeWithUndo("Ferien gelöscht", "ferienEntries", f => f.id === id);
   const cancelFerienEdit = (id: string) => update("ferienEntries", (data.ferienEntries || []).map(f => {
     if (f.id !== id || !f.originalData) return f;
     const { originalData, ...rest } = f;

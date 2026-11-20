@@ -18,7 +18,8 @@
 import React, { useState, useRef, useEffect } from "react";
 import { SIA_PHASES, DASHBOARD_WIDGETS, LEAD_STAGES } from "../constants";
 import { dueFollowUps, isOpenLead, pipelineValue } from "../crm";
-import { formatCHF, formatDate, formatHours, migrateDashboardLayout, widgetsToRows, generateId, getFeiertageForYear, localISODate, invoiceNet, yearRevenue } from "../utils";
+import { formatCHF, formatDate, formatHours, migrateDashboardLayout, widgetsToRows, generateId, getFeiertageForYear, localISODate, invoiceNet, yearRevenue, dailySollHours, getWeekNumber } from "../utils";
+import { createWorktime } from "../worktime";
 import { KpiCard } from "../components/UI";
 import type { AppData, Employee, DashboardRow, DashboardTemplate, TimeEntry, ViewProps } from "../types";
 
@@ -295,8 +296,8 @@ export default function Dashboard({ data, setView, currentUser, userPermissions,
             {monthlyRevenue.map(({m,paid})=>(
               <div key={m} style={{flex:1,minWidth:0,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"flex-end",height:"100%",gap:4}}>
                 <div style={{fontSize:10,color:paid>0?"var(--text3)":"transparent",fontVariantNumeric:"tabular-nums"}}>{paid>0?short(paid):"–"}</div>
-                <div style={{width:"100%",height:paid>0?`${Math.max((paid/maxRev)*64,6)}px`:"2px",background:m===thisMonth?"var(--accent)":paid>0?"var(--positive)":"var(--border2)",borderRadius:"3px 3px 0 0",transition:"height 0.3s"}} title={`${new Date(m+"-01").toLocaleString("de-CH",{month:"long",year:"numeric"})}: ${formatCHF(paid)}`} />
-                <div style={{fontSize:10,color:m===thisMonth?"var(--accent)":"var(--text4)"}}>{new Date(m+"-01").toLocaleString("de-CH",{month:"short"})}</div>
+                <div style={{width:"100%",height:paid>0?`${Math.max((paid/maxRev)*64,6)}px`:"2px",background:m===thisMonth?"var(--accent)":paid>0?"var(--positive)":"var(--border2)",borderRadius:"3px 3px 0 0",transition:"height 0.3s"}} title={`${new Date(m+"-01T12:00:00").toLocaleString("de-CH",{month:"long",year:"numeric"})}: ${formatCHF(paid)}`} />
+                <div style={{fontSize:10,color:m===thisMonth?"var(--accent)":"var(--text4)"}}>{new Date(m+"-01T12:00:00").toLocaleString("de-CH",{month:"short"})}</div>
               </div>
             ))}
           </div>
@@ -410,32 +411,15 @@ export default function Dashboard({ data, setView, currentUser, userPermissions,
     "meine-ferien": () => {
       const myEmp=(data.employees||[]).find(e=>e.id===myEmpId);
       if(!myEmpId||!myEmp) return <div className="card" style={{height:"100%",boxSizing:"border-box",display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,color:"var(--text5)"}}>Kein Mitarbeiterprofil verknüpft</div>;
-      const pensum=(myEmp.pensum||100)/100;
-      const anspruchTage=(myEmp.ferienWochen||5)*5*pensum;
-      const approvedEntries=(data.ferienEntries||[]).filter(f=>f.employeeId===myEmpId&&(f.status==="approved"||!f.status)&&(f.dateFrom||"").startsWith(thisYear));
-      // Feiertage müssen über getFeiertageForYear aufgelöst werden — die Standard-
-      // Feiertage (Settings.jsx "Standard-Feiertage hinzufügen") sind alle mit
-      // repeatsYearly:true und Basisjahr 2000 abgelegt; ein direkter date-Vergleich
-      // gegen data.feiertage matcht dann in keinem anderen Jahr, wodurch Weihnachten,
-      // Neujahr etc. hier fälschlich als normale Arbeitstage gezählt würden.
-      const ftsThisYear=getFeiertageForYear(data.feiertage||[], parseInt(thisYear,10));
-      const countWorkdays=(from: string,to: string)=>{
-        // Reine UTC-Arithmetik — lokale Date-Methoden gemischt mit Datums-
-        // Vergleichen drifteten um die Sommerzeit-Umstellung auseinander.
-        let n=0;const d=new Date(`${from}T00:00:00Z`);const end=new Date(`${to}T00:00:00Z`);
-        while(d<=end){
-          const dow=d.getUTCDay();
-          const ds=d.toISOString().slice(0,10);
-          const isFullHoliday=ftsThisYear.some(ft=>ft.date===ds&&(ft.stundenDelta===0||ft.stundenDelta===null||ft.stundenDelta===undefined));
-          if(dow!==0&&dow!==6&&!isFullHoliday)n++;
-          d.setUTCDate(d.getUTCDate()+1);
-        }
-        return n;
-      };
-      const bezogenTage=approvedEntries.reduce((s,f)=>s+countWorkdays(f.dateFrom,f.dateTo),0);
-      const restTage=anspruchTage-bezogenTage;
-      const pct=Math.min(bezogenTage/anspruchTage,1);
-      const upcoming=(data.ferienEntries||[]).filter(f=>f.employeeId===myEmpId&&(f.status==="approved"||!f.status)&&f.dateFrom>today).slice(0,2);
+      // Gleiche Rechnung wie Zeiterfassung und Mitarbeiter (worktime.ts): anteiliger Anspruch, Übertrag, Halbtage
+      const fy=createWorktime(data, today).vacationYear(myEmp, parseInt(thisYear,10));
+      const perDay=dailySollHours(myEmp)||1;
+      const toDays=(h: number)=>Math.round(h/perDay*10)/10;
+      const anspruchTage=toDays(fy.anspruch+fy.ubertrag);
+      const bezogenTage=toDays(fy.bezogen+fy.geplant);
+      const restTage=toDays(fy.rest);
+      const pct=anspruchTage>0?Math.min(bezogenTage/anspruchTage,1):0;
+      const upcoming=(data.ferienEntries||[]).filter(f=>f.employeeId===myEmpId&&(f.status==="approved"||!f.status)&&f.dateFrom>today).sort((a,b)=>a.dateFrom.localeCompare(b.dateFrom)).slice(0,2);
       return (
         <div className="card" style={{height:"100%",boxSizing:"border-box"}}>
           <div style={{fontSize:11,fontWeight:600,letterSpacing:"0.1em",color:"var(--text4)",marginBottom:14}}>FERIENSTAND {thisYear}</div>
@@ -467,33 +451,16 @@ export default function Dashboard({ data, setView, currentUser, userPermissions,
     "ueberstunden": () => {
       const myEmp=(data.employees||[]).find(e=>e.id===myEmpId);
       if(!myEmpId||!myEmp) return <div className="card" style={{height:"100%",boxSizing:"border-box",display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,color:"var(--text5)"}}>Kein Mitarbeiterprofil verknüpft</div>;
-      const pensum=(myEmp.pensum||100)/100;
-      const tagessollH=((myEmp.wochenstunden||35)*pensum)/5;
-      const startOfYear=`${thisYear}-01-01`;
-      // getFeiertageForYear löst repeatsYearly-Feiertage (Standard-Feiertage sind alle
-      // mit Basisjahr 2000 abgelegt, siehe Settings.jsx) auf das aktuelle Jahr auf —
-      // ein direkter Vergleich gegen data.feiertage würde in jedem Jahr ausser 2000
-      // keinen Treffer finden und Feiertage fälschlich als normale Arbeitstage zählen.
-      const fts=getFeiertageForYear(data.feiertage||[], parseInt(thisYear,10));
-      // Respect eintrittsdatum: only count from when the employee actually started
-      const effectiveYearStart=myEmp.eintrittsdatum&&myEmp.eintrittsdatum>startOfYear?myEmp.eintrittsdatum:startOfYear;
-      const todayD=new Date(`${today}T00:00:00Z`);
-      let workdays=0;const d=new Date(`${effectiveYearStart}T00:00:00Z`);
-      while(d<=todayD){const dow=d.getUTCDay();const ds=d.toISOString().slice(0,10);const ft=fts.find(f=>f.date===ds);const isFt=ft&&(ft.stundenDelta===0||ft.stundenDelta===null||ft.stundenDelta===undefined);if(dow!==0&&dow!==6&&!isFt)workdays++;d.setUTCDate(d.getUTCDate()+1);}
-      const sollMin=workdays*tagessollH*60;
-      const istMin=data.timeEntries.filter(e=>e.employeeId===myEmpId&&(e.date||"")>=effectiveYearStart&&(e.date||"")<=today).reduce((s,e)=>s+(e.minutes||0),0);
+      // Gleiche Rechnung wie Zeiterfassung und Mitarbeiter (worktime.ts): Ferien, Absenzen, Halbtage, Ein-/Austritt.
+      // Vorher zählten hier weder Ferien noch Absenzen — wer Ferien hatte, sah Minusstunden.
+      const wt=createWorktime(data, today);
+      const yearP=wt.period(myEmp, `${thisYear}-01-01`, today);
+      const monthP=wt.period(myEmp, `${thisMonth}-01`, today);
+      const credited=(p: typeof yearP)=>Math.round((p.ist+p.absenz+p.ferien)*60);
+      const istMin=credited(yearP), sollMin=Math.round(yearP.sollBrutto*60);
       const deltaMin=istMin-sollMin;
       const isPos=deltaMin>=0;
-      // This month — also respect eintrittsdatum
-      const effectiveMonthStart=myEmp.eintrittsdatum&&myEmp.eintrittsdatum>`${thisMonth}-01`?myEmp.eintrittsdatum:`${thisMonth}-01`;
-      const sollMonthMin=(() => {
-        const [my,mm]=thisMonth.split("-").map(Number);
-        let wd=0;const me=new Date(Date.UTC(my,mm,0)); // Tag 0 des Folgemonats = letzter Tag dieses Monats
-        const end=me<todayD?me:todayD;const dd=new Date(`${effectiveMonthStart}T00:00:00Z`);
-        while(dd<=end){const dow=dd.getUTCDay();const ds=dd.toISOString().slice(0,10);const ft=fts.find(f=>f.date===ds);const isFt=ft&&(ft.stundenDelta===0||ft.stundenDelta===null||ft.stundenDelta===undefined);if(dow!==0&&dow!==6&&!isFt)wd++;dd.setUTCDate(dd.getUTCDate()+1);}
-        return wd*tagessollH*60;
-      })();
-      const istMonthMin=data.timeEntries.filter(e=>e.employeeId===myEmpId&&(e.date||"").startsWith(thisMonth)).reduce((s,e)=>s+(e.minutes||0),0);
+      const istMonthMin=credited(monthP), sollMonthMin=Math.round(monthP.sollBrutto*60);
       const deltaMonth=istMonthMin-sollMonthMin;
       return (
         <div className="card" style={{height:"100%",boxSizing:"border-box"}}>
@@ -534,7 +501,7 @@ export default function Dashboard({ data, setView, currentUser, userPermissions,
         const sunStr=sun.toISOString().slice(0,10);
         const isCurrent=i===4;
         const mins=(myEmpId?data.timeEntries.filter(e=>e.employeeId===myEmpId&&e.date>=monStr&&e.date<=sunStr):data.timeEntries.filter(e=>e.date>=monStr&&e.date<=sunStr)).reduce((s,e)=>s+(e.minutes||0),0);
-        const kw=(() => { const d2=new Date(mon);d2.setHours(0,0,0,0);d2.setDate(d2.getDate()+3-(d2.getDay()||7)+1); const w1=new Date(d2.getFullYear(),0,4);return 1+Math.round(((d2.getTime()-w1.getTime())/86400000+((w1.getDay()||7)-1))/7); })();
+        const kw=getWeekNumber(monStr); // ISO 8601, gleiche Funktion wie Zeiterfassung und Terminprogramm
         return {kw,mins,isCurrent};
       });
       const maxMins=Math.max(...weeks.map(w=>w.mins),sollH*60,1);
@@ -565,7 +532,8 @@ export default function Dashboard({ data, setView, currentUser, userPermissions,
 
     "interner-blog": () => {
       const posts = (data.blogPosts || []);
-      const recent = [...posts].sort((a,b) => {
+      // Entwürfe gehören nicht auf die Übersicht aller (in der Pinnwand sieht sie nur der Autor bzw. Admin)
+      const recent = posts.filter(p => p.status !== "entwurf").sort((a,b) => {
         if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
         return b.createdAt.localeCompare(a.createdAt);
       }).slice(0, 3);
@@ -589,7 +557,7 @@ export default function Dashboard({ data, setView, currentUser, userPermissions,
             <button onClick={()=>!editMode&&setView("pinnwand")} style={{background:"none",border:"none",fontSize:11,color:"var(--text4)",cursor:"pointer",fontFamily:"inherit"}}>Alle →</button>
           </div>
           {feiertageWeek.length>0&&(
-            <div style={{padding:"8px 12px",background:"var(--positive-bg)",border:"1px solid #a8d8b8",borderRadius:8,marginBottom:12,fontSize:11,color:"var(--positive)",display:"flex",gap:8,alignItems:"center"}}>
+            <div style={{padding:"8px 12px",background:"var(--positive-bg)",border:"1px solid color-mix(in srgb, var(--positive) 30%, transparent)",borderRadius:8,marginBottom:12,fontSize:11,color:"var(--positive)",display:"flex",gap:8,alignItems:"center"}}>
               <span>🎉</span>
               <span><b>Feiertag diese Woche:</b> {feiertageWeek.map(f=>f.label).join(", ")}</span>
             </div>

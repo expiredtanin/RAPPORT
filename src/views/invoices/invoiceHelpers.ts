@@ -1,7 +1,7 @@
 // Reine Hilfen der Rechnungsansicht (views/invoices/): Formular-Typen, Summenberechnung, Rechnungsnummern
 // und die Erzeugung der Akonto-Plan-Rechnungen. Keine React-Abhängigkeiten.
 
-import { deriveQuoteBudget, generateId, localISODate, migrateLinkedQuotes, roundCHF } from "../../utils";
+import { deriveQuoteBudget, generateId, lineAmount, localISODate, migrateLinkedQuotes, roundCHF } from "../../utils";
 import type { AppData, Invoice, InvoiceItem, Project, Quote, Role, TimeEntry } from "../../types";
 
 /**
@@ -24,11 +24,8 @@ export type EntrySelections = NonNullable<Invoice["entrySelections"]>;
  * Rechnung, PDF und QR-Zahlteil genau das Total ergeben.
  */
 export const calcTotal = (items: InvoiceItem[] | undefined, mwst: boolean | undefined, rate: number, discountType?: string, discountValue?: number) => {
-  const sub = roundCHF((items || []).reduce((s, i) => {
-    const line = i.qty * i.price;
-    const disc = (i.discount || 0) > 0 ? line * ((i.discount || 0) / 100) : 0;
-    return s + line - disc;
-  }, 0));
+  // Jede Position auf Rappen (wie gedruckt), das Zwischentotal ist ihre Summe
+  const sub = roundCHF((items || []).reduce((s, i) => s + lineAmount(i.qty, i.price, i.discount), 0));
   const globalDisc = roundCHF(discountType === "percent" ? sub * ((discountValue || 0) / 100)
     : discountType === "amount" ? (discountValue || 0) : 0);
   const subAfterDisc = roundCHF(sub - globalDisc);
@@ -37,11 +34,8 @@ export const calcTotal = (items: InvoiceItem[] | undefined, mwst: boolean | unde
   return { sub, globalDisc, subAfterDisc, tax, total };
 };
 
-/** Zeilentotal einer Position inklusive Zeilenrabatt. */
-export const calcLineTotal = (item: Pick<InvoiceItem, "qty" | "price" | "discount">) => {
-  const line = (item.qty || 0) * (item.price || 0);
-  return line * (1 - ((item.discount || 0) / 100));
-};
+/** Zeilentotal einer Position inklusive Zeilenrabatt, auf Rappen (`lineAmount`). */
+export const calcLineTotal = (item: Pick<InvoiceItem, "qty" | "price" | "discount">) => lineAmount(item.qty, item.price, item.discount);
 
 /**
  * Nächste Rechnungsnummer nach dem konfigurierten Format. Jahr und Monat (YYYY/YY/MM) kommen aus dem
@@ -98,15 +92,17 @@ export const AKONTO_MAX_RATES = 24;
 
 /**
  * Raten des Akonto-Plans: gleichmässig aus Intervall/Anzahl berechnet (Anzahl auf 1–24 begrenzt, der Betrag
- * wird durch die tatsächliche Anzahl geteilt) oder die manuell erfassten Zeilen.
+ * wird durch die tatsächliche Anzahl geteilt, die letzte Rate gleicht die Rappen aus, damit die Raten genau
+ * den Planbetrag ergeben) oder die manuell erfassten Zeilen.
  */
 export const akontoPlanRows = (ap: AkontoPlan) => {
   if (ap.mode === "interval") {
     const start = ap.startDate || defaultStartDate();
     const count = Math.max(1, Math.min(Math.floor(ap.count) || 1, AKONTO_MAX_RATES));
-    const perInv = Math.round((ap.totalAmt / count) * 100) / 100;
+    const perInv = roundCHF(ap.totalAmt / count);
+    const last = roundCHF(ap.totalAmt - perInv * (count - 1));
     return Array.from({ length: count }, (_, i) => {
-      return { id: String(i), date: addMonthsClamped(start, i * (ap.intervalMonths || 1)), amt: perInv };
+      return { id: String(i), date: addMonthsClamped(start, i * (ap.intervalMonths || 1)), amt: i === count - 1 ? last : perInv };
     });
   }
   return ap.manualRows;

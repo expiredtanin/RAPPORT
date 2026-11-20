@@ -26,22 +26,27 @@ function Letters({ data, update, setPrintContent }: Pick<ViewProps, "data" | "up
     if (!tpl) return;
     const client = (data.persons || []).find(c => c.id === cId);
     const proj = data.projects.find(p => p.id === pId);
+    // Namen landen im HTML des Editors: «&», «<» usw. maskieren (z.B. «Müller & Partner»)
+    const esc = (v: string) => v.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
     const text = (tpl.body || "")
-      .replace(/\{\{client\}\}/g, client?.name || "[Kunde]")
-      .replace(/\{\{project\}\}/g, proj?.name || "[Projekt]");
+      .replace(/\{\{client\}\}/g, () => esc(client?.name || "[Kunde]"))
+      .replace(/\{\{project\}\}/g, () => esc(proj?.name || "[Projekt]"));
     setBody(textToHtml(text));
     setSubject(tpl.name);
   };
 
   const client = ((data.persons||[])).find(c => c.id === clientId);
 
+  // Name der neuen Vorlage im Feld unter der Auswahl (kein window.prompt: im Tauri-WebView stumm); null = zu
+  const [newName, setNewName] = useState<string | null>(null);
   const saveAsTemplate = () => {
-    const name = prompt("Name der neuen Vorlage?");
+    const name = (newName || "").trim();
     if (!name) return;
     const tpl = { id: generateId(), name, body };
     update("letterTemplates", [...data.letterTemplates, tpl]);
     setSelectedTemplate(tpl.id);
     setSubject(name);
+    setNewName(null);
   };
 
   const updateTemplate = () => {
@@ -81,9 +86,16 @@ function Letters({ data, update, setPrintContent }: Pick<ViewProps, "data" | "up
             </select>
             <div style={{ display: "flex", gap: 6 }}>
               <button className="btn btn-ghost" style={{ flex: 1, fontSize: 11, padding: "5px 8px" }} onClick={updateTemplate}>Überschreiben</button>
-              <button className="btn btn-ghost" style={{ flex: 1, fontSize: 11, padding: "5px 8px" }} onClick={saveAsTemplate}>Neu speichern</button>
+              <button className="btn btn-ghost" style={{ flex: 1, fontSize: 11, padding: "5px 8px" }} onClick={() => setNewName(subject || "")}>Neu speichern</button>
               <button className="btn btn-ghost" style={{ padding: "5px 8px", fontSize: 11 }} onClick={deleteTemplate}><span className="msr" style={{ fontSize: 16 }}>close</span></button>
             </div>
+            {newName !== null && (
+              <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
+                <input autoFocus value={newName} onChange={e => setNewName(e.target.value)} placeholder="Name der neuen Vorlage"
+                  onKeyDown={e => { if (e.key === "Enter") saveAsTemplate(); if (e.key === "Escape") setNewName(null); }} style={{ flex: 1, fontSize: 12 }} />
+                <button className="btn btn-primary" style={{ fontSize: 11, padding: "5px 10px" }} disabled={!newName.trim()} onClick={saveAsTemplate}>Speichern</button>
+              </div>
+            )}
           </div>
 
           <div className="card">

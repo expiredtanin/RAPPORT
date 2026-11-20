@@ -20,7 +20,9 @@ export function BudgetCard({ project, data, entries, positions, projectInvoices,
   setBudgetChartView: (v: string) => void;
   onOpenBudget: () => void;
 }) {
-  const linked = migrateLinkedQuotes(project);
+  // «Referenz»-Offerten fliessen nie ins Budget (wie deriveQuoteBudget) — sonst erschienen sie als zweite
+  // Hauptofferte mit denselben Stunden und verdoppelten Summe und Gesamtbalken.
+  const linked = migrateLinkedQuotes(project).filter(lq => lq.role !== "Referenz");
   const derived = linked.length > 0 ? deriveQuoteBudget(linked, data.quotes || [], data.settings.roles || []) : null;
   const amountBudget = projectFee(project) || derived?.budgetAmount || 0;
   // Entwürfe sind noch nicht ausgestellt und dürfen den Budgetverbrauch
@@ -109,11 +111,11 @@ export function BudgetCard({ project, data, entries, positions, projectInvoices,
               const segW = (r.qHours / totalBudgetH) * 100;
               const fillW = Math.min((r.usedH / r.qHours) * 100, 100);
               const isOver = r.usedH > r.qHours;
-              const segBg = r.isNT ? "#c8d8ee" : "#b8dcc8";
+              const segBg = `color-mix(in srgb, ${r.isNT ? "var(--info)" : "var(--positive)"} 30%, var(--surface))`;
               const fillColor = isOver ? "var(--negative)" : (r.isNT ? "var(--info)" : "var(--positive)");
               const label = r.posCode || (r.isNT ? "NT" : "HO");
               return (
-                <div key={r.lq.quoteId} style={{ width: `${segW}%`, position: "relative", background: segBg, borderRight: idx < arr.length - 1 ? "2px solid #fff" : "none", overflow: "hidden", flexShrink: 0 }}>
+                <div key={r.lq.quoteId} style={{ width: `${segW}%`, position: "relative", background: segBg, borderRight: idx < arr.length - 1 ? "2px solid var(--surface)" : "none", overflow: "hidden", flexShrink: 0 }}>
                   <div style={{ width: `${fillW}%`, height: "100%", background: fillColor, transition: "width 0.4s" }} />
                   {segW > 6 && <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9, fontWeight: 700, color: "#fff", pointerEvents: "none", textShadow: "0 1px 2px rgba(0,0,0,0.4)" }}>{label}</div>}
                 </div>
@@ -161,7 +163,7 @@ export function BudgetCard({ project, data, entries, positions, projectInvoices,
               <div key={lq.quoteId} style={{ marginBottom: 14, paddingBottom: 14, borderBottom: "1px solid var(--border2)" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <span style={{ fontSize: 10, fontWeight: 600, padding: "2px 7px", borderRadius: 20, letterSpacing: "0.04em", background: isNT ? "var(--info-bg)" : "#f0f8f4", color: isNT ? "var(--info)" : "var(--positive)", border: `1px solid ${isNT ? "#b0c8e8" : "#b8dcc8"}` }}>
+                    <span style={{ fontSize: 10, fontWeight: 600, padding: "2px 7px", borderRadius: 20, letterSpacing: "0.04em", background: isNT ? "var(--info-bg)" : "var(--positive-bg)", color: isNT ? "var(--info)" : "var(--positive)", border: `1px solid color-mix(in srgb, ${isNT ? "var(--info)" : "var(--positive)"} 35%, transparent)` }}>
                       {isNT ? "↪ " : "⬡ "}{lq.role}
                     </span>
                     <span style={{ fontSize: 12, color: "var(--text3)" }}>

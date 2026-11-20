@@ -11,7 +11,7 @@ import React, { useState, useEffect, useRef } from "react";
 import type { CSSProperties, InputHTMLAttributes, ReactNode } from "react";
 import { STATUS_COLORS, STATUS_BG, statusVar } from "../constants";
 import type { Settings } from "../types";
-import { localISODate } from "../utils";
+import { localISODate, sanitizeHtml } from "../utils";
 
 /** Rückgabe der Datumsfelder: ein Mini-Event, das wie bei <input> `e.target.value` liefert. */
 export type DateChangeEvent = { target: { value: string } };
@@ -383,7 +383,8 @@ export function RichEditor({ value, onChange, minHeight = 420, compact = false }
   // mit einem schon gefüllten `value` startet (z.B. gespeichertes Protokoll öffnen); der Effekt
   // darunter greift nur bei späteren Änderungen von aussen.
   React.useLayoutEffect(() => {
-    if (editorRef.current) editorRef.current.innerHTML = value;
+    // Gespeichertes HTML stammt evtl. von anderen (Cloud, Datenordner, Import) → nur bereinigt einsetzen (kein onerror & Co.)
+    if (editorRef.current) editorRef.current.innerHTML = sanitizeHtml(value);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -391,7 +392,7 @@ export function RichEditor({ value, onChange, minHeight = 420, compact = false }
   useEffect(() => {
     if (!editorRef.current) return;
     if (value !== lastValue.current && !isInternalChange.current) {
-      editorRef.current.innerHTML = value;
+      editorRef.current.innerHTML = sanitizeHtml(value);
       lastValue.current = value;
     }
     isInternalChange.current = false;

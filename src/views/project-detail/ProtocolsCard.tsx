@@ -33,8 +33,9 @@ export function ProtocolsCard({ data, saveAll, projectId }: {
               const abbr = data.settings.protokollTypeAbbreviations || {};
               const typKuerzel = abbr[PROTOKOLL_TYPES[0]] || "SO";
               const proj = data.projects.find(x => x.id === projectId);
-              const seq = nextProtoSeq(all);
-              return applyProtoNumberFormat(data.settings.protokollNumberFormat || "PP-TT-NN", {
+              const fmt = data.settings.protokollNumberFormat || "YYYY-TT-NN";
+              const seq = nextProtoSeq(all, fmt);
+              return applyProtoNumberFormat(fmt, {
                 date: localISODate(),
                 projectNumber: proj?.number || "",
                 seq,

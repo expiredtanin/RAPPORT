@@ -43,6 +43,9 @@ interface DayViewProps {
 /** «7.5» bzw. «8» (eine Dezimale, ohne «.0»). */
 const h1 = (h: number) => { const r = Math.round(h * 10) / 10; return Number.isInteger(r) ? String(r) : r.toFixed(1); };
 
+/** Minuten-Auswahl in Viertelstunden, plus der aktuelle Wert, wenn er dazwischen liegt (z.B. 17 min aus der Stoppuhr). */
+const minuteOptions = (current: number) => [...new Set([0, 15, 30, 45, current])].sort((a, b) => a - b);
+
 /** Löschknopf einer Zeile. */
 function DelBtn({ onClick, disabled, label }: { onClick: () => void; disabled?: boolean; label: string }) {
   return (
@@ -104,7 +107,7 @@ export function DayView({ data, selectedEmp, dayEntries, dayTotalMins, daySoll, 
                 <input className="d" aria-label="Tätigkeit" disabled={disabled} value={e.description || ""} onChange={ev => updateEntry(e.id, { description: ev.target.value })} placeholder="Was wurde gemacht?" />
                 <input className="h" aria-label="Stunden" title="Stunden" disabled={disabled} type="number" min={0} max={24} value={Math.floor((e.minutes || 0) / 60)} onChange={ev => updateEntry(e.id, { minutes: (+ev.target.value * 60) + ((e.minutes || 0) % 60) })} />
                 <select className="m" aria-label="Minuten" title="Minuten" disabled={disabled} value={(e.minutes || 0) % 60} onChange={ev => updateEntry(e.id, { minutes: Math.floor((e.minutes || 0) / 60) * 60 + +ev.target.value })}>
-                  {[0, 15, 30, 45].map(m => <option key={m} value={m}>{String(m).padStart(2, "0")}′</option>)}
+                  {minuteOptions((e.minutes || 0) % 60).map(m => <option key={m} value={m}>{String(m).padStart(2, "0")}′</option>)}
                 </select>
                 <DelBtn disabled={disabled} onClick={() => delEntry(e.id)} label="Eintrag löschen" />
               </div>
@@ -161,7 +164,7 @@ export function DayView({ data, selectedEmp, dayEntries, dayTotalMins, daySoll, 
                   <input className="d" aria-label="Bemerkung" value={a.note || ""} onChange={ev => updateAbs(a.id, { note: ev.target.value })} placeholder="Bemerkung …" />
                   <input className="h" aria-label="Stunden" title="Stunden" type="number" min={0} max={24} value={absH} onChange={ev => updateAbs(a.id, { hours: +ev.target.value, minutes: absM })} />
                   <select className="m" aria-label="Minuten" title="Minuten" value={absM} onChange={ev => updateAbs(a.id, { hours: absH, minutes: +ev.target.value })}>
-                    {[0, 15, 30, 45].map(m => <option key={m} value={m}>{String(m).padStart(2, "0")}′</option>)}
+                    {minuteOptions(absM).map(m => <option key={m} value={m}>{String(m).padStart(2, "0")}′</option>)}
                   </select>
                   <DelBtn onClick={() => delAbs(a.id)} label="Absenz löschen" />
                 </div>

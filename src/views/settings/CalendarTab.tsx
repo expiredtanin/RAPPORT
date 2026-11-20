@@ -4,6 +4,8 @@
 import { useState } from "react";
 import { DEFAULT_ABSENZ_TYPES } from "../../constants";
 import { generateId, getAbsenzTypes } from "../../utils";
+import { swissHolidayTemplate } from "../../worktime";
+import { showToast } from "../../toast";
 import { FormField, Modal, DateInput } from "../../components/UI";
 import type { AbsenzType, Feiertag, ViewProps } from "../../types";
 
@@ -19,6 +21,7 @@ export function CalendarTab({ data, update }: Pick<ViewProps, "data" | "update">
   const defaultAbsenzIds = new Set(DEFAULT_ABSENZ_TYPES.map(t => t.id));
 
   const saveFt = () => {
+    if (!ftForm.date) { showToast("Bitte ein Datum angeben."); return; }
     const isNew = !ftForm.id;
     const ft = { ...ftForm, id: ftForm.id || generateId() } as Feiertag;
     update("feiertage", isNew ? [...feiertage, ft] : feiertage.map(f => f.id === ft.id ? ft : f));
@@ -35,7 +38,7 @@ export function CalendarTab({ data, update }: Pick<ViewProps, "data" | "update">
   };
   const delAbsenzType = (id: string) => {
     const inUse = (data.absences || []).some(a => a.type === id);
-    if (inUse) { alert("Dieser Absenztyp ist bereits vergeben und kann nicht gelöscht werden."); return; }
+    if (inUse) { showToast("Dieser Absenztyp ist bereits vergeben und kann nicht gelöscht werden."); return; }
     if (defaultAbsenzIds.has(id)) {
       const custom = data.absenzTypes || [];
       const exists = custom.some(x => x.id === id);
@@ -90,7 +93,7 @@ export function CalendarTab({ data, update }: Pick<ViewProps, "data" | "update">
             <button className="btn btn-ghost" style={{ padding: "3px 10px", fontSize: 11 }} onClick={() => { setFtForm({ date: "", label: "", stundenDelta: 0, repeatsYearly: true }); setKalModal("ft"); }}>+ Feiertag</button>
           </div>
           <div style={{ fontSize: 11, color: "var(--text5)", marginBottom: 14, lineHeight: 1.6 }}>
-            Gelten für alle Mitarbeiter. Jährlich wiederkehrende werden automatisch übertragen. Mit «Stunden-Delta» lassen sich Halbfeiertage definieren (z.B. −3.5h für den 24.12.).
+            Gelten für alle Mitarbeiter. Jährlich wiederkehrende werden automatisch übertragen. Mit «Stunden-Delta» lassen sich Halbfeiertage definieren (z.B. −3.5h für den 24.12.; gilt für 100 %, bei Teilzeit anteilig). Am Werktag vor einem ganzen Feiertag zählt das Soll 1 h weniger.
           </div>
           <div className="card" style={{ padding: 0, marginBottom: feiertage.length === 0 ? 12 : 0 }}>
             <table>
@@ -111,48 +114,19 @@ export function CalendarTab({ data, update }: Pick<ViewProps, "data" | "update">
               </tbody>
             </table>
           </div>
-          {feiertage.length === 0 && (
-            <button className="btn btn-ghost" style={{ fontSize: 11, width: "100%" }} onClick={() => {
-              const easterSunday = (year: number) => {
-                const a = year%19, b = Math.floor(year/100), c = year%100;
-                const d = Math.floor(b/4), e = b%4, f = Math.floor((b+8)/25);
-                const g = Math.floor((b-f+1)/3), h = (19*a+b-d-g+15)%30;
-                const i = Math.floor(c/4), k = c%4;
-                const l = (32+2*e+2*i-h-k)%7;
-                const m = Math.floor((a+11*h+22*l)/451);
-                const month = Math.floor((h+l-7*m+114)/31);
-                const day = ((h+l-7*m+114)%31)+1;
-                return new Date(year, month-1, day);
-              };
-              const addDays = (date: Date, days: number) => { const d = new Date(date); d.setDate(d.getDate()+days); return d; };
-              const fmt = (date: Date) => `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
-              const yr = new Date().getFullYear();
-              const fixe = [
-                { label: "Neujahr", date: "2000-01-01", stundenDelta: 0, repeatsYearly: true },
-                { label: "Berchtoldstag", date: "2000-01-02", stundenDelta: 0, repeatsYearly: true },
-                { label: "Tag der Arbeit", date: "2000-05-01", stundenDelta: 0, repeatsYearly: true },
-                { label: "Nationalfeiertag", date: "2000-08-01", stundenDelta: 0, repeatsYearly: true },
-                { label: "Weihnachten", date: "2000-12-25", stundenDelta: 0, repeatsYearly: true },
-                { label: "Stephanstag", date: "2000-12-26", stundenDelta: 0, repeatsYearly: true },
-                { label: "Heiligabend (Halbtag)", date: "2000-12-24", stundenDelta: -3.5, repeatsYearly: true },
-                { label: "Silvester (Halbtag)", date: "2000-12-31", stundenDelta: -3.5, repeatsYearly: true },
-              ].map(f => ({ ...f, id: generateId() }));
-              const beweglich: Feiertag[] = [];
-              for (let y = yr; y <= yr+3; y++) {
-                const ostern = easterSunday(y);
-                [
-                  { label: "Karfreitag", offset: -2 },
-                  { label: "Ostermontag", offset: 1 },
-                  { label: "Auffahrt", offset: 39 },
-                  { label: "Auffahrt Vortag (Halbtag)", offset: 38, stundenDelta: -3.5 },
-                  { label: "Pfingstmontag", offset: 50 },
-                ].forEach(({ label, offset, stundenDelta = 0 }) => {
-                  beweglich.push({ id: generateId(), label, date: fmt(addDays(ostern, offset)), stundenDelta, repeatsYearly: false });
-                });
-              }
-              update("feiertage", [...feiertage, ...fixe, ...beweglich]);
-            }}>↓ CH-Vorlagen laden (inkl. Ostern, Auffahrt, Pfingsten…)</button>
-          )}
+          {(() => {
+            // Vorlage Kanton Zürich: fehlende feste Feiertage und die beweglichen (Ostern-abhängigen) für dieses
+            // und die nächsten drei Jahre ergänzen. Bewegliche gibt es nur pro Jahr — der Knopf bleibt deshalb
+            // sichtbar, solange für eines der Jahre etwas fehlt (vorher nur bei leerer Liste, danach nie mehr).
+            const yr = new Date().getFullYear();
+            const missing = swissHolidayTemplate(feiertage, yr, yr + 3);
+            if (missing.length === 0) return null;
+            const label = feiertage.length === 0 ? "↓ Feiertage Kanton Zürich laden (inkl. Ostern, Auffahrt, Pfingsten …)" : `↓ Fehlende Feiertage ${yr}–${yr + 3} ergänzen (${missing.length})`;
+            return (
+              <button className="btn btn-ghost" style={{ fontSize: 11, width: "100%", marginTop: feiertage.length === 0 ? 0 : 12 }}
+                onClick={() => update("feiertage", [...feiertage, ...missing.map(f => ({ ...f, id: generateId() }))])}>{label}</button>
+            );
+          })()}
         </div>
 
         <div className="card">
