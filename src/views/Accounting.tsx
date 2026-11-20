@@ -1,22 +1,15 @@
 // Buchhaltung: Jahresübersicht aus Rechnungen, Spesen, internen Ausgaben und
 // Lohnabrechnungen, plus Mahnwesen und Export (PDF/CSV).
 //
-// Rechenregeln (alle bewusst so, nicht vereinfachen):
-//   - Einnahmen = Umsatz netto nach Rabatt (`invoiceNet`) der gestellten Rechnungen des Jahres nach
-//     Rechnungsdatum, OHNE Entwürfe (`yearRevenue`, dieselbe Regel wie Übersicht und «Heute»); Entwürfe
-//     werden nur als «erwartet» daneben ausgewiesen und fliessen nicht ins Ergebnis.
-//   - MWST-Schuld: nur nicht-Entwürfe; Akonto-MWST wird getrennt ausgewiesen, weil
-//     sie erst bei der Schlussrechnung steuerrelevant ist.
-//   - Spesen, die über eine Lohnabrechnung ausbezahlt wurden (`lohnEntryId`), stecken
-//     schon in `lohn.auszahlung` und werden für die Summen NICHT doppelt gezählt.
-//   - Personalaufwand = Auszahlung + Arbeitgeberanteil Pensionskasse (`bvgAG`).
-//   - Vorsteuer = MWST-Anteil aus Spesen und internen Ausgaben.
-// Der CSV-Export (`exportBuchhaltungCSV` in utils.ts) muss dieselben Regeln
-// einhalten; bei Änderungen beides anpassen.
+// Rechenregeln: `accountingSummary` in accounting.ts (dort im Dateikopf beschrieben) — dieselbe
+// Funktion speist die Druckvorlage und den CSV-Export. Kurz: Einnahmen = gestellte Rechnungen netto
+// (wie `yearRevenue`), Entwürfe nur «erwartet»; Akonto-MWST getrennt «ausstehend»; Spesen alle mit
+// Netto/Vorsteuer (auch über Lohn ausbezahlte); Personalaufwand = Bruttolohn + AG-Beiträge.
 // Überfällig = Status «gesendet»/«überfällig» mit Fälligkeit vor heute.
 
 import React, { useState } from "react";
-import { formatCHF, formatDate, exportBuchhaltungCSV, localISODate, invoiceNet, yearRevenue } from "../utils";
+import { formatCHF, formatDate, localISODate, invoiceNet } from "../utils";
+import { accountingSummary, exportBuchhaltungCSV } from "../accounting";
 import { Header, StatusBadge, KpiCard, ShareButton } from "../components/UI";
 import { MahnModal } from "../components/MahnModal";
 import { ReceiptViewer } from "../components/ReceiptViewer";
@@ -47,52 +40,39 @@ function Accounting({ data, update, setView, setPrintContent }: Pick<ViewProps, 
   const availableYears = Array.from(new Set([
     ...data.invoices.map(i => (i.date || "").slice(0, 4)),
     ...(data.expenses || []).map(e => (e.date || "").slice(0, 4)),
+    ...(data.internalExpenses || []).map(e => (e.date || "").slice(0, 4)),
+    ...(data.lohnEntries || []).map(l => (l.monat || "").slice(0, 4)),
   ].filter(Boolean))).sort().reverse();
   if (!availableYears.includes(currentYear)) availableYears.unshift(currentYear);
 
-  // Gefilterte Daten
-  const invoices = data.invoices.filter(i => !filterYear || (i.date || "").startsWith(filterYear));
+  // Gefilterte Daten und Summen — eine Quelle für Ansicht, PDF und CSV (accounting.ts)
   const expenses = (data.expenses || []).filter(e => !filterYear || (e.date || "").startsWith(filterYear));
-  const lohnEntries = (data.lohnEntries || []).filter(l => !filterYear || l.monat.startsWith(filterYear));
+  const sum = accountingSummary(data, filterYear);
 
   // Einnahmen
-  const totalInvoiced = yearRevenue(invoices, "");
-  // Entwürfe sind noch nicht ausgestellt — es entsteht noch keine MWST-Schuld.
-  const totalTax = invoices.filter(i => i.status !== "entwurf").reduce((s, i) => s + (i.tax || 0), 0);
-  // Akonto-MwSt ist erst bei Schlussrechnung steuerrelevant — separat ausweisen
-  const akontoInvoices = invoices.filter(i => i.invoiceKind === "akonto" && i.status !== "entwurf");
-  const akontoTax = akontoInvoices.reduce((s, i) => s + (i.tax || 0), 0);
-  const taxWithoutAkonto = totalTax - akontoTax;
-  const totalPaid = invoices.filter(i => i.status === "bezahlt").reduce((s, i) => s + (i.total || 0), 0);
+  const totalInvoiced = sum.revenueNet;
+  const { akontoTax, taxWithoutAkonto } = sum;
+  const totalPaid = sum.paidTotal;
   // Entwürfe sind noch nicht verschickt, also keine offene Forderung.
-  const totalOpen = invoices.filter(i => i.status === "gesendet").reduce((s, i) => s + (i.total || 0), 0);
-  const totalOverdue = invoices.filter(i => i.status === "überfällig").reduce((s, i) => s + (i.total || 0), 0);
-  const totalDraftSub = invoices.filter(i => i.status === "entwurf").reduce((s, i) => s + invoiceNet(i), 0);
-  const issuedCount = invoices.filter(i => i.status !== "entwurf").length;
+  const totalOpen = sum.openTotal;
+  const totalOverdue = sum.overdueTotal;
+  const totalDraftSub = sum.draftNet;
+  const issuedCount = sum.issuedCount;
 
-  // Ausgaben Spesen — über Lohnabrechnung ausbezahlte Spesen (lohnEntryId
-  // gesetzt) stecken bereits in l.auszahlung (siehe totalLoehne unten) und
-  // dürfen hier nicht nochmals mitgezählt werden, sonst werden sie doppelt
-  // verbucht.
-  const expensesForTotals = expenses.filter(e => !e.lohnEntryId);
-  const totalExpBrutto = expensesForTotals.reduce((s, e) => s + (e.amount || 0), 0);
-  const totalExpNet = expensesForTotals.reduce((s, e) => { const net = e.inclMwst ? e.amount / (1 + (e.mwstRate || 0) / 100) : e.amount; return s + net; }, 0);
-  const totalExpTax = totalExpBrutto - totalExpNet;
+  // Spesen: alle (auch die über den Lohn ausbezahlten) mit Netto und Vorsteuer
+  const totalExpBrutto = sum.expGross;
+  const totalExpNet = sum.expNet;
 
   // Interne Ausgaben
-  const internalExpenses = (data.internalExpenses || []).filter(e => !filterYear || (e.date || "").startsWith(filterYear));
-  const totalIntExpBrutto = internalExpenses.reduce((s, e) => s + (e.amount || 0), 0);
-  const totalIntExpNet = internalExpenses.reduce((s, e) => { const net = e.inclMwst ? e.amount / (1 + (e.mwstRate || 0) / 100) : e.amount; return s + net; }, 0);
-  const totalIntExpTax = totalIntExpBrutto - totalIntExpNet;
+  const totalIntExpNet = sum.intNet;
 
-  // Personalaufwand (abgeschlossene Lohnabrechnungen — Auszahlung an MA + AG-Abgaben)
-  const totalLoehne = lohnEntries.reduce((s, l) => s + (l.auszahlung || 0), 0);
-  const totalLoehneAGAbgaben = lohnEntries.reduce((s, l) => s + (l.bvgAG || 0), 0);
-  const totalLoehneGesamt = totalLoehne + totalLoehneAGAbgaben;
-  const totalLoehneAnzahl = lohnEntries.length;
+  // Personalaufwand: Bruttolöhne + Arbeitgeberbeiträge (AHV/ALV paritätisch, PK-AG)
+  const totalLoehne = sum.lohnBrutto;
+  const totalLoehneAGAbgaben = sum.lohnAG;
+  const totalLoehneAnzahl = sum.lohnCount;
 
-  const totalAusgaben = totalExpNet + totalIntExpNet + totalLoehneGesamt;
-  const result = totalInvoiced - totalAusgaben;
+  const totalAusgaben = sum.ausgabenTotal;
+  const result = sum.ergebnis;
 
   // Überfällige Rechnungen für Mahnwesen
   const today = localISODate();
@@ -106,8 +86,9 @@ function Accounting({ data, update, setView, setPrintContent }: Pick<ViewProps, 
   ).sort((a, b) => (a.dueDate || "").localeCompare(b.dueDate || ""));
 
   const sendReminder = (inv: Invoice) => {
-    const reminders = inv.reminders || [];
-    setMahnMode(reminders.length === 0 ? "new" : "reprint");
+    // Der Knopf heisst nach der NÄCHSTEN Mahnstufe → immer «neu» vorwählen. Früher «reprint» (kein
+    // gültiger Modus): keine Option gewählt, «Drucken» legte trotzdem stillschweigend eine Mahnung an.
+    setMahnMode("new");
     setMahnSentDate(localISODate());
     setMahnModal({ inv });
   };
@@ -148,13 +129,13 @@ function Accounting({ data, update, setView, setPrintContent }: Pick<ViewProps, 
             totalDraftSub > 0 && { label: "→ Erwartet aus Entwürfen (nicht im Ergebnis)", value: totalDraftSub, note: true, expected: true },
             { label: "Spesen (Netto)", value: -totalExpNet, bold: false },
             { label: "Interne Ausgaben (Netto)", value: -totalIntExpNet, bold: false },
-            { label: "Personalaufwand (Löhne)", value: -totalLoehne, bold: false },
-            totalLoehneAGAbgaben > 0 && { label: "→ AG-Sozialabgaben (PK/BVG)", value: -totalLoehneAGAbgaben, note: true },
+            { label: "Personalaufwand (Bruttolöhne)", value: -totalLoehne, bold: false },
+            totalLoehneAGAbgaben > 0 && { label: "→ AG-Beiträge (AHV/IV/EO, ALV, PK)", value: -totalLoehneAGAbgaben, note: true },
             { label: "Ergebnis vor MWST", value: result, bold: true, sep: true },
             { label: `MWST auf Einnahmen (${mwstRate}%, excl. Akonto)`, value: taxWithoutAkonto, bold: false, small: true },
             akontoTax > 0 && { label: `↳ Akonto-MWST ausstehend (bei Schlussrechn.)`, value: akontoTax, bold: false, small: true, pending: true },
-            { label: "Vorsteuer (Spesen + Ausgaben)", value: -(totalExpTax + totalIntExpTax), bold: false, small: true },
-            { label: "MWST-Schuld (excl. Akonto)", value: taxWithoutAkonto - totalExpTax - totalIntExpTax, bold: true, small: true },
+            { label: "Vorsteuer (Spesen + Ausgaben)", value: -sum.vorsteuer, bold: false, small: true },
+            { label: "MWST-Schuld (excl. Akonto)", value: sum.mwstSchuld, bold: true, small: true },
           ] as (ResultRow | false)[]).filter((r): r is ResultRow => !!r).map((row, i) => (
             <div key={i} style={{
               display: "flex", justifyContent: "space-between",
@@ -384,7 +365,7 @@ function Accounting({ data, update, setView, setPrintContent }: Pick<ViewProps, 
               <tr style={{ borderTop: "2px solid var(--text)" }}>
                 <td colSpan={4} style={{ color: "var(--text4)", fontSize: 12 }}>
                   {expenses.length} Einträge
-                  {expenses.length !== expensesForTotals.length && ` (davon ${expenses.length - expensesForTotals.length} bereits über Lohn ausbezahlt, nicht in Summe)`}
+                  {sum.expViaLohnCount > 0 && ` (davon ${sum.expViaLohnCount} über Lohn ausbezahlt)`}
                 </td>
                 <td style={{ textAlign: "right", fontWeight: 700 }}>{formatCHF(totalExpBrutto)}</td>
                 <td colSpan={2}></td>

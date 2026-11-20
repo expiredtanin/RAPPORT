@@ -1,6 +1,7 @@
 // Druckvorlage Lohnabrechnung (`lohn`).
 
-import { formatCHF, formatDate, formatSenderAddress, formatIban } from "../../utils";
+import { formatCHF, formatDate, formatSenderAddress, formatIban, monatsAnteilNachEintritt } from "../../utils";
+import { lohnAGBeitraege } from "../../accounting";
 import { StudioLogo } from "../../components/UI";
 import type { AppData, Employee, LohnEntry, Settings } from "../../types";
 import { HEADING } from "./shared";
@@ -84,6 +85,9 @@ export function LohnPrint({ entry, emp, data, monatLabel, settings }: { entry: L
           {(s.pensum || 100) < 100 && entry.bruttoBase != null && entry.bruttoBase !== entry.brutto && (
             <LRow label="Basis 100%" betrag={entry.bruttoBase} sub />
           )}
+          {s.eintrittsdatum && monatsAnteilNachEintritt(s.eintrittsdatum, entry.monat) < 1 && (
+            <LRow label={`Anteilig ab Eintritt ${formatDate(s.eintrittsdatum)}`} betrag={entry.brutto} sub />
+          )}
           {entry.dreizehnter > 0 && <LRow label="13. Monatslohn (1/12)" betrag={entry.dreizehnter} sub />}
           {entry.bonusBetrag > 0 && <LRow label={entry.bonusBeschrieb || "Einmalzahlung / Bonus"} betrag={entry.bonusBetrag} sub />}
           <LRow label="Bruttolohn" betrag={entry.bruttoTotal} bold topBorder />
@@ -123,8 +127,9 @@ export function LohnPrint({ entry, emp, data, monatLabel, settings }: { entry: L
         <div style={{ fontSize: 10, letterSpacing: "0.1em", color: "#888", marginBottom: 8 }}>ARBEITGEBERANTEILE (informativ)</div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12 }}>
           {[
-            { label: "AHV/IV/EO", val: Math.round(entry.bruttoTotal * (s.ahvSatz ?? 5.3) / 100 * 100)/100 },
-            { label: "ALV", val: Math.round(entry.bruttoTotal * (s.alvSatz ?? 1.1) / 100 * 100)/100 },
+            // paritätisch = AN-Abzug (ALV mit Höchstlohn), wie Buchhaltung (lohnAGBeitraege)
+            { label: "AHV/IV/EO", val: lohnAGBeitraege(entry).ahvAG },
+            { label: "ALV", val: lohnAGBeitraege(entry).alvAG },
             { label: "BVG/PK (AG)", val: entry.bvgAG || 0 },
             { label: "UVG BU", val: Math.round(entry.bruttoTotal * 0.5 / 100 * 100)/100 },
           ].map(r => (

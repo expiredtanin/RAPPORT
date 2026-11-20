@@ -3,59 +3,30 @@
 import React from "react";
 import { STATUS_COLORS } from "../../constants";
 import { formatCHF, formatDate, formatSenderAddress, invoiceNet } from "../../utils";
+import { accountingRows, accountingSummary, lohnAGBeitraege } from "../../accounting";
 import { StudioLogo } from "../../components/UI";
 import type { AppData, Settings } from "../../types";
 import { HEADING } from "./shared";
 
 export function BuchhaltungPrint({ data, filterYear, settings }: { data: AppData; filterYear?: string; settings: Settings }) {
   const mwstRate = settings.mwstRate ?? 8.1;
-  // Nur gestellte Rechnungen (ohne Entwürfe), nach Rechnungsdatum — gleiche Regel wie Accounting.tsx (yearRevenue)
-  const invoices = [...data.invoices]
-    .filter(i => i.status !== "entwurf" && (!filterYear || (i.date || "").startsWith(filterYear)))
-    .sort((a, b) => (a.date || "").localeCompare(b.date || ""));
-  const expenses = [...(data.expenses || [])]
-    .filter(e => !filterYear || (e.date || "").startsWith(filterYear))
-    .sort((a, b) => (a.date || "").localeCompare(b.date || ""));
-  const internalExpenses = [...(data.internalExpenses || [])]
-    .filter(e => !filterYear || (e.date || "").startsWith(filterYear))
-    .sort((a, b) => (a.date || "").localeCompare(b.date || ""));
-  const loehne = [...(data.lohnEntries || [])]
-    .filter(l => !filterYear || l.monat.startsWith(filterYear))
-    .sort((a, b) => a.monat.localeCompare(b.monat));
-
-  const totalInvoicedNet = invoices.reduce((s, i) => s + invoiceNet(i), 0);
-  // Roh-Summe über exakt die Zeilen, die die RECHNUNGEN-Tabelle unten
-  // rendert (ohne Entwürfe) — deren Fusszeile muss auf die sichtbaren
-  // Zeilen aufgehen, sonst wirkt es wie ein Rechenfehler beim Nachprüfen.
-  const tableInvoicedTax = invoices.reduce((s, i) => s + (i.tax || 0), 0);
-  // Entwürfe sind noch nicht ausgestellt, Akonto-MwSt erst bei Schlussrechnung
-  // steuerrelevant (analog Accounting.jsx totalTax/taxWithoutAkonto) — nur
-  // für die MWST-Schuld-Kennzahl in der Zusammenfassung relevant, nicht für
-  // die Tabellen-Fusszeile.
-  const totalInvoicedTax = invoices.filter(i => i.status !== "entwurf").reduce((s, i) => s + (i.tax || 0), 0);
-  const akontoTax = invoices.filter(i => i.invoiceKind === "akonto" && i.status !== "entwurf").reduce((s, i) => s + (i.tax || 0), 0);
-  const taxWithoutAkonto = totalInvoicedTax - akontoTax;
-  // Über Lohnabrechnung ausbezahlte Spesen (lohnEntryId gesetzt) stecken
-  // bereits in l.auszahlung (Personalaufwand unten) und dürfen für die
-  // ZUSAMMENFASSUNG nicht nochmals mitgezählt werden (analog Accounting.jsx
-  // expensesForTotals).
-  const expensesForTotals = expenses.filter(e => !e.lohnEntryId);
-  const totalExpBrutto = expensesForTotals.reduce((s, e) => s + (e.amount || 0), 0);
-  const totalExpNet = expensesForTotals.reduce((s, e) => { const net = e.inclMwst ? e.amount / (1 + (e.mwstRate || 0) / 100) : e.amount; return s + net; }, 0);
-  const totalExpTax = totalExpBrutto - totalExpNet;
-  // Roh-Summe über exakt die Zeilen, die die SPESEN-Tabelle unten rendert
-  // (inkl. über Lohn ausbezahlte) — deren Fusszeile muss auf die sichtbaren
-  // Zeilen aufgehen (gleiches Muster wie tableInvoicedTax oben).
-  const tableExpBrutto = expenses.reduce((s, e) => s + (e.amount || 0), 0);
-  const tableExpNet = expenses.reduce((s, e) => { const net = e.inclMwst ? e.amount / (1 + (e.mwstRate || 0) / 100) : e.amount; return s + net; }, 0);
-  const tableExpTax = tableExpBrutto - tableExpNet;
-  const totalIntExpBrutto = internalExpenses.reduce((s, e) => s + (e.amount || 0), 0);
-  const totalIntExpNet = internalExpenses.reduce((s, e) => { const net = e.inclMwst ? e.amount / (1 + (e.mwstRate || 0) / 100) : e.amount; return s + net; }, 0);
-  const totalIntExpTax = totalIntExpBrutto - totalIntExpNet;
-  const totalLoehne = loehne.reduce((s, l) => s + (l.auszahlung || 0), 0);
-  const totalLoehneAGAbgaben = loehne.reduce((s, l) => s + (l.bvgAG || 0), 0);
-  const totalLoehneGesamt = totalLoehne + totalLoehneAGAbgaben;
-  const totalAusgaben = totalExpNet + totalIntExpNet + totalLoehneGesamt;
+  // Zeilen und Summen aus accounting.ts — dieselben Zahlen wie Ansicht und CSV
+  const { issued: invoices, expenses, internalExpenses, lohnEntries: loehne } = accountingRows(data, filterYear || "");
+  const sum = accountingSummary(data, filterYear || "");
+  const totalInvoicedNet = sum.revenueNet;
+  const totalInvoicedTax = sum.taxTotal;
+  const akontoTax = sum.akontoTax;
+  const taxWithoutAkonto = sum.taxWithoutAkonto;
+  // Spesen: alle Zeilen (auch über Lohn ausbezahlte) — Tabelle und Zusammenfassung gehen auf
+  const tableExpBrutto = sum.expGross;
+  const tableExpNet = sum.expNet;
+  const tableExpTax = sum.expTax;
+  const totalExpNet = sum.expNet;
+  const totalIntExpBrutto = sum.intGross;
+  const totalIntExpNet = sum.intNet;
+  const totalIntExpTax = sum.intTax;
+  const totalAuszahlung = loehne.reduce((s, l) => s + (l.auszahlung || 0), 0);
+  const totalAusgaben = sum.ausgabenTotal;
 
   const thStyle: React.CSSProperties = { textAlign: "left", padding: "6px 0", fontSize: 8, letterSpacing: "0.1em", color: "#888", fontWeight: 500, borderBottom: "1px solid var(--doc-ink)" };
   const thR: React.CSSProperties = { ...thStyle, textAlign: "right" };
@@ -98,10 +69,10 @@ export function BuchhaltungPrint({ data, filterYear, settings }: { data: AppData
           {[
             { label: "Spesen (Netto)", value: totalExpNet },
             { label: "Interne Ausgaben (Netto)", value: totalIntExpNet },
-            { label: "Vorsteuer", value: totalExpTax + totalIntExpTax, small: true },
-            { label: `Personalaufwand / Löhne (${loehne.length}, inkl. AG-Abgaben)`, value: totalLoehneGesamt },
+            { label: "Vorsteuer", value: sum.vorsteuer, small: true },
+            { label: `Personalaufwand (${loehne.length} Löhne, Brutto + AG-Beiträge)`, value: sum.personalaufwand },
             { label: "Ergebnis (Netto)", value: totalInvoicedNet - totalAusgaben, bold: true },
-            { label: "MWST-Schuld (excl. Akonto)", value: taxWithoutAkonto - totalExpTax - totalIntExpTax, bold: true, small: true },
+            { label: "MWST-Schuld (excl. Akonto)", value: sum.mwstSchuld, bold: true, small: true },
           ].map((r, i) => (
             <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "2px 0", borderTop: r.bold && !r.small ? "1px solid #ccc" : "none", marginTop: r.bold && !r.small ? 4 : 0 }}>
               <span style={{ fontSize: r.small ? 8 : 9, color: r.small ? "#888" : "#555" }}>{r.label}</span>
@@ -151,8 +122,8 @@ export function BuchhaltungPrint({ data, filterYear, settings }: { data: AppData
             <tr style={{ borderTop: "1px solid var(--doc-ink)" }}>
               <td colSpan={4} style={{ padding: "5px 0", fontSize: 9, color: "#888" }}>Total</td>
               <td style={{ ...tdR, fontWeight: 700, borderBottom: "none" }}>{formatCHF(totalInvoicedNet)}</td>
-              <td style={{ ...tdR, fontWeight: 700, borderBottom: "none", color: "#888" }}>{formatCHF(tableInvoicedTax)}</td>
-              <td style={{ ...tdR, fontWeight: 700, borderBottom: "none" }}>{formatCHF(totalInvoicedNet + tableInvoicedTax)}</td>
+              <td style={{ ...tdR, fontWeight: 700, borderBottom: "none", color: "#888" }}>{formatCHF(totalInvoicedTax)}</td>
+              <td style={{ ...tdR, fontWeight: 700, borderBottom: "none" }}>{formatCHF(totalInvoicedNet + totalInvoicedTax)}</td>
               <td style={{ borderBottom: "none" }}></td>
             </tr>
           </tfoot>
@@ -266,7 +237,7 @@ export function BuchhaltungPrint({ data, filterYear, settings }: { data: AppData
                 <th style={thR}>NETTO</th>
                 <th style={thR}>SPESEN</th>
                 <th style={thR}>AUSZAHLUNG</th>
-                <th style={thR}>PK AG-ANTEIL</th>
+                <th style={thR}>AG-BEITRÄGE</th>
               </tr>
             </thead>
             <tbody>
@@ -279,17 +250,19 @@ export function BuchhaltungPrint({ data, filterYear, settings }: { data: AppData
                   <td style={tdR}>{formatCHF(l.netto)}</td>
                   <td style={{ ...tdR, color: "#888" }}>{l.spesenTotal > 0 ? formatCHF(l.spesenTotal) : "—"}</td>
                   <td style={{ ...tdR, fontWeight: 600 }}>{formatCHF(l.auszahlung)}</td>
-                  <td style={{ ...tdR, color: "#888" }}>{l.bvgAG > 0 ? formatCHF(l.bvgAG) : "—"}</td>
+                  <td style={{ ...tdR, color: "#888" }}>{formatCHF(lohnAGBeitraege(l).total)}</td>
                 </tr>
               ))}
             </tbody>
             <tfoot>
               <tr style={{ borderTop: "1px solid var(--doc-ink)" }}>
-                <td colSpan={4} style={{ padding: "5px 0", fontSize: 9, color: "#888" }}>Total (inkl. AG-Abgaben)</td>
+                <td colSpan={2} style={{ padding: "5px 0", fontSize: 9, color: "#888" }}>Total · Personalaufwand {formatCHF(sum.personalaufwand)}</td>
+                <td style={{ ...tdR, fontWeight: 700, borderBottom: "none" }}>{formatCHF(sum.lohnBrutto)}</td>
                 <td style={{ borderBottom: "none" }}></td>
                 <td style={{ borderBottom: "none" }}></td>
-                <td style={{ ...tdR, fontWeight: 700, borderBottom: "none" }}>{formatCHF(totalLoehne)}</td>
-                <td style={{ ...tdR, fontWeight: 700, borderBottom: "none", color: "#888" }}>{formatCHF(totalLoehneAGAbgaben)}</td>
+                <td style={{ borderBottom: "none" }}></td>
+                <td style={{ ...tdR, fontWeight: 700, borderBottom: "none" }}>{formatCHF(totalAuszahlung)}</td>
+                <td style={{ ...tdR, fontWeight: 700, borderBottom: "none", color: "#888" }}>{formatCHF(sum.lohnAG)}</td>
               </tr>
             </tfoot>
           </table>

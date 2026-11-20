@@ -8,13 +8,16 @@
 // `data.lohnEntries` mit eingefrorenen Sätzen (`saetzeSnapshot`) und den Stammdaten
 // (`empSnapshot`), damit spätere Änderungen alte Abrechnungen nicht verändern.
 //
-// Spesen: offene Spesen des Mitarbeiters aus dem Monat (ohne `lohnEntryId`) werden
-// mit ausbezahlt und auf «ausbezahlt» gesetzt. «Stornieren» löscht die Abrechnung,
+// Spesen: `spesenFuerLohn` (accounting.ts) — Spesen des Monats ohne `lohnEntryId`, die nicht schon
+// «ausbezahlt» sind, plus ältere mit «auf nächsten Lohn»; sie werden mit ausbezahlt und auf
+// «ausbezahlt» gesetzt. ALV/NBU: Höchstlohn kumuliert über die früheren Abrechnungen des Jahres
+// (`lohnVorperioden`); Eintritt im Monat anteilig (calcLohn). «Stornieren» löscht die Abrechnung,
 // gibt die Spesen wieder frei («auf nächsten Lohn») und stellt die Overrides wieder her.
 // Fachliche Details der Abzüge: utils.ts `calcLohn`, docs/FACHLOGIK.md.
 
 import React, { useState } from "react";
-import { generateId, formatCHF, calcLohn } from "../utils";
+import { generateId, formatCHF, formatDate, calcLohn, monatsAnteilNachEintritt } from "../utils";
+import { lohnAGBeitraege, lohnPersonalaufwand, lohnVorperioden, spesenFuerLohn } from "../accounting";
 import { Header, NavArrows, ShareButton } from "../components/UI";
 import { useConfirm } from "../hooks/useConfirm";
 import type { Employee, LohnEntry, LohnResult, SaetzeSnapshot, ViewProps } from "../types";
@@ -64,18 +67,17 @@ function Payroll({ data, saveAll, setPrintContent }: Pick<ViewProps, "data" | "u
   const getEffBrutto = (emp: Employee) => bruttoOverride[emp.id] != null ? bruttoOverride[emp.id] : (emp.monatslohn || 0);
   const getEffPensum = (emp: Employee) => pensumOverride[emp.id] != null ? pensumOverride[emp.id] : (emp.pensum || 100);
 
-  const offeneSpesen = (empId: string) => (data.expenses || []).filter(e =>
-    e.employeeId === empId && (e.date || "").startsWith(monatStr) && !e.lohnEntryId
-  );
+  const offeneSpesen = (empId: string) => spesenFuerLohn(data.expenses || [], empId, monatStr);
   const findEntry = (empId: string) => lohnEntries.find(l => l.monat === monatStr && l.employeeId === empId);
+  /** Vorschau/Abschluss mit den Overrides dieses Laufs und den früheren Abrechnungen des Jahres. */
+  const calcFor = (emp: Employee, spesen: { amount?: number }[]) =>
+    calcLohn({ ...emp, monatslohn: getEffBrutto(emp), pensum: getEffPensum(emp) }, monatStr, spesen, (bonusOverride[emp.id] as number) || 0, lohnVorperioden(lohnEntries, emp.id, monatStr));
 
   const abschliessen = (emp: Employee) => {
     if (findEntry(emp.id)) return;
     const spesen = offeneSpesen(emp.id);
-    const effBrutto = getEffBrutto(emp);
     const effPensum = getEffPensum(emp);
-    const bonus = (bonusOverride[emp.id] as number) || 0;
-    const calc = calcLohn({ ...emp, monatslohn: effBrutto, pensum: effPensum }, monatStr, spesen, bonus);
+    const calc = calcFor(emp, spesen);
     // Alle Sätze statisch festhalten — unabhängig von späteren Änderungen
     const saetzeSnapshot: SaetzeSnapshot = {
       ahvSatz:  emp.ahvSatz  ?? 5.3,
@@ -129,9 +131,11 @@ function Payroll({ data, saveAll, setPrintContent }: Pick<ViewProps, "data" | "u
 
   const selectedEmp = employees.find(e => e.id === selEmpId);
   const previewSpesen = selEmpId ? offeneSpesen(selEmpId) : [];
-  const previewCalc = selectedEmp ? calcLohn({ ...selectedEmp, monatslohn: getEffBrutto(selectedEmp), pensum: getEffPensum(selectedEmp) }, monatStr, previewSpesen, (bonusOverride[selectedEmp.id] as number) || 0) : null;
+  const previewCalc = selectedEmp ? calcFor(selectedEmp, previewSpesen) : null;
   const existingEntry = selEmpId ? findEntry(selEmpId) : null;
   const monatEntries = lohnEntries.filter(l => l.monat === monatStr);
+  // Mit Monatslohn; ausgetretene (active === false) nur, wenn für den Monat schon abgerechnet
+  const payrollEmployees = employees.filter(e => (e.monatslohn || 0) > 0 && (e.active !== false || !!findEntry(e.id)));
   const cardPensum = existingEntry ? (existingEntry.saetzeSnapshot?.pensum || 100) : (selectedEmp ? getEffPensum(selectedEmp) : 100);
 
   const LohnRow = ({ label, value, bold, color, indent }: { label: string; value: number; bold?: boolean; color?: string; indent?: boolean }) => (
@@ -203,6 +207,11 @@ function Payroll({ data, saveAll, setPrintContent }: Pick<ViewProps, "data" | "u
           <span>Basis 100%: {formatCHF(calc.bruttoBase)} × {displayPensum}%</span>
         </div>
       )}
+      {emp.eintrittsdatum && monatsAnteilNachEintritt(emp.eintrittsdatum, monatStr) < 1 && (
+        <div style={{ display: "flex", justifyContent: "space-between", padding: "1px 0 3px 12px", fontSize: 10, color: "var(--text4)" }}>
+          <span>anteilig ab Eintritt {formatDate(emp.eintrittsdatum)}</span>
+        </div>
+      )}
       {calc.dreizehnter > 0 && <LohnRow label="13. Monatslohn (1/12)" value={calc.dreizehnter} indent />}
       {calc.bonusBetrag > 0 && <LohnRow label={emp.saetzeSnapshot ? (calc.bonusBeschrieb || "Einmalzahlung / Bonus") : ((bonusOverride[`${emp.id}_beschrieb`] as string) || "Einmalzahlung / Bonus")} value={calc.bonusBetrag} indent />}
       <LohnRow label="Bruttolohn Total" value={calc.bruttoTotal} bold />
@@ -228,13 +237,16 @@ function Payroll({ data, saveAll, setPrintContent }: Pick<ViewProps, "data" | "u
       <div style={{ borderTop: "1.5px solid var(--text)", marginTop: 8, paddingTop: 8 }}>
         <LohnRow label="Auszahlung Total" value={calc.auszahlung} bold color="var(--positive)" />
       </div>
-      {calc.bvgAG > 0 && (() => {
+      {calc.bruttoTotal > 0 && (() => {
         const s = emp.saetzeSnapshot || emp;
+        const ag = lohnAGBeitraege(calc);
         return (
           <div style={{ marginTop: 14, paddingTop: 10, borderTop: "1px dashed #c8c0b8" }}>
             <div style={{ fontSize: 10, letterSpacing: "0.08em", color: "var(--text4)", marginBottom: 4 }}>LOHNKOSTEN ARBEITGEBER</div>
-            <LohnRow label={`PK / BVG AG-Anteil (${s.pkAGSatz ?? 8.0}%)`} value={calc.bvgAG} indent color="var(--warning)" />
-            <LohnRow label="Gesamtlohnkosten (inkl. PK AG)" value={calc.auszahlung + calc.bvgAG} bold />
+            <LohnRow label={`AHV/IV/EO AG-Anteil (${s.ahvSatz ?? 5.3}%)`} value={ag.ahvAG} indent color="var(--warning)" />
+            <LohnRow label={`ALV AG-Anteil (${s.alvSatz ?? 1.1}%)`} value={ag.alvAG} indent color="var(--warning)" />
+            {ag.bvgAG > 0 && <LohnRow label={`PK / BVG AG-Anteil (${s.pkAGSatz ?? 8.0}%)`} value={ag.bvgAG} indent color="var(--warning)" />}
+            <LohnRow label="Gesamtlohnkosten (Brutto + AG-Beiträge, ohne Spesen)" value={lohnPersonalaufwand(calc)} bold />
           </div>
         );
       })()}
@@ -272,15 +284,14 @@ function Payroll({ data, saveAll, setPrintContent }: Pick<ViewProps, "data" | "u
                   <th></th>
                 </tr></thead>
                 <tbody>
-                  {employees.filter(e => (e.monatslohn || 0) > 0).length === 0 && (
+                  {payrollEmployees.length === 0 && (
                     <tr><td colSpan={7} className="empty-state">Noch kein Monatslohn hinterlegt.</td></tr>
                   )}
-                  {employees.filter(e => (e.monatslohn || 0) > 0).map(emp => {
+                  {payrollEmployees.map(emp => {
                     const available = isMonatAvailable(emp);
                     const entry = findEntry(emp.id);
                     const spesen = entry ? (data.expenses || []).filter(e => e.lohnEntryId === entry.id) : offeneSpesen(emp.id);
-                    const effBrutto = getEffBrutto(emp);
-                    const calc = entry ? entry : calcLohn({ ...emp, monatslohn: effBrutto, pensum: getEffPensum(emp) }, monatStr, spesen, (bonusOverride[emp.id] as number) || 0);
+                    const calc = entry ? entry : calcFor(emp, spesen);
                     return (
                       <tr key={emp.id} onClick={() => available && setSelEmpId(emp.id)}
                         style={{ cursor: available ? "pointer" : "default", background: selEmpId === emp.id ? "var(--surface2)" : "", opacity: available ? 1 : 0.35 }}>

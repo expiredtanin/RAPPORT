@@ -108,6 +108,16 @@ export async function extractReceiptText(dataUrl: string): Promise<string> {
 
 // ─── Feld-Heuristiken ──────────────────────────────────────────
 
+/**
+ * Zahl aus einem Betrags-Token: Das Zeichen vor den letzten zwei Ziffern ist der Dezimaltrenner,
+ * alle übrigen Trenner sind Tausender (1'234.50, 1.234,50, 12,50). Früher wurden Kommas vorab
+ * entfernt: «12,50» wurde zu 1250, «1.234,50» zu 1.2345.
+ */
+function parseAmountToken(token: string): number {
+  const whole = token.slice(0, -3).replace(/[’',.]/g, "");
+  return parseFloat(`${whole}.${token.slice(-2)}`);
+}
+
 /** Betrag in CHF/EUR oder null. Siehe Kommentar im Körper zur Auswahlregel. */
 function parseAmount(text: string): number | null {
   // Bevorzugt Beträge in Zeilen mit "Total"/"Endbetrag"/etc. — sonst den
@@ -123,7 +133,7 @@ function parseAmount(text: string): number | null {
     let m: RegExpExecArray | null;
     amountRe.lastIndex = 0;
     while ((m = amountRe.exec(line))) {
-      const val = parseFloat(m[1].replace(/[’',]/g, "").replace(",", "."));
+      const val = parseAmountToken(m[1]);
       if (Number.isNaN(val) || val <= 0 || val > 999999) continue;
       if (isPriority && !bestPriority) { best = val; bestPriority = true; }
       else if (isPriority === bestPriority && (best === null || val > best)) best = val;
@@ -150,9 +160,11 @@ function parseDate(text: string): string | null {
 
 /** MWST-Satz in Prozent (z.B. 8.1) oder null. */
 function parseMwstRate(text: string): number | null {
-  const m = text.match(/MWST\.?\s*(\d{1,2}[.,]\d)\s*%|(\d{1,2}[.,]\d)\s*%\s*MWST/i);
+  // «MWST 8.1%», «MwSt. 8,10 %», «inkl. 8.1% MWST», «TVA 2.6%», «MWST-Satz 8.1%»
+  const m = text.match(/(?:MWST|MwSt|TVA|IVA|VAT)[^\d%\n]{0,12}(\d{1,2}(?:[.,]\d{1,2})?)\s*%|(\d{1,2}(?:[.,]\d{1,2})?)\s*%\s*(?:MWST|MwSt|TVA|IVA|VAT)/i);
   if (!m) return null;
-  return parseFloat((m[1] || m[2]).replace(",", "."));
+  const rate = parseFloat((m[1] || m[2]).replace(",", "."));
+  return rate >= 0 && rate <= 30 ? rate : null;
 }
 
 /** Lieferantenname (Briefkopf-Heuristik) oder null. */

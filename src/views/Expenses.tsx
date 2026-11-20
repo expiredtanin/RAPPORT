@@ -19,6 +19,7 @@ import { generateId, formatCHF, formatDate, receiptToDataUrl, checkLocalBudget, 
 import { isLocalBackend } from "../storage/adapter";
 import { Header, Modal, FormField, StatusSelect, DateInput, KpiCard, SortTh, RowMenu, EmptyState } from "../components/UI";
 import { removeWithUndo } from "../undo";
+import { showToast } from "../toast";
 import { extractReceiptText, parseReceiptFields } from "../ocr";
 import type { Expense, ViewProps } from "../types";
 import { ReceiptViewer, type ReceiptTarget } from "../components/ReceiptViewer";
@@ -82,11 +83,11 @@ function Expenses({ data, update, standalone }: Pick<ViewProps, "data" | "update
     try {
       const dataUrl = await receiptToDataUrl(file);
       const problem = isLocalBackend ? checkLocalBudget(data, dataUrl.length, form.receiptData?.length || 0) : null;
-      if (problem) { alert(problem); return; }
+      if (problem) { showToast(problem); return; }
       setForm(f => ({ ...f, receiptData: dataUrl, receiptName: file.name }));
       runReceiptScan(dataUrl);
     } catch (err) {
-      alert((err as Error).message || "Der Beleg konnte nicht gelesen werden.");
+      showToast((err as Error).message || "Der Beleg konnte nicht gelesen werden.");
     }
   };
 
@@ -94,7 +95,7 @@ function Expenses({ data, update, standalone }: Pick<ViewProps, "data" | "update
   const openEdit = (e: Expense) => { setForm({ ...e }); setModal(e.id); };
   const closeModal = () => { setModal(null); setForm(emptyExp); };
   const saveExp = () => {
-    if (!form.amount) return;
+    if (!form.amount) { showToast("Bitte einen Betrag eingeben."); return; }
     const isNew = modal === "new";
     const newId = isNew ? generateId() : (modal as string);
     const expenses = isNew

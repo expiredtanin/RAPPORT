@@ -29,6 +29,7 @@ APP/
 │   ├── constants.ts              STORAGE_KEY, NAV_ITEMS, defaultData, SIA-Phasen, Statusfarben  [252 Z.]
 │   ├── types.ts                  TypeScript-Typen des Datenmodells (AppData, Person, Invoice, …)
 │   ├── utils.ts                  Business-Logik: Kalkulation, Format, QR-Bill, Hash, CSV, Lohn  [678 Z.]
+│   ├── accounting.ts             Buchhaltung: Jahresergebnis/MWST-Summen, CSV-Export, Lohn-Helfer (AG-Beiträge, Spesen im Lohnlauf)
 │   ├── storage/adapter.ts        Storage-Adapter (Promise-API): LocalStorageAdapter + PocketBaseAdapter, Modus-Auswahl
 │   ├── storage/pocketbase-adapter.ts  Cloud-Implementation: load/save/realtime/signIn/signUp/reset (PB-Phase 1: Studios/Settings/Personen/Projekte — Rest folgt)
 │   ├── storage/pocketbase-mappers.ts  fromDB / toDB für die PB-Phase-1-Entities (camelCase-Felder, kaum Mapping nötig)
@@ -263,6 +264,13 @@ Alle Views liegen in [src/views/](src/views/), werden in [App.tsx](src/App.tsx) 
 - **Akonto-Planer**: höchstens 24 Raten (Betrag durch die tatsächliche Anzahl), Vorschlag = Restbetrag (`projectFee` minus gestellte Rechnungen), «= Budget übernehmen» als Alternative.
 - **Offen (bewusst nicht geändert, Entscheid Karim):** Akonto-MWST wird in der Buchhaltung getrennt als «ausstehend» geführt; Vertragssumme aus Offerte = Brutto (`q.total`).
 
+### Buchhaltung und Löhne (Regeln, Stand 26.11)
+
+- **Eine Quelle:** Ansicht, PDF (`AccountingPrint`) und CSV rechnen über `accountingSummary`/`accountingRows` in [accounting.ts](src/accounting.ts) (Tests: `accounting.test.ts`).
+- **Spesen** zählen alle mit Netto und Vorsteuer, auch die über den Lohn ausbezahlten; **Personalaufwand** = Bruttolohn Total + AG-Beiträge (AHV/IV/EO und ALV paritätisch = AN-Abzug, PK-AG `bvgAG`), ohne Spesen. FAK, Verwaltungskosten, UVG-BU sind nicht erfasst.
+- **Lohnlauf:** mit dem Lohn ausbezahlt werden Spesen des Monats ohne Abrechnung, die nicht schon «ausbezahlt» sind, plus ältere mit «auf nächsten Lohn» (`spesenFuerLohn`). Ausgetretene (`active === false`) erscheinen nur mit bestehender Abrechnung.
+- **Interne Ausgaben** zählen in der Buchhaltung einmal am Datum; nur das Budget rechnet wiederkehrende hoch (offen, siehe Audit).
+
 ## 6. utils.ts — Business-Logik-Bibliothek
 
 [utils.ts](src/utils.ts) ist isoliert und gut testbar. Die wichtigsten Gruppen:
@@ -276,7 +284,7 @@ Alle Views liegen in [src/views/](src/views/), werden in [App.tsx](src/App.tsx) 
 - `projectFee(project)` — **die eine Quelle** für das Pauschalhonorar (Akonto %, Akonto-Planer, Schlussrechnung, Kennzahlen, Drucke): mit verknüpften Offerten `budgetAmount` (Hauptofferte + Nachträge), sonst der von Hand gesetzte Pauschalpreis `budget`; Altdaten fallen auf den jeweils anderen Wert zurück. Nie mehr `budget || budgetAmount` direkt lesen
 - `invoiceNet(inv)` — Netto einer Rechnung nach Gesamtrabatt (`sub − globalDisc`; robust gegen `subAfterDisc: 0` aus der Cloud). Alle Netto-Kennzahlen (Umsatz, «verrechnet», CRM, Studio-Budget, Abzüge in Schlussrechnungen) rechnen damit, nie mit `sub` (= Zwischentotal vor Rabatt)
 - `yearRevenue(invoices, year)` — Umsatz netto: gestellte Rechnungen ohne Entwürfe, nach **Rechnungsdatum**; gleiche Regel für Buchhaltung, Übersicht, «Heute», CSV/PDF-Export
-- `calcLohn(emp, monat, spesen, bonus)` — AHV/ALV/BVG/NBU/KTG/Quellensteuer
+- `calcLohn(emp, monat, spesen, bonus, vorperioden)` — AHV/ALV/BVG/NBU/KTG/Quellensteuer; Eintritt im Monat anteilig (`monatsAnteilNachEintritt`), ALV/NBU bis Höchstlohn 148'200 kumuliert (`hoechstlohnKumuliert`, `HOECHSTLOHN_ALV_UVG`)
 
 **Crypto / Auth:**
 - `hashPassword(password, saltHex)` — PBKDF2-SHA-256, 100k Iter, via Web Crypto
@@ -306,7 +314,7 @@ Alle Views liegen in [src/views/](src/views/), werden in [App.tsx](src/App.tsx) 
 - `buildPdfName(format, content, settings)` — Sanitierter Dateiname
 
 **Sonstiges:**
-- `exportBuchhaltungCSV(data, year)` — Voller Jahresexport
+- Buchhaltung (`accounting.ts`, nicht utils): `accountingSummary(data, period)` (Periode "", `YYYY`, `YYYY-MM`, `YYYY-Qn`), `buildBuchhaltungCSV`/`exportBuchhaltungCSV`, Lohn-Helfer `lohnAGBeitraege`, `lohnPersonalaufwand`, `lohnVorperioden`, `spesenFuerLohn`
 - `migrateDashboardLayout(val)` — Alte Widget-IDs → Row-basiertes Layout
 - `getFeiertageForYear`, `getWorkdaysInMonth`, `getSollStunden`
 
@@ -512,7 +520,7 @@ npm test             # Vitest (*.test.ts neben dem Code, Node-Umgebung)
 |---|---|---|
 | `App.tsx` State/Auth/Migration | **Sehr hoch** | Touch nur mit klarem Auftrag, betrifft alles |
 | `constants.ts` `defaultData` Shape | **Hoch** | Schema-Änderung erfordert Migration (siehe Beispiele in App.tsx:56-122) |
-| `utils.ts` Kalkulationen | **Hoch** | `calcSIAHours`, `calcLohn`, `generateQRReference`, `mod10` haben Tests (utils.test.ts) — bei Änderungen erweitern, `npm test` |
+| `utils.ts` Kalkulationen | **Hoch** | `calcSIAHours`, `calcLohn`, `generateQRReference`, `mod10` haben Tests (utils.test.ts, Lohn/Buchhaltung in accounting.test.ts) — bei Änderungen erweitern, `npm test` |
 | `print/PrintComponents.tsx`, `print/docs/` | **Hoch** | SwissQR-Bill ist Pixel-genau — Layout-Bugs sichtbar erst im Druck |
 | Views (Invoices/Projects/Time) | **Hoch** | Lange Files mit Edge-Cases (Mahnung, Akonto, Drag&Drop) |
 | `views/settings/TeamTab.tsx` Permissions | **Hoch** | Tangiert Rollen/Berechtigungen, Dashboard-Templates |

@@ -667,6 +667,8 @@ export interface LohnResult {
   bonusBetrag: number;
   /** Brutto + 13. + Bonus — Basis aller Abzüge */
   bruttoTotal: number;
+  /** ALV-/UVG-pflichtiger Teil (Höchstlohn kumuliert); fehlt bei Abrechnungen vor 26.11 (dort = bruttoTotal) */
+  alvBasis?: number;
   ahv: number; alv: number; bvg: number; nbu: number; ktg: number; qst: number;
   totalAbzuege: number;
   netto: number;

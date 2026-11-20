@@ -104,7 +104,8 @@ function StudioBudget({ data, update, setPrintContent }: Pick<ViewProps, "data" 
       const saved_emp = (sv.empRows || []).find(r => r.id === emp.id) || {} as Partial<BudgetRow<"empRows">>;
       return {
         id: emp.id,
-        aktiv: saved_emp.aktiv ?? true,
+        // Ausgetretene (active === false) standardmässig nicht im Budget
+        aktiv: saved_emp.aktiv ?? emp.active !== false,
         kostenOverride: saved_emp.kostenOverride ?? false,
         kostenManual: saved_emp.kostenManual ?? auto.totalKosten,
         stundenOverride: saved_emp.stundenOverride ?? false,
@@ -190,7 +191,7 @@ function StudioBudget({ data, update, setPrintContent }: Pick<ViewProps, "data" 
 
   const empCalcRows = employees.map(emp => {
     const auto = calcEmpAuto(emp, b.agZuschlag);
-    const row = b.empRows.find(r => r.id === emp.id) || { aktiv: true, kostenOverride: false, kostenManual: 0, stundenOverride: false, stundenManual: 0 };
+    const row = b.empRows.find(r => r.id === emp.id) || { aktiv: emp.active !== false, kostenOverride: false, kostenManual: 0, stundenOverride: false, stundenManual: 0 };
     const kosten = row.kostenOverride ? (row.kostenManual || 0) : auto.totalKosten;
     const stunden = row.stundenOverride ? (row.stundenManual || 0) : auto.jahresStunden;
     return { emp, auto, row, kosten, stunden, aktiv: row.aktiv };

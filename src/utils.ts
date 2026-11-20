@@ -4,7 +4,7 @@
 // Lohn), Formatierung (CHF, Datum, KW), QR-Rechnung-Hilfen, Nummernformate,
 // Passwort-Hashing, HTML-Sanitizing und Exporte. Fast alles sind reine
 // Funktionen; Ausnahmen (DOM/Browser) sind im jeweiligen Kommentar vermerkt:
-// `exportBuchhaltungCSV` (löst einen Download aus), `htmlToText`, `sanitizeHtml`.
+// `htmlToText`, `sanitizeHtml`. Buchhaltungs-Summen und CSV-Export: accounting.ts.
 //
 // Konventionen, die für alle Funktionen gelten:
 //   - Geldbeträge sind CHF als `number`, auf Rappen (2 Stellen) gerundet.
@@ -662,130 +662,6 @@ export function parseSeqFromNumber(num: string | null | undefined, fmt: string |
 }
 
 /**
- * Löst den Download eines Buchhaltungs-Exports (CSV, `;`-getrennt, UTF-8 mit BOM
- * für Excel) aus: Einnahmen, Spesen, interne Ausgaben, Löhne und Zusammenfassung.
- * Seiteneffekt: erzeugt ein `<a download>` im DOM. Summenzeilen gehen auf die
- * sichtbaren Zeilen auf; die Zusammenfassung zählt über Lohn ausbezahlte Spesen
- * nicht doppelt und trennt Akonto-MWST (erst bei Schlussrechnung steuerrelevant).
- * @param year `YYYY` zum Filtern; leer = alle Jahre
- */
-export function exportBuchhaltungCSV(data: AppData, year = ""): void {
-  const sep = ";";
-  // s ?? "" statt s || "" — sonst wird ein echter Zahlenwert 0 (z.B. MWST-
-  // Satz-Spalte bei einer 0%-Rechnung) zu einer leeren Zelle statt "0".
-  const q = (s: unknown) => `"${String(s ?? "").replace(/"/g, '""')}"`;
-  const mwstRate = data.settings.mwstRate ?? 8.1;
-  const rows: string[] = [];
-
-  // Einnahmen
-  rows.push(["EINNAHMEN", "", "", "", "", "", "", ""].map(q).join(sep));
-  rows.push(["Datum", "Rechnungs-Nr.", "Kunde", "Beschreibung", "Netto CHF", "MWST-Satz %", "MWST CHF", "Brutto CHF"].map(q).join(sep));
-  // Nur gestellte Rechnungen (ohne Entwürfe), nach Rechnungsdatum — gleiche Regel wie Accounting.tsx (yearRevenue)
-  const paidInvoices = [...data.invoices].filter(i => i.status !== "entwurf" && (!year || (i.date || "").startsWith(year))).sort((a, b) => (a.date || "").localeCompare(b.date || ""));
-  paidInvoices.forEach(inv => {
-    const client = (data.persons||[]).find(c => c.id === inv.clientId);
-    const desc = (inv.items || []).map(it => it.desc).filter(Boolean).join(", ");
-    // Den tatsächlich bei dieser Rechnung verwendeten Satz nutzen, nicht den
-    // aktuellen Studio-Default — sonst zeigt der Export nach einer künftigen
-    // MWST-Satzänderung rückwirkend für alle historischen Rechnungen den
-    // falschen (aktuellen) Satz, obwohl die MWST-Spalte daneben (inv.tax)
-    // korrekt den damals berechneten Betrag zeigt.
-    const taxRate = inv.mwst ? (inv.mwstRate ?? mwstRate) : 0;
-    rows.push([inv.date, inv.number, client?.name || "", desc, invoiceNet(inv).toFixed(2), taxRate, (inv.tax || 0).toFixed(2), (inv.total || 0).toFixed(2)].map(q).join(sep));
-  });
-  const totalNet = paidInvoices.reduce((s, i) => s + invoiceNet(i), 0);
-  // Roh-Summe über exakt die oben aufgelisteten Zeilen —
-  // die TOTAL-Zeile muss auf die sichtbaren Zeilen aufgehen.
-  const tableTax = paidInvoices.reduce((s, i) => s + (i.tax || 0), 0);
-  const totalGross = paidInvoices.reduce((s, i) => s + (i.total || 0), 0);
-  rows.push(["", "", "", "TOTAL", totalNet.toFixed(2), "", tableTax.toFixed(2), totalGross.toFixed(2)].map(q).join(sep));
-  rows.push([""].join(sep));
-  // Entwürfe sind noch nicht ausgestellt — es entsteht noch keine MWST-Schuld
-  // (analog Accounting.jsx totalTax). Nur für die MWST-Schuld-Kennzahl in der
-  // Zusammenfassung relevant, nicht für die TOTAL-Zeile oben.
-  const totalTax = paidInvoices.filter(i => i.status !== "entwurf").reduce((s, i) => s + (i.tax || 0), 0);
-
-  // Ausgaben
-  rows.push(["SPESEN (MITARBEITERBEZOGEN)", "", "", "", "", "", "", ""].map(q).join(sep));
-  rows.push(["Datum", "Kategorie", "Projekt", "Beschreibung", "Netto CHF", "MWST-Satz %", "MWST CHF", "Brutto CHF"].map(q).join(sep));
-  const sortedExp = [...(data.expenses || [])].filter(e => !year || (e.date || "").startsWith(year)).sort((a, b) => (a.date || "").localeCompare(b.date || ""));
-  sortedExp.forEach(exp => {
-    const proj = data.projects.find(p => p.id === exp.projectId);
-    const net = exp.inclMwst ? (exp.amount / (1 + (exp.mwstRate || 0) / 100)) : exp.amount;
-    const taxAmt = exp.amount - net;
-    rows.push([exp.date, exp.category, proj?.name || "", exp.description, net.toFixed(2), exp.mwstRate || 0, taxAmt.toFixed(2), exp.amount.toFixed(2)].map(q).join(sep));
-  });
-  // Roh-Summe über exakt die oben aufgelisteten Zeilen (inkl. über Lohn
-  // ausbezahlte) — die TOTAL-Zeile muss auf die sichtbaren Zeilen aufgehen.
-  const tableExpTotal = sortedExp.reduce((s, e) => s + (e.amount || 0), 0);
-  const tableExpTax = sortedExp.reduce((s, e) => { const net = e.inclMwst ? (e.amount / (1 + (e.mwstRate || 0) / 100)) : e.amount; return s + (e.amount - net); }, 0);
-  rows.push(["", "", "", "TOTAL", (tableExpTotal - tableExpTax).toFixed(2), "", tableExpTax.toFixed(2), tableExpTotal.toFixed(2)].map(q).join(sep));
-  rows.push([""].join(sep));
-  // Über Lohnabrechnung ausbezahlte Spesen (lohnEntryId gesetzt) stecken
-  // bereits in l.auszahlung (Personalaufwand-Block unten) und dürfen für die
-  // ZUSAMMENFASSUNG nicht nochmals mitgezählt werden (analog Accounting.jsx
-  // expensesForTotals) — nur hier, nicht für die TOTAL-Zeile oben.
-  const expForTotals = sortedExp.filter(e => !e.lohnEntryId);
-  const expTotal = expForTotals.reduce((s, e) => s + (e.amount || 0), 0);
-  const expTax = expForTotals.reduce((s, e) => { const net = e.inclMwst ? (e.amount / (1 + (e.mwstRate || 0) / 100)) : e.amount; return s + (e.amount - net); }, 0);
-
-  // Interne Ausgaben
-  rows.push(["INTERNE AUSGABEN", "", "", "", "", "", "", ""].map(q).join(sep));
-  rows.push(["Datum", "Kategorie", "Beschreibung", "Wiederkehrend", "Netto CHF", "MWST-Satz %", "MWST CHF", "Brutto CHF"].map(q).join(sep));
-  const sortedIntExp = [...(data.internalExpenses || [])].filter(e => !year || (e.date || "").startsWith(year)).sort((a, b) => (a.date || "").localeCompare(b.date || ""));
-  sortedIntExp.forEach(exp => {
-    const net = exp.inclMwst ? (exp.amount / (1 + (exp.mwstRate || 0) / 100)) : exp.amount;
-    const taxAmt = exp.amount - net;
-    rows.push([exp.date, exp.category, exp.description, exp.recurring ? (exp.recurringInterval || "monatlich") : "", net.toFixed(2), exp.mwstRate || 0, taxAmt.toFixed(2), exp.amount.toFixed(2)].map(q).join(sep));
-  });
-  const intExpTotal = sortedIntExp.reduce((s, e) => s + (e.amount || 0), 0);
-  const intExpTax = sortedIntExp.reduce((s, e) => { const net = e.inclMwst ? (e.amount / (1 + (e.mwstRate || 0) / 100)) : e.amount; return s + (e.amount - net); }, 0);
-  rows.push(["", "", "", "TOTAL", (intExpTotal - intExpTax).toFixed(2), "", intExpTax.toFixed(2), intExpTotal.toFixed(2)].map(q).join(sep));
-  rows.push([""].join(sep));
-
-  // Personalaufwand (Löhne)
-  const sortedLoehne = [...(data.lohnEntries || [])].filter(l => !year || l.monat.startsWith(year)).sort((a, b) => a.monat.localeCompare(b.monat));
-  if (sortedLoehne.length > 0) {
-    rows.push(["PERSONALAUFWAND / LÖHNE", "", "", "", "", "", "", "", ""].map(q).join(sep));
-    rows.push(["Monat", "Mitarbeiter", "Brutto", "Abzüge AN", "Netto", "Spesen", "Auszahlung AN", "PK AG-Anteil", "Gesamtlohnkosten"].map(q).join(sep));
-    sortedLoehne.forEach(l => {
-      const name = l.empSnapshot?.name || "";
-      const bvgAG = l.bvgAG || 0;
-      const gesamt = (l.auszahlung || 0) + bvgAG;
-      rows.push([l.monat, name, (l.bruttoTotal || 0).toFixed(2), (l.totalAbzuege || 0).toFixed(2), (l.netto || 0).toFixed(2), (l.spesenTotal || 0).toFixed(2), (l.auszahlung || 0).toFixed(2), bvgAG.toFixed(2), gesamt.toFixed(2)].map(q).join(sep));
-    });
-    const lohnTotal = sortedLoehne.reduce((s, l) => s + (l.auszahlung || 0) + (l.bvgAG || 0), 0);
-    rows.push(["", "", "", "", "", "", "", "TOTAL", lohnTotal.toFixed(2)].map(q).join(sep));
-    rows.push([""].join(sep));
-  }
-
-  // Zusammenfassung
-  const lohnTotalAll = sortedLoehne.reduce((s, l) => s + (l.auszahlung || 0) + (l.bvgAG || 0), 0);
-  // Akonto-MwSt ist erst bei Schlussrechnung steuerrelevant (analog Accounting.jsx taxWithoutAkonto).
-  const akontoTax = paidInvoices.filter(i => i.invoiceKind === "akonto" && i.status !== "entwurf").reduce((s, i) => s + (i.tax || 0), 0);
-  const taxWithoutAkonto = totalTax - akontoTax;
-  rows.push(["ZUSAMMENFASSUNG", "", "", "", "", "", "", ""].map(q).join(sep));
-  rows.push(["", "", "", "Einnahmen (Netto)", totalNet.toFixed(2), "", "", ""].map(q).join(sep));
-  rows.push(["", "", "", "Spesen (Netto)", (expTotal - expTax).toFixed(2), "", "", ""].map(q).join(sep));
-  rows.push(["", "", "", "Interne Ausgaben (Netto)", (intExpTotal - intExpTax).toFixed(2), "", "", ""].map(q).join(sep));
-  rows.push(["", "", "", "Personalaufwand (Löhne)", lohnTotalAll.toFixed(2), "", "", ""].map(q).join(sep));
-  rows.push(["", "", "", "Ergebnis (Netto)", (totalNet - (expTotal - expTax) - (intExpTotal - intExpTax) - lohnTotalAll).toFixed(2), "", "", ""].map(q).join(sep));
-  rows.push(["", "", "", "MWST auf Einnahmen (excl. Akonto)", "", "", taxWithoutAkonto.toFixed(2), ""].map(q).join(sep));
-  if (akontoTax > 0) rows.push(["", "", "", "↳ Akonto-MWST ausstehend (bei Schlussrechnung)", "", "", akontoTax.toFixed(2), ""].map(q).join(sep));
-  rows.push(["", "", "", "Vorsteuer (Spesen + Ausgaben)", "", "", (expTax + intExpTax).toFixed(2), ""].map(q).join(sep));
-  rows.push(["", "", "", "MWST-Schuld (excl. Akonto)", "", "", (taxWithoutAkonto - expTax - intExpTax).toFixed(2), ""].map(q).join(sep));
-
-  const bom = "﻿";
-  const blob = new Blob([bom + rows.join("\n")], { type: "text/csv;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `buchhaltung-${year || "gesamt"}.csv`;
-  a.click();
-  URL.revokeObjectURL(url);
-}
-
-/**
  * Text für Zahlungserinnerung / Mahnung.
  * @param nr 1 = Zahlungserinnerung (10 Tage), 2 = 2. Mahnung (7 Tage), ≥3 = letzte Mahnung (5 Tage, Androhung rechtlicher Schritte)
  * @param sentDate (derzeit ungenutzt) Versanddatum
@@ -996,44 +872,101 @@ export function getWorkdaysInMonth(
 export type { LohnResult };
 
 /**
- * Monatliche Lohnabrechnung eines Mitarbeiters. Alle Abzüge sind Prozente vom
- * Gesamtbrutto (inkl. 13. Lohn und Bonus); fehlen Sätze am Mitarbeiter, gelten
- * die Standardwerte (AHV 5.3, ALV 1.1, BVG 8.0, NBU 1.5, KTG 0.5, PK-AG 8.0, QST 10).
+ * Höchstbetrag des versicherten Verdiensts für ALV und UVG (NBU) pro Jahr, CHF.
+ * Gesetzlicher Wert (seit 2016 unverändert), daher keine Einstellung. Darüber kein ALV-/NBU-Abzug.
+ */
+export const HOECHSTLOHN_ALV_UVG = 148_200;
+
+/**
+ * Anteil des Monats, der nach dem Eintritt liegt (Kalendertage-Methode): Eintritt am 15. Mai
+ * (31 Tage) → 17/31. Vor dem Eintrittsmonat 0, danach 1. Ohne Eintrittsdatum oder Monat 1.
+ * @param monat `YYYY-MM`
+ */
+export function monatsAnteilNachEintritt(eintrittsdatum: string | undefined, monat: string | undefined): number {
+  if (!eintrittsdatum || !monat || !/^\d{4}-\d{2}$/.test(monat)) return 1;
+  const entryMonth = eintrittsdatum.slice(0, 7);
+  if (entryMonth < monat) return 1;
+  if (entryMonth > monat) return 0;
+  const [y, m] = monat.split("-").map(Number);
+  const tage = new Date(y, m, 0).getDate();
+  const tag = Math.min(Math.max(parseInt(eintrittsdatum.slice(8, 10), 10) || 1, 1), tage);
+  return (tage - tag + 1) / tage;
+}
+
+/**
+ * Kumulierter ALV-/UVG-Höchstlohn vom Jahresbeginn (bzw. Eintrittsmonat) bis und mit `monat`:
+ * 12'350 pro Beschäftigungsmonat; der Eintrittsmonat zählt als ganzer Monat.
+ * Ohne Monat: ein Monat.
+ */
+export function hoechstlohnKumuliert(eintrittsdatum: string | undefined, monat: string | undefined): number {
+  const proMonat = HOECHSTLOHN_ALV_UVG / 12;
+  if (!monat || !/^\d{4}-\d{2}$/.test(monat)) return proMonat;
+  const year = monat.slice(0, 4);
+  const m = parseInt(monat.slice(5, 7), 10);
+  let ab = 1;
+  if (eintrittsdatum && eintrittsdatum.slice(0, 4) === year) ab = parseInt(eintrittsdatum.slice(5, 7), 10) || 1;
+  else if (eintrittsdatum && eintrittsdatum.slice(0, 4) > year) return 0;
+  return Math.max(0, m - ab + 1) * proMonat;
+}
+
+/** Bereits abgerechnete Lohnsummen eines Mitarbeiters im selben Jahr vor `monat` (für den kumulierten Höchstlohn). */
+export interface LohnVorperioden {
+  /** Σ Bruttolohn Total der früheren Monate */
+  bruttoBisher: number;
+  /** Σ ALV-/UVG-pflichtiger Lohn der früheren Monate */
+  alvBasisBisher: number;
+}
+
+/**
+ * Monatliche Lohnabrechnung eines Mitarbeiters. Abzüge sind Prozente vom Gesamtbrutto
+ * (inkl. 13. Lohn und Bonus); fehlen Sätze am Mitarbeiter, gelten die Standardwerte
+ * (AHV 5.3, ALV 1.1, BVG 8.0, NBU 1.5, KTG 0.5, PK-AG 8.0, QST 10).
+ * - Eintritt im Monat: Monatslohn anteilig nach Kalendertagen (`monatsAnteilNachEintritt`).
+ * - ALV und NBU nur bis zum Höchstlohn 148'200/Jahr, kumuliert über das Jahr (`vorperioden`
+ *   = frühere Abrechnungen desselben Jahres); darüber kein Abzug.
  * Jeder Posten wird einzeln auf Rappen gerundet, damit die Summen auf dem Beleg aufgehen.
  *
- * @param monat (derzeit ungenutzt) `YYYY-MM`
- * @param spesen mit dem Lohn ausbezahlte Spesen (`amount` in CHF)
- * @param bonus einmalige Zulage in CHF; AHV-pflichtig
+ * @param monat `YYYY-MM` (für Eintritt und Höchstlohn)
+ * @param spesen mit dem Lohn ausbezahlte Spesen (`amount` in CHF, brutto)
+ * @param bonus einmalige Zulage in CHF; AHV-pflichtig, nicht anteilig
+ * @param vorperioden frühere Abrechnungen desselben Jahres (Standard: keine)
  */
 export function calcLohn(
   emp: Employee,
   monat: string | undefined,
   spesen?: { amount?: number }[],
   bonus?: number,
+  vorperioden?: LohnVorperioden,
 ): LohnResult {
+  const r2 = (n: number) => Math.round(n * 100) / 100;
   const pensumFactor = (emp.pensum || 100) / 100;
   const bruttoBase = emp.monatslohn || 0;
-  const brutto = Math.round(bruttoBase * pensumFactor * 100) / 100;
+  const brutto = r2(bruttoBase * pensumFactor * monatsAnteilNachEintritt(emp.eintrittsdatum, monat));
   // 13. Monatslohn: 1/12 pro Monat
-  const dreizehnter = emp.dreizehnterLohn ? Math.round(brutto / 12 * 100) / 100 : 0;
-  const bonusBetrag = Math.round((bonus || 0) * 100) / 100;
-  const bruttoTotal = brutto + dreizehnter + bonusBetrag; // Bonus ist AHV-pflichtig
+  const dreizehnter = emp.dreizehnterLohn ? r2(brutto / 12) : 0;
+  const bonusBetrag = r2(bonus || 0);
+  const bruttoTotal = r2(brutto + dreizehnter + bonusBetrag); // Bonus ist AHV-pflichtig
 
-  const ahv    = Math.round(bruttoTotal * ((emp.ahvSatz  ?? 5.3)  / 100) * 100) / 100;
-  const alv    = Math.round(bruttoTotal * ((emp.alvSatz  ?? 1.1)  / 100) * 100) / 100;
-  const bvg    = Math.round(bruttoTotal * ((emp.bvgSatz  ?? 8.0)  / 100) * 100) / 100;
-  const nbu    = Math.round(bruttoTotal * ((emp.nbuSatz  ?? 1.5)  / 100) * 100) / 100;
-  const ktg    = Math.round(bruttoTotal * ((emp.ktgSatz  ?? 0.5)  / 100) * 100) / 100;
-  const qst    = emp.quellensteuerPflichtig
-    ? Math.round(bruttoTotal * ((emp.quellensteuerSatz ?? 10) / 100) * 100) / 100 : 0;
-  const bvgAG  = Math.round(bruttoTotal * ((emp.pkAGSatz ?? 8.0)  / 100) * 100) / 100;
+  // ALV/UVG: kumulierte Methode — Lohnsumme bis und mit diesem Monat, gedeckelt auf den Höchstlohn
+  // der Beschäftigungsmonate, minus bereits abgerechnete Basis (holt Überschüsse früherer Monate nach)
+  const bisher = vorperioden || { bruttoBisher: 0, alvBasisBisher: 0 };
+  const cap = hoechstlohnKumuliert(emp.eintrittsdatum, monat);
+  const alvBasis = r2(Math.max(0, Math.min(bisher.bruttoBisher + bruttoTotal, cap) - bisher.alvBasisBisher));
 
-  const totalAbzuege = ahv + alv + bvg + nbu + ktg + qst;
-  const netto = Math.round((bruttoTotal - totalAbzuege) * 100) / 100;
-  const spesenTotal = Math.round((spesen || []).reduce((s, e) => s + (e.amount || 0), 0) * 100) / 100;
-  const auszahlung = Math.round((netto + spesenTotal) * 100) / 100;
+  const ahv    = r2(bruttoTotal * ((emp.ahvSatz  ?? 5.3)  / 100));
+  const alv    = r2(alvBasis    * ((emp.alvSatz  ?? 1.1)  / 100));
+  const bvg    = r2(bruttoTotal * ((emp.bvgSatz  ?? 8.0)  / 100));
+  const nbu    = r2(alvBasis    * ((emp.nbuSatz  ?? 1.5)  / 100));
+  const ktg    = r2(bruttoTotal * ((emp.ktgSatz  ?? 0.5)  / 100));
+  const qst    = emp.quellensteuerPflichtig ? r2(bruttoTotal * ((emp.quellensteuerSatz ?? 10) / 100)) : 0;
+  const bvgAG  = r2(bruttoTotal * ((emp.pkAGSatz ?? 8.0)  / 100));
 
-  return { brutto, bruttoBase, dreizehnter, bonusBetrag, bruttoTotal, ahv, alv, bvg, nbu, ktg, qst, totalAbzuege, netto, spesenTotal, auszahlung, bvgAG };
+  const totalAbzuege = r2(ahv + alv + bvg + nbu + ktg + qst);
+  const netto = r2(bruttoTotal - totalAbzuege);
+  const spesenTotal = r2((spesen || []).reduce((s, e) => s + (e.amount || 0), 0));
+  const auszahlung = r2(netto + spesenTotal);
+
+  return { brutto, bruttoBase, dreizehnter, bonusBetrag, bruttoTotal, alvBasis, ahv, alv, bvg, nbu, ktg, qst, totalAbzuege, netto, spesenTotal, auszahlung, bvgAG };
 }
 
 // ─── Dashboard layout helpers ──────────────────────────────────────────────────
