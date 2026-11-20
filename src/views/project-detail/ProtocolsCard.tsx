@@ -1,7 +1,7 @@
 // Karte «Protokolle» der Projekt-Detailansicht: Protokolle des Projekts, neues Protokoll anlegen und öffnen.
 
 import { PROTOKOLL_TYPES } from "../../constants";
-import { generateId, formatDate, nextProtoSeq, applyProtoNumberFormat, localISODate } from "../../utils";
+import { generateId, formatDate, nextProtoNumber, localISODate } from "../../utils";
 import { type ViewProps } from "../../types";
 
 /** Protokollliste des Projekts mit «+ Neues Protokoll» (legt an und springt per Event in die Protokoll-Ansicht). */
@@ -34,13 +34,7 @@ export function ProtocolsCard({ data, saveAll, projectId }: {
               const typKuerzel = abbr[PROTOKOLL_TYPES[0]] || "SO";
               const proj = data.projects.find(x => x.id === projectId);
               const fmt = data.settings.protokollNumberFormat || "YYYY-TT-NN";
-              const seq = nextProtoSeq(all, fmt);
-              return applyProtoNumberFormat(fmt, {
-                date: localISODate(),
-                projectNumber: proj?.number || "",
-                seq,
-                typKuerzel,
-              });
+              return nextProtoNumber(all, fmt, { date: localISODate(), projectNumber: proj?.number || "", typKuerzel }).nummer;
             })(),
             participants: [],
             traktanden: [{ id: generateId(), nr: "1", title: "", items: [] }],

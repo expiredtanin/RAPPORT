@@ -19,7 +19,7 @@
 
 import React, { useState, useEffect } from "react";
 import { PROTOKOLL_TYPES } from "../constants";
-import { generateId, formatDate, htmlToText, initialsOf, participantKuerzel, responsibleLabel, protocolApproval, nextProtoSeq, protoSeqOf, applyProtoNumberFormat, localISODate } from "../utils";
+import { generateId, formatDate, htmlToText, initialsOf, participantKuerzel, responsibleLabel, protocolApproval, nextProtoNumber, protoScopeKey, protoSeqOf, applyProtoNumberFormat, localISODate } from "../utils";
 import { TableToolbar, Header, Modal, FormField, RichEditor, DateInput, ShareButton, SortTh, RowMenu, EmptyState } from "../components/UI";
 import { useConfirm } from "../hooks/useConfirm";
 import { changeWithUndo, removeWithUndo } from "../undo";
@@ -67,9 +67,8 @@ function Protokolle({ data, saveAll, setPrintContent, modal, setModal }: Pick<Vi
     const defaultType = PROTOKOLL_TYPES[0];
     const abbr = data.settings.protokollTypeAbbreviations || {};
     const typKuerzel = abbr[defaultType] || "SO";
-    const seq = nextProtoSeq(protokolle, data.settings.protokollNumberFormat || "YYYY-TT-NN");
-    const nummer = applyProtoNumberFormat(data.settings.protokollNumberFormat || "YYYY-TT-NN", {
-      date: today, projectNumber: proj?.number || "", seq, typKuerzel,
+    const { nummer } = nextProtoNumber(protokolle, data.settings.protokollNumberFormat || "YYYY-TT-NN", {
+      date: today, projectNumber: proj?.number || "", typKuerzel,
     });
     const p: Protocol = {
       id: generateId(),
@@ -363,12 +362,16 @@ function ProtokollDetail({ protokoll, data, onBack, onSave, onDelete, onOpen, se
     const updated = { ...prev, [k]: v };
     if (k === "projectId" || k === "date" || k === "type") {
       const abbr = data.settings.protokollTypeAbbreviations || {};
-      const proj = data.projects.find(x => x.id === updated.projectId);
-      const typKuerzel = abbr[updated.type] || "SO";
-      const seq = protoSeqOf(prev.nummer, data.settings.protokollNumberFormat || "YYYY-TT-NN") ?? 1;
-      updated.nummer = applyProtoNumberFormat(data.settings.protokollNumberFormat || "YYYY-TT-NN", {
-        date: updated.date, projectNumber: proj?.number || "", seq, typKuerzel,
-      });
+      const fmt = data.settings.protokollNumberFormat || "YYYY-TT-NN";
+      const ctxOf = (x: Protocol) => ({ date: x.date, projectNumber: data.projects.find(pr => pr.id === x.projectId)?.number || "", typKuerzel: abbr[x.type] || "SO" });
+      const ctx = ctxOf(updated);
+      // Gleicher Kreis (Projekt/Jahr/Typ, soweit im Format): laufende Nummer behalten; sonst die nächste im neuen Kreis
+      if (protoScopeKey(fmt, ctxOf(prev)) === protoScopeKey(fmt, ctx)) {
+        const seq = protoSeqOf(prev.nummer, fmt) ?? 1;
+        updated.nummer = applyProtoNumberFormat(fmt, { ...ctx, seq });
+      } else {
+        updated.nummer = nextProtoNumber(data.protocols || [], fmt, ctx, prev.id).nummer;
+      }
     }
     return updated;
   });
@@ -894,9 +897,8 @@ function ProtokollDetail({ protokoll, data, onBack, onSave, onDelete, onOpen, se
           const typKuerzel = abbr[p.type] || "SO";
           const folgeDate = p.nextDate || localISODate();
           const proj = data.projects.find(x => x.id === p.projectId);
-          const seq = nextProtoSeq(allProts, data.settings.protokollNumberFormat || "YYYY-TT-NN");
-          const newNummer = applyProtoNumberFormat(data.settings.protokollNumberFormat || "YYYY-TT-NN", {
-            date: folgeDate, projectNumber: proj?.number || "", seq, typKuerzel,
+          const { nummer: newNummer } = nextProtoNumber(allProts, data.settings.protokollNumberFormat || "YYYY-TT-NN", {
+            date: folgeDate, projectNumber: proj?.number || "", typKuerzel,
           });
 
           const newTraktanden = folgeSelection

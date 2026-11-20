@@ -834,20 +834,6 @@ export function formatKW(dateStr?: string | null): string {
   return `KW ${getWeekNumber(dateStr)} / ${d.getFullYear()}`;
 }
 
-/** @deprecated Altes Nummernschema («<Projekt>-P01»); neu: `applyProtoNumberFormat` + `nextProtoSeq`. */
-export function nextProtoNumber(
-  protocols: { nummer?: string; number?: string }[] | undefined,
-  projectNumber?: string,
-): string {
-  const prefix = projectNumber ? `${projectNumber}-P` : "P";
-  const existing = (protocols || []).map(p => {
-    const m = (p.nummer || p.number || "").match(/(\d+)$/);
-    return m ? parseInt(m[1]) : 0;
-  });
-  const max = existing.length ? Math.max(...existing) : 0;
-  return `${prefix}${String(max + 1).padStart(2, "0")}`;
-}
-
 /**
  * Laufende Nummer aus einer Protokollnummer. Passt die Nummer auf das Format (`applyProtoNumberFormat`),
  * zählt genau die NN-Stelle — sonst würden Ziffern der Projektnummer (PP) oder von Monat/Tag mitgezählt
@@ -889,6 +875,53 @@ export function nextProtoSeq(protocols: Pick<Protocol, "nummer">[] | undefined, 
     if (n !== null && n > max) max = n;
   });
   return max + 1;
+}
+
+/** Angaben, aus denen eine Protokollnummer entsteht (ohne laufende Nummer). */
+export interface ProtoNumberContext { date?: DateStr; projectNumber?: string; typKuerzel?: string }
+
+const PROTO_SEQ_MARK = 987654;
+
+/**
+ * «Kreis» einer Protokollnummer: die formatierte Nummer mit Platzhalter statt laufender Nummer
+ * (z.B. «07-BS-#»). Protokolle mit gleichem Kreis zählen gemeinsam; ohne NN/NNN im Format null.
+ */
+export function protoScopeKey(fmt: string | undefined, ctx: ProtoNumberContext): string | null {
+  if (!fmt || !/NN/.test(fmt)) return null;
+  return applyProtoNumberFormat(fmt, { ...ctx, seq: PROTO_SEQ_MARK }).replace(String(PROTO_SEQ_MARK), "#");
+}
+
+/**
+ * Nächste Protokollnummer, gezählt innerhalb des Kreises, den das Format sichtbar macht: steckt die
+ * Projektnummer drin (PP/PPP), pro Projekt; das Jahr (YYYY/YY), pro Jahr; das Typkürzel (TT), pro
+ * Sitzungsart — z.B. «07-BS-03» für die dritte Bausitzung im Projekt 07, unabhängig von anderen
+ * Projekten. So entsteht nie eine doppelte Nummer, und die Zählung passt zu dem, was man liest.
+ * Ohne NN/NNN im Format: bisherige Regel über alle Protokolle (`nextProtoSeq`).
+ * @param excludeId Protokoll, das nicht mitzählt (beim Umnummerieren nach Projekt-/Typwechsel)
+ */
+export function nextProtoNumber(
+  protocols: Pick<Protocol, "id" | "nummer">[] | undefined,
+  fmt: string | undefined,
+  ctx: ProtoNumberContext,
+  excludeId?: Id,
+): { nummer: string; seq: number } {
+  const list = (protocols || []).filter(p => p.id !== excludeId);
+  const key = protoScopeKey(fmt, ctx);
+  let seq: number;
+  if (!key) {
+    seq = nextProtoSeq(list, fmt);
+  } else {
+    const [pre, post] = key.split("#");
+    const esc = (t: string) => t.replace(/[-/\\^$*+?.()|[\]{}]/g, "\\$&");
+    const re = new RegExp(`^${esc(pre)}(\\d+)${esc(post)}$`);
+    let max = 0;
+    for (const p of list) {
+      const m = (p.nummer || "").match(re);
+      if (m) max = Math.max(max, parseInt(m[1], 10));
+    }
+    seq = max + 1;
+  }
+  return { seq, nummer: applyProtoNumberFormat(fmt, { ...ctx, seq }) };
 }
 
 /**

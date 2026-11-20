@@ -67,7 +67,7 @@ APP/
 │   ├── src/main.rs               6 Zeilen — delegiert zu app_lib::run()
 │   ├── src/lib.rs                ~185 Zeilen — Tray, App-Menü, Beenden mit Speichern, Window-Events, Plugins
 │   ├── Cargo.toml                tauri, plugin-updater, plugin-process, plugin-log, serde
-│   ├── tauri.conf.json           Updater-URL, Public-Key, CSP, Bundle-Targets
+│   ├── tauri.conf.json           Updater-URL, Public-Key, CSP (connect-src http:/https: — Server-Adresse frei wählbar, Skripte nur 'self'), Bundle-Targets
 │   ├── capabilities/default.json core:default, core:webview:allow-print, updater:default, process:allow-restart, dialog/fs (Datenordner; fest erlaubt nur $DOCUMENT/Rapport)
 │   ├── icons/                    .icns, .ico, mehrere PNGs (icon.png = Quelle)
 │   ├── gen/                      AUTO-GENERIERT — nie editieren

@@ -1,7 +1,7 @@
 // Tests für Projekt- und Protokoll-Hilfen in utils.ts: Kalenderwoche (ISO 8601, auch westlich von UTC),
 // laufende Protokoll- und Projektnummern, Verweise vor dem Löschen.
 import { afterEach, describe, expect, it } from "vitest";
-import { formatKW, getKW, getWeekNumber, nextProjectSeq, nextProtoSeq, personReferences, projectReferences, protoSeqOf, applyProtoNumberFormat } from "./utils";
+import { formatKW, getKW, getWeekNumber, nextProjectSeq, nextProtoNumber, nextProtoSeq, personReferences, projectReferences, protoSeqOf, applyProtoNumberFormat } from "./utils";
 import type { AppData } from "./types";
 
 describe("Kalenderwoche (ISO 8601)", () => {
@@ -72,5 +72,24 @@ describe("Verweise vor dem Löschen", () => {
   it("Kontakt (Auftraggeber, Beteiligter, Empfehler)", () => {
     expect(personReferences(data, "c1")).toEqual(["2 Projekte", "1 Rechnung", "1 Offerte", "1 Lead"]);
     expect(personReferences(data, "c9")).toEqual([]);
+  });
+});
+
+describe("Protokollnummern pro Kreis (Projekt/Jahr/Typ, soweit im Format)", () => {
+  const p = (id: string, nummer: string) => ({ id, nummer });
+  it("PP im Format: zählt pro Projekt", () => {
+    const list = [p("a", "07-BS-01"), p("b", "07-BS-02"), p("c", "12-BS-05")];
+    expect(nextProtoNumber(list, "PP-TT-NN", { projectNumber: "2025/07", typKuerzel: "BS", date: "2026-03-01" }).nummer).toBe("07-BS-03");
+    expect(nextProtoNumber(list, "PP-TT-NN", { projectNumber: "2026/12", typKuerzel: "BS", date: "2026-03-01" }).nummer).toBe("12-BS-06");
+    expect(nextProtoNumber(list, "PP-TT-NN", { projectNumber: "2026/31", typKuerzel: "BS", date: "2026-03-01" }).nummer).toBe("31-BS-01");
+  });
+  it("YYYY-TT-NN: pro Jahr und Sitzungsart neu", () => {
+    const list = [p("a", "2025-BS-07"), p("b", "2026-BS-01"), p("c", "2026-PS-04")];
+    expect(nextProtoNumber(list, "YYYY-TT-NN", { typKuerzel: "BS", date: "2026-05-01" }).nummer).toBe("2026-BS-02");
+    expect(nextProtoNumber(list, "YYYY-TT-NN", { typKuerzel: "BB", date: "2026-05-01" }).nummer).toBe("2026-BB-01");
+    expect(nextProtoNumber(list, "YYYY-TT-NN", { typKuerzel: "BS", date: "2027-01-10" }).nummer).toBe("2027-BS-01");
+  });
+  it("beim Umnummerieren zählt das eigene Protokoll nicht mit", () => {
+    expect(nextProtoNumber([p("x", "2026-BS-03")], "YYYY-TT-NN", { typKuerzel: "BS", date: "2026-05-01" }, "x").nummer).toBe("2026-BS-01");
   });
 });
