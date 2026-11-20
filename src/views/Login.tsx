@@ -9,6 +9,7 @@
 // neu gewählt wird.
 
 import React, { useEffect, useRef, useState } from "react";
+import { LoginError } from "../storage/login-error";
 import { storage, isCloudBackend, isServerMode } from "../storage/adapter";
 import type { PocketBaseAdapter } from "../storage/pocketbase-adapter";
 import type { CurrentUser, Settings } from "../types";
@@ -122,7 +123,15 @@ export default function Login({ verifyLogin, settings, version, cloudUnreachable
         }
       }
 
-      const user = await Promise.resolve(verifyLogin(username, password, { studioId: selectedStudioId || null }));
+      let user;
+      try {
+        user = await Promise.resolve(verifyLogin(username, password, { studioId: selectedStudioId || null }));
+      } catch (err) {
+        // Netz, Server, Rate-Limit, kein Büro: Ursache zeigen, nicht als Fehlversuch zählen
+        setError(true);
+        setErrorMsg(err instanceof LoginError ? err.message : "Anmeldung fehlgeschlagen.");
+        return;
+      }
       if (user) {
         writeAttempts({ count: 0, lockedUntil: 0 });
       } else {
@@ -135,7 +144,7 @@ export default function Login({ verifyLogin, settings, version, cloudUnreachable
         setLockedUntil(next.lockedUntil);
         setNow(Date.now());
         setError(true);
-        setErrorMsg(isCloud ? "Anmeldung fehlgeschlagen." : "Falscher Benutzername oder Passwort");
+        setErrorMsg(isCloud ? "E-Mail oder Passwort falsch." : "Falscher Benutzername oder Passwort");
         setShake(true);
         setTimeout(() => setShake(false), 500);
       }

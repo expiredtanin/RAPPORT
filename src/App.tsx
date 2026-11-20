@@ -44,6 +44,7 @@ import { useAppearance } from "./hooks/useAppearance";
 import { getUserPermissions, getUserInitials, getVisibleNavItems } from "./auth";
 import { ChangelogModal, AboutModal } from "./components/InfoModals";
 import { LATEST_VERSION, versionLabel } from "./changelog";
+import { LoginError } from "./storage/login-error";
 
 // Code-split: each view loads on demand to keep the initial bundle small.
 const Dashboard      = lazy(() => import("./views/Dashboard"));
@@ -179,18 +180,12 @@ export default function App() {
     try {
       const result = await cloudStorage.signIn(email, password);
       if (!result) return null;
-      if (result.studios.length === 0) {
-        console.warn("Cloud-Login OK, aber User ist in keinem Studio Mitglied.");
-        return null;
-      }
+      if (result.studios.length === 0) throw new LoginError("no_studio");
       // Wenn ein Studio vorgewählt wurde, prüfen ob der User dort Member ist
       const membership = preferredStudioId
         ? result.studios.find(m => m.studio_id === preferredStudioId)
         : result.studios[0];
-      if (!membership) {
-        console.warn("User ist im gewählten Studio nicht Mitglied.");
-        return null;
-      }
+      if (!membership) throw new LoginError("not_member");
       cloudStorage.setStudioId(membership.studio_id);
       sessionStorage.setItem("rapport_studio_id", membership.studio_id);
       const parsed = await cloudStorage.load();
@@ -211,8 +206,10 @@ export default function App() {
       handleLogin(user);
       return user;
     } catch (e) {
+      // Ursache an die Anmeldemaske weitergeben (nicht als «falsches Passwort» zählen)
+      if (e instanceof LoginError) throw e;
       console.error("Cloud signIn fehlgeschlagen:", e);
-      return null;
+      throw new LoginError("unknown", (e as Error)?.message);
     }
   };
   const handleLogout = () => {

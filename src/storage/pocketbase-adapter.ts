@@ -39,6 +39,7 @@
 // types.ts/AppData. Reihenfolge in ENTITY_MAP beachten (Relationen!).
 
 import PocketBase, { LocalAuthStore } from "pocketbase";
+import { LoginError, loginErrorFromStatus } from "./login-error";
 import type { RecordModel } from "pocketbase";
 import type { AppData, Id } from "../types";
 import type { RawData } from "./migrations";
@@ -186,14 +187,22 @@ export class PocketBaseAdapter implements StorageAdapter {
     let auth;
     try {
       auth = await this.client.collection("users").authWithPassword(email, password);
-    } catch {
-      return null;
+    } catch (e) {
+      // Nur falsche Zugangsdaten → null; Netz, Rate-Limit und Serverfehler als LoginError
+      const reason = loginErrorFromStatus(pbError(e).status);
+      if (!reason) return null;
+      throw new LoginError(reason, pbError(e).message);
     }
     const userId = auth.record.id;
-    const memberships = await this.client.collection("studioMembers").getFullList({
-      filter: `user = "${userId}" && active = true`,
-      expand: "studio",
-    });
+    let memberships: RecordModel[];
+    try {
+      memberships = await this.client.collection("studioMembers").getFullList({
+        filter: `user = "${userId}" && active = true`,
+        expand: "studio",
+      });
+    } catch (e) {
+      throw new LoginError(loginErrorFromStatus(pbError(e).status) || "unknown", pbError(e).message);
+    }
     return {
       user: auth.record,
       profile: { username: auth.record.username, display_name: auth.record.displayName },

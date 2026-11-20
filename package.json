@@ -24,7 +24,7 @@
     "@tesseract.js-data/deu": "^1.0.0",
     "exceljs": "^4.4.0",
     "pdfjs-dist": "^6.3.289",
-    "pocketbase": "^0.28.0",
+    "pocketbase": "^0.29.0",
     "react": "^19.2.5",
     "react-dom": "^19.2.5",
     "swissqrbill": "^4.3.0",
