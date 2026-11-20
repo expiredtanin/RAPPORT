@@ -1035,8 +1035,10 @@ export function calcLohn(
   const anteil = monatsAnteilNachEintritt(emp.eintrittsdatum, monat, emp.austrittsdatum);
   const brutto = r2(bruttoBase * pensumFactor * anteil);
   if (anteil > 0 && anteil < 1) hinweise.push(`Monatslohn anteilig (${Math.round(anteil * 1000) / 10} % des Monats, Ein-/Austritt)`);
-  // 13. Monatslohn: 1/12 pro Monat
-  const dreizehnter = emp.dreizehnterLohn ? r2(brutto / 12) : 0;
+  // 13. Monatslohn: 1/12 pro Monat; der Dezember gleicht die Rappen-Rundung der Vormonate aus,
+  // damit übers Jahr genau ein Monatslohn herauskommt (11 × 1'208.33 + 1'208.37 = 14'500.00)
+  const dreizehnter = !emp.dreizehnterLohn ? 0
+    : monat?.endsWith("-12") ? r2(brutto - 11 * r2(brutto / 12)) : r2(brutto / 12);
   const bonusBetrag = r2(bonus || 0);
   const bruttoTotal = r2(brutto + dreizehnter + bonusBetrag); // Bonus ist AHV-pflichtig
 
@@ -1320,3 +1322,17 @@ export function formatDays(hours: number, emp: Partial<Pick<Employee, "wochenstu
   const d = Math.round((hours / per) * 10) / 10;
   return `${Number.isInteger(d) ? d : d.toFixed(1)} T`;
 }
+
+/**
+ * Rechnungen, die zu einer Offerte gehören: mit `quoteId` auf sie verwiesen; bei der Hauptofferte eines
+ * Projekts zusätzlich die Projekt-Rechnungen ohne Offertbezug (Akonto/Teilrechnung über den Reiter «Projekt»).
+ * Rechnungen anderer Offerten desselben Projekts (Nachträge) zählen nicht.
+ */
+export const invoicesForQuote = (q: Pick<Quote, "id" | "projectId">, invoices: Invoice[], projects: Project[]): Invoice[] => {
+  const proj = q.projectId ? projects.find(p => p.id === q.projectId) : undefined;
+  const linked = proj ? migrateLinkedQuotes(proj) : [];
+  const isMain = !proj || linked.length === 0 || linked.some(lq => lq.quoteId === q.id && lq.role === "Hauptofferte");
+  return invoices.filter(i => i.quoteId === q.id || (isMain && !!q.projectId && i.projectId === q.projectId && !i.quoteId));
+};
+
+

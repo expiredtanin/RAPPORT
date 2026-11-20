@@ -18,9 +18,9 @@
 // `settings.studioBudgetVersions` ab (auch Grundlage des PDFs).
 
 import React, { useState } from "react";
-import { generateId, formatCHF, invoiceNet } from "../utils";
-import { expenseNet } from "../accounting";
-import { Header, FormField, ShareButton } from "../components/UI";
+import { generateId, formatCHF, lohnAGSaetze } from "../utils";
+import { budgetEinnahmen, budgetFixkosten, jahresLohnkosten } from "../budget";
+import { Header, ShareButton } from "../components/UI";
 import type { Employee, StudioBudgetState, StudioBudgetVersion, ViewProps } from "../types";
 
 type BudgetRow<K extends keyof StudioBudgetState> = StudioBudgetState[K] extends (infer R)[] ? R : never;
@@ -60,48 +60,28 @@ function StudioBudget({ data, update, setPrintContent }: Pick<ViewProps, "data" 
   const saved = data.settings.studioBudget || {};
 
   // ── Hilfsfunktion: Auto-Werte für einen MA berechnen ──────────
-  const calcEmpAuto = (emp: Employee, agZuschlag?: number) => {
+  const agSaetze = lohnAGSaetze(data.settings);
+  /** Lohnkosten und Jahresstunden einer Person — Kosten wie die Lohnläufe (budget.ts). */
+  const calcEmpAuto = (emp: Employee) => {
     const pensum = (emp.pensum || 100) / 100;
-    // monatslohn ist der 100%-Basislohn (siehe Employees.jsx "Effektiv bei X%"-
-    // Hinweis und calcLohn() in utils.js) — Pensum muss auf den Lohn selbst
-    // angewendet werden, nicht nur auf die Stunden, sonst rechnet Teilzeit
-    // hier mit vollem Lohn (bis zu +100% zu hohe Personalkosten bei 50%).
-    const monatslohnEff = (emp.monatslohn || 0) * pensum;
-    const brutto12 = monatslohnEff * 12;
-    const brutto13 = emp.dreizehnterLohn ? brutto12 + monatslohnEff : brutto12;
-    const agAnteil = brutto13 * ((agZuschlag ?? 20) / 100);
-    const totalKosten = brutto13 + agAnteil;
+    const lk = jahresLohnkosten(emp, currentYear, agSaetze);
     const ferienWochen = emp.ferienWochen || data.settings.defaultFerienWochen || 5;
     const wochenstunden = (emp.wochenstunden || data.settings.defaultWochenstunden || 35) * pensum;
     const nettoWochen = 52 - ferienWochen - 1.5;
-    const jahresStunden = Math.round(wochenstunden * nettoWochen);
-    return { brutto13, agAnteil, totalKosten, jahresStunden };
+    // Bei Ein-/Austritt im Jahr nur die Monate mit Lohn
+    const jahresStunden = Math.round(wochenstunden * nettoWochen * (lk.monate / 12));
+    return { brutto13: lk.brutto, agAnteil: lk.ag, totalKosten: lk.total, jahresStunden };
   };
 
-  // ── Hilfsfunktion: Auto-Werte für interne Ausgaben ───────────
-  const calcFixAuto = () => {
-    const rows: { id: string; label: string; cat: string; amount: number }[] = [];
-    internalExpenses.forEach(e => {
-      const year = (e.date || "").slice(0, 4);
-      const net = expenseNet(e);
-      let annualized = net;
-      if (e.recurring) {
-        if (e.recurringInterval === "monatlich") annualized = net * 12;
-        else if (e.recurringInterval === "quartalsweise") annualized = net * 4;
-      } else if (year !== String(currentYear)) return;
-      rows.push({ id: e.id, label: e.description || e.category, cat: e.category, amount: annualized });
-    });
-    return rows;
-  };
+  const calcFixAuto = () => budgetFixkosten(internalExpenses, currentYear);
 
-  // ── State: ein Eintrag pro MA, pro Fixkostenposten, plus globale Parameter ──
   const initState = (): StudioBudgetState => {
     const sv = saved;
-    const agZuschlag = sv.agZuschlag ?? 20;
+    const agZuschlag = sv.agZuschlag ?? 20; // nicht mehr verwendet (AG-Beiträge wie Lohnlauf), nur mitgespeichert
 
     // Mitarbeiter-Zeilen
     const empRows = employees.map(emp => {
-      const auto = calcEmpAuto(emp, agZuschlag);
+      const auto = calcEmpAuto(emp);
       const saved_emp = (sv.empRows || []).find(r => r.id === emp.id) || {} as Partial<BudgetRow<"empRows">>;
       return {
         id: emp.id,
@@ -139,7 +119,8 @@ function StudioBudget({ data, update, setPrintContent }: Pick<ViewProps, "data" 
       extraRows, // { id, label, amount, aktiv }
       extraIncome, // { id, label, amount, aktiv }
       inkludiereRechnungen: sv.inkludiereRechnungen ?? true,
-      inkludiereEntwuerfe: sv.inkludiereEntwuerfe ?? true,
+      // Entwürfe sind noch nicht gestellt — wie in der Buchhaltung standardmässig nicht als Einnahme
+      inkludiereEntwuerfe: sv.inkludiereEntwuerfe ?? false,
       inkludiereOfferten: sv.inkludiereOfferten ?? false,
       inkludiereOffertEntwuerfe: sv.inkludiereOffertEntwuerfe ?? false,
       reserve: sv.reserve ?? 10,
@@ -191,7 +172,7 @@ function StudioBudget({ data, update, setPrintContent }: Pick<ViewProps, "data" 
   const autoFix = calcFixAuto();
 
   const empCalcRows = employees.map(emp => {
-    const auto = calcEmpAuto(emp, b.agZuschlag);
+    const auto = calcEmpAuto(emp);
     const row = b.empRows.find(r => r.id === emp.id) || { aktiv: emp.active !== false, kostenOverride: false, kostenManual: 0, stundenOverride: false, stundenManual: 0 };
     const kosten = row.kostenOverride ? (row.kostenManual || 0) : auto.totalKosten;
     const stunden = row.stundenOverride ? (row.stundenManual || 0) : auto.jahresStunden;
@@ -199,6 +180,10 @@ function StudioBudget({ data, update, setPrintContent }: Pick<ViewProps, "data" 
   });
 
   const personalKosten = empCalcRows.filter(r => r.aktiv).reduce((s, r) => s + r.kosten, 0);
+  // Anteil der AG-Beiträge auf den Bruttolöhnen (nur berechnete Zeilen, ohne übersteuerte)
+  const autoRows = empCalcRows.filter(r => r.aktiv && !r.row.kostenOverride);
+  const personalKostenBrutto = autoRows.reduce((s, r) => s + r.auto.brutto13, 0);
+  const personalKostenAuto = autoRows.reduce((s, r) => s + r.auto.totalKosten, 0);
   const jahresStundenTotal = empCalcRows.filter(r => r.aktiv).reduce((s, r) => s + r.stunden, 0);
   const jahresStundenFallback = employees.length === 0 ? 1800 : jahresStundenTotal;
 
@@ -222,23 +207,11 @@ function StudioBudget({ data, update, setPrintContent }: Pick<ViewProps, "data" 
   const currentRate = b.rateOverride ? (b.rateManual || defaultRate) : defaultRate;
 
   // ── Einnahmen ─────────────────────────────────────────────────
-  const yearInvoices = (data.invoices || []).filter(i => (i.date || "").startsWith(String(currentYear)));
-  const paidRevenue = yearInvoices.filter(i => i.status === "bezahlt").reduce((s, i) => s + invoiceNet(i), 0);
-  const sentRevenue = yearInvoices.filter(i => i.status === "gesendet" || i.status === "überfällig").reduce((s, i) => s + invoiceNet(i), 0);
-  const draftRevenue = yearInvoices.filter(i => i.status === "entwurf").reduce((s, i) => s + invoiceNet(i), 0);
-  const invoiceAutoRevenue = b.inkludiereRechnungen
-    ? paidRevenue + sentRevenue + (b.inkludiereEntwuerfe ? draftRevenue : 0)
-    : 0;
-
-  const yearQuotes = (data.quotes || []).filter(q => (q.date || "").startsWith(String(currentYear)));
-  const acceptedQuoteRevenue = yearQuotes.filter(q => q.status === "angenommen").reduce((s, q) => s + (q.sub || 0), 0);
-  const sentQuoteRevenue = yearQuotes.filter(q => q.status === "gesendet").reduce((s, q) => s + (q.sub || 0), 0);
-  const draftQuoteRevenue = yearQuotes.filter(q => q.status === "entwurf").reduce((s, q) => s + (q.sub || 0), 0);
-  const quoteAutoRevenue = b.inkludiereOfferten
-    ? acceptedQuoteRevenue + sentQuoteRevenue + (b.inkludiereOffertEntwuerfe ? draftQuoteRevenue : 0)
-    : 0;
-
-  const autoRevenue = invoiceAutoRevenue + quoteAutoRevenue;
+  // Einnahmen (budget.ts): Offerten abzüglich der daraus schon gestellten Rechnungen
+  const ein = budgetEinnahmen(data, currentYear, { rechnungen: b.inkludiereRechnungen, rechnungsEntwuerfe: b.inkludiereEntwuerfe, offerten: b.inkludiereOfferten, offertEntwuerfe: b.inkludiereOffertEntwuerfe });
+  const paidRevenue = ein.paid, sentRevenue = ein.sent, draftRevenue = ein.draft;
+  const acceptedQuoteRevenue = ein.quotesAccepted, sentQuoteRevenue = ein.quotesSent, draftQuoteRevenue = ein.quotesDraft;
+  const autoRevenue = ein.total;
   const manualIncomeTotal = (b.extraIncome || []).filter(r => r.aktiv).reduce((s, r) => s + (r.amount || 0), 0);
   const totalRevenue = autoRevenue + manualIncomeTotal;
   const ergebnis = totalRevenue - gesamtKosten;
@@ -426,14 +399,11 @@ function StudioBudget({ data, update, setPrintContent }: Pick<ViewProps, "data" 
           {/* Personalkosten */}
           <div className="card">
             <SectionLabel>PERSONALKOSTEN / JAHR</SectionLabel>
-            <div style={{ marginBottom: 12 }}>
-              <FormField label="AG-Sozialleistungen %">
-                <input type="number" step="0.5" min={0} max={50} value={b.agZuschlag} style={{ width: 100 }}
-                  onChange={e => { const v = +e.target.value; setField("agZuschlag", v); setB(prev => ({ ...prev, agZuschlag: v })); }} />
-                <div style={{ fontSize: 11, color: "var(--text4)", marginTop: 3 }}>AHV, UVG, BVG, KTG AG-Anteil (typisch 18–22%)</div>
-              </FormField>
+            <div className="hint" style={{ fontSize: 12, color: "var(--text4)", marginBottom: 12 }}>
+              Kosten wie in den Lohnabrechnungen: Bruttolohn inkl. 13. Monatslohn plus alle Arbeitgeberbeiträge
+              (AHV/IV/EO, ALV, Pensionskasse, FAK, Verwaltungskosten, Berufsunfall, Krankentaggeld — Sätze unter Einstellungen → Studio).
+              {personalKostenBrutto > 0 && <> Das sind {Math.round((personalKostenAuto / personalKostenBrutto - 1) * 1000) / 10} % auf den Bruttolöhnen.</>}
             </div>
-
             {employees.length === 0 ? (
               <div style={{ fontSize: 12, color: "var(--text4)", padding: "8px 0" }}>Keine Mitarbeiter erfasst – unter «Mitarbeiter» Löhne hinterlegen.</div>
             ) : (
@@ -453,7 +423,16 @@ function StudioBudget({ data, update, setPrintContent }: Pick<ViewProps, "data" 
                           <input type="checkbox" checked={aktiv} onChange={e => setEmpRow(emp.id, { aktiv: e.target.checked })} style={{ width: "auto" }} />
                           <div>
                             <div style={{ fontWeight: 500 }}>{emp.name}</div>
-                            <div style={{ fontSize: 10, color: "var(--text4)" }}>{emp.pensum || 100}% · {emp.dreizehnterLohn ? "13 Mt." : "12 Mt."}</div>
+                            <div style={{ fontSize: 10, color: "var(--text4)" }}>{emp.pensum || 100}% · {emp.dreizehnterLohn ? "13. Monatslohn" : "12 Monatslöhne"}{(() => {
+                              // Ein-/Austritt in diesem Jahr anzeigen (Kosten und Stunden sind dann anteilig)
+                              const y = String(currentYear);
+                              const fmt = (d: string) => `${d.slice(8, 10)}.${d.slice(5, 7)}.`;
+                              const parts = [
+                                emp.eintrittsdatum?.startsWith(y) ? `ab ${fmt(emp.eintrittsdatum)}` : "",
+                                emp.austrittsdatum?.startsWith(y) ? `bis ${fmt(emp.austrittsdatum)}` : "",
+                              ].filter(Boolean);
+                              return parts.length ? ` · ${parts.join(" ")}` : "";
+                            })()}</div>
                           </div>
                         </label>
                       </td>

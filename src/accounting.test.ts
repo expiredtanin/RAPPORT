@@ -305,3 +305,12 @@ describe("Vorsteuer pro Beleg gerundet", () => {
     expect(expenseTax({ amount: 50, inclMwst: false, mwstRate: 8.1 })).toBe(0);
   });
 });
+
+describe("13. Monatslohn übers Jahr", () => {
+  it("Dezember gleicht die Rappen aus: 12 × 1/12 = genau ein Monatslohn", () => {
+    const e = emp({ monatslohn: 14500, dreizehnterLohn: true });
+    const sum = Array.from({ length: 12 }, (_, i) => calcLohn(e, `2026-${String(i + 1).padStart(2, "0")}`).dreizehnter).reduce((a, b) => a + b, 0);
+    expect(Math.round(sum * 100) / 100).toBe(14500);
+    expect(calcLohn(e, "2026-12").dreizehnter).toBe(1208.37);
+  });
+});

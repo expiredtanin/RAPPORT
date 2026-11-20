@@ -28,6 +28,9 @@ const CL_HAAS = "firma-haas";
 export const E_JULIAN = "emp-julian";
 export const E_LAURA = "emp-laura";
 export const E_NINA = "emp-nina";
+export const E_MARC = "emp-marc";
+export const E_PETER = "emp-peter";
+export const E_SARA = "emp-sara";
 
 let n = 0;
 const id = (p) => `${p}-${(n++).toString(36)}`;
@@ -408,9 +411,14 @@ export const demoData = {
       ] },
   ],
   employees: [
-    { id: E_JULIAN, name: "Julian Roth", role: "Bauleiter", pensum: 100, monatslohn: 8200, wochenstunden: 41, ferienWochen: 5, personalNr: "101", eintrittsdatum: dateAt(-250), ferienUebertragVorjahr: {} },
-    { id: E_LAURA, name: "Laura Meier", role: "Architektin", pensum: 100, monatslohn: 7600, wochenstunden: 41, ferienWochen: 5, personalNr: "102", eintrittsdatum: dateAt(-380), ferienUebertragVorjahr: {} },
-    { id: E_NINA, name: "Nina Baumgartner", role: "Praktikantin", pensum: 80, monatslohn: 3800, wochenstunden: 41, ferienWochen: 5, personalNr: "103", eintrittsdatum: dateAt(-58), ferienUebertragVorjahr: {} },
+    { id: E_JULIAN, name: "Julian Roth", role: "Bauleiter", pensum: 100, monatslohn: 8200, wochenstunden: 41, ferienWochen: 5, personalNr: "101", geburtsdatum: "1990-04-18", eintrittsdatum: dateAt(-250), ferienUebertragVorjahr: {} },
+    { id: E_LAURA, name: "Laura Meier", role: "Architektin", pensum: 100, monatslohn: 7600, wochenstunden: 41, ferienWochen: 5, personalNr: "102", geburtsdatum: "1984-09-03", eintrittsdatum: dateAt(-380), ferienUebertragVorjahr: {} },
+    { id: E_NINA, name: "Nina Baumgartner", role: "Praktikantin", pensum: 80, monatslohn: 3800, wochenstunden: 41, ferienWochen: 5, personalNr: "103", geburtsdatum: "2000-02-11", eintrittsdatum: dateAt(-58), ferienUebertragVorjahr: {} },
+    // Sonderfälle für Buchhaltung/Löhne (Nachrechnung in scripts/demo-check): Partner über dem ALV-Höchstlohn
+    // mit 13. Monatslohn und PK laut Ausweis, Rentner mit Freibetrag, Austritt im laufenden Monat mit Familienzulagen
+    { id: E_MARC, name: "Marc Amrein", role: "Partner", pensum: 100, monatslohn: 14500, dreizehnterLohn: true, pkBeitragAN: 1180, pkBeitragAG: 1420, wochenstunden: 42, ferienWochen: 5, personalNr: "100", geburtsdatum: "1968-05-30", eintrittsdatum: "2010-01-01", ferienUebertragVorjahr: {} },
+    { id: E_PETER, name: "Peter Keller", role: "Kostenplaner", pensum: 40, monatslohn: 9000, wochenstunden: 42, ferienWochen: 5, personalNr: "104", geburtsdatum: "1958-03-12", eintrittsdatum: "2024-01-01", ferienUebertragVorjahr: {} },
+    { id: E_SARA, name: "Sara Weber", role: "Architektin", pensum: 90, monatslohn: 8400, familienzulagen: 215, wochenstunden: 42, ferienWochen: 5, personalNr: "105", geburtsdatum: "1991-06-02", eintrittsdatum: "2023-04-01", austrittsdatum: `${new Date().getFullYear()}-11-15`, ferienUebertragVorjahr: {} },
   ],
   feiertage: [], absences: [], ferienEntries: [], absenzTypes: [],
   lohnEntries: [], uberstundenAbschluss: [],

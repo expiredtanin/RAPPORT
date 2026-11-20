@@ -193,17 +193,8 @@ export const applyEntryHours = (form: InvoiceForm, project: Pick<Project, "name"
   return { ...form, items };
 };
 
-/**
- * Rechnungen, die zu einer Offerte gehören: mit `quoteId` auf sie verwiesen; bei der Hauptofferte eines
- * Projekts zusätzlich die Projekt-Rechnungen ohne Offertbezug (Akonto/Teilrechnung über den Reiter «Projekt»).
- * Rechnungen anderer Offerten desselben Projekts (Nachträge) zählen nicht.
- */
-export const invoicesForQuote = (q: Pick<Quote, "id" | "projectId">, invoices: Invoice[], projects: Project[]) => {
-  const proj = q.projectId ? projects.find(p => p.id === q.projectId) : undefined;
-  const linked = proj ? migrateLinkedQuotes(proj) : [];
-  const isMain = !proj || linked.length === 0 || linked.some(lq => lq.quoteId === q.id && lq.role === "Hauptofferte");
-  return invoices.filter(i => i.quoteId === q.id || (isMain && !!q.projectId && i.projectId === q.projectId && !i.quoteId));
-};
+/** Rechnungen einer Offerte — liegt in utils.ts (auch vom Budget genutzt), hier weiter exportiert. */
+export { invoicesForQuote } from "../../utils";
 
 /**
  * Betrag einer Teil-/Akontorechnung «Nach SIA-Phase»: der offerierte Phasenbetrag aus den verknüpften
