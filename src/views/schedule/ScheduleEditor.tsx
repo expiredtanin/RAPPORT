@@ -115,6 +115,9 @@ export function ScheduleEditor({ project, data, update, setPrintContent, canEdit
   const suggestions = protocolSuggestions(project, protocols, data.employees || [], today).filter(s =>
     s.kind !== "sitzung" || !seriesAll.some(se => seriesDates(se).some(d => Math.abs(dayNum(d) - dayNum(s.date)) <= 3)));
   const [suggestOpen, setSuggestOpen] = useState(true);
+  // Im Vollbild zählt die Fläche fürs Programm: Vorschläge aus Protokollen eingeklappt (Kopfzeile bleibt, aufklappbar)
+  const [prevFull, setPrevFull] = useState(false);
+  if (prevFull !== full) { setPrevFull(full); setSuggestOpen(!full); }
   const takeSuggestions = (list: ProtocolSuggestion[]) => {
     saveTrack([...items, ...list.map(s => suggestionToItem(s, track, generateId()))]);
   };

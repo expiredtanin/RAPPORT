@@ -720,6 +720,9 @@ export interface RowMenuItem { label: string; icon?: string; onClick: () => void
  * «⋯»-Menü am Zeilenende (Bearbeiten, Exportieren, Löschen …). Ersetzt die Reihe sichtbarer Knöpfe pro Zeile:
  * die Zeile selbst öffnet per Klick, seltene Aktionen liegen im Menü. Klicks gehen nicht an die Zeile weiter.
  */
+/** geschätzte Breite eines Aktionsmenüs (für die Öffnungsrichtung) */
+const MENU_EST_W = 260;
+
 export function RowMenu({ items, label = "Aktionen" }: { items: RowMenuItem[]; label?: string }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -731,15 +734,26 @@ export function RowMenu({ items, label = "Aktionen" }: { items: RowMenuItem[]; l
     document.addEventListener("keydown", onEsc, true);
     return () => { document.removeEventListener("mousedown", onDoc); document.removeEventListener("keydown", onEsc, true); };
   }, [open]);
+  // Menü öffnet nach links (rechtsbündig); reicht der Platz in der umgebenden Karte bzw. im Fenster nicht
+  // (z.B. Knopf am linken Rand einer umbrochenen Werkzeugleiste), öffnet es nach rechts — beim Klick gemessen
+  const [alignLeft, setAlignLeft] = useState(false);
+  const toggle = (btn: HTMLElement) => {
+    if (!open) {
+      const clip = btn.closest(".card, .modal, .sched-full");
+      const minLeft = (clip ? clip.getBoundingClientRect().left : 0) + 4;
+      setAlignLeft(btn.getBoundingClientRect().right - MENU_EST_W < minLeft);
+    }
+    setOpen(o => !o);
+  };
   const visible = items.filter(i => !i.hidden);
   if (visible.length === 0) return null;
   return (
     <div ref={ref} className="row-menu" onClick={e => e.stopPropagation()}>
-      <button className="btn-icon" aria-label={label} title={label} aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen(o => !o)}>
+      <button className="btn-icon" aria-label={label} title={label} aria-haspopup="menu" aria-expanded={open} onClick={e => toggle(e.currentTarget)}>
         <span className="msr" style={{ fontSize: 20 }}>more_horiz</span>
       </button>
       {open && (
-        <div className="menu-pop" role="menu" style={{ right: 0 }}>
+        <div className="menu-pop" role="menu" style={alignLeft ? { left: 0 } : { right: 0 }}>
           {visible.map((it, i) => (
             <button key={i} role="menuitem" className={`menu-item${it.danger ? " danger" : ""}`} onClick={() => { setOpen(false); it.onClick(); }}>
               {it.icon && <span className="msr" style={{ fontSize: 17 }}>{it.icon}</span>}{it.label}

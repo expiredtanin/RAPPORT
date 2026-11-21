@@ -94,6 +94,17 @@ export function PrintView({ content, onClose, settings, assets }: { content: Con
   } : undefined;
   const pageW = sched ? sched.pageW : 210;
   const pageH = sched ? (sched.pageH ?? measuredH) : 297;
+  // Ansicht des Terminprogramms: «Ganzes Blatt» passt die Breite ans Fenster (A3–A0 sonst zu breit), sonst fester %-Wert
+  const [viewZoom, setViewZoom] = useState<"fit" | number>("fit");
+  const [winW, setWinW] = useState(() => (typeof window === "undefined" ? 1440 : window.innerWidth));
+  useEffect(() => {
+    const onResize = () => setWinW(window.innerWidth);
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+  const fitScale = Math.min(1, Math.max(0.1, (winW - 48) / (pageW * PX_PER_MM)));
+  const viewScale = sched ? (viewZoom === "fit" ? fitScale : viewZoom) : 1;
+  const [sheetPx, setSheetPx] = useState(0);
   const paged = !isQrOnly && !sched;
   const sheetRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -122,6 +133,15 @@ export function PrintView({ content, onClose, settings, assets }: { content: Con
 
   useLayoutEffect(() => { runPagination(); }, [runPagination, content, settings, assets]);
   // Terminprogramm «nach Bedarf»: Blatthöhe = Inhalt (gemessen), damit @page genau passt
+  useLayoutEffect(() => {
+    const el = sheetRef.current;
+    if (!sched || !el) return;
+    const measure = () => setSheetPx(el.offsetHeight);
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [!!sched]); // eslint-disable-line react-hooks/exhaustive-deps -- nur beim Wechsel Terminprogramm/anderes Dokument neu beobachten
   const autoHeight = !!sched && sched.pageH === null;
   useLayoutEffect(() => {
     if (!autoHeight || !sheetRef.current) return;
@@ -196,6 +216,8 @@ export function PrintView({ content, onClose, settings, assets }: { content: Con
           :root { color-scheme: light; }
           html, body, #root, #root > div, .print-wrapper { background: white !important; height: auto !important; min-height: 0 !important; margin: 0 !important; padding: 0 !important; }
           .no-print { display: none !important; }
+          .sched-view { width: auto !important; height: auto !important; }
+          .sched-view-inner { transform: none !important; width: auto !important; }
           .print-wrapper { overflow: visible !important; }
           .print-page { box-shadow: none !important; margin: 0 !important; padding-top: ${mTop}mm !important; padding-bottom: ${mBottom}mm !important; padding-left: ${mLeft}mm !important; padding-right: ${mRight}mm !important; max-width: none !important; width: ${pageW}mm !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
           .print-page.paged { padding-bottom: 0 !important; }
@@ -216,10 +238,25 @@ export function PrintView({ content, onClose, settings, assets }: { content: Con
         <button onClick={onClose} style={{ padding: "9px 18px", background: "#2a2a22", color: "#fff", border: "none", borderRadius: 4, cursor: "pointer", fontFamily: "DM Mono, monospace", fontSize: 13 }}>← Zurück</button>
         <button onClick={triggerPrint} style={{ padding: "9px 18px", background: "#252520", color: "#f0ede8", border: "none", borderRadius: 4, cursor: "pointer", fontFamily: "DM Mono, monospace", fontSize: 13, fontWeight: 500 }}>Drucken / PDF</button>
         </div>
+        {sched && (
+          <div style={{ display: "flex", gap: 6, alignItems: "center", fontFamily: "var(--font-ui)", fontSize: 12, color: "#555" }}>
+            <span style={{ marginRight: 4 }}>Ansicht</span>
+            {([["fit", "Ganzes Blatt"], [0.5, "50 %"], [0.75, "75 %"], [1, "100 %"], [1.5, "150 %"]] as const).map(([v, l]) => (
+              <button key={String(v)} onClick={() => setViewZoom(v)} aria-pressed={viewZoom === v}
+                style={{ padding: "4px 10px", borderRadius: 999, border: "1px solid #bdb8b0", cursor: "pointer", fontSize: 12,
+                  background: viewZoom === v ? "#252520" : "#f4f2ee", color: viewZoom === v ? "#f0ede8" : "#333" }}>{l}</button>
+            ))}
+            {viewZoom === "fit" && <span style={{ marginLeft: 6, color: "#777" }}>{Math.round(fitScale * 100)} %</span>}
+          </div>
+        )}
         {sched && <ScheduleFormatBar opts={schedOpts} setOpts={setSchedOpts} layout={sched} pageH={pageH}
           usableMm={printUsableMm(schedOpts.paper, { left: settings?.pageMarginLeft ?? 20, right: settings?.pageMarginRight ?? 20 })} />}
       </div>
 
+      {/* Terminprogramm: Ansicht verkleinern/vergrössern (nur am Bildschirm, transform — Druck und Messung
+          bleiben in mm). Andere Dokumente unverändert. */}
+      <div className="sched-view" style={sched ? { width: pageW * PX_PER_MM * viewScale, height: sheetPx * viewScale, margin: "0 auto" } : undefined}>
+      <div className="sched-view-inner" style={sched ? { transform: `scale(${viewScale})`, transformOrigin: "0 0", width: `${pageW}mm` } : undefined}>
       <div ref={sheetRef} className={sheetClass(design, paged)} data-doc={content.type} style={{
         position: "relative",
         width: `${pageW}mm`,
@@ -263,9 +300,11 @@ export function PrintView({ content, onClose, settings, assets }: { content: Con
           {content.type === "studioBudget" && <StudioBudgetPrint snapshot={content.snapshot} settings={settings} />}
           {content.type === "protokoll" && <ProtokollPrint protokoll={content.protokoll} data={content.data} settings={settings} />}
           {content.type === "mitarbeiterOverview" && <MitarbeiterOverviewPrint employees={content.employees} settings={settings} />}
-          {content.type === "schedule" && <SchedulePrint content={content} settings={settings} layout={sched!} pan={schedPan} />}
+          {content.type === "schedule" && <SchedulePrint content={content} settings={settings} layout={sched!} pan={schedPan} viewScale={viewScale} />}
           {content.type === "timeReport" && <TimeReportPrint employee={content.employee} entries={content.entries} month={content.month} data={content.data} settings={settings} />}
         </div>
+      </div>
+      </div>
       </div>
     </div>
   );

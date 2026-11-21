@@ -14,10 +14,12 @@ import { PRINT_LABEL_WIDTH, printScaleLabel, type SchedulePrintLayout } from "./
 
 const fmt = (d: string) => `${d.slice(8, 10)}.${d.slice(5, 7)}.${d.slice(0, 4)}`;
 
-export function SchedulePrint({ content, settings, layout, pan }: {
+export function SchedulePrint({ content, settings, layout, pan, viewScale = 1 }: {
   content: Content; settings: Settings; layout: SchedulePrintLayout;
   /** Ausschnitt durch Ziehen verschieben (nur Vorschau): `move(tage)` relativ zum Stand bei `start` */
   pan?: { start: () => void; move: (days: number) => void };
+  /** Verkleinerung der Bildschirm-Ansicht (Druckansicht «Ansicht»): Ziehen rechnet in Bildschirm-Pixeln */
+  viewScale?: number;
 }) {
   const { project, track, baseline, critical, holidays, breaks = [], data, showToday = true } = content as unknown as {
     project: Project; track: ScheduleTrack; items: ScheduleItem[]; baseline?: ScheduleBaseline;
@@ -28,7 +30,7 @@ export function SchedulePrint({ content, settings, layout, pan }: {
   const panning = useRef<{ x0: number; dw: number } | null>(null);
   const onPanDown = (e: React.PointerEvent) => {
     if (!pan || e.button !== 0) return;
-    panning.current = { x0: e.clientX, dw: dayWidth };
+    panning.current = { x0: e.clientX, dw: dayWidth * viewScale };
     pan.start();
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
   };
