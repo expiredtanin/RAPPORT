@@ -37,7 +37,10 @@ import { AbsenceModal, FerienModal } from "./employees/SimpleModals";
 
 
 export default
-function Employees({ data, update, saveAll, setPrintContent }: Pick<ViewProps, "data" | "update" | "saveAll" | "setPrintContent">) {
+function Employees({ data, update, saveAll, setPrintContent, userPermissions }: Pick<ViewProps, "data" | "update" | "saveAll" | "setPrintContent"> & {
+  /** Rechte der Rolle (null = Vollzugriff); Lohnfelder nur mit «loehne» */
+  userPermissions?: string[] | null;
+}) {
   const employees = data.employees || [];
   const absenzTypes = getAbsenzTypes(data);
   const absences = data.absences || [];
@@ -234,7 +237,7 @@ function Employees({ data, update, saveAll, setPrintContent }: Pick<ViewProps, "
 
       {/* ── MODALS ── */}
       {modal === "emp" && (
-        <EmployeeModal data={data} empForm={empForm} setEmpForm={setEmpForm} nextPersonalNr={nextPersonalNr} onClose={() => setModal(null)} onSave={saveEmp} />
+        <EmployeeModal data={data} empForm={empForm} setEmpForm={setEmpForm} nextPersonalNr={nextPersonalNr} onClose={() => setModal(null)} onSave={saveEmp} canEditLohn={!userPermissions || userPermissions.includes("loehne")} />
       )}
 
       {modal === "abs" && (

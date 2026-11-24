@@ -128,7 +128,7 @@ check("M: eigenen Eintrag nicht auf andere umhängen", r.status >= 400, `HTTP ${
 if (settings) {
   const cur = (await api("GET", `/api/collections/studioSettings/records/${settings.id}`, tA)).json;
   r = await api("PATCH", `/api/collections/studioSettings/records/${settings.id}`, tM, { ui: { ...(cur.ui || {}), closedMonths: ["2026-10"] } });
-  check("M: Monatsabschluss (erlaubtes Feld) änderbar", r.status === 200, `HTTP ${r.status} ${r.status !== 200 ? JSON.stringify(r.json) : ""}`);
+  check("M: Monatsabschluss nicht änderbar (kein Personal-Recht)", r.status >= 400, `HTTP ${r.status}`);
 }
 // Rolle erweitern → Recht gilt sofort, zurücknehmen → wieder gesperrt
 const roleM = (await api("GET", `/api/collections/appRoles/records?filter=${enc(`studio="${sid}" && roleId="r-mitarbeiter"`)}`, tA)).json.items[0];
@@ -193,6 +193,58 @@ if (settings) {
 }
 r = await api("PATCH", `/api/collections/blogPosts/records/${post}`, tA, { title: "Admin-Beitrag 2" });
 check("A: eigenen Beitrag ändern", r.status === 200, `HTTP ${r.status}`);
+
+// ── Datenintegrität (integrity.pb.js, 1787890000_field_validation.js) ──────────────────────────────────────────
+const stg = (await api("GET", `/api/collections/studioSettings/records?filter=${enc(`studio="${sid}"`)}`, tA)).json.items[0];
+must(await api("PATCH", `/api/collections/studioSettings/records/${stg.id}`, tA, { ui: { ...(stg.ui || {}), closedMonths: ["2026-10"] } }), "Monat schliessen");
+r = await api("POST", "/api/collections/timeEntries/records", tM, { id: rid("tcl"), studio: sid, employee: empM, date: "2026-10-15", minutes: 60 });
+check("M: kein Eintrag im abgeschlossenen Monat", r.status >= 400, `HTTP ${r.status}`);
+r = await api("PATCH", `/api/collections/timeEntries/records/${teM}`, tM, { date: "2026-10-16" });
+check("M: Eintrag nicht in abgeschlossenen Monat verschieben", r.status >= 400, `HTTP ${r.status}`);
+r = await api("POST", "/api/collections/timeEntries/records", tA, { id: rid("tca"), studio: sid, employee: empOther, date: "2026-10-15", minutes: 60 });
+check("A: Eintrag im abgeschlossenen Monat (Admin)", r.status === 200, `HTTP ${r.status}`);
+for (const [what, body] of [["negative Minuten", { minutes: -500 }], ["100000 Minuten", { minutes: 100000 }], ["Uhrzeit 99:99", { startTime: "99:99" }], ["Datum 2099", { date: "2099-12-31" }], ["Datum 1900", { date: "1900-01-01" }]]) {
+  r = await api("POST", "/api/collections/timeEntries/records", tM, { id: rid("tv" + what.length), studio: sid, employee: empM, date: "2026-11-21", minutes: 60, ...body });
+  check(`M: Zeiteintrag mit ${what} abgelehnt`, r.status >= 400, `HTTP ${r.status}`);
+}
+r = await api("PATCH", `/api/collections/timeEntries/records/${teM}`, tM, { invoice: inv });
+check("M: eigenen Eintrag keiner Rechnung zuordnen", r.status >= 400, `HTTP ${r.status}`);
+must(await api("PATCH", `/api/collections/timeEntries/records/${teM}`, tA, { invoice: inv }), "A verrechnet Eintrag");
+r = await api("PATCH", `/api/collections/timeEntries/records/${teM}`, tM, { minutes: 900 });
+check("M: verrechneten Eintrag nicht ändern", r.status >= 400, `HTTP ${r.status}`);
+r = await api("DELETE", `/api/collections/timeEntries/records/${teM}`, tM);
+check("M: verrechneten Eintrag nicht löschen", r.status >= 400, `HTTP ${r.status}`);
+// Projektleiter P: Recht «mitarbeiter», aber nicht für sich selbst genehmigen, keine Lohnfelder
+const pEmail = `p-${run}@test.local`;
+const pUser = must(await api("POST", "/api/collections/users/records", su, { email: pEmail, username: `p${run}`, password: pw, passwordConfirm: pw, displayName: "Projektleiter P" }), "User P");
+must(await api("POST", "/api/rapport/invite-member", tA, { userId: pUser.id, studioId: sid, appRoleId: "r-projektleiter" }), "invite P");
+const tP = await login("users", pEmail, pw);
+const empP = rid("empp");
+must(await api("POST", "/api/collections/employees/records", tA, { id: empP, studio: sid, name: "Projektleiter P", appUser: pUser.id, monatslohn: 9000 }), "employee P");
+r = await api("POST", "/api/collections/vacationEntries/records", tP, { id: rid("vp1"), studio: sid, employee: empP, dateFrom: "2026-12-21", dateTo: "2026-12-24", status: "approved" });
+check("P: eigene Ferien nicht selbst genehmigen", r.status >= 400, `HTTP ${r.status}`);
+r = await api("POST", "/api/collections/vacationEntries/records", tP, { id: rid("vp2"), studio: sid, employee: empOther, dateFrom: "2026-12-21", dateTo: "2026-12-24", status: "approved" });
+check("P: Ferien anderer genehmigen (Recht Personal)", r.status === 200, `HTTP ${r.status}`);
+r = await api("PATCH", `/api/collections/employees/records/${empP}`, tP, { monatslohn: 25000 });
+check("P: eigenen Lohn nicht ändern", r.status >= 400, `HTTP ${r.status}`);
+r = await api("PATCH", `/api/collections/employees/records/${empOther}`, tP, { monatslohn: 1 });
+check("P: Lohn anderer nicht ändern (ohne Recht Löhne)", r.status >= 400, `HTTP ${r.status}`);
+r = await api("PATCH", `/api/collections/employees/records/${empOther}`, tP, { role: "Bauleiterin" });
+check("P: andere Angaben anderer ändern (Recht Personal)", r.status === 200, `HTTP ${r.status}`);
+r = await api("POST", "/api/collections/overtimeClosings/records", tP, { id: rid("ocp"), studio: sid, employee: empP, year: 2026, type: "payout", hoursSettled: 10, auszahlungBetrag: 99999 });
+check("P: eigene Überstunden nicht selbst auszahlen", r.status >= 400, `HTTP ${r.status}`);
+// Stammdaten mit Verweisen
+const cust = rid("cust");
+must(await api("POST", "/api/collections/persons/records", tA, { id: cust, studio: sid, name: "Kunde mit Rechnung" }), "Kunde");
+must(await api("PATCH", `/api/collections/invoices/records/${inv}`, tA, { client: cust }), "Rechnung → Kunde");
+r = await api("DELETE", `/api/collections/persons/records/${cust}`, tM);
+check("M: Kunde mit Rechnung nicht löschbar", r.status >= 400, `HTTP ${r.status}`);
+// Rechnungsnummern
+r = await api("POST", "/api/collections/invoices/records", tA, { id: rid("d1"), studio: sid, number: "" });
+const r2 = await api("POST", "/api/collections/invoices/records", tA, { id: rid("d2"), studio: sid, number: "" });
+check("A: zwei Entwürfe ohne Nummer", r.status === 200 && r2.status === 200, `HTTP ${r.status}/${r2.status}`);
+r = await api("POST", "/api/collections/invoices/records", tA, { id: rid("d3"), studio: sid, number: "GEHEIM-001 " });
+check("Rechnungsnummer mit Leerzeichen am Rand abgelehnt", r.status >= 400, `HTTP ${r.status}`);
 
 // ── Deaktiviert und Mengenlimits (am Schluss, ändert den Zustand) ─────────────────────────────────────────────
 r = await api("GET", "/api/collections/users/records", tM);

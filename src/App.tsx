@@ -535,7 +535,7 @@ export default function App() {
           {hasViewAccess && view === "expenses" && <Expenses data={data} update={update} standalone setView={navigate} currentUser={currentUser} />}
           {hasViewAccess && view === "internal-expenses" && <InternalExpenses data={data} update={update} setView={navigate} />}
           {hasViewAccess && view === "personen" && <Persons data={data} update={update} saveAll={save} setView={navigate} modal={modal} setModal={setModal} />}
-          {hasViewAccess && view === "mitarbeiter" && <Employees data={data} update={update} saveAll={save} setPrintContent={setPrintContent} />}
+          {hasViewAccess && view === "mitarbeiter" && <Employees data={data} update={update} saveAll={save} setPrintContent={setPrintContent} userPermissions={userPermissions} />}
           {hasViewAccess && view === "letters" && <Letters data={data} update={update} setPrintContent={setPrintContent} />}
           {hasViewAccess && view === "settings" && <Settings data={data} update={update} currentUser={currentUser} uiZoom={uiZoom} setUiZoom={setUiZoom} setView={navigate} />}
           {(userPermissions === null || userPermissions.includes("settings")) && view === "dataImport" && <DataImport data={data} saveAll={save} setView={navigate} />}

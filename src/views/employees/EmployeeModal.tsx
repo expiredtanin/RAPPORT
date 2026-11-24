@@ -13,10 +13,12 @@ interface EmployeeModalProps {
   nextPersonalNr: () => string;
   onClose: () => void;
   onSave: () => void;
+  /** false = Lohnfelder nur lesen (ohne Recht «Löhne»; der Server lehnt Änderungen ab, pb_hooks/integrity.pb.js) */
+  canEditLohn?: boolean;
 }
 
 /** Formular-Modal zum Anlegen/Bearbeiten eines Mitarbeiters. */
-export default function EmployeeModal({ data, empForm, setEmpForm, nextPersonalNr, onClose, onSave }: EmployeeModalProps) {
+export default function EmployeeModal({ data, empForm, setEmpForm, nextPersonalNr, onClose, onSave, canEditLohn = true }: EmployeeModalProps) {
   const verlauf = empForm.pensumVerlauf || [];
   const setVerlauf = (list: PensumWechsel[]) => setEmpForm({ ...empForm, pensumVerlauf: list });
   const heute = arbeitszeitAm(empForm, localISODate());
@@ -116,7 +118,9 @@ export default function EmployeeModal({ data, empForm, setEmpForm, nextPersonalN
         </FormField>
       </div>
 
+      <fieldset disabled={!canEditLohn} style={{ border: "none", padding: 0, margin: 0, minWidth: 0 }}>
       <div style={{ fontSize: 11, letterSpacing: "0.08em", color: "var(--text4)", margin: "14px 0 10px", paddingTop: 12, borderTop: "1px solid var(--border2)" }}>LOHN & AUSZAHLUNG</div>
+      {!canEditLohn && <div style={{ ...hint, marginBottom: 10 }}>Lohnangaben ändert, wer das Recht «Löhne» hat.</div>}
       <div className="form-row">
         <FormField label={lohnVerlauf.length ? "Monatslohn CHF (100 %, ab Eintritt)" : "Monatslohn Brutto CHF (100% Basis)"}>
           <input type="number" min={0} step={100} value={empForm.monatslohn || ""} onChange={e => setEmpForm({ ...empForm, monatslohn: +e.target.value })} placeholder="z.B. 7000" />
@@ -217,6 +221,8 @@ export default function EmployeeModal({ data, empForm, setEmpForm, nextPersonalN
           )}
         </FormField>
       </div>
+
+      </fieldset>
 
       {/* APP-ZUGANG */}
       <div style={{ fontSize: 11, letterSpacing: "0.08em", color: "var(--text4)", margin: "18px 0 12px", paddingTop: 14, borderTop: "1px solid var(--border2)" }}>APP-ZUGANG</div>

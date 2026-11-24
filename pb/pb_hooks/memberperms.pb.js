@@ -6,7 +6,8 @@
 // alle Mitglieder einer Rolle, wenn die Rolle sich ändert oder gelöscht wird.
 //
 // Ausserdem: Büro-Einstellungen (studioSettings) darf ohne Vollzugriff nur in den Feldern ändern, wer sie in
-// seiner Ansicht braucht (Spesen-/Ausgabenkategorien, Monatsabschluss, Büro-Budget) — IBAN, Adresse, MWST,
+// seiner Ansicht braucht und das Recht dazu hat (Spesenkategorien: expenses, Ausgabenkategorien: internal-expenses,
+// Monatsabschluss: mitarbeiter, Büro-Budget: studio-budget) — IBAN, Adresse, MWST,
 // Mahnwesen usw. bleiben dem Admin vorbehalten (vorher änderte jeder mit dem Recht «settings», das auch die
 // Standardrolle Mitarbeiter hat, die IBAN der QR-Rechnungen).
 //
@@ -85,20 +86,20 @@ onRecordUpdateRequest((e) => {
   if (e.hasSuperuserAuth()) return e.next();
   const sid = e.record.get("studio");
   const authId = e.auth ? e.auth.id : "";
-  let full = false;
-  try {
-    e.app.findFirstRecordByFilter("studioMembers", "studio = {:s} && user = {:u} && active = true && perms ~ '|*|'", { s: sid, u: authId });
-    full = true;
-  } catch { full = false; }
-  if (!full) {
-    // erlaubt ohne Vollzugriff: diese Spalten und im ui-Blob diese Schlüssel
-    const OPEN_FIELDS = ["studioBudget", "studioBudgetVersions", "updated"];
-    const OPEN_UI = ["expenseCategories", "internalExpenseCategories", "closedMonths"];
+  let perms = "";
+  try { perms = e.app.findFirstRecordByFilter("studioMembers", "studio = {:s} && user = {:u} && active = true", { s: sid, u: authId }).getString("perms"); } catch { perms = ""; }
+  if (perms.indexOf("|*|") < 0) {
+    // ohne Vollzugriff: nur die Felder der eigenen Ansichten, jeweils an deren Recht gebunden (Audit 24.11.2026:
+    // vorher hob ein Mitarbeiter per API den Monatsabschluss auf oder leerte die Budget-Versionen)
+    const has = (p) => perms.indexOf("|" + p + "|") >= 0;
+    const OPEN_FIELDS = { studioBudget: "studio-budget", studioBudgetVersions: "studio-budget" };
+    const OPEN_UI = { expenseCategories: "expenses", internalExpenseCategories: "internal-expenses", closedMonths: "mitarbeiter" };
     const old = e.record.original();
     const changed = [];
     for (const f of e.record.collection().fields) {
       const n = f.name;
-      if (n === "ui" || OPEN_FIELDS.indexOf(n) >= 0) continue;
+      if (n === "ui" || n === "updated") continue;
+      if (OPEN_FIELDS[n] && has(OPEN_FIELDS[n])) continue;
       if (JSON.stringify(e.record.get(n)) !== JSON.stringify(old.get(n))) changed.push(n);
     }
     let uiNew = {}, uiOld = {};
@@ -108,10 +109,10 @@ onRecordUpdateRequest((e) => {
     for (const k of Object.keys(uiNew)) keys[k] = 1;
     for (const k of Object.keys(uiOld)) keys[k] = 1;
     for (const k of Object.keys(keys)) {
-      if (OPEN_UI.indexOf(k) >= 0) continue;
+      if (OPEN_UI[k] && has(OPEN_UI[k])) continue;
       if (JSON.stringify(uiNew[k]) !== JSON.stringify(uiOld[k])) changed.push("ui." + k);
     }
-    if (changed.length) throw new ForbiddenError("Nur ein Admin kann diese Büro-Einstellungen ändern (" + changed.slice(0, 5).join(", ") + ").");
+    if (changed.length) throw new ForbiddenError("Diese Büro-Einstellungen kann nur ein Admin ändern (" + changed.slice(0, 5).join(", ") + ").");
   }
   e.next();
 }, "studioSettings");
