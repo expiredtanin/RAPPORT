@@ -25,6 +25,8 @@ export default function Schedules({ data, setView, onSelectProject }: Pick<ViewP
   const [mode, setMode] = useState<Mode>("projekte");
   const [tracks, setTracks] = useState<ScheduleTrack[]>(["planung", "bau"]);
   const [onlyActive, setOnlyActive] = useState(true);
+  // Leerzustand: Projekt, für das ein Terminprogramm angelegt werden soll ("" = erstes ohne Programm)
+  const [pickId, setPickId] = useState("");
   const [zoom, setZoom] = useState("alles");
   const dayWidth = ZOOM_LEVELS.find(z => z.id === zoom)!.dayWidth;
   const projects = (data.projects || []).filter(p => !onlyActive || p.status !== "abgeschlossen");
@@ -163,10 +165,11 @@ export default function Schedules({ data, setView, onSelectProject }: Pick<ViewP
               title="Noch keine Terminprogramme"
               text="Im Projekt unter «Terminprogramm» aus den SIA-Phasen oder der BKP-Vorlage erstellen."
               action={without.length > 0 && (
-                <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
-                  {without.map(p => (
-                    <button key={p.id} className="btn btn-ghost" onClick={() => openProject(p.id)}>{p.name} — Terminprogramm anlegen</button>
-                  ))}
+                <div style={{ display: "flex", gap: 8, alignItems: "center", justifyContent: "center", flexWrap: "wrap" }}>
+                  <select value={pickId || without[0].id} onChange={e => setPickId(e.target.value)} style={{ width: 300, maxWidth: "100%" }} aria-label="Projekt">
+                    {without.map(p => <option key={p.id} value={p.id}>{p.number ? `${p.number} · ` : ""}{p.name}</option>)}
+                  </select>
+                  <button className="btn btn-primary" onClick={() => openProject(pickId || without[0].id)}>Terminprogramm anlegen</button>
                 </div>
               )}
             />

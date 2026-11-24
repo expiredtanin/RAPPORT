@@ -96,7 +96,7 @@ export function OverviewTab({ data, project, figures, phaseCard, overrun, onNach
       <div className="ws-col">
         <div className="ws-figs">
           {figures.map(f => (
-            <div key={f.label}><small>{f.label}</small><strong className={`num${f.tone ? ` ${f.tone}` : ""}`}>{f.value}</strong>{f.sub && <em>{f.sub}</em>}</div>
+            <div key={f.label}><small>{f.label}</small><strong className={`num${f.tone ? ` ${f.tone}` : ""}`} title={typeof f.value === "string" ? f.value : undefined}>{f.value}</strong>{f.sub && <em>{f.sub}</em>}</div>
           ))}
         </div>
         {phaseCard}

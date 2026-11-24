@@ -46,8 +46,8 @@ export function EmployeeCard({ project, data, entries, billingType }: {
             <th style={{ textAlign: "right" }}>Stunden</th>
             <th style={{ textAlign: "right" }}>Anteil</th>
             {billingType === "stundensatz" && <th style={{ textAlign: "right" }}>Betrag</th>}
-            <th>Einträge</th>
-            <th>Phasen</th>
+            <th style={{ textAlign: "right" }}>Einträge</th>
+            <th className="hide-mid">Phasen</th>
           </tr>
         </thead>
         <tbody>
@@ -63,7 +63,7 @@ export function EmployeeCard({ project, data, entries, billingType }: {
                   <strong>{row.emp?.name || "Ohne Mitarbeiter"}</strong>
                   {row.emp?.role && <div style={{ fontSize: 11, color: "var(--text4)" }}>{row.emp.role}</div>}
                 </td>
-                <td style={{ textAlign: "right", fontWeight: 600 }}>{formatHours(row.mins)}</td>
+                <td style={{ textAlign: "right", fontWeight: 600, whiteSpace: "nowrap" }}>{formatHours(row.mins)}</td>
                 <td style={{ textAlign: "right" }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 6, justifyContent: "flex-end" }}>
                     <div style={{ width: 60, height: 6, background: "var(--surface3)", borderRadius: 3, overflow: "hidden" }}>
@@ -72,9 +72,9 @@ export function EmployeeCard({ project, data, entries, billingType }: {
                     <span style={{ fontSize: 12, color: "var(--text4)", minWidth: 32 }}>{pct}%</span>
                   </div>
                 </td>
-                {billingType === "stundensatz" && <td style={{ textAlign: "right" }}>{row.amount !== null ? formatCHF(row.amount) : "—"}</td>}
-                <td style={{ color: "var(--text4)", fontSize: 12 }}>{row.count} Einträge</td>
-                <td style={{ fontSize: 11, color: "var(--text4)" }}>{phases || "—"}</td>
+                {billingType === "stundensatz" && <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>{row.amount !== null ? formatCHF(row.amount) : "—"}</td>}
+                <td className="num" style={{ color: "var(--text4)", fontSize: 12, textAlign: "right" }}>{row.count}</td>
+                <td className="hide-mid" style={{ fontSize: 11, color: "var(--text4)" }}>{phases || "—"}</td>
               </tr>
             );
           })}
@@ -82,11 +82,11 @@ export function EmployeeCard({ project, data, entries, billingType }: {
         <tfoot>
           <tr style={{ borderTop: "1.5px solid var(--text)" }}>
             <td><strong>Total</strong></td>
-            <td style={{ textAlign: "right", fontWeight: 700 }}>{formatHours(totalMins)}</td>
+            <td style={{ textAlign: "right", fontWeight: 700, whiteSpace: "nowrap" }}>{formatHours(totalMins)}</td>
             <td style={{ textAlign: "right", fontSize: 12, color: "var(--text4)" }}>100%</td>
-            {billingType === "stundensatz" && <td style={{ textAlign: "right", fontWeight: 700 }}>{formatCHF(empRows.reduce((s, r) => s + (r.amount || 0), 0))}</td>}
-            <td style={{ color: "var(--text4)", fontSize: 12 }}>{entries.length} Einträge</td>
-            <td></td>
+            {billingType === "stundensatz" && <td style={{ textAlign: "right", fontWeight: 700, whiteSpace: "nowrap" }}>{formatCHF(empRows.reduce((s, r) => s + (r.amount || 0), 0))}</td>}
+            <td className="num" style={{ color: "var(--text4)", fontSize: 12, textAlign: "right" }}>{entries.length}</td>
+            <td className="hide-mid"></td>
           </tr>
         </tfoot>
       </table>

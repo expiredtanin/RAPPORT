@@ -58,7 +58,7 @@ export function BudgetCard({ project, data, entries, positions, projectInvoices,
     } else if (q.mode === "free") {
       qAmount = (q.freeItems || []).reduce((s, it) => s + (it.qty * it.price), 0);
     }
-    return { lq, q, qHours: Math.round(qHours * 10) / 10, qAmount: Math.round(qAmount) };
+    return { lq, q, qHours: Math.round(qHours * 10) / 10, qAmount: Math.round(qAmount * 100) / 100 };
   }).filter(notNull);
 
   const isNachtrag = (role: string) => role === "Nachtrag";

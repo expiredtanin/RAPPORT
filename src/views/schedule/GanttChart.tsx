@@ -432,7 +432,8 @@ export function GanttChart({
       // Schwellen ≈ Textbreite bei 10 px (6 px je Zeichen) plus Rand, damit Nachbarn nicht zusammenstossen
       const label = w > 60 ? `${MONTHS[m - 1]} ${y}` : w > 46 ? `${MONTHS[m - 1]} ${String(y).slice(2)}`
         : w > 12 ? (m === 1 && w > 26 ? `’${String(y).slice(2)}` : MONTHS[m - 1][0]) : "";
-      months.push({ x: xs, w, label });
+      // angeschnittener erster Monat: lieber ohne Beschriftung als ein einzelner Buchstabe am Rand
+      months.push({ x: xs, w, label: n === range.s && !date.endsWith("-01") && w <= 46 ? "" : label });
     }
     if (dow === 1 && dw * 7 >= 22) weeks.push({ x: x(n), label: `${getWeekNumber(date + "T00:00:00")}`, month: `${MONTHS[Number(date.slice(5, 7)) - 1]} ${date.slice(2, 4)}` });
     if (dayView) days.push({ x: x(n), wd: WEEKDAYS[dow], d: String(Number(date.slice(8, 10))), weekend: dow === 0 || dow === 6, holiday: holidaySet.has(date), isToday: date === today });
