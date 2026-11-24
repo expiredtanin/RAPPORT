@@ -318,7 +318,7 @@ async fn bootstrap_compose_stack(log: &mut String) -> Result<(), String> {
             String::new()
         };
         let env_content = render_compose_env(&template)?;
-        std::fs::write(&env_path, env_content).map_err(|e| format!("write .env: {e}"))?;
+        crate::config::write_private(&env_path, env_content.as_bytes()).map_err(|e| format!("write .env: {e}"))?;   // Superuser-Passwort → gleich 0600
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;

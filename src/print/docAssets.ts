@@ -76,7 +76,7 @@ export async function letterheadFromFile(file: File, dpi: number): Promise<Lette
 
   if (isPdf) {
     const pdfjs = await getPdfjs();
-    const pdf = await pdfjs.getDocument({ data: new Uint8Array(await file.arrayBuffer()) }).promise;
+    const pdf = await pdfjs.getDocument({ data: new Uint8Array(await file.arrayBuffer()), enableXfa: false }).promise;
     const pages: string[] = [];
     let warning: string | null = null;
     for (let n = 1; n <= Math.min(2, pdf.numPages); n++) {

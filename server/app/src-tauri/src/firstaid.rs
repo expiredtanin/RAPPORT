@@ -131,7 +131,7 @@ pub async fn diagnose_bundle() -> Result<DiagnoseResult, String> {
         out.push_str("\n```\n");
     }
 
-    std::fs::write(&path, out.as_bytes()).map_err(|e| format!("write {}: {e}", path.display()))?;
+    crate::config::write_private(&path, out.as_bytes())?;   // enthält Container-Logs → nur für den Besitzer
     let bytes = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
 
     crate::events::info(format!("Diagnose-Bundle: {filename} ({} KB)", bytes / 1024)).await;

@@ -256,7 +256,8 @@ export class FileAssetStore {
     const rel = safeRel(ref);
     if (!rel) return null;
     const typParam = new URLSearchParams(ref.slice(FILE_REF_PREFIX.length + rel.length + 1)).get("typ");
-    const typ = typParam && MIME_RE.test(typParam) ? typParam : null;
+    // Typ aus dem Verweis (Daten im geteilten Ordner können manipuliert sein): nichts, was als Seite/Skript läuft
+    const typ = typParam && MIME_RE.test(typParam) && !/html|xml|javascript|ecmascript/i.test(typParam) ? typParam : null;
     try {
       const bytes = await this.fs.readBytes(this.path(rel));
       const ext = rel.slice(rel.lastIndexOf(".") + 1).toLowerCase();

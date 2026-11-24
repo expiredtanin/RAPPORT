@@ -18,7 +18,7 @@
 // Neue Ansicht: lazy importieren (unten), in NAV_ITEMS (constants.ts) eintragen und im
 // Render-Block mit `hasViewAccess` einbinden. Versions-Changelog: `CHANGELOGS` + `LATEST_VERSION` in changelog.ts.
 
-import React, { useState, useEffect, Suspense, lazy } from "react";
+import React, { useState, useEffect, useMemo, Suspense, lazy } from "react";
 import { createPortal } from "react-dom";
 import { defaultData, statusCssVars } from "./constants";
 import { verifyPassword, withHashedPassword, stripCredentials, needsPasswordUpgrade } from "./utils";
@@ -94,14 +94,23 @@ function ViewFallback() {
 
 export default function App() {
   // Angemeldeter Nutzer (Session); steht vor dem Daten-Hook, weil dessen Realtime-Abgleich ihn braucht.
-  const [currentUser, setCurrentUser] = useState<CurrentUser | null>(() => {
+  const [sessionUser, setCurrentUser] = useState<CurrentUser | null>(() => {
     try { return JSON.parse(sessionStorage.getItem("rapport_user") || "null") || null; } catch { return null; }
   });
   const {
     data, setData, loading, loadError, saveError, isNewInstall, cloudStudios, cloudUnreachable,
     passwordRecovery, setPasswordRecovery, resetToken, setResetToken, save, update,
     dataNotices, dismissDataNotices,
-  } = useStudioData(currentUser);
+  } = useStudioData(sessionUser);
+  // Lokal/Datenordner: Rolle und Rechte immer aus dem gespeicherten Konto, nie aus der Sitzung (sessionStorage
+  // lässt sich bearbeiten; vorher wurde man so mit «role: admin» zum Admin). Konto gelöscht → keine Rechte.
+  // Cloud: die Sitzung kommt vom Server, die Rechte setzt dort ohnehin der Server durch (pb_migrations/*role_rules*).
+  const currentUser = useMemo<CurrentUser | null>(() => {
+    if (!sessionUser || isCloudBackend || loading) return sessionUser;
+    const u = (data.users || []).find(x => x.id === sessionUser.id);
+    if (!u) return { ...sessionUser, role: "user", appRoleId: "__ohne_konto__", permissions: [] };
+    return { ...sessionUser, role: u.role, appRoleId: u.appRoleId, permissions: undefined, employeeId: u.employeeId ?? sessionUser.employeeId };
+  }, [sessionUser, data.users, loading]);
   const handleLogin = (user: User | CurrentUser) => {
     const safe = stripCredentials(user);
     sessionStorage.setItem("rapport_user", JSON.stringify(safe));

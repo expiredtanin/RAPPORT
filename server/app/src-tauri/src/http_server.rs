@@ -237,6 +237,12 @@ async fn basic_auth(
         return Ok(next.run(req).await);
     }
 
+    // Ohne Authorization-Header ist es kein Rateversuch, sondern die erste Anfrage des Browsers (oder eine fremde
+    // Seite mit <img src=…>): nicht zählen — sonst konnte jede Webseite den Admin per Sperre aussperren (Audit 24.11.2026).
+    if !req.headers().contains_key(header::AUTHORIZATION) {
+        return Ok(unauthorized());
+    }
+
     // Failure registrieren.
     let mut fails = state.fails.lock().await;
     let now = Instant::now();
@@ -425,8 +431,16 @@ const REDACTED: &str = "<redacted>";
 /// Schluessel, die ueber HTTP nicht gesetzt werden duerfen: Geheimnisse
 /// (Passwoerter nur lokal in der App) und `COMPOSE_DIR` (wuerde `docker
 /// compose` auf ein beliebiges Verzeichnis umlenken).
+///
+/// Freigabeliste statt Sperrliste (Audit 24.11.2026): nur die Schalter der Einstellungen-Ansicht; neue Schlüssel
+/// sind erst nach bewusster Aufnahme hier per HTTP schreibbar.
+const HTTP_KEYS: &[&str] = &[
+    "ADMIN_UI_BIND", "ADMIN_UI_PORT", "ADMIN_UI_TLS", "AUTO_RECOVERY_ENABLED", "AUTO_START_CONTAINERS_ON_LAUNCH",
+    "BACKUP_ENABLED", "BACKUP_HOUR", "BACKUP_INTERVAL_HOURS", "BACKUP_RETENTION_COUNT",
+    "CONTAINER_AUTOUPDATE_ENABLED", "CONTAINER_AUTOUPDATE_INTERVAL_HOURS", "PB_SUPERUSER_EMAIL",
+];
 fn http_writable(key: &str) -> bool {
-    !crate::config::is_secret_key(key) && key != "COMPOSE_DIR"
+    HTTP_KEYS.contains(&key) && !crate::config::is_secret_key(key) && key != "COMPOSE_DIR"
 }
 
 async fn get_config_h() -> Response {
@@ -648,5 +662,6 @@ mod tests {
         assert!(!http_writable("ADMIN_UI_PASSWORD"));
         assert!(!http_writable("PB_SUPERUSER_PASSWORD"));
         assert!(!http_writable("COMPOSE_DIR"));
+        assert!(!http_writable("NEUER_SCHLUESSEL"));
     }
 }

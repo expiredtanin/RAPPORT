@@ -158,6 +158,16 @@ if (settings) {
 r = await api("PATCH", `/api/collections/blogPosts/records/${post}`, tA, { title: "Admin-Beitrag 2" });
 check("A: eigenen Beitrag ändern", r.status === 200, `HTTP ${r.status}`);
 
+// ── Deaktiviert und Mengenlimits (am Schluss, ändert den Zustand) ─────────────────────────────────────────────
+r = await api("GET", "/api/collections/users/records", tM);
+check("M (aktiv): sieht Kolleginnen", r.status === 200 && r.json.items.length >= 2, `${r.json && r.json.items ? r.json.items.length : "?"} Konten`);
+must(await api("PATCH", `/api/collections/studioMembers/records/${myMember.id}`, su, { active: false }), "M deaktivieren");
+r = await api("GET", "/api/collections/users/records", tM);
+check("M (deaktiviert): sieht nur das eigene Konto", r.status === 200 && r.json.items.length === 1, `${r.json && r.json.items ? r.json.items.length : "?"} Konten`);
+let last = 0;
+for (let i = 0; i < 5; i++) last = (await api("POST", "/api/collections/users/request-password-reset", null, { email: mEmail })).status;
+check("Passwort-Reset: Mengenlimit greift", last === 429, `5. Anfrage HTTP ${last}`);
+
 // ── Ergebnis ─────────────────────────────────────────────────────────────────────────────────────────────────
 let bad = 0;
 for (const x of results) { if (!x.ok) bad++; console.log(`${x.ok ? "OK  " : "FAIL"}  ${x.name}${x.detail ? `  (${x.detail})` : ""}`); }

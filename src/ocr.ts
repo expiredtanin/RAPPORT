@@ -57,7 +57,7 @@ async function dataUrlToBytes(dataUrl: string): Promise<Uint8Array> {
 async function extractPdfText(dataUrl: string): Promise<string> {
   const pdfjsLib = await getPdfjs();
   const bytes = await dataUrlToBytes(dataUrl);
-  const pdf = await pdfjsLib.getDocument({ data: bytes }).promise;
+  const pdf = await pdfjsLib.getDocument({ data: bytes, enableXfa: false }).promise;   // fremde PDFs: keine XFA-Formulare (eval nutzt pdf.js 6 nicht mehr)
   const page = await pdf.getPage(1);
   const textContent = await page.getTextContent();
   // items.join(" ") würfelt alle Zeilen einer Rechnung in einen einzigen

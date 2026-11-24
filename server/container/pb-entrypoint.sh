@@ -70,10 +70,13 @@ if [ -z "$RAPPORT_SETUP_TOKEN" ]; then
   TOKEN_FILE=/pb/pb_data/.setup-token
   if [ ! -s "$TOKEN_FILE" ]; then
     (umask 077; head -c 15 /dev/urandom | base64 | tr -d '/+=' | cut -c1-16 > "$TOKEN_FILE")
+    # nur beim Erzeugen ins Log (Logs landen in Diagnosen/Support-Dateien); später steht er in der Datei
+    echo "pb-entrypoint: Einrichtungscode (nur für die Ersteinrichtung in der App nötig): $(cat "$TOKEN_FILE")"
+  else
+    echo "pb-entrypoint: Einrichtungscode für die Ersteinrichtung: docker compose exec pb cat $TOKEN_FILE"
   fi
   RAPPORT_SETUP_TOKEN="$(cat "$TOKEN_FILE")"
   export RAPPORT_SETUP_TOKEN
 fi
-echo "pb-entrypoint: Einrichtungscode (nur für die Ersteinrichtung in der App nötig): $RAPPORT_SETUP_TOKEN"
 
 exec /pb/pocketbase serve --http=0.0.0.0:8090

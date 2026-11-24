@@ -431,13 +431,14 @@ pub struct RestoreResult {
 }
 
 /// Shell-Skript im Restore-Container: Archiv erst puffern und pruefen
-/// (lesbar? nur `pb/pb_data/...`? kein `..`?), ERST DANN alte Daten loeschen
+/// (lesbar? nur `pb/pb_data/...`? kein `..`? keine Sym-/Hardlinks?), ERST DANN alte Daten loeschen
 /// und entpacken. Ein kaputtes Archiv laesst die Daten also unangetastet.
 const RESTORE_SCRIPT: &str = "set -e; \
 cat > /tmp/restore.tgz; \
 tar -tzf /tmp/restore.tgz > /tmp/restore.list; \
 if grep -Ev '^pb/pb_data(/|$)' /tmp/restore.list | grep -q .; then echo 'Archiv enthaelt Pfade ausserhalb pb/pb_data' >&2; exit 3; fi; \
 if grep -Eq '(^|/)\\.\\.(/|$)' /tmp/restore.list; then echo 'Archiv enthaelt ..-Pfade' >&2; exit 3; fi; \
+if tar -tvzf /tmp/restore.tgz | grep -Eq '^[lh]'; then echo 'Archiv enthaelt Links' >&2; exit 3; fi; \
 rm -rf /pb/pb_data/* /pb/pb_data/.[!.]* 2>/dev/null || true; \
 tar -xzf /tmp/restore.tgz -C /; \
 rm -f /tmp/restore.tgz /tmp/restore.list";

@@ -183,6 +183,28 @@ fn random_password() -> String {
     URL_SAFE_NO_PAD.encode(bytes)
 }
 
+/// Schreibt eine Datei, die Geheimnisse enthalten kann (Compose-`.env`, Diagnose mit Logs), gleich mit 0600 —
+/// nicht erst mit Default-umask anlegen und danach die Rechte ändern (Audit 24.11.2026).
+pub fn write_private(path: &std::path::Path, bytes: &[u8]) -> Result<(), String> {
+    use std::io::Write;
+    let mut opts = fs::OpenOptions::new();
+    opts.write(true).create(true).truncate(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        opts.mode(0o600);
+    }
+    let mut f = opts.open(path).map_err(|e| format!("create {}: {e}", path.display()))?;
+    f.write_all(bytes).map_err(|e| format!("write {}: {e}", path.display()))?;
+    #[cfg(unix)]
+    {
+        // bestehende Datei (truncate) behält sonst ihre alten Rechte
+        use std::os::unix::fs::PermissionsExt;
+        let _ = fs::set_permissions(path, fs::Permissions::from_mode(0o600));
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
