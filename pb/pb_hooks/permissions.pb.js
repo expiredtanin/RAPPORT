@@ -231,7 +231,10 @@ onRecordUpdateRequest((e) => {
     docAssets: "settings",
   };
   const permId = GATE[e.collection.name];
-  if (permId && !e.hasSuperuserAuth()) {
+  // Geteilte Kontakte (studio = '', über personStudioLinks verknüpft): kein eigenes Büro, an dem man die Rolle
+  // ablesen könnte — das Recht prüft die Regel pro Pfad (pb_migrations/1787920000_persons_shared_rules.js)
+  const sharedPerson = e.collection.name === "persons" && !e.record.get("studio");
+  if (permId && !e.hasSuperuserAuth() && !sharedPerson) {
     const studioId = e.record.get("studio");
     const authId = e.auth ? e.auth.id : "";
 
@@ -286,7 +289,10 @@ onRecordDeleteRequest((e) => {
     docAssets: "settings",
   };
   const permId = GATE[e.collection.name];
-  if (permId && !e.hasSuperuserAuth()) {
+  // Geteilte Kontakte (studio = '', über personStudioLinks verknüpft): kein eigenes Büro, an dem man die Rolle
+  // ablesen könnte — das Recht prüft die Regel pro Pfad (pb_migrations/1787920000_persons_shared_rules.js)
+  const sharedPerson = e.collection.name === "persons" && !e.record.get("studio");
+  if (permId && !e.hasSuperuserAuth() && !sharedPerson) {
     const studioId = e.record.get("studio");
     const authId = e.auth ? e.auth.id : "";
 

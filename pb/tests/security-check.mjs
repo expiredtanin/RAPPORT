@@ -270,6 +270,33 @@ if (lastLog) {
   check("Protokoll: Einträge nicht löschbar", r.status >= 400, `HTTP ${r.status}`);
 }
 
+// ── geteilte Kontakte über zwei Büros (personStudioLinks) ──────────────────────────────────────────────────────
+const shared = rid("shp");
+must(await api("POST", "/api/collections/persons/records", tA, { id: shared, studio: sid, name: "Geteilter Kontakt" }), "Kontakt für Teilen");
+const studioB = must(await api("POST", "/api/rapport/create-studio", tA, { name: `Büro B ${run}`, slug: `buero-b-${run}`, sharePersonsFrom: [sid] }), "Büro B");
+const sidB = studioB.studioId || studioB.id;
+const m2Email = `m2-${run}@test.local`;
+const m2 = must(await api("POST", "/api/collections/users/records", su, { email: m2Email, username: `m2${run}`, password: pw, passwordConfirm: pw, displayName: "Mitarbeiter B" }), "User M2");
+must(await api("POST", "/api/rapport/invite-member", tA, { userId: m2.id, studioId: sidB, appRoleId: "r-mitarbeiter" }), "invite M2");
+const roleB = (await api("GET", `/api/collections/appRoles/records?filter=${enc(`studio="${sidB}" && roleId="r-mitarbeiter"`)}`, tA)).json.items[0];
+must(await api("PATCH", `/api/collections/appRoles/records/${roleB.id}`, tA, { permissions: ["dashboard", "time"] }), "Rolle B ohne Kontakte");
+const tM2 = await login("users", m2Email, pw);
+r = await api("GET", `/api/collections/persons/records/${shared}`, tM2);
+check("M2 (Büro B): geteilten Kontakt lesen", r.status === 200, `HTTP ${r.status}`);
+r = await api("PATCH", `/api/collections/persons/records/${shared}`, tM2, { name: "übernommen" });
+check("M2 ohne Kontakte-Recht: geteilten Kontakt nicht ändern", r.status >= 400, `HTTP ${r.status}`);
+r = await api("DELETE", `/api/collections/persons/records/${shared}`, tM2);
+check("M2 ohne Kontakte-Recht: geteilten Kontakt nicht löschen", r.status >= 400, `HTTP ${r.status}`);
+r = await api("PATCH", `/api/collections/persons/records/${shared}`, tM, { name: "Geteilter Kontakt (geändert)" });
+check("M (Büro A, Recht Kontakte): geteilten Kontakt ändern", r.status === 200, `HTTP ${r.status}`);
+r = await api("PATCH", `/api/collections/persons/records/${shared}`, tA, { name: "Geteilter Kontakt (Admin)" });
+check("A: geteilten Kontakt ändern", r.status === 200, `HTTP ${r.status}`);
+must(await api("PATCH", `/api/collections/appRoles/records/${roleB.id}`, tA, { permissions: ["dashboard", "time", "personen"] }), "Rolle B mit Kontakten");
+r = await api("PATCH", `/api/collections/persons/records/${shared}`, tM2, { name: "Geteilter Kontakt (Büro B)" });
+check("M2 mit Kontakte-Recht in Büro B: geteilten Kontakt ändern", r.status === 200, `HTTP ${r.status}`);
+r = await api("POST", "/api/collections/persons/records", tM2, { id: rid("pb2"), studio: sid, name: "In fremdes Büro" });
+check("M2: keinen Kontakt in Büro A anlegen", r.status >= 400, `HTTP ${r.status}`);
+
 // ── Deaktiviert und Mengenlimits (am Schluss, ändert den Zustand) ─────────────────────────────────────────────
 r = await api("GET", "/api/collections/users/records", tM);
 check("M (aktiv): sieht Kolleginnen", r.status === 200 && r.json.items.length >= 2, `${r.json && r.json.items ? r.json.items.length : "?"} Konten`);
