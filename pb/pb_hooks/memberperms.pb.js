@@ -26,7 +26,9 @@ onRecordCreate((e) => {
         const role = e.app.findFirstRecordByFilter("appRoles", "studio = {:s} && roleId = {:r}", { s: sid, r: rid });
         let list = [];
         try { list = JSON.parse(role.getString("permissions") || "[]") || []; } catch { list = []; }
-        perms = Array.isArray(list) && list.length ? "|" + list.map(String).join("|") + "|" : "";
+        // nur echte Rechtenamen (a-z, 0-9, -): «*» oder «|» in einer Rolle dürfen keinen Vollzugriff ergeben
+        list = Array.isArray(list) ? list.map(String).filter(x => /^[a-z0-9-]+$/.test(x)) : [];
+        perms = list.length ? "|" + list.join("|") + "|" : "";
       } catch { perms = ""; }
     }
   }
@@ -47,7 +49,9 @@ onRecordUpdate((e) => {
         const role = e.app.findFirstRecordByFilter("appRoles", "studio = {:s} && roleId = {:r}", { s: sid, r: rid });
         let list = [];
         try { list = JSON.parse(role.getString("permissions") || "[]") || []; } catch { list = []; }
-        perms = Array.isArray(list) && list.length ? "|" + list.map(String).join("|") + "|" : "";
+        // nur echte Rechtenamen (a-z, 0-9, -): «*» oder «|» in einer Rolle dürfen keinen Vollzugriff ergeben
+        list = Array.isArray(list) ? list.map(String).filter(x => /^[a-z0-9-]+$/.test(x)) : [];
+        perms = list.length ? "|" + list.join("|") + "|" : "";
       } catch { perms = ""; }
     }
   }

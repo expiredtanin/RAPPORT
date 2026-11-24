@@ -77,8 +77,10 @@ const o1 = await orc(`employees_via_studio.monatslohn > ${SECRET_LOHN - 1}`), o2
 check("M: Filter-Orakel über Lohn verrät nichts", !(o1 === 1 && o2 === 0), `>${SECRET_LOHN - 1}: ${o1}, >${SECRET_LOHN + 1}: ${o2}`);
 const o3 = await orc(`employees_via_studio.ahvNr ~ "756.9999%"`);
 check("M: Filter-Orakel über AHV verrät nichts", o3 !== 1, `Treffer: ${o3}`);
-const t1 = await api("GET", `/api/collections/timeEntries/records?filter=${enc(`invoice.number = "GEHEIM-001"`)}`, tM);
-check("M: Filter-Orakel Zeiteintrag→Rechnungsnummer verrät nichts", !(t1.json && t1.json.items && t1.json.items.length > 0), `HTTP ${t1.status}`);
+const t1 = await api("GET", `/api/collections/timeEntries/records?filter=${enc(`studio = "${sid}" && employee.monatslohn > ${SECRET_LOHN - 1}`)}`, tM);
+check("M: Filter-Orakel Zeiteintrag→Lohn verrät nichts", !(t1.json && t1.json.items && t1.json.items.length > 0), `HTTP ${t1.status}`);
+const t1a = await api("GET", `/api/collections/timeEntries/records?filter=${enc(`studio = "${sid}" && employee.monatslohn > ${SECRET_LOHN - 1}`)}`, tA);
+check("A: derselbe Filter findet den Eintrag (Gegenprobe)", t1a.json && t1a.json.items && t1a.json.items.length === 1, `HTTP ${t1a.status}`);
 
 // ── Mitarbeiter M: keine Büro-Stammdaten, keine fremden Einträge ändern ───────────────────────────────────────
 const settings = (await api("GET", `/api/collections/studioSettings/records?filter=${enc(`studio="${sid}"`)}`, tA)).json.items[0];
@@ -135,6 +137,9 @@ must(await api("PATCH", `/api/collections/appRoles/records/${roleM.id}`, tA, { p
 r = await api("GET", `/api/collections/projects/records?expand=invoices_via_project`, tM);
 r = await api("GET", `/api/collections/invoices/records?filter=${enc(`studio="${sid}"`)}`, tM);
 check("Rolle erweitert: M liest Rechnungen", r.status === 200 && leaks(r, "GEHEIM-001"), `HTTP ${r.status}`);
+must(await api("PATCH", `/api/collections/appRoles/records/${roleM.id}`, tA, { permissions: [...basePerms, "*"] }), "Rolle mit *");
+r = await api("GET", `/api/collections/invoices/records?filter=${enc(`studio="${sid}"`)}`, tM);
+check("Rechtename «*» gibt keinen Vollzugriff", !leaks(r, "GEHEIM-001"), `HTTP ${r.status}`);
 must(await api("PATCH", `/api/collections/appRoles/records/${roleM.id}`, tA, { permissions: basePerms }), "Rolle zurück");
 r = await api("GET", `/api/collections/timeEntries/records?filter=${enc(`studio="${sid}"`)}&expand=invoice`, tM);
 check("Rolle zurückgenommen: M wieder gesperrt", !leaks(r, "GEHEIM-001"), `HTTP ${r.status}`);
