@@ -256,6 +256,20 @@ check("A: zwei Entwürfe ohne Nummer", r.status === 200 && r2.status === 200, `H
 r = await api("POST", "/api/collections/invoices/records", tA, { id: rid("d3"), studio: sid, number: "GEHEIM-001 " });
 check("Rechnungsnummer mit Leerzeichen am Rand abgelehnt", r.status >= 400, `HTTP ${r.status}`);
 
+// ── Änderungsprotokoll (audit.pb.js) ───────────────────────────────────────────────────────────────────────────
+must(await api("PATCH", `/api/collections/invoices/records/${inv}`, tA, { number: "GEHEIM-002" }), "Rechnung umnummerieren");
+r = await api("GET", `/api/collections/auditLog/records?filter=${enc(`studio="${sid}" && coll="invoices" && recordId="${inv}"`)}&sort=-created`, tA);
+const lastLog = r.json && r.json.items && r.json.items[0];
+check("Protokoll: Rechnungsänderung mit alt → neu und Person", !!lastLog && lastLog.action === "update" && JSON.stringify(lastLog.changes).includes("GEHEIM-002") && lastLog.userName === "Admin A", `HTTP ${r.status}`);
+r = await api("GET", `/api/collections/auditLog/records?filter=${enc(`studio="${sid}"`)}`, tM);
+check("Protokoll: Mitarbeiter liest es nicht", r.status >= 400 || (r.json && r.json.items && r.json.items.length === 0), `HTTP ${r.status}`);
+r = await api("POST", "/api/collections/auditLog/records", tA, { studio: sid, coll: "invoices", action: "update", changes: {} });
+check("Protokoll: niemand schreibt von aussen hinein", r.status >= 400, `HTTP ${r.status}`);
+if (lastLog) {
+  r = await api("DELETE", `/api/collections/auditLog/records/${lastLog.id}`, tA);
+  check("Protokoll: Einträge nicht löschbar", r.status >= 400, `HTTP ${r.status}`);
+}
+
 // ── Deaktiviert und Mengenlimits (am Schluss, ändert den Zustand) ─────────────────────────────────────────────
 r = await api("GET", "/api/collections/users/records", tM);
 check("M (aktiv): sieht Kolleginnen", r.status === 200 && r.json.items.length >= 2, `${r.json && r.json.items ? r.json.items.length : "?"} Konten`);
