@@ -338,9 +338,9 @@ export const defaultData: AppData = {
     { id: "r-projektleiter", name: "Projektleiter", permissions: ["dashboard","projects","time","quotes","personen","mitarbeiter","settings"], dashboardTemplateId: "tpl-projektleiter" },
     { id: "r-mitarbeiter", name: "Mitarbeiter", permissions: ["dashboard","projects","time","personen","settings"], dashboardTemplateId: "tpl-mitarbeiter" },
   ],
-  users: [
-    { id: "admin", username: "admin", password: "admin", role: "admin", displayName: "Administrator", appRoleId: "r-admin" },
-  ],
+  // Kein Standardkonto: Konten entstehen nur in der Einrichtung (Setup) oder kommen aus einem Backup mit Benutzern.
+  // Bis 24.11.2026 stand hier «admin»/«admin» im Klartext und galt z.B. nach einem Backup-Import ohne users.
+  users: [],
   blogPosts: [],
   leads: [],
   activities: [],

@@ -14,6 +14,7 @@ import type { CSSProperties } from "react";
 import { defaultData } from "../constants";
 import { generateId, hashPassword, localISODate } from "../utils";
 import type { AppData, Employee } from "../types";
+import { checkBackup } from "../storage/validate";
 
 // ─── Palette — matches the app's light theme exactly ─────────────────────────
 const C = {
@@ -198,12 +199,16 @@ export default function Setup({ onComplete }: { onComplete: (data: AppData) => v
           setImportErr("Ungültiges Backup-Format.");
           return;
         }
+        // Wie beim Einspielen in den Einstellungen: ohne Benutzer mit Passwort kein Import — sonst galt das
+        // Standardkonto «admin»/«admin» aus defaultData (Audit 24.11.2026)
+        const problem = checkBackup(parsed, true);
+        if (problem) { setImportErr(problem); return; }
         onComplete({
           ...defaultData,
           ...parsed,
           settings: { ...defaultData.settings, ...parsed.settings, setupCompleted: true },
           appRoles: parsed.appRoles || defaultData.appRoles,
-          users: parsed.users || defaultData.users,
+          users: parsed.users,
         });
       } catch {
         setImportErr("Datei konnte nicht gelesen werden.");

@@ -208,9 +208,9 @@ Rust: `tauri-plugin-fs` (+`watch`), `tauri-plugin-dialog`, `tauri-plugin-persist
 
 **Sessions/Auth:**
 - `sessionStorage.rapport_user` — angemeldeter User (gestrippt von Credentials)
-- Login per PBKDF2-SHA-256 (100k Iter, 16-Byte Salt) — siehe `hashPassword`, `verifyPassword` in [utils.ts](src/utils.ts)
+- Login per PBKDF2-SHA-256 (600k Iter seit 24.11.2026, Rundenzahl im Salt `i600000:<hex>`; Salt ohne Präfix = alte 100k, 16-Byte Salt) — siehe `hashPassword`, `verifyPassword` in [utils.ts](src/utils.ts); kein Standardkonto mehr in `defaultData.users` (vorher «admin»/«admin»), Backup-Import in der Einrichtung nur mit Benutzern (`checkBackup`)
 - Lockout: 5 Fehlversuche → 60s Sperre ([Login.tsx](src/views/Login.tsx))
-- Auto-Upgrade: legacy plaintext-Passwörter werden beim ersten erfolgreichen Login zu PBKDF2 migriert ([App.tsx](src/App.tsx))
+- Auto-Upgrade: Klartext-Altbestand und Hashes mit alter Rundenzahl werden beim ersten erfolgreichen Login neu gehasht (`needsPasswordUpgrade`, [App.tsx](src/App.tsx))
 
 **Weitere `localStorage`-Keys (alle `rapport_*`-prefixed):**
 | Key | Zweck |
@@ -332,7 +332,7 @@ Alle Views liegen in [src/views/](src/views/), werden in [App.tsx](src/App.tsx) 
 - `calcLohn(emp, monat, spesen, bonus, vorperioden)` — AHV/ALV/BVG/NBU/KTG/Quellensteuer; Eintritt im Monat anteilig (`monatsAnteilNachEintritt`), ALV/NBU bis Höchstlohn 148'200 kumuliert (`hoechstlohnKumuliert`, `HOECHSTLOHN_ALV_UVG`)
 
 **Crypto / Auth:**
-- `hashPassword(password, saltHex)` — PBKDF2-SHA-256, 100k Iter, via Web Crypto
+- `hashPassword(password, saltHex)` — PBKDF2-SHA-256, 600k Iter (Rundenzahl im Salt, alte Salts 100k), via Web Crypto; `needsPasswordUpgrade(user)`
 - `verifyPassword(password, user)` — Constant-Time
 - `withHashedPassword(user, password)` — Upgrade legacy → hashed
 - `stripCredentials(user)` — Entfernt `password`, `passwordHash`, `passwordSalt`

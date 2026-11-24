@@ -21,7 +21,7 @@
 import React, { useState, useEffect, Suspense, lazy } from "react";
 import { createPortal } from "react-dom";
 import { defaultData, statusCssVars } from "./constants";
-import { verifyPassword, withHashedPassword, stripCredentials } from "./utils";
+import { verifyPassword, withHashedPassword, stripCredentials, needsPasswordUpgrade } from "./utils";
 import { storage, cloudStorage, isCloudBackend, isServerMode } from "./storage/adapter";
 import { pickAndActivateDataFolder } from "./storage/data-folder";
 import { applyMigrations } from "./storage/migrations";
@@ -116,7 +116,7 @@ export default function App() {
     if (!u) return null;
     const ok = await verifyPassword(password, u);
     if (!ok) return null;
-    if (u.password && !u.passwordHash) {
+    if (needsPasswordUpgrade(u)) {   // Klartext-Altbestand oder Hash mit alter Rundenzahl → neu hashen
       try {
         const upgraded = await withHashedPassword(u, password);
         save({ ...data, users: (data.users || []).map(x => x.id === u.id ? upgraded : x) });

@@ -393,7 +393,10 @@ export function generateId(): string {
 // erfolgreichem Login transparent auf Hash umgestellt (siehe App.jsx).
 // Die Hashes liegen im lokalen/Cloud-Datenbestand; das ist App-interne
 // Zugriffskontrolle, kein Ersatz für Server-seitige Auth.
-const PBKDF2_ITERATIONS = 100_000;
+// 600'000 Runden (OWASP-Empfehlung für PBKDF2-SHA-256, Stand 2023). Die Rundenzahl steht im Salt («i600000:<hex>»);
+// Salts ohne Präfix stammen aus der Zeit mit 100'000 Runden und werden beim nächsten Login neu gehasht.
+const PBKDF2_ITERATIONS = 600_000;
+const PBKDF2_LEGACY_ITERATIONS = 100_000;
 const PBKDF2_HASH = "SHA-256";
 const PBKDF2_SALT_BYTES = 16;
 const PBKDF2_KEY_BITS = 256;
@@ -414,17 +417,20 @@ function hexToBytes(hex: string): Uint8Array<ArrayBuffer> {
  * @returns Hash und verwendeter Salt, beide als Hex
  */
 export async function hashPassword(password: string | null | undefined, saltHex?: string): Promise<{ hash: string; salt: string }> {
+  // gespeicherter Salt: «i<Runden>:<hex>» (neu) oder nur «<hex>» (100'000 Runden)
+  const m = saltHex ? /^i(\d+):([0-9a-f]+)$/i.exec(saltHex) : null;
+  const iterations = saltHex ? (m ? Number(m[1]) : PBKDF2_LEGACY_ITERATIONS) : PBKDF2_ITERATIONS;
   const salt = saltHex
-    ? hexToBytes(saltHex)
+    ? hexToBytes(m ? m[2] : saltHex)
     : crypto.getRandomValues(new Uint8Array(PBKDF2_SALT_BYTES));
   const baseKey = await crypto.subtle.importKey(
     "raw", new TextEncoder().encode(password ?? ""), "PBKDF2", false, ["deriveBits"]
   );
   const bits = await crypto.subtle.deriveBits(
-    { name: "PBKDF2", salt, iterations: PBKDF2_ITERATIONS, hash: PBKDF2_HASH },
+    { name: "PBKDF2", salt, iterations, hash: PBKDF2_HASH },
     baseKey, PBKDF2_KEY_BITS
   );
-  return { hash: bytesToHex(new Uint8Array(bits)), salt: bytesToHex(salt) };
+  return { hash: bytesToHex(new Uint8Array(bits)), salt: saltHex ?? `i${iterations}:${bytesToHex(salt)}` };
 }
 // Constant-time string compare to avoid timing leaks
 function constantTimeEq(a: unknown, b: unknown): boolean {
@@ -448,6 +454,12 @@ export async function verifyPassword(
     return constantTimeEq(password ?? "", user.password);
   }
   return false;
+}
+/** true, wenn das gespeicherte Passwort nach dem Login neu gehasht werden soll (Klartext oder alte Rundenzahl). */
+export function needsPasswordUpgrade(user: Pick<User, "passwordHash" | "passwordSalt" | "password"> | null | undefined): boolean {
+  if (!user) return false;
+  if (!user.passwordHash) return typeof user.password === "string";
+  return !/^i(\d+):/.test(user.passwordSalt || "") || Number(/^i(\d+):/.exec(user.passwordSalt || "")?.[1]) < PBKDF2_ITERATIONS;
 }
 /** Kopie des Users mit gehashtem Passwort; das Klartextfeld `password` wird entfernt. */
 export async function withHashedPassword<T extends { password?: string }>(
