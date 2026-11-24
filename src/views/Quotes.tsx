@@ -671,9 +671,9 @@ function Quotes({ data, update, saveAll, modal, setModal, setPrintContent, setVi
                     <tr style={{ background: "var(--surface3)" }}>
                       <th style={{ padding: "8px", width: 30 }}></th>
                       <th style={{ padding: "8px" }}>Teilleistung</th>
-                      <th style={{ padding: "8px", textAlign: "right", width: 55 }}>q %</th>
-                      <th style={{ padding: "8px", textAlign: "right", width: 55 }}>r</th>
-                      <th style={{ padding: "8px", textAlign: "right", width: 75 }}>Stunden</th>
+                      <th style={{ padding: "8px", textAlign: "right", width: 72 }}>q %</th>
+                      <th style={{ padding: "8px", textAlign: "right", width: 72 }}>r</th>
+                      <th style={{ padding: "8px", textAlign: "right", width: 86 }}>Stunden</th>
                       <th style={{ padding: "8px", textAlign: "right", width: 95 }}>Honorar</th>
                     </tr>
                   </thead>
@@ -682,7 +682,7 @@ function Quotes({ data, update, saveAll, modal, setModal, setPrintContent, setVi
                       <React.Fragment key={ph.id}>
                         <tr style={{ background: "var(--surface2)" }}>
                           <td colSpan={4} style={{ padding: "6px 8px", fontSize: 11, fontWeight: 600, color: "var(--text3)" }}>PHASE {ph.id} · {ph.label}</td>
-                          <td style={{ padding: "6px 8px", textAlign: "right", fontWeight: 600, fontSize: 11 }}>{formatHours(Math.round(ph.hours*60))}</td>
+                          <td style={{ padding: "6px 8px", textAlign: "right", fontWeight: 600, fontSize: 11, whiteSpace: "nowrap" }}>{formatHours(Math.round(ph.hours*60))}</td>
                           <td style={{ padding: "6px 8px", textAlign: "right", fontWeight: 600, fontSize: 11 }}>{formatCHF(ph.hours*(form.sia.stundenansatz||0))}</td>
                         </tr>
                         {ph.items.map((it, idx) => (
@@ -692,13 +692,13 @@ function Quotes({ data, update, saveAll, modal, setModal, setPrintContent, setVi
                             </td>
                             <td style={{ padding: "4px 8px" }}>{it.label}</td>
                             <td style={{ padding: "4px 8px" }}>
-                              <input type="number" step="0.5" value={it.pct} onChange={e => updateSIAItem(ph.id, idx, { pct: +e.target.value })} disabled={it.enabled === false} style={{ width: 48, height: 26, fontSize: 11, textAlign: "right" }} />
+                              <input type="number" step="0.5" value={it.pct} onChange={e => updateSIAItem(ph.id, idx, { pct: +e.target.value })} disabled={it.enabled === false} style={{ width: 58, height: 26, fontSize: 11, textAlign: "right", padding: "0 6px" }} />
                             </td>
                             <td style={{ padding: "4px 8px" }}>
-                              <input type="number" step="0.05" value={it.r ?? 1} onChange={e => updateSIAItem(ph.id, idx, { r: +e.target.value })} disabled={it.enabled === false} style={{ width: 48, height: 26, fontSize: 11, textAlign: "right" }} />
+                              <input type="number" step="0.05" value={it.r ?? 1} onChange={e => updateSIAItem(ph.id, idx, { r: +e.target.value })} disabled={it.enabled === false} style={{ width: 58, height: 26, fontSize: 11, textAlign: "right", padding: "0 6px" }} />
                             </td>
-                            <td style={{ padding: "4px 8px", textAlign: "right", color: "var(--text4)" }}>{formatHours(Math.round(it.hours*60))}</td>
-                            <td style={{ padding: "4px 8px", textAlign: "right", color: "var(--text4)" }}>{formatCHF(it.hours*(form.sia.stundenansatz||0))}</td>
+                            <td style={{ padding: "4px 8px", textAlign: "right", color: "var(--text4)", whiteSpace: "nowrap" }}>{formatHours(Math.round(it.hours*60))}</td>
+                            <td style={{ padding: "4px 8px", textAlign: "right", color: "var(--text4)", whiteSpace: "nowrap" }}>{formatCHF(it.hours*(form.sia.stundenansatz||0))}</td>
                           </tr>
                         ))}
                       </React.Fragment>

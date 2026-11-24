@@ -624,7 +624,8 @@ function ProtokollDetail({ protokoll, data, onBack, onSave, onDelete, onOpen, se
           {/* Kopfdaten */}
           <div className="card">
             <div style={{ fontSize: 11, letterSpacing: "0.1em", color: "var(--text4)", marginBottom: 14 }}>SITZUNGSDETAILS</div>
-            <div className="form-row">
+            {/* Typ breiter als Datum/Zeiten: «Planungssitzung» soll nicht abgeschnitten werden (.form-row-wide-first) */}
+            <div className="form-row form-row-wide-first">
               <FormField label="Typ">
                 <select value={p.type} onChange={e => setField("type", e.target.value)}>
                   {PROTOKOLL_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
