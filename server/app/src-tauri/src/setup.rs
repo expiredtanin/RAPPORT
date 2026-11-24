@@ -24,6 +24,32 @@ use tokio::process::Command;
 const DOCKER_VERSION: &str = "29.5.2";
 const COLIMA_VERSION: &str = "v0.10.1";
 const LIMA_VERSION: &str = "v2.1.1";
+// SHA-256 der Downloads (Audit 24.11.2026): Lima/Colima gegen die offiziellen Prüfsummen der Projekte geprüft
+// (SHA256SUMS bzw. *.sha256sum der Releases), Docker-CLI (Docker veröffentlicht keine) beim Pinnen über HTTPS
+// geladen. Bei einem Versionswechsel neu berechnen: `shasum -a 256 <datei>`.
+const SHA256: &[(&str, &str)] = &[
+    ("lima-2.1.1-Darwin-arm64.tar.gz", "b6b0e6701189cd8c4e549cc39e6d054dc681487798b9b774ad2cbd30c08b2bd8"),
+    ("lima-2.1.1-Darwin-x86_64.tar.gz", "2dc5b10aa3a4f26d08c1f3fe83e37e01f85a7d9db0d1d5cb6985b18af96ab07d"),
+    ("colima-v0.10.1-Darwin-arm64", "cff716570125444d9560e735d8a23ea50e9f70ca722bb9f44ab456c548425ea3"),
+    ("colima-v0.10.1-Darwin-x86_64", "c927d411f70b7b40aced1caeef36cf3b19e0318cfad3606a0292cd488e9c4a0f"),
+    ("docker-29.5.2-aarch64.tgz", "e4914a334e71297dd1b172f0332d5045539e12d00429ddc330da9d2ad0e3995a"),
+    ("docker-29.5.2-x86_64.tgz", "c009f71f34870f91c568d328834e9284b3f28f08eca92f39aa95f35db7a2c22c"),
+];
+
+/// Prüft eine heruntergeladene Datei gegen die gepinnte Prüfsumme; bei Abweichung wird sie gelöscht.
+/// Ohne Eintrag in `SHA256` (z.B. neue Version ohne neue Summe) wird abgebrochen statt ungeprüft installiert.
+fn verify_sha256(id: &str, path: &std::path::Path) -> Result<(), String> {
+    use sha2::{Digest, Sha256};
+    let want = SHA256.iter().find(|(k, _)| *k == id).map(|(_, v)| *v)
+        .ok_or_else(|| format!("Keine Prüfsumme für {id} hinterlegt — Download wird nicht installiert"))?;
+    let bytes = std::fs::read(path).map_err(|e| format!("read {}: {e}", path.display()))?;
+    let got: String = Sha256::digest(&bytes).iter().map(|b| format!("{b:02x}")).collect();
+    if got != want {
+        let _ = std::fs::remove_file(path);
+        return Err(format!("Prüfsumme von {id} stimmt nicht (erwartet {want}, erhalten {got}) — abgebrochen"));
+    }
+    Ok(())
+}
 // Quelle fuer den Compose-Stack — wird beim Setup-Wizard automatisch nach
 // ~/.rapport/compose/ heruntergeladen wenn lokal noch nichts gefunden wird.
 const COMPOSE_TARBALL_URL: &str =
@@ -223,6 +249,7 @@ async fn install_lima(arch: &Arch, log: &mut String) -> Result<(), String> {
     log.push_str(&format!("=== lima ===\n{url}\n"));
     let tmp = tempdir_path("lima.tar.gz");
     download_to(&url, &tmp).await?;
+    verify_sha256(&format!("lima-{}-{}.tar.gz", LIMA_VERSION.trim_start_matches('v'), arch.lima_label), &tmp)?;
     let extract_to = install_dir();
     extract_tar_gz(&tmp, &extract_to).await?;
     // Tarball legt `bin/` und `share/` ab — moven nach unserer Struktur.
@@ -243,7 +270,12 @@ async fn install_colima(arch: &Arch, log: &mut String) -> Result<(), String> {
     crate::events::info(format!("Setup: lade Colima {COLIMA_VERSION} ...")).await;
     log.push_str(&format!("\n=== colima ===\n{url}\n"));
     let dest = bin_dir().join("colima");
-    download_to(&url, &dest).await?;
+    // erst in eine Temp-Datei, prüfen, dann an den Zielort — nie eine ungeprüfte Datei ausführbar machen
+    let tmp = tempdir_path("colima");
+    download_to(&url, &tmp).await?;
+    verify_sha256(&format!("colima-{COLIMA_VERSION}-{}", arch.colima_label), &tmp)?;
+    std::fs::copy(&tmp, &dest).map_err(|e| format!("copy colima: {e}"))?;
+    let _ = std::fs::remove_file(&tmp);
     chmod_x(&dest)?;
     unquarantine(&dest);
     Ok(())
@@ -259,6 +291,7 @@ async fn install_docker(arch: &Arch, log: &mut String) -> Result<(), String> {
     log.push_str(&format!("\n=== docker ===\n{url}\n"));
     let tmp = tempdir_path("docker.tgz");
     download_to(&url, &tmp).await?;
+    verify_sha256(&format!("docker-{DOCKER_VERSION}-{}.tgz", arch.docker_subdir), &tmp)?;
     let extract_to = tempdir_path("docker-extract");
     std::fs::create_dir_all(&extract_to).map_err(|e| format!("mkdir extract: {e}"))?;
     extract_tar_gz(&tmp, &extract_to).await?;
@@ -501,4 +534,33 @@ fn unquarantine(p: &std::path::Path) {
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .status();
+}
+
+#[cfg(test)]
+mod sha_tests {
+    use super::*;
+    #[test]
+    fn pruefsumme_falsch_bricht_ab_und_loescht() {
+        let p = std::env::temp_dir().join(format!("rapport-sha-test-{}", std::process::id()));
+        std::fs::write(&p, b"nicht docker").unwrap();
+        let r = verify_sha256("docker-29.5.2-aarch64.tgz", &p);
+        assert!(r.is_err());
+        assert!(!p.exists());
+    }
+    #[test]
+    fn unbekannte_datei_bricht_ab() {
+        let p = std::env::temp_dir().join(format!("rapport-sha-test2-{}", std::process::id()));
+        std::fs::write(&p, b"x").unwrap();
+        assert!(verify_sha256("docker-99.0.0-aarch64.tgz", &p).is_err());
+        let _ = std::fs::remove_file(&p);
+    }
+    #[test]
+    fn richtige_pruefsumme_geht() {
+        // SHA-256 von «abc»
+        let p = std::env::temp_dir().join(format!("rapport-sha-test3-{}", std::process::id()));
+        std::fs::write(&p, b"abc").unwrap();
+        let got: String = { use sha2::{Digest, Sha256}; Sha256::digest(b"abc").iter().map(|b| format!("{b:02x}")).collect() };
+        assert_eq!(got, "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
+        let _ = std::fs::remove_file(&p);
+    }
 }

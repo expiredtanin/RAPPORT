@@ -19,6 +19,7 @@ path = "src/main.rs"
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
+sha2 = "0.10"
 tauri = { version = "2", features = ["tray-icon", "image-png", "unstable"] }
 tauri-plugin-process = "2"
 tauri-plugin-log = "2"
