@@ -50,10 +50,12 @@ fn verify_sha256(id: &str, path: &std::path::Path) -> Result<(), String> {
     }
     Ok(())
 }
-// Quelle fuer den Compose-Stack — wird beim Setup-Wizard automatisch nach
-// ~/.rapport/compose/ heruntergeladen wenn lokal noch nichts gefunden wird.
-const COMPOSE_TARBALL_URL: &str =
-    "https://git.openbureau.ch/karim/RAPPORT-SERVER/archive/main.tar.gz";
+// Compose-Stack: in die App eingebettet (Audit 24.11.2026). Vorher lud das Setup
+// `RAPPORT-SERVER/archive/main.tar.gz` — das alte Repo mit dem Supabase-Stack (Kong, Postgres), nicht den heutigen
+// PocketBase-Stack aus server/container, ungeprüft von einem unfixierten Branch. Die Images selbst kommen weiter
+// aus der Registry (docker-compose.yml: image …:main).
+const COMPOSE_YML: &str = include_str!("../../../container/docker-compose.yml");
+const COMPOSE_ENV_EXAMPLE: &str = include_str!("../../../container/.env.example");
 
 #[derive(Debug, Clone, Serialize)]
 pub struct SetupStatus {
@@ -316,28 +318,13 @@ async fn install_docker(arch: &Arch, log: &mut String) -> Result<(), String> {
 // ---------------------------------------------------------------------------
 
 async fn bootstrap_compose_stack(log: &mut String) -> Result<(), String> {
-    crate::events::info("Setup: lade Compose-Stack von Gitea ...").await;
-    log.push_str("\n=== compose-stack download ===\n");
+    crate::events::info("Setup: lege Compose-Stack an ...").await;
+    log.push_str("\n=== compose-stack (eingebettet) ===\n");
 
     let dest = compose_dir();
     std::fs::create_dir_all(&dest).map_err(|e| format!("mkdir compose dir: {e}"))?;
-
-    let tmp = tempdir_path("compose.tar.gz");
-    download_to(COMPOSE_TARBALL_URL, &tmp).await?;
-    // Gitea-Archiv legt einen Top-Level-Ordner an — strip-components=1
-    let status = Command::new("tar")
-        .args(["-xzf"])
-        .arg(&tmp)
-        .args(["-C"])
-        .arg(&dest)
-        .arg("--strip-components=1")
-        .status()
-        .await
-        .map_err(|e| format!("spawn tar: {e}"))?;
-    if !status.success() {
-        return Err(format!("tar -xzf {} failed", tmp.display()));
-    }
-    let _ = std::fs::remove_file(&tmp);
+    std::fs::write(dest.join("docker-compose.yml"), COMPOSE_YML).map_err(|e| format!("write docker-compose.yml: {e}"))?;
+    std::fs::write(dest.join(".env.example"), COMPOSE_ENV_EXAMPLE).map_err(|e| format!("write .env.example: {e}"))?;
 
     // .env aus .env.example mit unseren Secrets generieren — sonst startet
     // compose nicht.
@@ -562,5 +549,16 @@ mod sha_tests {
         let got: String = { use sha2::{Digest, Sha256}; Sha256::digest(b"abc").iter().map(|b| format!("{b:02x}")).collect() };
         assert_eq!(got, "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
         let _ = std::fs::remove_file(&p);
+    }
+}
+
+#[cfg(test)]
+mod compose_tests {
+    use super::*;
+    #[test]
+    fn eingebetteter_stack_ist_pocketbase() {
+        assert!(COMPOSE_YML.contains("rapport-pb"), "docker-compose.yml ist nicht der PocketBase-Stack");
+        assert!(!COMPOSE_YML.contains("kong"), "alter Supabase-Stack");
+        assert!(COMPOSE_ENV_EXAMPLE.contains("PB_SUPERUSER_PASSWORD"));
     }
 }
