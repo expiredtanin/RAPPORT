@@ -22,6 +22,7 @@ import { defaultData } from "../constants";
 import { storage, cloudStorage, isCloudBackend, isFileBackend, fileStorage } from "../storage/adapter";
 import { applyMigrations, type RawData } from "../storage/migrations";
 import { mergeValue } from "../storage/merge";
+import { RejectedSaveError } from "../storage/pocketbase-adapter";
 import type { AppData, CurrentUser, Invoice } from "../types";
 import { localISODate } from "../utils";
 import { registerUndoSaver } from "../undo";
@@ -163,10 +164,19 @@ export function useStudioData(currentUser: CurrentUser | null) {
       () => setSaveError(null),
       e => {
         console.error("Storage save failed:", e);
-        setSaveError(describeSaveError(e));
+        setSaveError(describeSaveError(e) + (e instanceof RejectedSaveError && e.keys.length ? " Die abgelehnte Änderung wurde zurückgesetzt." : ""));
+        // Vom Server abgelehnt (z.B. abgeschlossener Monat): betroffene Bereiche vom Server übernehmen, damit die
+        // abgelehnte Änderung nicht stehen bleibt und bei jedem weiteren Speichern erneut scheitert
+        if (e instanceof RejectedSaveError && e.keys.length && cloudStorage.loadPartial) {
+          cloudStorage.loadPartial(e.keys).then(partial => {
+            if (!partial) return;
+            const cur = dataRef.current;
+            setData(migrate({ ...cur, ...(partial as RawData) }));
+          }).catch(err => console.error("Neuladen nach Ablehnung fehlgeschlagen:", err));
+        }
       },
     );
-  }, [setData]);
+  }, [setData, migrate]);
 
   const update = useCallback(<K extends keyof AppData>(key: K, value: AppData[K] | ((prev: AppData[K]) => AppData[K])) => {
     save(prev => ({ ...prev, [key]: typeof value === "function" ? (value as (p: AppData[K]) => AppData[K])(prev[key]) : value }));

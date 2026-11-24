@@ -1,7 +1,7 @@
 // Tests für Schreib-Robustheit des PocketBase-Adapters (ohne Server: Netzteile gestubbt).
 
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { pbMessage, PocketBaseAdapter } from "./pocketbase-adapter";
+import { pbMessage, PocketBaseAdapter, RejectedSaveError } from "./pocketbase-adapter";
 import type { AppData } from "../types";
 
 const data = (n: number) => ({ n } as unknown as AppData);
@@ -121,5 +121,31 @@ describe("pbMessage: Servermeldung für das Fehlerbanner", () => {
     expect(pbMessage({ status: 403, data: { message: "Der Monat 2026-10 ist abgeschlossen." } })).toBe("Der Monat 2026-10 ist abgeschlossen.");
     expect(pbMessage({ status: 400, message: "Failed to create record.", data: { message: "Failed to create record.", data: { amount: { code: "validation_required", message: "Cannot be blank." } } } }))
       .toBe("Failed to create record. (amount: Cannot be blank.)");
+  });
+});
+
+describe("PocketBaseAdapter.save: nach einer Ablehnung weiterschreiben", () => {
+  it("schreibt einen während des Fehlschlags eingegangenen Stand noch und meldet den Fehler danach", async () => {
+    const a = new PocketBaseAdapter("http://test.invalid");
+    (a as unknown as { _studioId: string })._studioId = "s1";
+    const written: unknown[] = [];
+    let first = true;
+    a._writeSnapshot = vi.fn(async (d: unknown) => {
+      await Promise.resolve();   // wie ein echter Netzwerkaufruf: save() läuft schon
+      if (first) {
+        first = false;
+        void a.save({ n: 2 } as never);   // kommt während des ersten Schreibens dazu
+        throw new RejectedSaveError("Der Monat 2026-10 ist abgeschlossen.", ["timeEntries"]);
+      }
+      written.push(d);
+    }) as never;
+    await expect(a.save({ n: 1 } as never)).resolves.toBeUndefined();   // letzter Durchlauf war erfolgreich
+    expect(written).toEqual([{ n: 2 }]);
+  });
+  it("wirft die Ablehnung mit den betroffenen Bereichen, wenn nichts mehr nachkommt", async () => {
+    const a = new PocketBaseAdapter("http://test.invalid");
+    (a as unknown as { _studioId: string })._studioId = "s1";
+    a._writeSnapshot = vi.fn(async () => { throw new RejectedSaveError("abgelehnt", ["timeEntries"]); }) as never;
+    await expect(a.save({ n: 1 } as never)).rejects.toMatchObject({ keys: ["timeEntries"] });
   });
 });

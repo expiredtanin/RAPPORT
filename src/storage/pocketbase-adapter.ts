@@ -62,6 +62,11 @@ export function pbMessage(e: unknown): string {
   const fields = p.data?.data ? Object.entries(p.data.data).map(([k, v]) => `${k}: ${v?.message || v?.code || "ungültig"}`) : [];
   return fields.length ? `${msg} (${fields.join("; ")})` : msg;
 }
+/** Vom Server abgelehnte Änderungen; `keys` = betroffene App-Bereiche, die der Aufrufer vom Server neu laden soll. */
+export class RejectedSaveError extends Error {
+  keys: (keyof AppData)[];
+  constructor(message: string, keys: (keyof AppData)[]) { super(message); this.name = "RejectedSaveError"; this.keys = keys; }
+}
 /**
  * true = Ablehnung, weil die Rolle die ganze Collection nicht schreiben darf (Gate-Hooks in permissions.pb.js:
  * «Keine Berechtigung (…)», oder 404 bei per Regel unsichtbaren Datensätzen) → still überspringen. Alles andere
@@ -631,21 +636,29 @@ export class PocketBaseAdapter implements StorageAdapter {
     this._currentWrite = (async () => {
       try {
         let attempt = 0;
+        let lastErr: unknown = null;
         while (this._pendingData) {
           const next = this._pendingData;
           this._pendingData = null;
           try {
             await this._writeSnapshot(next);
             attempt = 0;
+            lastErr = null;
           } catch (err) {
             // Vorübergehender Fehler: kurz warten und erneut versuchen (der Abgleich ist
             // idempotent). Kam inzwischen ein neuerer Stand, wird gleich dieser geschrieben.
             const delays = PocketBaseAdapter.RETRY_DELAYS;
-            if (!isTransient(err) || attempt >= delays.length) throw err;
-            await new Promise(r => setTimeout(r, delays[attempt++]));
-            if (!this._pendingData) this._pendingData = next;
+            if (isTransient(err) && attempt < delays.length) {
+              await new Promise(r => setTimeout(r, delays[attempt++]));
+              if (!this._pendingData) this._pendingData = next;
+              continue;
+            }
+            // Sonst: Fehler merken, aber was während des Schreibens dazukam, trotzdem schreiben (vorher blieb es bis
+            // zur nächsten Aktion liegen, bei einem Reload ging es verloren — E2E-Test 24.11.2026)
+            lastErr = err;
           }
         }
+        if (lastErr) throw lastErr;
       } finally {
         this._currentWrite = null;
       }
@@ -683,6 +696,9 @@ export class PocketBaseAdapter implements StorageAdapter {
     // vorher verschluckte skip403 jede 403 still, und ein Fehler in einem Bereich blockierte alle späteren
     // (E2E-Test 24.11.2026: Ferienantrag ging nach einer Spese ohne Betrag verloren).
     const failures: string[] = [];
+    const failedKeys = new Set<DataKey>();
+    const keyOfColl = (coll: string): DataKey | null => coll === "studioSettings" || coll === "studioRoles" ? "settings"
+      : (ENTITY_MAP.find(([, cl]) => cl === coll) || CONFIG_MAP.find(([, cl]) => cl === coll))?.[0] ?? null;
     const skip403 = async (label: string, fn: () => Promise<void>) => {
       try {
         await fn();
@@ -693,6 +709,8 @@ export class PocketBaseAdapter implements StorageAdapter {
           return;
         }
         failures.push(pbMessage(err));
+        const k = keyOfColl(label);
+        if (k) failedKeys.add(k);
       }
     };
 
@@ -759,7 +777,7 @@ export class PocketBaseAdapter implements StorageAdapter {
     // markieren — wirft einer der obigen skip403()-Blöcke einen echten (nicht
     // 403/404-)Fehler, bricht die Funktion vorher ab und der nächste Save
     // vergleicht wieder gegen den alten Snapshot (alle Collections erneut "changed").
-    if (failures.length) throw new Error([...new Set(failures)].join(" · "));
+    if (failures.length) throw new RejectedSaveError([...new Set(failures)].join(" · "), [...failedKeys]);
     if (!only) this._lastData = data;
   }
 
