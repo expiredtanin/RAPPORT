@@ -93,6 +93,19 @@ onRecordsListRequest((e) => {
         if (r.get("studio") !== studioId) { allowed = false; break; }
       }
     }
+    // Eigene Datensätze ohne Recht (pb_migrations/1787880000_own_records.js): Besitz hier, Status prüfen die Regeln
+    if (!allowed && authId && ["employees", "vacationEntries", "absences", "overtimeClosings", "expenses"].indexOf(e.collection.name) >= 0) {
+    const rs = e.records || [];
+      allowed = rs.every((r) => {
+        try {
+          if (e.collection.name === "employees") return r.get("appUser") === authId;
+          const emp = e.app.findRecordById("employees", r.get("employee"));
+          return emp.get("appUser") === authId;
+        } catch {
+          return false;
+        }
+      });
+    }
     if (!allowed) throw new ForbiddenError("Keine Berechtigung (" + permId + ") für diese Aktion.");
   }
   e.next();
@@ -131,6 +144,18 @@ onRecordViewRequest((e) => {
       } catch {
         allowed = false;
       }
+    }
+    // Eigene Datensätze ohne Recht (pb_migrations/1787880000_own_records.js): Besitz hier, Status prüfen die Regeln
+    if (!allowed && authId && ["employees", "vacationEntries", "absences", "overtimeClosings", "expenses"].indexOf(e.collection.name) >= 0) {
+      allowed = [e.record].every((r) => {
+        try {
+          if (e.collection.name === "employees") return r.get("appUser") === authId;
+          const emp = e.app.findRecordById("employees", r.get("employee"));
+          return emp.get("appUser") === authId;
+        } catch {
+          return false;
+        }
+      });
     }
     if (!allowed) throw new ForbiddenError("Keine Berechtigung (" + permId + ") für diese Aktion.");
   }
@@ -178,6 +203,18 @@ onRecordCreateRequest((e) => {
         allowed = false;
       }
     }
+    // Eigene Datensätze ohne Recht (pb_migrations/1787880000_own_records.js): Besitz hier, Status prüfen die Regeln
+    if (!allowed && authId && ["vacationEntries", "absences", "expenses"].indexOf(e.collection.name) >= 0) {
+      allowed = [e.record].every((r) => {
+        try {
+          if (e.collection.name === "employees") return r.get("appUser") === authId;
+          const emp = e.app.findRecordById("employees", r.get("employee"));
+          return emp.get("appUser") === authId;
+        } catch {
+          return false;
+        }
+      });
+    }
     if (!allowed) throw new ForbiddenError("Keine Berechtigung (" + permId + ") für diese Aktion.");
   }
   e.next();
@@ -220,6 +257,18 @@ onRecordUpdateRequest((e) => {
       } catch {
         allowed = false;
       }
+    }
+    // Eigene Datensätze ohne Recht (pb_migrations/1787880000_own_records.js): Besitz hier, Status prüfen die Regeln
+    if (!allowed && authId && ["vacationEntries", "absences", "expenses"].indexOf(e.collection.name) >= 0) {
+      allowed = [e.record].every((r) => {
+        try {
+          if (e.collection.name === "employees") return r.get("appUser") === authId;
+          const emp = e.app.findRecordById("employees", r.get("employee"));
+          return emp.get("appUser") === authId;
+        } catch {
+          return false;
+        }
+      });
     }
     if (!allowed) throw new ForbiddenError("Keine Berechtigung (" + permId + ") für diese Aktion.");
   }
@@ -264,6 +313,18 @@ onRecordDeleteRequest((e) => {
         allowed = false;
       }
     }
+    // Eigene Datensätze ohne Recht (pb_migrations/1787880000_own_records.js): Besitz hier, Status prüfen die Regeln
+    if (!allowed && authId && ["vacationEntries", "absences", "expenses"].indexOf(e.collection.name) >= 0) {
+      allowed = [e.record].every((r) => {
+        try {
+          if (e.collection.name === "employees") return r.get("appUser") === authId;
+          const emp = e.app.findRecordById("employees", r.get("employee"));
+          return emp.get("appUser") === authId;
+        } catch {
+          return false;
+        }
+      });
+    }
     if (!allowed) throw new ForbiddenError("Keine Berechtigung (" + permId + ") für diese Aktion.");
   }
   e.next();
@@ -293,6 +354,8 @@ onRealtimeSubscribeRequest((e) => {
     const collName = topic.split("/")[0].split("?")[0];
     const permId = FULL_GATE[collName];
     if (!permId || isSuperuser) return true;
+    // Diese Collections filtern die Regeln seit 1787860000/1787880000 selbst (Rolle oder eigener Datensatz)
+    if (["employees", "vacationEntries", "absences", "overtimeClosings", "expenses"].indexOf(collName) >= 0) return true;
 
     // Nur der Filter, den der Client selbst schickt (`studio = "<id>"`, siehe
     // subscribeToChanges()), wird akzeptiert — und zwar EXAKT. Früher reichte ein
@@ -368,6 +431,15 @@ onFileDownloadRequest((e) => {
           );
           allowed = true;
         }
+      } catch {
+        allowed = false;
+      }
+    }
+    // eigener Beleg (Spese des eigenen Mitarbeiter-Datensatzes) auch ohne Recht «expenses»
+    if (!allowed && authId && e.collection.name === "expenses") {
+      try {
+        const emp = e.app.findRecordById("employees", e.record.get("employee"));
+        allowed = emp.get("appUser") === authId;
       } catch {
         allowed = false;
       }
