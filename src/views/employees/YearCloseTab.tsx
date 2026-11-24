@@ -66,7 +66,7 @@ export default function YearCloseTab({ data, employees, abschlussYear, setAbschl
                 {[
                   { label: "Jahresanspruch", value: `${fs.anspruchH}h` },
                   fs.ubertragH > 0 ? { label: "Übertrag Vorjahr", value: `+${fs.ubertragH}h` } : null,
-                  { label: "Bezogen", value: `-${fs.bezogenH}h` },
+                  { label: "Bezogen", value: fs.bezogenH > 0 ? `−${fs.bezogenH}h` : "0h" },
                 ].filter((r): r is { label: string; value: string } => !!r).map(r => (
                   <div key={r.label} style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: "var(--text3)", padding: "2px 0" }}>
                     <span>{r.label}</span><span>{r.value}</span>
@@ -133,14 +133,14 @@ export default function YearCloseTab({ data, employees, abschlussYear, setAbschl
                         value={form.ubHours}
                         onChange={e => setForm({ ubHours: Math.min(+e.target.value, ubSaldo) })}
                         placeholder="Std."
-                        style={{ width: 65, fontSize: 12 }}
+                        style={{ width: 80, fontSize: 12, padding: "0 8px", textAlign: "right" }}
                       />
                       <span style={{ fontSize: 12, color: "var(--text3)" }}>h ×</span>
                       <input
                         type="number" min={0} step={1}
                         value={form.ubZuschlag}
                         onChange={e => setForm({ ubZuschlag: +e.target.value })}
-                        style={{ width: 52, fontSize: 12 }}
+                        style={{ width: 64, fontSize: 12, padding: "0 8px", textAlign: "right" }}
                       />
                       <span style={{ fontSize: 12, color: "var(--text3)" }}>% Zuschlag</span>
                     </div>
