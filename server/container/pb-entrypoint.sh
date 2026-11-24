@@ -18,6 +18,17 @@ set -e
 # brachen vorher den Superuser-Login und damit das Setzen der Einstellungen.
 json_escape() { printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'; }
 
+# Kein Start mit dem Platzhalter aus .env.example oder einem kurzen Passwort: der Superuser hat Vollzugriff auf
+# alle Büros, und das Admin-Dashboard /_/ ist über nginx erreichbar (Audit 24.11.2026).
+if [ -n "$SUPERUSER_PASSWORD" ]; then
+  case "$SUPERUSER_PASSWORD" in
+    *CHANGE-ME*|*change-me*) echo "pb-entrypoint: SUPERUSER_PASSWORD ist noch der Platzhalter aus .env.example — bitte ein eigenes Passwort setzen." >&2; exit 1 ;;
+  esac
+  if [ "${#SUPERUSER_PASSWORD}" -lt 12 ]; then
+    echo "pb-entrypoint: SUPERUSER_PASSWORD ist zu kurz (mindestens 12 Zeichen)." >&2; exit 1
+  fi
+fi
+
 if [ -n "$SUPERUSER_EMAIL" ] && [ -n "$SUPERUSER_PASSWORD" ]; then
   /pb/pocketbase superuser upsert "$SUPERUSER_EMAIL" "$SUPERUSER_PASSWORD"
 fi
@@ -52,5 +63,17 @@ if [ -n "$SETTINGS" ] && [ -n "$SUPERUSER_EMAIL" ] && [ -n "$SUPERUSER_PASSWORD"
     fi
   ) &
 fi
+
+# Einrichtungscode für die Ersteinrichtung (Konto + erstes Büro, siehe pb/pb_hooks/signup.pb.js): einmal zufällig
+# erzeugt und im Datenvolume abgelegt; ohne Code kann niemand den frisch gestarteten Server übernehmen.
+if [ -z "$RAPPORT_SETUP_TOKEN" ]; then
+  TOKEN_FILE=/pb/pb_data/.setup-token
+  if [ ! -s "$TOKEN_FILE" ]; then
+    (umask 077; head -c 15 /dev/urandom | base64 | tr -d '/+=' | cut -c1-16 > "$TOKEN_FILE")
+  fi
+  RAPPORT_SETUP_TOKEN="$(cat "$TOKEN_FILE")"
+  export RAPPORT_SETUP_TOKEN
+fi
+echo "pb-entrypoint: Einrichtungscode (nur für die Ersteinrichtung in der App nötig): $RAPPORT_SETUP_TOKEN"
 
 exec /pb/pocketbase serve --http=0.0.0.0:8090

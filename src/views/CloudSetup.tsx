@@ -47,13 +47,13 @@ type StudioExtras = Partial<Pick<Settings, "street" | "zip" | "city" | "email" |
  * @param cloudUrl Server-Adresse, nur zur Anzeige
  */
 export default function CloudSetup({ cloudInit, cloudUrl }: {
-  cloudInit: (email: string, password: string, displayName: string, studioName: string, extras: StudioExtras) => Promise<{ ok: boolean; error?: string } | undefined>;
+  cloudInit: (email: string, password: string, displayName: string, studioName: string, extras: StudioExtras, setupCode?: string) => Promise<{ ok: boolean; error?: string } | undefined>;
   cloudUrl?: string;
 }) {
   const TOTAL = 3;
   const [step, setStep] = useState(1);
   const [studio, setStudio]   = useState({ name: "", street: "", zip: "", city: "", email: "", phone: "", iban: "", mwst: "", hourlyRate: "" });
-  const [account, setAccount] = useState({ displayName: "", email: "", password: "", confirm: "" });
+  const [account, setAccount] = useState({ displayName: "", email: "", password: "", confirm: "", setupCode: "" });
   const [errors, setErrors]   = useState<Record<string, string>>({});
   const [showPw, setShowPw]   = useState(false);
   const [busy, setBusy]       = useState(false);
@@ -71,7 +71,7 @@ export default function CloudSetup({ cloudInit, cloudUrl }: {
     if (step === 2) {
       if (!account.displayName.trim()) errs.displayName = "Pflichtfeld";
       if (!account.email.trim() || !/.+@.+\..+/.test(account.email)) errs.email = "Gültige Email";
-      if (account.password.length < 6) errs.password = "Mindestens 6 Zeichen";
+      if (account.password.length < 8) errs.password = "Mindestens 8 Zeichen";
       if (account.password !== account.confirm) errs.confirm = "Passwörter stimmen nicht überein";
     }
     setErrors(errs);
@@ -97,7 +97,7 @@ export default function CloudSetup({ cloudInit, cloudUrl }: {
       const n = Number(studio.hourlyRate);
       if (!Number.isNaN(n) && n > 0) extras.defaultHourlyRate = n;
     }
-    const res = await cloudInit(account.email.trim(), account.password, account.displayName.trim(), studio.name.trim(), extras);
+    const res = await cloudInit(account.email.trim(), account.password, account.displayName.trim(), studio.name.trim(), extras, account.setupCode.trim());
     if (!res?.ok) {
       setSubmitErr(res?.error || "Einrichtung fehlgeschlagen.");
       setBusy(false);
@@ -188,7 +188,7 @@ export default function CloudSetup({ cloudInit, cloudUrl }: {
 
         <label style={S.label}>PASSWORT *</label>
         <div style={{ position: "relative" }}>
-          <input style={{ ...S.input, ...(errors.password ? S.inputErr : {}), paddingRight: 80 }} type={showPw ? "text" : "password"} placeholder="Mindestens 6 Zeichen"
+          <input style={{ ...S.input, ...(errors.password ? S.inputErr : {}), paddingRight: 80 }} type={showPw ? "text" : "password"} placeholder="Mindestens 8 Zeichen"
             value={account.password} onChange={e => { setA("password", e.target.value); clearErr("password"); }} />
           <button onClick={() => setShowPw(v => !v)}
             style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", color: C.text4, cursor: "pointer", fontSize: 11, fontFamily: "inherit" }}>
@@ -202,6 +202,14 @@ export default function CloudSetup({ cloudInit, cloudUrl }: {
           value={account.confirm} onChange={e => { setA("confirm", e.target.value); clearErr("confirm"); }}
           onKeyDown={e => e.key === "Enter" && next()} />
         {errors.confirm && <div style={S.err}>{errors.confirm}</div>}
+
+        <label style={S.label}>EINRICHTUNGSCODE</label>
+        <input style={S.input} placeholder="aus dem Server-Log" autoComplete="off" spellCheck={false}
+          value={account.setupCode} onChange={e => setA("setupCode", e.target.value)} />
+        <div style={{ fontSize: 11, color: C.text4, marginTop: 6, lineHeight: 1.5 }}>
+          Schützt den leeren Server davor, dass jemand anderes ihn zuerst einrichtet. Der Code steht beim ersten Start im Log
+          (<code>docker compose logs pb</code>, Zeile «Einrichtungscode»).
+        </div>
 
         <button style={S.btnPrimary} onClick={next}>Weiter →</button>
         <button style={S.btnGhost} onClick={back}>← Zurück</button>

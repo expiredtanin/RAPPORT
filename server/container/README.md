@@ -48,7 +48,8 @@ cp .env.example .env
 ```
 
 In `.env` mindestens ersetzen:
-- `PB_SUPERUSER_EMAIL` / `PB_SUPERUSER_PASSWORD` — Admin-Zugang für die PocketBase-Dashboard-UI (`/_/`)
+- `PB_SUPERUSER_EMAIL` / `PB_SUPERUSER_PASSWORD` — Admin-Zugang für die PocketBase-Dashboard-UI (`/_/`) — Passwort mindestens 12 Zeichen; mit dem Platzhalter aus `.env.example` startet der Container nicht
+- `RAPPORT_SETUP_TOKEN` (optional) — Einrichtungscode für das erste Konto und Büro. Leer lassen: der Container erzeugt beim ersten Start einen und schreibt ihn ins Log (`docker compose logs pb | grep Einrichtungscode`); die App fragt bei der Ersteinrichtung danach. So kann niemand den frisch gestarteten Server vor Ihnen übernehmen
 - `API_EXTERNAL_URL` — die öffentliche URL, unter der PocketBase erreichbar sein wird (z.B. `https://api.rapport.studio.ch`) — wird zur Build-Zeit ins Frontend eingebrannt
 - `APP_URL` — die öffentliche URL des Frontends (z.B. `https://rapport.studio.ch`) — wird beim Start automatisch als PocketBase-Einstellung `meta.appURL` gesetzt, damit Passwort-Reset-Mails auf die richtige Seite verlinken (siehe [Passwort-Reset](#passwort-reset--smtp))
 

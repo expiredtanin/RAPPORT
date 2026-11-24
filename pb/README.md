@@ -59,3 +59,10 @@ pb_hooks/          # Custom-API-Routen (JS)
 pb_migrations/      # Schema-Migrationen (JS, PocketBase-Format)
 pb_data/             # Runtime: SQLite + File-Storage (gitignored)
 ```
+
+## Sicherheitsprüfung
+
+`pb/tests/security-check.mjs` spielt gegen eine **frische** Test-Instanz die bekannten Angriffe nach (Mitarbeiter liest
+Löhne über `expand`/Filter, ändert IBAN, fremde Zeiteinträge oder Beiträge, ändert die eigene Rolle) und prüft, dass Admin
+und Mitarbeiter in ihrem Bereich weiter arbeiten können. Anleitung im Dateikopf. Beim lokalen Testen `serve` mit
+`--automigrate=false` starten — sonst schreibt PocketBase bei Schemaänderungen über die API Migrationsdateien ins Repo.

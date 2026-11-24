@@ -75,7 +75,7 @@ export function CloudMigration({ mode, data, currentUser, resolveFiles, onBackup
   const [adapter, setAdapter] = useState<PocketBaseAdapter | null>(null);
   const [serverEmpty, setServerEmpty] = useState(false);
   // Konto
-  const [acc, setAcc] = useState({ name: currentUser?.displayName || "", email: "", password: "", confirm: "", studioName: data.settings?.name || "" });
+  const [acc, setAcc] = useState({ name: currentUser?.displayName || "", email: "", password: "", confirm: "", studioName: data.settings?.name || "", setupCode: "" });
   const [studios, setStudios] = useState<{ id: Id; name: string }[] | null>(null);
   const [choice, setChoice] = useState<string>("new");
   const [signedIn, setSignedIn] = useState<{ userId: Id; displayName: string; username: string } | null>(null);
@@ -128,6 +128,7 @@ export function CloudMigration({ mode, data, currentUser, resolveFiles, onBackup
     if (!/.+@.+\..+/.test(acc.email.trim())) throw new Error("Bitte eine gültige E-Mail-Adresse angeben.");
     if (acc.password.length < 8) throw new Error("Das Passwort braucht mindestens 8 Zeichen.");
     if (acc.password !== acc.confirm) throw new Error("Die Passwörter stimmen nicht überein.");
+    adapter.setupCode = acc.setupCode || "";
     const up = await adapter.signUp(acc.email.trim(), acc.password);
     if (!up.ok || !up.user) throw new Error(up.error || "Konto konnte nicht angelegt werden.");
     const username = (acc.email.split("@")[0] || "user").replace(/[^a-zA-Z0-9._-]/g, "");
@@ -265,6 +266,7 @@ export function CloudMigration({ mode, data, currentUser, resolveFiles, onBackup
             <div><label style={label}>WIEDERHOLEN</label>{input("confirm", "password")}</div>
           </div>
           <label style={label}>BÜRO</label>{input("studioName")}
+          <label style={label}>EINRICHTUNGSCODE</label>{input("setupCode", "text", "aus dem Server-Log («Einrichtungscode»)")}
           <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 18 }}>
             {btn("Zurück", () => setStep("connect"), "btn-ghost")}{btn("Konto und Büro anlegen", setupAccount)}
           </div>

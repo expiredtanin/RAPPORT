@@ -28,6 +28,8 @@ services:
       # bei jedem Container-Start — harmlos, setzt nur ggf. das Passwort neu).
       SUPERUSER_EMAIL: ${PB_SUPERUSER_EMAIL:-}
       SUPERUSER_PASSWORD: ${PB_SUPERUSER_PASSWORD:-}
+      # Einrichtungscode für das erste Konto/Büro; leer = beim ersten Start zufällig erzeugen (steht im Log)
+      RAPPORT_SETUP_TOKEN: ${RAPPORT_SETUP_TOKEN:-}
       # URL des Frontends (nicht der PocketBase-API!) — für Passwort-Reset-Mails,
       # siehe pb-entrypoint.sh.
       APP_URL: ${APP_URL:-}

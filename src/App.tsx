@@ -135,8 +135,9 @@ export default function App() {
   // — Mitarbeiter werden via Admin-Aktion eingeladen.
   // `extraSettings` enthält optionale Stammdaten (Adresse, IBAN, MwSt, …),
   // die nach createStudio in die studio_settings geschrieben werden.
-  const cloudInit = async (email: string, password: string, displayName: string, studioName: string, extraSettings: Partial<AppData["settings"]> = {}) => {
+  const cloudInit = async (email: string, password: string, displayName: string, studioName: string, extraSettings: Partial<AppData["settings"]> = {}, setupCode = "") => {
     try {
+      cloudStorage.setupCode = setupCode;
       const signUpRes = await cloudStorage.signUp(email, password);
       if (!signUpRes.ok) return { ok: false, error: signUpRes.error };
 

@@ -23,6 +23,12 @@ routerAdd("POST", "/api/rapport/create-studio", (e) => {
   // Studios (Einstellungen → «Weiteres Studio anlegen»). Vorher genügte irgendein Konto —
   // zusammen mit der offenen Registrierung konnte jeder aus dem Netz Studios anlegen
   // (Audit 20.11.2026, siehe auch signup.pb.js).
+  // Erstes Büro nur mit Einrichtungscode (siehe signup.pb.js)
+  if (!e.hasSuperuserAuth() && e.app.countRecords("studios") === 0) {
+    const want = $os.getenv("RAPPORT_SETUP_TOKEN") || "";
+    const got = (e.requestInfo().headers || {})["x_rapport_setup"] || "";   // Header X-Rapport-Setup (requestInfo: klein, «_»)
+    if (want && got !== want) throw new ForbiddenError("Einrichtungscode fehlt oder ist falsch (steht im Log des Servers).");
+  }
   if (!e.hasSuperuserAuth() && e.app.countRecords("studios") > 0) {
     let isAdmin = false;
     try {
@@ -39,13 +45,14 @@ routerAdd("POST", "/api/rapport/create-studio", (e) => {
 
   const sourceStudioIds = (data.sharePersonsFrom || []).filter(Boolean);
 
-  // Caller muss aktives Mitglied JEDES Quell-Studios sein — sonst könnte man
-  // sich fremde Personen "erschleichen", indem man eine beliebige Studio-ID mitschickt.
+  // Caller muss Admin JEDES Quell-Studios sein — sonst könnte man sich fremde Personen "erschleichen", indem man
+  // eine beliebige Studio-ID mitschickt; blosse Mitgliedschaft reichte bis 24.11.2026 (ein Mitarbeiter in Büro B
+  // machte so dessen Kontakte in seinem eigenen Büro sichtbar).
   for (const sourceId of sourceStudioIds) {
     let isMember = false;
     try {
       e.app.findFirstRecordByFilter(
-        "studioMembers", "studio = {:sid} && user = {:uid} && active = true",
+        "studioMembers", "studio = {:sid} && user = {:uid} && active = true && appRoleId = 'r-admin'",
         { sid: sourceId, uid: e.auth.id },
       );
       isMember = true;
@@ -53,7 +60,7 @@ routerAdd("POST", "/api/rapport/create-studio", (e) => {
       isMember = false;
     }
     if (!isMember) {
-      throw new ForbiddenError("Nicht Mitglied aller Quell-Studios für Personen-Sharing.");
+      throw new ForbiddenError("Kontakte teilen kann nur, wer in allen Quell-Büros Admin ist.");
     }
   }
 

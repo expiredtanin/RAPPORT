@@ -308,13 +308,19 @@ export class PocketBaseAdapter implements StorageAdapter {
   // Session stehen — der Caller (App.jsx cloudInit) ruft direkt danach
   // ensureProfile()/createStudio() auf, ohne zwischendurch signIn() aufzurufen.
   // PocketBase-`create()` allein authentifiziert nicht, daher explizit nachziehen.
+  /** Einrichtungscode des Servers (Log beim ersten Start); nur für Konto + erstes Büro auf einem leeren Server nötig. */
+  setupCode = "";
+  private setupHeaders(): Record<string, string> {
+    return this.setupCode.trim() ? { "X-Rapport-Setup": this.setupCode.trim() } : {};
+  }
+
   async signUp(email: string, password: string): Promise<{ ok: boolean; user?: RecordModel; error?: string }> {
     try {
       const username = (email.split("@")[0] || "user").replace(/[^a-zA-Z0-9._-]/g, "") + Math.random().toString(36).slice(2, 6);
       const record = await this.client.collection("users").create({
         email, password, passwordConfirm: password,
         username, displayName: username,
-      });
+      }, { headers: this.setupHeaders() });
       await this.client.collection("users").authWithPassword(email, password);
       return { ok: true, user: record };
     } catch (e) {
@@ -343,6 +349,7 @@ export class PocketBaseAdapter implements StorageAdapter {
     const res = await this.client.send("/api/rapport/create-studio", {
       method: "POST",
       body: { name, slug, sharePersonsFrom },
+      headers: this.setupHeaders(),
     });
     return res.id;
   }
