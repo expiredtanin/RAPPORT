@@ -39,7 +39,7 @@ const S = {
 } satisfies Record<string, CSSProperties | ((...args: never[]) => CSSProperties)>;
 
 /** Optionale Studio-Felder, die beim Anlegen mitgeschickt werden. */
-type StudioExtras = Partial<Pick<Settings, "street" | "zip" | "city" | "email" | "phone" | "iban" | "mwst" | "defaultHourlyRate">>;
+type StudioExtras = Partial<Pick<Settings, "name" | "street" | "zip" | "city" | "email" | "phone" | "iban" | "mwst" | "defaultHourlyRate">>;
 
 /**
  * @param cloudInit legt User, Profil und Studio an und meldet an (siehe App.jsx);
@@ -85,7 +85,8 @@ export default function CloudSetup({ cloudInit, cloudUrl }: {
     if (busy) return;
     setBusy(true);
     setSubmitErr("");
-    const extras: StudioExtras = {};
+    // Büroname auch in die Einstellungen (Sidebar, Briefkopf, Login), sonst blieb «Mein Studio» aus den Vorgaben
+    const extras: StudioExtras = { name: studio.name.trim() };
     if (studio.street.trim()) extras.street = studio.street.trim();
     if (studio.zip.trim()) extras.zip = studio.zip.trim();
     if (studio.city.trim()) extras.city = studio.city.trim();

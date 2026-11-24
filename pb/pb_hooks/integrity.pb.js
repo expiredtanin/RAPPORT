@@ -52,7 +52,14 @@ onRecordUpdateRequest((e) => {
   const has = (p) => perms.indexOf("|*|") >= 0 || perms.indexOf("|" + p + "|") >= 0;
   const full = perms.indexOf("|*|") >= 0;
   if (name === "employees") {
-    if (!full && o.get("appUser") === uid) throw new ForbiddenError("Den eigenen Mitarbeiter-Datensatz ändert ein Admin.");
+    // eigener Datensatz: ohne Vollzugriff nur die Adresse («Mein Profil»); Lohnkonto, Lohn, Pensum, Saldo nicht
+    if (!full && o.get("appUser") === uid) {
+      for (const f of e.record.collection().fields) {
+        const n = f.name;
+        if (n === "adresse" || n === "ort" || n === "updated") continue;
+        if (JSON.stringify(r.get(n)) !== JSON.stringify(o.get(n))) throw new ForbiddenError("Am eigenen Mitarbeiter-Datensatz lässt sich nur die Adresse ändern (" + n + ").");
+      }
+    }
     if (!has("loehne")) {
       const SAL = ["monatslohn", "lohnVerlauf", "lohnIban", "dreizehnterLohn", "ahvSatz", "alvSatz", "bvgSatz", "nbuSatz", "ktgSatz",
         "quellensteuerPflichtig", "quellensteuerSatz", "pkBeitragAN", "pkBeitragAG", "pkAgSatz", "familienzulagen", "ahvRentner"];

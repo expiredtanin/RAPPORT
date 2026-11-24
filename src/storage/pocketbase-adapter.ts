@@ -53,8 +53,21 @@ import { baseFrom, changedFields, planSync, type SyncOp, type SyncRow } from "./
 import { PB_FILE_FIELDS, PbFileStore, replacePbRefs, type PbFileRef, type PreparedBody } from "./pocketbase-files";
 
 /** Fehlerform von PocketBase (ClientResponseError), soweit hier benutzt. */
-type PbError = { status?: number; message?: string; data?: { message?: string } };
+type PbError = { status?: number; message?: string; data?: { message?: string; data?: Record<string, { code?: string; message?: string }> } };
 const pbError = (e: unknown): PbError => (e ?? {}) as PbError;
+/** Lesbare Servermeldung: Hook-Text («Der Monat 2026-10 ist abgeschlossen.») bzw. Feldfehler («amount: …»). */
+export function pbMessage(e: unknown): string {
+  const p = pbError(e);
+  const msg = p.data?.message || p.message || String(e);
+  const fields = p.data?.data ? Object.entries(p.data.data).map(([k, v]) => `${k}: ${v?.message || v?.code || "ungültig"}`) : [];
+  return fields.length ? `${msg} (${fields.join("; ")})` : msg;
+}
+/**
+ * true = Ablehnung, weil die Rolle die ganze Collection nicht schreiben darf (Gate-Hooks in permissions.pb.js:
+ * «Keine Berechtigung (…)», oder 404 bei per Regel unsichtbaren Datensätzen) → still überspringen. Alles andere
+ * (abgeschlossener Monat, verrechnete Stunden, Feldprüfung) ist eine echte Ablehnung und wird gemeldet.
+ */
+const isRoleGate = (e: unknown) => { const p = pbError(e); return p.status === 404 || (p.status === 403 && /^Keine Berechtigung \(/.test(p.data?.message || p.message || "")); };
 /** Alle Mapper, die eine Zeile 1:1 in eine App-Entität übersetzen (ohne studioSettings). */
 type EntityMapper = Exclude<keyof typeof fromDB, "studioSettings">;
 type DataKey = keyof AppData;
@@ -515,6 +528,9 @@ export class PocketBaseAdapter implements StorageAdapter {
       settings: fromDB.studioSettings(settingsList[0], roles),
       persons: personsRows.map(r => fromDB.person(r)),
     };
+    // Stand der Einstellungen beim Laden (Basis für den Drei-Wege-Abgleich in _writeSnapshot), durch dieselben
+    // Mapper wie beim Schreiben — sonst zählten Vorgabewerte (z.B. closedMonths: []) als eigene Änderung
+    this._settingsBase = settingsList[0] ? this._files.toRefs("studioSettings", toDB.studioSettings(result.settings as AppData["settings"], sid)) : null;
     entityMapNonPersons.forEach(([dataKey], i) => { result[dataKey] = entityResults[i]; });
     CONFIG_MAP.forEach(([dataKey], i) => { result[dataKey] = configResults[i]; });
 
@@ -570,6 +586,7 @@ export class PocketBaseAdapter implements StorageAdapter {
         c.collection("studioRoles").getFullList({ filter, sort: "sort" }),
       ]);
       const loaded: Record<string, unknown> = { settings: fromDB.studioSettings(settingsList[0], roles) };
+      this._settingsBase = settingsList[0] ? this._files.toRefs("studioSettings", toDB.studioSettings(loaded.settings as AppData["settings"], sid)) : null;
       await this._inlineEagerFiles(loaded);
       const settings = loaded.settings as ReturnType<typeof fromDB.studioSettings>;
       result.settings = settings;
@@ -662,12 +679,20 @@ export class PocketBaseAdapter implements StorageAdapter {
     // Self-Escalation-Fix) für Update/Delete-Requests 404 statt 403, um Existenz von
     // Datensätzen ausserhalb der eigenen Rule-Sicht nicht zu verraten — hier unbedenklich,
     // da "existing" direkt zuvor in derselben Funktion frisch geladen wurde.
+    // Abgelehnte Änderungen (Integrität, Feldprüfung) melden, aber die übrigen Bereiche trotzdem schreiben;
+    // vorher verschluckte skip403 jede 403 still, und ein Fehler in einem Bereich blockierte alle späteren
+    // (E2E-Test 24.11.2026: Ferienantrag ging nach einer Spese ohne Betrag verloren).
+    const failures: string[] = [];
     const skip403 = async (label: string, fn: () => Promise<void>) => {
       try {
         await fn();
       } catch (err) {
-        if (only || (pbError(err).status !== 403 && pbError(err).status !== 404)) throw err;
-        console.warn(`PocketBaseAdapter._writeSnapshot: keine Berechtigung für "${label}", übersprungen.`);
+        if (only || isTransient(err)) throw err;
+        if (isRoleGate(err)) {
+          console.warn(`PocketBaseAdapter._writeSnapshot: keine Berechtigung für "${label}", übersprungen.`);
+          return;
+        }
+        failures.push(pbMessage(err));
       }
     };
 
@@ -678,8 +703,29 @@ export class PocketBaseAdapter implements StorageAdapter {
         const settingsPayload = this._files.toRefs("studioSettings", toDB.studioSettings(data.settings || {}, sid));
         if (existingSettings[0]) {
           // Nur geänderte Felder senden (Logo nicht bei jeder Einstellung neu)
-          const body = changedFields(settingsPayload, this._files.fromRecord("studioSettings", existingSettings[0]));
+          const server = this._files.fromRecord("studioSettings", existingSettings[0]);
+          const body = changedFields(settingsPayload, server);
+          // Drei-Wege-Abgleich gegen den Stand beim Laden: nur, was ICH seither geändert habe, auf den frischen
+          // Serverstand — sonst überschrieb ein Client mit veraltetem Stand (Realtime verpasst) z.B. einen inzwischen
+          // geschlossenen Monat (ui.closedMonths) oder die IBAN eines anderen (E2E-Test 24.11.2026).
+          const base = this._settingsBase;
+          if (base) {
+            for (const k of Object.keys(body)) {
+              if (k !== "ui" && Object.keys(changedFields({ [k]: settingsPayload[k] }, { [k]: base[k] })).length === 0) delete body[k];
+            }
+            if ("ui" in body) {
+              const obj = (v: unknown) => (v && typeof v === "object" ? v as Record<string, unknown> : {});
+              const serverUi = obj(server.ui), mineUi = obj(settingsPayload.ui), baseUi = obj(base.ui);
+              const merged: Record<string, unknown> = { ...serverUi };
+              for (const k of new Set([...Object.keys(mineUi), ...Object.keys(baseUi)])) {
+                if (JSON.stringify(mineUi[k]) === JSON.stringify(baseUi[k])) continue;   // nicht von mir geändert
+                if (mineUi[k] === undefined) delete merged[k]; else merged[k] = mineUi[k];
+              }
+              if (JSON.stringify(merged) === JSON.stringify(serverUi)) delete body.ui; else body.ui = merged;
+            }
+          }
           if (Object.keys(body).length > 0) await this._applyOps("studioSettings", [{ type: "update", id: existingSettings[0].id, body }]);
+          this._settingsBase = settingsPayload;   // mein Stand ist jetzt geschrieben → Basis für die nächste Änderung
         } else {
           await this._applyOps("studioSettings", [{ type: "create", body: settingsPayload }]);
         }
@@ -713,6 +759,7 @@ export class PocketBaseAdapter implements StorageAdapter {
     // markieren — wirft einer der obigen skip403()-Blöcke einen echten (nicht
     // 403/404-)Fehler, bricht die Funktion vorher ab und der nächste Save
     // vergleicht wieder gegen den alten Snapshot (alle Collections erneut "changed").
+    if (failures.length) throw new Error([...new Set(failures)].join(" · "));
     if (!only) this._lastData = data;
   }
 
@@ -806,6 +853,9 @@ export class PocketBaseAdapter implements StorageAdapter {
     return chunks;
   }
 
+  /** Einstellungen (DB-Form) beim letzten Laden/Schreiben; Basis für den Drei-Wege-Abgleich. */
+  _settingsBase: SyncRow | null = null;
+
   async _applyOps(table: string, allOps: Op[]): Promise<void> {
     const c = this.client.collection(table);
     // Dateifelder vorbereiten: Uploads (multipart) gehen einzeln, alles andere wie bisher (Batch)
@@ -886,17 +936,25 @@ export class PocketBaseAdapter implements StorageAdapter {
   // gelöscht) oder die Regel verbietet ihn. Früher brach das den Rest des Chunks ab und
   // skip403() verschluckte den Fehler — die restlichen Operationen gingen still verloren.
   // Jetzt wird nur diese eine Operation übersprungen.
+  // Eine abgelehnte Operation hält die übrigen nicht mehr auf (sonst ging z.B. ein erlaubter neuer Eintrag mit
+  // einem abgelehnten im selben Chunk verloren); der erste echte Fehler wird nach dem Durchlauf geworfen.
   async _applyOpsSequential(c: ReturnType<PocketBase["collection"]>, chunk: Op[]): Promise<void> {
+    let first: unknown = null;
     for (const op of chunk) {
       try {
         if (op.type === "create") { await this._reserveCreates(1); await c.create(op.body); }
         else if (op.type === "update") await c.update(op.id, op.body);
         else await c.delete(op.id);
       } catch (err) {
-        if (op.type === "create" || pbError(err).status !== 404) throw err;
-        console.warn(`PocketBaseAdapter: ${op.type} ${op.id} nicht möglich (nicht gefunden), übersprungen.`);
+        if (isTransient(err)) throw err;
+        if (op.type !== "create" && pbError(err).status === 404) {
+          console.warn(`PocketBaseAdapter: ${op.type} ${op.id} nicht möglich (nicht gefunden), übersprungen.`);
+          continue;
+        }
+        if (first === null) first = err;
       }
     }
+    if (first !== null) throw first;
   }
 
   // Wie _syncTable, aber Personen-spezifisch wegen Sharing (siehe load()):

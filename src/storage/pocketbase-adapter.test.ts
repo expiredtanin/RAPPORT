@@ -1,7 +1,7 @@
 // Tests für Schreib-Robustheit des PocketBase-Adapters (ohne Server: Netzteile gestubbt).
 
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { PocketBaseAdapter } from "./pocketbase-adapter";
+import { pbMessage, PocketBaseAdapter } from "./pocketbase-adapter";
 import type { AppData } from "../types";
 
 const data = (n: number) => ({ n } as unknown as AppData);
@@ -70,11 +70,19 @@ describe("PocketBaseAdapter._applyOpsSequential", () => {
     expect(done).toEqual(["c:neu", "u:da"]);
   });
 
-  it("andere Fehler brechen weiterhin ab", async () => {
+  it("andere Fehler werden gemeldet, halten die übrigen Operationen aber nicht auf", async () => {
+    // vorher brach der erste Fehler den Rest ab: ein erlaubter Eintrag im selben Chunk ging still verloren
     const a = new PocketBaseAdapter("http://test.invalid");
     const coll = { create: vi.fn(async () => { throw err(400); }), update: vi.fn(), delete: vi.fn() };
     await expect(a._applyOpsSequential(coll as never, [{ type: "create", body: {} }, { type: "delete", id: "x" }]))
       .rejects.toMatchObject({ status: 400 });
+    expect(coll.delete).toHaveBeenCalledWith("x");
+  });
+  it("vorübergehende Fehler (Netz, 429, 5xx) brechen sofort ab", async () => {
+    const a = new PocketBaseAdapter("http://test.invalid");
+    const coll = { create: vi.fn(async () => { throw err(503); }), update: vi.fn(), delete: vi.fn() };
+    await expect(a._applyOpsSequential(coll as never, [{ type: "create", body: {} }, { type: "delete", id: "x" }]))
+      .rejects.toMatchObject({ status: 503 });
     expect(coll.delete).not.toHaveBeenCalled();
   });
 });
@@ -105,5 +113,13 @@ describe("PocketBaseAdapter: Rate-Limit für Anlagen («*:create» gilt auch im 
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe("pbMessage: Servermeldung für das Fehlerbanner", () => {
+  it("Hook-Text und Feldfehler", () => {
+    expect(pbMessage({ status: 403, data: { message: "Der Monat 2026-10 ist abgeschlossen." } })).toBe("Der Monat 2026-10 ist abgeschlossen.");
+    expect(pbMessage({ status: 400, message: "Failed to create record.", data: { message: "Failed to create record.", data: { amount: { code: "validation_required", message: "Cannot be blank." } } } }))
+      .toBe("Failed to create record. (amount: Cannot be blank.)");
   });
 });

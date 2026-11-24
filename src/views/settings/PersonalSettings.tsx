@@ -21,18 +21,25 @@ export function PersonalSettings({ data, update, currentUser, uiZoom, setUiZoom,
     ? employees.find(e => e.id === currentUser.employeeId)
     : employees.find(e => !!currentUser.displayName && e.name === currentUser.displayName);
   const userRec = (data.users || []).find(u => u.id === currentUser.id);
+  // Adresse: eigene Felder (street/zip/city) oder aus den Personalstammdaten (adresse, ort «8001 Zürich»),
+  // die in der Cloud synchronisiert werden
+  const ortMatch = /^(\d{4,5})\s+(.+)$/.exec(emp?.ort || "");
   const [empForm, setEmpForm] = useState({
-    street: emp?.street || "",
-    zip: emp?.zip || "",
-    city: emp?.city || "",
-    lohnIban: emp?.lohnIban || "",
+    street: emp?.street || emp?.adresse || "",
+    zip: emp?.zip || ortMatch?.[1] || "",
+    city: emp?.city || ortMatch?.[2] || (ortMatch ? "" : emp?.ort || ""),
   });
+  // Lohnkonto ändert die Lohnbuchhaltung (Admin oder Recht «Löhne»): ein gekapertes Mitarbeiterkonto soll den Lohn
+  // nicht umleiten können; der Server lässt beim eigenen Datensatz nur die Adresse zu (pb_hooks/integrity.pb.js)
+  const canEditIban = currentUser.role === "admin";
+  const [lohnIban, setLohnIban] = useState(emp?.lohnIban || "");
   const [saved, setSaved] = useState(false);
   const zoomStep = 0.05;
 
   const saveProfile = () => {
     if (emp) {
-      update("employees", (data.employees || []).map(e => e.id === emp.id ? { ...e, ...empForm } : e));
+      const adresse = empForm.street.trim(), ort = [empForm.zip.trim(), empForm.city.trim()].filter(Boolean).join(" ");
+      update("employees", (data.employees || []).map(e => e.id === emp.id ? { ...e, ...empForm, adresse, ort, ...(canEditIban ? { lohnIban } : {}) } : e));
     }
     setSaved(true);
     setTimeout(() => setSaved(false), 2500);
@@ -108,10 +115,12 @@ export function PersonalSettings({ data, update, currentUser, uiZoom, setUiZoom,
           <div className="card">
             <Section title="LOHNKONTO">
               <FormField label="IBAN">
-                <input value={empForm.lohnIban} onChange={e => setEmpForm(f => ({ ...f, lohnIban: formatIban(e.target.value) }))} placeholder="CH00 0000 0000 0000 0000 0" />
+                <input value={lohnIban} disabled={!canEditIban} onChange={e => setLohnIban(formatIban(e.target.value))} placeholder="CH00 0000 0000 0000 0000 0" />
               </FormField>
               <div style={{ fontSize: 11, color: "var(--text5)", marginTop: 6, lineHeight: 1.6 }}>
-                Diese Angabe wird für die Lohnüberweisung verwendet und ist nur für den Administrator sichtbar.
+                {canEditIban
+                  ? "Diese Angabe wird für die Lohnüberweisung verwendet und ist nur für den Administrator sichtbar."
+                  : "Für die Lohnüberweisung. Ein neues Konto bitte der Lohnbuchhaltung melden — sie trägt es ein."}
               </div>
               {!emp && (
                 <div style={{ fontSize: 11, color: "var(--warning)", marginTop: 6, padding: "8px 12px", background: "var(--warning-bg)", borderRadius: 8 }}>

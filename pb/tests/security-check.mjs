@@ -174,6 +174,16 @@ r = await api("PATCH", `/api/collections/expenses/records/${sp}`, tM, { status: 
 check("M: eigene Spese nicht selbst genehmigen", r.status >= 400, `HTTP ${r.status}`);
 r = await api("POST", "/api/collections/expenses/records", tM, { id: rid("spy"), studio: sid, employee: empOther, date: "2026-11-20", description: "x", amount: 5, status: "offen" });
 check("M: keine Spesen für andere", r.status >= 400, `HTTP ${r.status}`);
+r = await api("PATCH", `/api/collections/employees/records/${empM}`, tM, { adresse: "Neue Gasse 1", ort: "8001 Zürich" });
+check("M: eigene Adresse ändern («Mein Profil»)", r.status === 200, `HTTP ${r.status} ${r.status !== 200 ? JSON.stringify(r.json) : ""}`);
+r = await api("PATCH", `/api/collections/employees/records/${empM}`, tM, { lohnIban: "CH9300762011623852957" });
+check("M: eigenes Lohnkonto nicht selbst ändern", r.status >= 400, `HTTP ${r.status}`);
+r = await api("PATCH", `/api/collections/employees/records/${empM}`, tM, { monatslohn: 99999 });
+check("M: eigenen Lohn nicht ändern", r.status >= 400, `HTTP ${r.status}`);
+r = await api("POST", "/api/collections/expenses/records", tM, { id: rid("sp0"), studio: sid, employee: empM, date: "2026-11-20", description: "noch ohne Betrag", amount: 0, status: "offen" });
+check("M: Spese zuerst ohne Betrag", r.status === 200, `HTTP ${r.status} ${r.status !== 200 ? JSON.stringify(r.json) : ""}`);
+r = await api("POST", "/api/collections/expenses/records", tM, { id: rid("spn"), studio: sid, employee: empM, date: "2026-11-20", description: "x", amount: -50, status: "offen" });
+check("M: keine negative Spese", r.status >= 400, `HTTP ${r.status}`);
 r = await api("GET", `/api/collections/payrollEntries/records?filter=${enc(`studio="${sid}"`)}`, tM);
 check("M: Löhne weiterhin gesperrt", r.status === 403 || (r.status === 200 && !leaks(r, String(SECRET_LOHN))), `HTTP ${r.status}`);
 r = await api("GET", `/api/collections/timeEntries/records?filter=${enc(`studio="${sid}"`)}&expand=employee`, tM);

@@ -259,7 +259,7 @@ onRecordUpdateRequest((e) => {
       }
     }
     // Eigene Datensätze ohne Recht (pb_migrations/1787880000_own_records.js): Besitz hier, Status prüfen die Regeln
-    if (!allowed && authId && ["vacationEntries", "absences", "expenses"].indexOf(e.collection.name) >= 0) {
+    if (!allowed && authId && ["vacationEntries", "absences", "expenses", "employees"].indexOf(e.collection.name)   /* employees: nur Adresse, integrity.pb.js */ >= 0) {
       allowed = [e.record].every((r) => {
         try {
           if (e.collection.name === "employees") return r.get("appUser") === authId;
