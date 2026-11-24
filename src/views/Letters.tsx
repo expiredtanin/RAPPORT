@@ -2,7 +2,7 @@
 // bearbeiten, drucken/als PDF speichern. Vorlagen liegen in `data.letterTemplates`;
 // im Vorlagentext ersetzen die Platzhalter {{client}} und {{project}} Kunden- und
 // Projektnamen; beim Speichern werden die eingesetzten Namen wieder zu Platzhaltern (letterToTemplate). Der Brieftext selbst wird nicht gespeichert, nur als Vorlage
-// («Überschreiben» / «Neu speichern»).
+// («Speichern» in die gewählte Vorlage / «Neue Vorlage»).
 
 import { useState } from "react";
 import { generateId, textToHtml, fillLetterTemplate, letterToTemplate } from "../utils";
@@ -17,7 +17,8 @@ function Letters({ data, update, setPrintContent }: Pick<ViewProps, "data" | "up
   const [selectedTemplate, setSelectedTemplate] = useState(data.letterTemplates[0]?.id || "");
   const [clientId, setClientId] = useState("");
   const [projectId, setProjectId] = useState("");
-  const [body, setBody] = useState(() => textToHtml(data.letterTemplates[0]?.body || ""));
+  // Lücken ({{client}}, {{project}}) schon beim Öffnen als «[Kunde]»/«[Projekt]» zeigen, wie nach einer Auswahl
+  const [body, setBody] = useState(() => textToHtml(fillLetterTemplate(data.letterTemplates[0]?.body || "", {})));
   const { askConfirm, ConfirmModalEl } = useConfirm();
   const [subject, setSubject] = useState(data.letterTemplates[0]?.name || "");
 
@@ -79,19 +80,22 @@ function Letters({ data, update, setPrintContent }: Pick<ViewProps, "data" | "up
           Drucken / PDF
         </button>
       </>} />
-      <div className="letters-grid" style={{ display: "grid", gridTemplateColumns: showPreview ? "260px minmax(0, 1fr) minmax(320px, 0.9fr)" : "260px minmax(0, 1fr)", gap: 20, alignItems: "start" }}>
+      <div className="letters-grid" style={{ display: "grid", gridTemplateColumns: showPreview ? "280px minmax(0, 1fr) minmax(320px, 0.9fr)" : "280px minmax(0, 1fr)", gap: 20, alignItems: "start" }}>
 
         {/* Linke Spalte */}
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
           <div className="card">
             <div style={{ fontSize: 10, letterSpacing: "0.12em", color: "var(--text4)", fontWeight: 600, marginBottom: 12 }}>VORLAGE</div>
-            <select value={selectedTemplate} onChange={e => { setSelectedTemplate(e.target.value); fillTemplate(e.target.value, clientId, projectId); }} style={{ marginBottom: 10 }}>
-              {data.letterTemplates.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-            </select>
+            <div style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 8 }}>
+              <select value={selectedTemplate} onChange={e => { setSelectedTemplate(e.target.value); fillTemplate(e.target.value, clientId, projectId); }} style={{ flex: 1, minWidth: 0 }}>
+                {data.letterTemplates.length === 0 && <option value="">— keine Vorlage —</option>}
+                {data.letterTemplates.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+              </select>
+              <button className="btn-icon danger" style={{ flex: "none" }} disabled={!selectedTemplate} title="Vorlage löschen" aria-label="Vorlage löschen" onClick={deleteTemplate}><span className="msr" style={{ fontSize: 17 }}>delete</span></button>
+            </div>
             <div style={{ display: "flex", gap: 6 }}>
-              <button className="btn btn-ghost" style={{ flex: 1, minWidth: 0, fontSize: 11, padding: "5px 6px" }} onClick={updateTemplate}>Überschreiben</button>
-              <button className="btn btn-ghost" style={{ flex: 1, minWidth: 0, fontSize: 11, padding: "5px 6px" }} onClick={() => setNewName(subject || "")}>Neu speichern</button>
-              <button className="btn btn-ghost" style={{ flex: "none", padding: "5px 6px", fontSize: 11 }} title="Vorlage löschen" aria-label="Vorlage löschen" onClick={deleteTemplate}><span className="msr" style={{ fontSize: 16 }}>close</span></button>
+              <button className="btn btn-ghost btn-sm" style={{ flex: 1, minWidth: 0, justifyContent: "center" }} disabled={!selectedTemplate} title="Aktuellen Text in die gewählte Vorlage speichern" onClick={updateTemplate}>Speichern</button>
+              <button className="btn btn-ghost btn-sm" style={{ flex: 1, minWidth: 0, justifyContent: "center", whiteSpace: "nowrap" }} title="Aktuellen Text als neue Vorlage speichern" onClick={() => setNewName(subject || "")}>Neue Vorlage</button>
             </div>
             {newName !== null && (
               <div style={{ display: "flex", gap: 6, marginTop: 8 }}>

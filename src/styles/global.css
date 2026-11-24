@@ -878,7 +878,7 @@ a.btn, a.btn:hover { text-decoration: none; }
 .exp-cat b { grid-column: 1 / -1; display: block; height: 4px; border-radius: 999px; background: var(--accent); opacity: .55; margin-top: 2px; }
 /* Buchhaltung (Accounting.tsx): Spalten wie im Projekt-Arbeitsraum */
 .acc-grid { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 20px; align-items: start; margin-bottom: 20px; }
-@media (max-width: 1150px) { .acc-grid { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 1260px) { .acc-grid { grid-template-columns: minmax(0, 1fr); } .acc-grid > :last-child { max-width: 560px; } }
 .acc-lines > div { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; padding: 7px 0; border-top: 1px solid var(--border2); font-size: 13.5px; }
 .acc-lines > div:first-child { border-top: none; }
 .acc-lines span { color: var(--text2); min-width: 0; }
@@ -947,3 +947,6 @@ i.paid { background: var(--positive); } i.open { background: var(--accent); } i.
 .dash-kpi-band .kpi-value { font-size: 20px; font-weight: 620; }
 .dash-kpi-band .kpi-sub { margin-top: 3px; }
 @media (max-width: 760px) { .dash-kpi-band > div:nth-child(odd) { border-left: none; } .dash-kpi-band > div:nth-child(n+3) { border-top: 1px solid var(--border2); } }
+
+/* Rich-Text-Editor (UI.tsx RichEditor): Absätze wie im Druck (LetterPrint .letter-body) getrennt */
+.rich-edit p + p { margin-top: 0.7em; }

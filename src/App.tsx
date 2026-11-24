@@ -522,7 +522,7 @@ export default function App() {
           {hasViewAccess && view === "buchhaltung" && <Accounting data={data} update={update} setView={navigate} setModal={setModal} setPrintContent={setPrintContent} />}
           {hasViewAccess && view === "invoices" && <Invoices data={data} update={update} saveAll={save} modal={modal} setModal={setModal} setPrintContent={setPrintContent} setView={navigate} />}
           {hasViewAccess && view === "loehne" && <Payroll data={data} update={update} saveAll={save} setPrintContent={setPrintContent} setView={navigate} />}
-          {hasViewAccess && view === "expenses" && <Expenses data={data} update={update} standalone setView={navigate} />}
+          {hasViewAccess && view === "expenses" && <Expenses data={data} update={update} standalone setView={navigate} currentUser={currentUser} />}
           {hasViewAccess && view === "internal-expenses" && <InternalExpenses data={data} update={update} setView={navigate} />}
           {hasViewAccess && view === "personen" && <Persons data={data} update={update} saveAll={save} setView={navigate} modal={modal} setModal={setModal} />}
           {hasViewAccess && view === "mitarbeiter" && <Employees data={data} update={update} saveAll={save} setPrintContent={setPrintContent} />}

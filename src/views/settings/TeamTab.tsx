@@ -166,8 +166,9 @@ export function TeamTab({ s, setField, data, update, isAdmin }: DraftProps & Pic
                   {editingRoleId === role.id
                     ? <><button className="btn btn-primary" style={{ padding: "4px 12px", fontSize: 11 }} onClick={saveRole}>Speichern</button>
                        <button className="btn btn-ghost" style={{ padding: "4px 10px", fontSize: 11 }} onClick={() => setEditingRoleId(null)}>Abbrechen</button></>
-                    : <button className="btn btn-ghost" style={{ padding: "4px 10px", fontSize: 11 }} onClick={() => openEditRole(role)}><span className="msr" style={{ fontSize: 16 }}>edit</span></button>
+                    : <button className="btn-icon" title="Bearbeiten" aria-label="Rolle bearbeiten" onClick={() => openEditRole(role)}><span className="msr" style={{ fontSize: 16 }}>edit</span></button>
                   }
+                  {role.id === "r-admin" && editingRoleId !== role.id && <span style={{ width: 32 }} aria-hidden="true" />}
                   {role.id !== "r-admin" && <button className="btn-icon danger" title="Entfernen" aria-label="Entfernen" onClick={() => deleteRole(role.id)}><span className="msr" style={{ fontSize: 16 }}>close</span></button>}
                 </div>
               </div>

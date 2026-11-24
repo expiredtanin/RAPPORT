@@ -1046,7 +1046,7 @@ export function fillLetterTemplate(body: string, names: { client?: string; proje
 
 /**
  * Gegenstück zu `fillLetterTemplate` beim Speichern als Vorlage: die eingesetzten Namen (und die
- * Lückenfüller «[Kunde]»/«[Projekt]») werden wieder zu {{client}}/{{project}}, damit «Überschreiben»
+ * Lückenfüller «[Kunde]»/«[Projekt]») werden wieder zu {{client}}/{{project}}, damit «Speichern»
  * die Platzhalter nicht verliert. Ersetzt nur ganze Wörter; der längere Name zuerst.
  */
 export function letterToTemplate(body: string, names: { client?: string; project?: string }): string {

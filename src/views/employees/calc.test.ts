@@ -6,8 +6,11 @@ import { createEmployeeCalc } from "./calc";
 import { calcFerienSaldo, calcMonthSaldo, calcTotalSaldo } from "../time/timeUtils";
 import { swissHolidayTemplate } from "../../worktime";
 import type { AppData, Employee } from "../../types";
+// Die Demo-Daten rechnen relativ zu «heute»: erst die Uhr stellen, dann laden (sonst liegen Einträge des
+// echten Datums hinter dem Test-Heute und die beiden Rechnungen sehen verschiedene Zeiträume)
+vi.useFakeTimers(); vi.setSystemTime(new Date(2026, 10, 20, 10, 0));
 // @ts-expect-error Demo-Daten sind ein .mjs-Skript ohne Typen
-import { demoData } from "../../../scripts/marketing-shots/demo-data.mjs";
+const { demoData } = await import("../../../scripts/marketing-shots/demo-data.mjs");
 
 beforeAll(() => { vi.useFakeTimers(); vi.setSystemTime(new Date(2026, 10, 20, 10, 0)); });
 afterAll(() => { vi.useRealTimers(); });

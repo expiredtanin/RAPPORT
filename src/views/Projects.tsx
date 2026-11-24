@@ -206,7 +206,7 @@ function Projects({ data, saveAll, modal, setModal, onSelect, setPrintContent }:
                   return (
                     <tr key={p.id} className="row-link" onClick={() => onSelect(p.id)}>
                       <td style={{ fontSize: 11, color: "var(--text4)", fontWeight: 500 }}>{p.number || "—"}</td>
-                      <td><strong>{p.name}</strong>{p.description && <div style={{ fontSize: 11, color: "var(--text5)", marginTop: 2 }}>{p.description.slice(0, 60)}</div>}</td>
+                      <td><strong>{p.name}</strong>{p.description && <div title={p.description} style={{ fontSize: 11, color: "var(--text5)", marginTop: 2, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{p.description}</div>}</td>
                       <td className="hide-narrow" style={{ fontSize: 12 }}>{p.category || "—"}</td>
                       <td>{client?.name || "—"}</td>
                       <td>

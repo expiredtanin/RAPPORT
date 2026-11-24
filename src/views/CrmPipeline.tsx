@@ -32,7 +32,10 @@ function withStage(lead: Lead, stage: LeadStage): Lead {
 
 const emptyLead = (): Lead => ({ id: generateId(), title: "", stage: "anfrage", createdAt: today() });
 
-export default function CrmPipeline({ data, update, setView }: Pick<ViewProps, "data" | "update" | "setView">) {
+export default function CrmPipeline({ data, update, setView, newRequest = 0 }: Pick<ViewProps, "data" | "update" | "setView"> & {
+  /** Zähler aus dem Seitenkopf («+ Neuer Lead» in Crm.tsx); jede Erhöhung öffnet den Dialog für einen neuen Lead */
+  newRequest?: number;
+}) {
   const leads = data.leads || [];
   const persons = data.persons || [];
   const sources = data.settings.leadSources || DEFAULT_LEAD_SOURCES;
@@ -49,6 +52,8 @@ export default function CrmPipeline({ data, update, setView }: Pick<ViewProps, "
   const open = leads.filter(isOpenLead);
 
   const openNew = () => { setForm(emptyLead()); setIsNew(true); };
+  const [seenRequest, setSeenRequest] = useState(newRequest);
+  if (seenRequest !== newRequest) { setSeenRequest(newRequest); openNew(); }
   const openEdit = (l: Lead) => { setForm({ ...l }); setIsNew(false); };
   const save = () => {
     if (!form || !form.title.trim()) return;
@@ -94,9 +99,6 @@ export default function CrmPipeline({ data, update, setView }: Pick<ViewProps, "
         <KpiCard label="Wiedervorlagen" value={follow.length} sub={overdue ? `${overdue} überfällig` : "keine überfällig"} color={overdue ? "var(--warning)" : "var(--text3)"} />
       </div>
 
-      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}>
-        <button className="btn btn-primary" onClick={openNew}>+ Neuer Lead</button>
-      </div>
 
       <div className="pipeline-board">
         {LEAD_STAGES.map(st => {

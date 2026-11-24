@@ -30,14 +30,14 @@ import { ReceiptViewer, type ReceiptTarget } from "../components/ReceiptViewer";
 type ExpenseForm = Omit<Expense, "id"> & { id?: string };
 
 export default
-function Expenses({ data, update, standalone }: Pick<ViewProps, "data" | "update" | "setView"> & {
+function Expenses({ data, update, standalone, currentUser }: Pick<ViewProps, "data" | "update" | "setView" | "currentUser"> & {
   /** true = eigene Ansicht (Menü «Spesen»); sonst eingebettet */
   standalone?: boolean;
 }) {
   const mwstRate = data.settings.mwstRate ?? 8.1;
   const expCats = data.settings.expenseCategories || EXPENSE_CATEGORIES;
   const currentYear = new Date().getFullYear().toString();
-  const emptyExp: ExpenseForm = { date: localISODate(), category: expCats[0], projectId: "", employeeId: "", description: "", amount: 0, mwstRate: mwstRate, inclMwst: true, status: "offen" };
+  const emptyExp: ExpenseForm = { date: localISODate(), category: expCats[0], projectId: "", employeeId: (data.employees || []).some(e => e.id === currentUser?.employeeId) ? currentUser?.employeeId || "" : "", description: "", amount: 0, mwstRate: mwstRate, inclMwst: true, status: "offen" };
   const [modal, setModal] = useState<string | null>(null); // null | "new" | id
   const [form, setForm] = useState<ExpenseForm>(emptyExp);
   const [filter, setFilter] = useState({ year: currentYear, category: "", projectId: "", employeeId: "", search: "", status: "" });
@@ -387,7 +387,8 @@ function Expenses({ data, update, standalone }: Pick<ViewProps, "data" | "update
                     {/* Gruppen-Subtotal wenn > 1 Gruppe */}
                     {groupedData.length > 1 && group.items.length > 1 && (
                       <tr style={{ background: "var(--surface2)", borderTop: "1px solid var(--border)" }}>
-                        <td colSpan={3} style={{ padding: "5px 12px", fontSize: 11, color: "var(--text4)" }}>Total {group.label} · netto {formatCHF(gNet)}</td>
+                        <td colSpan={2} style={{ padding: "5px 12px", fontSize: 11, color: "var(--text4)" }}>Total {group.label} · netto {formatCHF(gNet)}</td>
+                        <td className="hide-narrow" />
                         <td className="hide-mid" style={{ textAlign: "right", padding: "5px 12px", fontWeight: 600, fontSize: 11, color: "var(--text4)" }}>{formatCHF(gTax)}</td>
                         <td style={{ textAlign: "right", padding: "5px 12px", fontWeight: 700, fontSize: 11 }}>{formatCHF(gBrutto)}</td>
                         <td colSpan={2} />
@@ -399,9 +400,10 @@ function Expenses({ data, update, standalone }: Pick<ViewProps, "data" | "update
             </tbody>
             <tfoot>
               <tr style={{ borderTop: "2px solid var(--text)" }}>
-                <td colSpan={3} style={{ color: "var(--text4)", fontSize: 12 }}>
+                <td colSpan={2} style={{ color: "var(--text4)", fontSize: 12 }}>
                   {allFiltered.length} {allFiltered.length === 1 ? "Eintrag" : "Einträge"} {filter.year ? filter.year : ""} · netto {formatCHF(totalNet)}
                 </td>
+                <td className="hide-narrow" />
                 <td className="hide-mid" style={{ textAlign: "right", fontWeight: 600, color: "var(--text4)" }}>{formatCHF(totalTax)}</td>
                 <td style={{ textAlign: "right", fontWeight: 700 }}>{formatCHF(totalBrutto)}</td>
                 <td colSpan={2} />

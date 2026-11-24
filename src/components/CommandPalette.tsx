@@ -38,7 +38,7 @@ export default function CommandPalette({ data, navItems, onRun, onClose }: {
         <div className="palette-search">
           <span className="msr" style={{ fontSize: 20, color: "var(--text4)" }}>search</span>
           <input autoFocus value={query} onChange={e => { setQuery(e.target.value); setActive(0); }}
-            placeholder="Suchen oder Befehl … (Projekt, Rechnung, Kontakt, «neue Offerte»)" aria-label="Suchen" />
+            placeholder="Suchen oder Befehl, z. B. Projekt, Rechnung, Kontakt oder «Neue Offerte»" aria-label="Suchen" />
           <kbd>esc</kbd>
         </div>
         <div className="palette-list" ref={listRef} role="listbox">

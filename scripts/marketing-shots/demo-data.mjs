@@ -288,11 +288,15 @@ const TEAM = { [P_LIM]: [E_JULIAN, E_LAURA], [P_HARD]: [E_LAURA, E_JULIAN], [P_R
 const INTERN_DESC = ["Akquise und Offertwesen", "Büroorganisation", "Teamsitzung", "Weiterbildung, Normen", "Wettbewerbsvorbereitung", "Administration Projekte"];
 const SARA_END = `${MONDAY.getFullYear()}-11-15`;
 function layoutDays(entries) {
-  const thisWeek = dateAt(0);
+  // bis gestern auffüllen (auch die laufende Woche), damit der Monatssaldo nicht eine ganze Woche im Minus steht
+  const cutoff = (() => { const t = new Date(); return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, "0")}-${String(t.getDate()).padStart(2, "0")}`; })();
   const yearStart = `${MONDAY.getFullYear() - 1}-12-29`;
+  // Einträge ab heute eine Woche früher legen: keine erfassten Stunden in der Zukunft, und heute ist
+  // noch leer (Stoppuhr auf «Heute»); volle Tage verteilt unten die 9.5-h-Regel
+  for (const e of entries) if (e.date >= cutoff) e.date = plusDays(e.date, -7);
   const byDay = new Map();
   for (const e of entries) {
-    if (e.date >= thisWeek) continue;
+    if (e.date >= cutoff) continue;
     const k = `${e.employeeId}|${e.date}`;
     if (!byDay.has(k)) byDay.set(k, []);
     byDay.get(k).push(e);
@@ -314,7 +318,7 @@ function layoutDays(entries) {
       const cands = [];
       for (let i = 1; i <= 40 && cands.length < 15; i++) {
         const d = plusDays(date, back ? -i : i);
-        if (!back && d >= thisWeek) break;
+        if (!back && d >= cutoff) break;
         if (workday(emp, d)) cands.push(d);
       }
       if (!cands.length) for (let i = 1; i <= 40 && cands.length < 15; i++) { const d = plusDays(date, -i); if (workday(emp, d)) cands.push(d); }
@@ -333,7 +337,7 @@ function layoutDays(entries) {
       const monday = new Date(`${date}T00:00:00`); monday.setDate(monday.getDate() - ((monday.getDay() + 6) % 7));
       const days = [0, 1, 2, 3, 4].map(i => { const d = new Date(monday); d.setDate(d.getDate() + i); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; });
       const load = d => (byDay.get(`${emp}|${d}`) || []).reduce((s, x) => s + x.minutes, 0);
-      const target = days.filter(d => d !== date && (d < yearStart || workday(emp, d))).sort((a, b) => load(a) - load(b))[0] || date;
+      const target = days.filter(d => d !== date && d < cutoff && (d < yearStart || workday(emp, d))).sort((a, b) => load(a) - load(b))[0] || date;
       if (target === date) { list.push(e); total += e.minutes; break; }
       e.date = target;
       if (!byDay.has(`${emp}|${target}`)) byDay.set(`${emp}|${target}`, []);
@@ -344,9 +348,9 @@ function layoutDays(entries) {
   const filler = [];
   let f = 0;
   for (const emp of Object.keys(DAY_SOLL)) {
-    for (let w = -60; w < 0; w++) for (let day = 0; day < 5; day++) {
+    for (let w = -60; w <= 0; w++) for (let day = 0; day < 5; day++) {
       const date = dateAt(w, day);
-      if (date < yearStart || (emp === E_SARA && date > SARA_END) || (STICHTAG[emp] && date < STICHTAG[emp])) continue;
+      if (date >= cutoff || date < yearStart || (emp === E_SARA && date > SARA_END) || (STICHTAG[emp] && date < STICHTAG[emp])) continue;
       const soll = sollAm(emp, date);
       if (soll === 0) continue;
       const k = `${emp}|${date}`;
@@ -477,6 +481,72 @@ const withPaidDate = (inv, i) => {
   return { ...inv, paidDate: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}` };
 };
 
+// Terminprogramme (Planung + Bau) für Limmatfeld (in Ausführung) und Rebweg (im Bauprojekt)
+const sIt = (id, track, label, w0, w1, extra = {}) => ({ id, track, label, kind: "task", start: dateAt(w0), end: dateAt(w1, 4), ...extra });
+const sMs = (id, track, label, w, marker, extra = {}) => ({ id, track, label, kind: "milestone", marker, start: dateAt(w, 2), end: dateAt(w, 2), ...extra });
+const SCHED_LIM = {
+  items: [
+    sIt("sl-31", "planung", "Vorprojekt", -76, -67, { group: "Planung", phaseId: "31", progress: 100, assigneeId: E_LAURA }),
+    sIt("sl-32", "planung", "Bauprojekt mit Kostenvoranschlag", -66, -51, { group: "Planung", phaseId: "32", progress: 100, assigneeId: E_LAURA, deps: [{ fromId: "sl-31" }] }),
+    sMs("sl-be", "planung", "Baueingabe", -50, "abgabe", { group: "Bewilligung" }),
+    sIt("sl-33", "planung", "Bewilligungsverfahren Stadt Zürich", -50, -41, { group: "Bewilligung", phaseId: "33", variant: "extern", progress: 100 }),
+    sMs("sl-bb", "planung", "Baubewilligung", -40, "entscheid", { group: "Bewilligung" }),
+    sIt("sl-41", "planung", "Ausschreibung und Vergabe", -44, -31, { group: "Realisierung", phaseId: "41", progress: 100, assigneeId: E_JULIAN }),
+    sIt("sl-51", "planung", "Ausführungsplanung", -32, -9, { group: "Realisierung", phaseId: "51", progress: 100, assigneeId: E_LAURA }),
+    sIt("sl-52", "planung", "Bauleitung Ausführung", -26, 9, { group: "Realisierung", phaseId: "52", progress: 75, assigneeId: E_JULIAN }),
+    sIt("sl-53", "planung", "Inbetriebnahme, Abschluss", 10, 15, { group: "Realisierung", phaseId: "53", assigneeId: E_JULIAN, deps: [{ fromId: "sl-52" }] }),
+    sIt("sb-211", "bau", "Baustelleninstallation, Gerüst", -26, -25, { group: "Rohbau", bkp: "211", progress: 100 }),
+    sIt("sb-112", "bau", "Rückbau Fassade und Fenster", -24, -19, { group: "Rohbau", bkp: "112", progress: 100, deps: [{ fromId: "sb-211" }] }),
+    sIt("sb-226", "bau", "Aussenwärmedämmung, Verputz", -18, -3, { group: "Hülle", bkp: "226", progress: 100, deps: [{ fromId: "sb-112" }] }),
+    sIt("sb-221", "bau", "Fenster aus Holz/Metall", -10, 1, { group: "Hülle", bkp: "221", progress: 80, contractorId: CL_ING }),
+    sIt("sb-224", "bau", "Flachdach Attika", -6, 3, { group: "Hülle", bkp: "224", progress: 60 }),
+    sIt("sb-211b", "bau", "Gerüstabbau", 4, 5, { group: "Hülle", bkp: "211", deps: [{ fromId: "sb-224" }] }),
+    { id: "sb-bs", track: "bau", label: "Bausitzung", kind: "task", variant: "serie", marker: "sitzung", repeatDays: 14, start: dateAt(-24, 2), end: dateAt(8, 2), group: "Termine" },
+    sMs("sb-ab", "bau", "Bauabnahme mit Bauherrschaft", 9, "abnahme", { group: "Termine" }),
+  ],
+  breaks: [{ id: "br-x", label: "Bauferien", start: `${Y}-12-21`, end: `${Y + 1}-01-03`, track: "bau" }],
+};
+const SCHED_REB = {
+  items: [
+    sIt("sr-31", "planung", "Vorprojekt", -22, -11, { group: "Planung", phaseId: "31", progress: 100, assigneeId: E_LAURA }),
+    sMs("sr-ve", "planung", "Entscheid Vorprojekt Vorstand", -10, "entscheid", { group: "Planung" }),
+    sIt("sr-32", "planung", "Bauprojekt", -9, 8, { group: "Planung", phaseId: "32", progress: 55, assigneeId: E_LAURA, deps: [{ fromId: "sr-31", lagDays: 7 }] }),
+    sMs("sr-kv", "planung", "Kostenvoranschlag ±10 %", 8, "abgabe", { group: "Planung" }),
+    sIt("sr-33", "planung", "Baueingabe vorbereiten", 9, 12, { group: "Bewilligung", phaseId: "33", assigneeId: E_NINA, deps: [{ fromId: "sr-32" }] }),
+    sMs("sr-be", "planung", "Baueingabe", 13, "abgabe", { group: "Bewilligung" }),
+    sIt("sr-bv", "planung", "Bewilligungsverfahren", 13, 30, { group: "Bewilligung", variant: "extern" }),
+    sIt("sr-res", "planung", "Reserve Einsprachen", 31, 36, { group: "Bewilligung", variant: "reserve" }),
+    { id: "sr-ps", track: "planung", label: "Planungssitzung Baukommission", kind: "task", variant: "serie", marker: "sitzung", repeatDays: 14, start: dateAt(-20, 1), end: dateAt(12, 1), group: "Termine" },
+  ],
+};
+const LETTER_TEMPLATES = [
+  { id: "lt-offerte", name: "Begleitbrief Offerte", body: "Sehr geehrte Damen und Herren\n\nBesten Dank für Ihre Anfrage und das angenehme Gespräch. Gerne unterbreiten wir Ihnen unsere Honorarofferte für das Projekt «{{project}}».\n\nDie Offerte basiert auf der SIA-Ordnung 102 und umfasst die besprochenen Teilleistungen. Für Fragen stehen wir Ihnen jederzeit zur Verfügung.\n\nWir freuen uns auf die Zusammenarbeit.\n\nFreundliche Grüsse" },
+  { id: "lt-baueingabe", name: "Baueingabe Begleitschreiben", body: "Sehr geehrte Damen und Herren\n\nIm Auftrag der Bauherrschaft {{client}} reichen wir Ihnen das Baugesuch für das Projekt «{{project}}» ein.\n\nBeilagen:\n– Baugesuchsformular, unterzeichnet\n– Situationsplan 1:500\n– Grundrisse, Schnitte, Ansichten 1:100\n– Energienachweis\n\nFür Rückfragen stehen wir gerne zur Verfügung.\n\nFreundliche Grüsse" },
+  { id: "lt-erinnerung", name: "Zahlungserinnerung", body: "Sehr geehrte Damen und Herren\n\nBei der Durchsicht unserer Buchhaltung stellen wir fest, dass die Rechnung [Nr.] vom [Datum] über CHF [Betrag] noch offen ist. Sicher handelt es sich um ein Versehen.\n\nWir bitten Sie, den Betrag innert 10 Tagen zu überweisen. Sollte sich Ihre Zahlung mit diesem Schreiben gekreuzt haben, betrachten Sie es bitte als gegenstandslos.\n\nFreundliche Grüsse" },
+];
+const tsAt = (weeks, days, hm = "09:00") => new Date(`${dateAt(weeks, days)}T${hm}:00`).toISOString();
+const BLOG_POSTS = [
+  { id: "bp-1", authorId: null, authorName: "Marc Amrein", type: "event", title: "Weihnachtsessen im Volkshaus", pinned: true, status: "published", eventDate: `${Y}-12-17`,
+    body: "Wir treffen uns um 18.30 Uhr im Volkshaus. Partnerinnen und Partner sind herzlich willkommen — bitte bis Ende Monat anmelden.", createdAt: tsAt(-1, 1) },
+  { id: "bp-2", authorId: null, authorName: "Laura Meier", type: "ankuendigung", title: "Plotter A0 ersetzt", pinned: false, status: "published",
+    body: "Der neue Plotter steht im Modellbauraum. Treiber sind auf allen Arbeitsplätzen installiert; Rollen A0 matt liegen im Schrank links.", createdAt: tsAt(-2, 3) },
+  { id: "bp-3", authorId: null, authorName: "Nina Baumgartner", type: "beitrag", title: "Teamausflug im Frühling", pinned: false, status: "published",
+    body: "Der Ausflug ist für Mai geplant. Bitte bis Ende Monat abstimmen.", createdAt: tsAt(-3, 0),
+    poll: { question: "Wohin soll es gehen?", options: [{ id: "o1", label: "Architekturführung Basel" }, { id: "o2", label: "Wanderung Rigi" }, { id: "o3", label: "Vitra Campus" }],
+      votes: { "u-laura": "o3", "u-julian": "o1", "u-marc": "o3", "u-peter": "o2" } } },
+];
+const CONTRACTS = [
+  { id: "ct-1", number: `V-${dateAt(-60).slice(0, 4)}-001`, clientId: CL_LIM, projectId: P_LIM, quoteId: "quote-limmatfeld", contractType: "haupt", legalBasis: "SIA 102, Ausgabe 2020",
+    billingType: "pauschal", amount: SIA_SUB, hourlyRate: rateLim, paymentTerms: "Akonto monatlich nach Leistungsstand, 30 Tage netto", date: dateAt(-74), signedDate: dateAt(-73), status: "unterzeichnet", notes: "" },
+  { id: "ct-2", number: `V-${dateAt(-60).slice(0, 4)}-002`, clientId: CL_ING, projectId: P_LIM, contractType: "unterauftrag", legalBasis: "SIA 103, Ausgabe 2020",
+    billingType: "pauschal", amount: 38000, paymentTerms: "Nach Phasen, 30 Tage netto", date: dateAt(-70), signedDate: dateAt(-69), status: "unterzeichnet", notes: "Tragwerksplanung Attika und Balkone" },
+];
+const DELIVERY_NOTES = [
+  { id: "ls-1", number: `LS-${dateAt(-3).slice(0, 4)}-001`, date: dateAt(-3, 1), projectId: P_LIM, clientId: CL_LIM, deliveryAddress: "Baustelle Limmatfeld, Container Bauleitung",
+    notes: "Planstand für die Fenstermontage 3. OG", createdAt: tsAt(-3, 1),
+    items: [{ id: "li-1", desc: "Fassadenschnitte 1:20, Index C", qty: 4, unit: "Plan" }, { id: "li-2", desc: "Fensterliste mit Detailnummern", qty: 2, unit: "Stk." }, { id: "li-3", desc: "Detail Anschluss Attika 1:5", qty: 1, unit: "Plan" }] },
+];
+
 export const demoData = {
   settings: {
     setupCompleted: true,
@@ -576,7 +646,7 @@ export const demoData = {
       linkedQuotes: [{ quoteId: Q_LIM, role: "Hauptofferte" }],
       positions: [], customPhases: [],
       projectContacts: [{ contactId: CL_ING, role: "Tragwerksplaner" }],
-      internalMembers: [E_JULIAN, E_LAURA] },
+      internalMembers: [E_JULIAN, E_LAURA], schedule: SCHED_LIM },
     { id: P_REB, number: "2026/07", name: "Wohnüberbauung Rebweg", clientId: CL_REB,
       category: "Direktauftrag", billingType: "stundensatz", hourlyRate: rateReb,
       budget: 0, budgetHours: 2545, status: "aktiv",
@@ -584,7 +654,7 @@ export const demoData = {
       startDate: dateAt(-22), enabledPhases: ["31", "32", "33"],
       phasesBudget: [{ id: "31", hours: 229 }, { id: "32", hours: 534 }, { id: "33", hours: 64 }],
       linkedQuotes: [], positions: [], customPhases: [],
-      projectContacts: [], internalMembers: [E_LAURA, E_NINA] },
+      projectContacts: [], internalMembers: [E_LAURA, E_NINA], schedule: SCHED_REB },
     { id: P_HARD, number: "2024/03", name: "Erweiterung Doppelkindergarten Hardau", clientId: CL_HARD,
       category: "Direktauftrag", billingType: "pauschal", hourlyRate: rateLim,
       budget: HARD_SUB, budgetHours: 610, status: "abgeschlossen",
@@ -670,7 +740,7 @@ export const demoData = {
     invoice({ invId: id("inv"), seq: 88, weeks: -15, clientId: CL_HAAS, projectId: "", kind: "voll", amount: 9400, status: "bezahlt",
       desc: "Bauberatung Mietvertrag und Ausbauvarianten Praxisräume" }),
   ].sort((a, b) => a.date.localeCompare(b.date)).map(numberByDate).map(withPaidDate),
-  contracts: [], deliveryNotes: [],
+  contracts: CONTRACTS, deliveryNotes: DELIVERY_NOTES,
   // Spesen und Büroausgaben, damit die Buchhaltung (Vorsteuer, Jahresergebnis, Budget-Fixkosten) etwas zeigt
   expenses: [
     { id: "exp-1", date: dateAt(-1, 1), category: "Reise / Fahrt", projectId: P_LIM, employeeId: E_JULIAN, description: "Bahn Zürich–Limmatfeld, Bausitzung", amount: 18.4, mwstRate: 8.1, inclMwst: true, status: "offen" },
@@ -754,7 +824,7 @@ export const demoData = {
   ],
   appRoles: [{ id: "r-admin", name: "Administrator", permissions: null, dashboardTemplateId: "tpl-admin" }],
   users: [{ id: "admin", username: "admin", password: "admin", role: "admin", displayName: "Administrator", appRoleId: "r-admin" }],
-  blogPosts: [], letterTemplates: [],
+  blogPosts: BLOG_POSTS, letterTemplates: LETTER_TEMPLATES,
   // CRM: Pipeline über alle Stufen, zwei Absagen, Herkunft/Empfehler gemischt
   leads: [
     { id: "lead-lim", title: "Sanierung Verwaltungsgebäude Limmatfeld", clientId: CL_LIM, stage: "gewonnen", source: "Empfehlung Partner", referrerId: CL_ING,

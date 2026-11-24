@@ -522,6 +522,7 @@ export function RichEditor({ value, onChange, minHeight = 420, compact = false }
       {/* Editor */}
       <div
         ref={editorRef}
+        className="rich-edit"
         contentEditable
         suppressContentEditableWarning
         onInput={() => {

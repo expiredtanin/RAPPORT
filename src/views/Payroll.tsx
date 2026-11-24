@@ -212,7 +212,7 @@ function Payroll({ data, saveAll, setPrintContent, setView }: Pick<ViewProps, "d
             <span style={{ fontSize: 11, color: "var(--text4)", lineHeight: "32px" }}>CHF</span>
             <input value={bonusOverride[`${emp.id}_beschrieb`] || ""}
               onChange={e => setBonusOverride(o => ({ ...o, [`${emp.id}_beschrieb`]: e.target.value }))}
-              placeholder="Beschrieb (z.B. Jahresbonus)"
+              placeholder="z. B. Bonus"
               style={{ flex: 1, height: 32, fontSize: 12, border: "1px solid var(--border3)" }} />
           </div>
         </div>

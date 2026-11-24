@@ -143,7 +143,7 @@ export default function Today({ data, currentUser, userPermissions, run, onOpenP
     <div className="today">
       <button className="today-search" onClick={onOpenPalette}>
         <span className="msr">search</span>
-        <span>Suchen oder Befehl … Projekt, Rechnung, Kontakt, «Neue Offerte»</span>
+        <span>Suchen oder Befehl, z. B. Projekt, Rechnung, Kontakt oder «Neue Offerte»</span>
         <kbd>⌘K</kbd>
       </button>
 

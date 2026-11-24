@@ -54,7 +54,7 @@ export function InvoiceTable({ filtered, groupedInvoices, groupBy, sort, toggleS
                   )}
                 </td>
                 <td>{client?.name || "—"}</td>
-                <td className="hide-narrow">
+                <td className="hide-mid">
                   {inv.invoiceKind && inv.invoiceKind !== "voll"
                     ? <span style={{ fontSize: 12.5, color: "var(--text3)" }}>{kindLabel}</span>
                     : <span style={{ fontSize: 12, color: "var(--text5)" }}>—</span>}
