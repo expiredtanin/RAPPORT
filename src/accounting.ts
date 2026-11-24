@@ -21,7 +21,7 @@
 //     `recurringUntil`) aufgelöst (`expandInternalExpenses`) — jede Zahlung zählt in ihrem Monat.
 //   - Spesen im Lohn: nur genehmigte («genehmigt», «auf nächsten Lohn»), nie «offen».
 
-import { invoiceNet, roundCHF, type LohnVorperioden } from "./utils";
+import { csvCell, invoiceNet, roundCHF, type LohnVorperioden } from "./utils";
 import type { AppData, Expense, InternalExpense, Invoice, LohnEntry, LohnResult } from "./types";
 
 /**
@@ -337,7 +337,7 @@ export function accountingSummary(data: SummaryData, period: string, today = tod
 export function buildBuchhaltungCSV(data: AppData, period = ""): string {
   const sep = ";";
   // s ?? "" statt s || "" — sonst wird ein echter Zahlenwert 0 zu einer leeren Zelle statt "0".
-  const q = (s: unknown) => `"${String(s ?? "").replace(/"/g, '""')}"`;
+  const q = csvCell;   // maskiert auch Formel-Anfänge (CSV-Injection)
   const line = (cells: unknown[]) => cells.map(q).join(sep);
   const f = (n: number) => roundCHF(n).toFixed(2);
   const mwstRate = data.settings?.mwstRate ?? 8.1;

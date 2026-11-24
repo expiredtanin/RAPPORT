@@ -64,6 +64,7 @@ export function mergeValue(base: Json, mine: Json, theirs: Json): Json {
     const b = isObj(base) ? base : {};
     const out: Obj = {};
     for (const k of new Set([...Object.keys(theirs), ...Object.keys(mine)])) {
+      if (k === "__proto__" || k === "constructor" || k === "prototype") continue;   // keine Prototyp-Manipulation über fremde Dateien
       const inMine = k in mine && mine[k] !== undefined, inTheirs = k in theirs && theirs[k] !== undefined;
       if (inMine && inTheirs) out[k] = mergeValue(b[k], mine[k], theirs[k]);
       else if (inMine) { if (!(k in b) || !jsonEqual(b[k], mine[k])) out[k] = mine[k]; }   // neu oder von mir geändert; sonst von ihnen gelöscht

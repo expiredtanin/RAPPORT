@@ -472,6 +472,10 @@ const SAFE_TAGS = new Set([
   "H1", "H2", "H3", "H4", "H5", "H6", "UL", "OL", "LI", "BLOCKQUOTE",
   "FONT", "A", "HR", "SUB", "SUP",
 ]);
+/** Nicht erlaubte Elemente, deren Inhalt nicht als Text stehen bleiben soll (Code, Stil, Einbettungen). */
+const DROP_WITH_CONTENT = new Set([
+  "SCRIPT", "STYLE", "TEMPLATE", "NOSCRIPT", "IFRAME", "OBJECT", "EMBED", "SVG", "MATH", "TITLE", "TEXTAREA", "SELECT",
+]);
 const SAFE_ATTRS = new Set([
   "style", "color", "size", "face", "align", "href", "target", "rel",
 ]);
@@ -504,8 +508,13 @@ export function sanitizeHtml(html: unknown): string {
         const el = child as Element;
         const tag = el.tagName;
         if (!SAFE_TAGS.has(tag)) {
-          // Replace disallowed tag with its sanitized children (drops <script>, <iframe>, etc.)
-          while (el.firstChild) node.insertBefore(el.firstChild, el);
+          // Nicht erlaubtes Element: Skript-, Stil- und Einbettungs-Elemente samt Inhalt weg; sonst den Inhalt
+          // ZUERST bereinigen und dann an seine Stelle setzen (früher wurden die Kinder ungeprüft hochgezogen:
+          // «<form><img onerror=…></form>» kam so durch)
+          if (!DROP_WITH_CONTENT.has(tag.toUpperCase())) {
+            walk(el);
+            while (el.firstChild) node.insertBefore(el.firstChild, el);
+          }
           node.removeChild(el);
           continue;
         }
@@ -528,8 +537,8 @@ export function sanitizeHtml(html: unknown): string {
           el.setAttribute("rel", "noopener noreferrer");
         }
         walk(el);
-      } else if (child.nodeType !== 3 && child.nodeType !== 8) {
-        // Drop comments and other node types except text
+      } else if (child.nodeType !== 3) {
+        // Kommentare und alle übrigen Knotenarten ausser Text entfernen
         node.removeChild(child);
       }
     }
@@ -1030,6 +1039,17 @@ export function textToHtml(text?: string | null): string {
     .split("\n\n")
     .map(para => `<p>${para.replace(/\n/g, "<br>")}</p>`)
     .join("");
+}
+
+/**
+ * Eine CSV-Zelle in Anführungszeichen. Text, der mit «=», «+», «-», «@», Tab oder Zeilenumbruch beginnt, bekommt
+ * ein «'» davor, damit Excel/Numbers ihn nicht als Formel ausführt (CSV-Injection, z.B. ein Kundenname
+ * «=HYPERLINK(…)»). Zahlen wie «-12.50» bleiben unverändert.
+ */
+export function csvCell(v: unknown): string {
+  let s = String(v ?? "");
+  if (/^[=+\-@\t\r\n]/.test(s) && !/^[-+]?\d+(\.\d+)?$/.test(s)) s = `'${s}`;
+  return `"${s.replace(/"/g, '""')}"`;
 }
 
 /** Für HTML maskieren («Müller & Partner» → «Müller &amp; Partner»). */

@@ -336,7 +336,9 @@ Alle Views liegen in [src/views/](src/views/), werden in [App.tsx](src/App.tsx) 
 - `stripCredentials(user)` — Entfernt `password`, `passwordHash`, `passwordSalt`
 
 **Sicherheit:**
-- `sanitizeHtml(html)` — Allowlist (`<p>`, `<br>`, `<b>`, `<a>`, …), blockiert `<script>`, `javascript:`, `on*`-Handler
+- `sanitizeHtml(html)` — Allowlist (`<p>`, `<br>`, `<b>`, `<a>`, …), blockiert `<script>`, `javascript:`, `on*`-Handler; Inhalt nicht erlaubter Elemente wird vor dem Hochziehen ebenfalls bereinigt, `<script>/<style>/<svg>/<iframe>` … samt Inhalt entfernt, Kommentare weg (Tests `utils.sanitize.test.ts` mit jsdom)
+- `csvCell(v)` — CSV-Zelle für alle Exporte; Text mit `= + - @` am Anfang bekommt ein `'` (CSV-/Formel-Injection in Excel)
+- `storage/merge.ts` überspringt `__proto__`/`constructor`/`prototype` beim Zusammenführen fremder Dateien
 
 **Formatierung (de-CH):**
 - `formatCHF(amount)` → `"CHF 1'234.50"`

@@ -9,7 +9,7 @@
 import React, { useState } from "react";
 import { CONTACT_CATEGORIES } from "../constants";
 import { clientRevenue, lastContact } from "../crm";
-import { formatCHF, formatDate, generateId, contactCategory, localISODate } from "../utils";
+import { csvCell, formatCHF, formatDate, generateId, contactCategory, localISODate } from "../utils";
 import type { AppData, Person, UpdateFn } from "../types";
 
 const today = () => localISODate();
@@ -22,7 +22,7 @@ const monthsBetween = (from: string, to: string): number => {
 
 /** Löst den Download einer Adressliste aus (Semikolon, UTF-8 mit BOM wie der Buchhaltungs-Export). */
 function downloadAddressCSV(persons: Person[]): void {
-  const q = (s: unknown) => `"${String(s ?? "").replace(/"/g, '""')}"`;
+  const q = csvCell;   // maskiert auch Formel-Anfänge (CSV-Injection)
   const head = ["Name", "Ansprechpartner", "Strasse", "PLZ", "Ort", "Land", "E-Mail", "Tags"];
   const rows = persons.map(p => [p.name, p.contacts?.[0]?.name || "", p.street, p.zip, p.city, p.country, p.email, (p.tags || []).join(", ")].map(q).join(";"));
   const blob = new Blob(["﻿" + [head.map(q).join(";"), ...rows].join("\n")], { type: "text/csv;charset=utf-8;" });
