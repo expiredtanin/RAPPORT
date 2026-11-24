@@ -117,8 +117,9 @@ routerAdd("POST", "/api/rapport/create-studio", (e) => {
 
     mk("studioSettings", {
       name: "Mein Studio", country: "CH",
-      email: "mail@studio.ch", phone: "+41 79 000 00 00",
-      iban: "CH00 0000 0000 0000 0000 0", ibanType: "qr", mwstRate: 8.1,
+      // keine Platzhalter (vorher «mail@studio.ch», «CH00 0000 …»): sie landeten unbemerkt auf Rechnungen und im QR-Teil
+      email: "", phone: "",
+      iban: "", ibanType: "qr", mwstRate: 8.1,
       defaultHourlyRate: 120, defaultWochenstunden: 35, defaultFerienWochen: 5,
       formats: {
         projectNumberFormat: "YYYY/NN", invoiceNumberFormat: "YYYY-NNN",

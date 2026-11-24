@@ -249,16 +249,16 @@ export const defaultData: AppData = {
   settings: {
     setupCompleted: false,
     name: "Mein Studio",
-    address: "Musterstrasse 1\n8001 Zürich",
+    address: "",
     street: "",
     zip: "",
     city: "",
     country: "CH",
-    email: "mail@studio.ch",
-    phone: "+41 79 000 00 00",
-    iban: "CH00 0000 0000 0000 0000 0",
+    email: "",
+    phone: "",
+    iban: "",   // keine Platzhalter: sie landeten unbemerkt auf Rechnungen und im QR-Teil
     ibanType: "qr", // "qr" | "normal"
-    mwst: "CHE-000.000.000 MWST",
+    mwst: "",
     mwstRate: 8.1,
     defaultHourlyRate: 120,
     autoPrint: false,
