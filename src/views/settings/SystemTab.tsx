@@ -6,7 +6,7 @@ import React, { useState, useEffect } from "react";
 import { storage, isCloudBackend, isFileBackend, fileStorage, isServerMode } from "../../storage/adapter";
 import { canUseDataFolder, chooseDataFolder, folderHasData, writeDataToFolder, activateDataFolder, getDataDir } from "../../storage/data-folder";
 import type { PocketBaseAdapter } from "../../storage/pocketbase-adapter";
-import { localISODate } from "../../utils";
+import { hashPassword, localISODate } from "../../utils";
 import { checkBackup } from "../../storage/validate";
 import { applyMigrations } from "../../storage/migrations";
 import { defaultData } from "../../constants";
@@ -89,13 +89,14 @@ export function SystemTab({ s, setField, data, setView, isAdmin, currentUser }: 
       : isCloudBackend ? await cloud.embedAttachments(data) : data;
     // Strip legacy plaintext passwords; PBKDF2 hashes (passwordHash + passwordSalt) are
     // not reversible and remain in the backup so restored accounts keep working.
-    const sanitized = {
-      ...full,
-      users: (full.users || []).map(u => {
-        const { password, ...rest } = u;
-        return rest;
-      }),
-    };
+    // Konto mit nur altem Klartext-Passwort (seit dem Update nie angemeldet): vorher hashen, sonst fehlte dem Backup
+    // jedes Passwort und es liesse sich nicht mehr einspielen (Robustheitstest 25.11.2026)
+    const users = await Promise.all((full.users || []).map(async u => {
+      const { password, ...rest } = u;
+      if (password && !rest.passwordHash) { const h = await hashPassword(password); return { ...rest, passwordHash: h.hash, passwordSalt: h.salt }; }
+      return rest;
+    }));
+    const sanitized = { ...full, users };
     const blob = new Blob([JSON.stringify(sanitized, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
