@@ -514,10 +514,11 @@ export class PocketBaseAdapter implements StorageAdapter {
     // deshalb wie "keine Daten sichtbar" behandelt (leeres Array) — die UI blendet die
     // jeweilige View für diese Rolle ohnehin aus (App.jsx hasViewAccess).
     const entityMapNonPersons = ENTITY_MAP.filter(([dataKey]) => dataKey !== "persons");
+    this._forbidden = new Set();
     const entityLoads = entityMapNonPersons.map(([, coll, mapper, , sort]) =>
       c.collection(coll).getFullList(sort ? { filter, sort, batch: LIST_BATCH } : { filter, batch: LIST_BATCH })
         .then(rows => rows.map(fromDB[mapper]))
-        .catch((err: unknown) => { if (pbError(err).status !== 403 && pbError(err).status !== 404) throw err; return []; }));
+        .catch((err: unknown) => { if (pbError(err).status !== 403 && pbError(err).status !== 404) throw err; this._forbidden.add(coll); return []; }));
     const configLoads = CONFIG_MAP.map(([, coll, mapper]) =>
       c.collection(coll).getFullList({ filter, batch: LIST_BATCH })
         .then(rows => rows.map(fromDB[mapper]))
@@ -705,6 +706,11 @@ export class PocketBaseAdapter implements StorageAdapter {
     const keyOfColl = (coll: string): DataKey | null => coll === "studioSettings" || coll === "studioRoles" ? "settings"
       : (ENTITY_MAP.find(([, cl]) => cl === coll) || CONFIG_MAP.find(([, cl]) => cl === coll))?.[0] ?? null;
     const skip403 = async (label: string, fn: () => Promise<void>) => {
+      // Bereich, den die Rolle schon beim Laden nicht lesen durfte: gar nicht erst abfragen (sonst je ein 403 im
+      // Netzwerk/Konsole beim ersten Speichern nach dem Login)
+      // — aber nur, solange dort lokal nichts liegt (bekam die Rolle inzwischen das Recht, wird normal geschrieben)
+      const fk = keyOfColl(label);
+      if (!only && this._forbidden.has(label) && fk && Array.isArray(data[fk]) && (data[fk] as unknown[]).length === 0) return;
       try {
         await fn();
       } catch (err) {
@@ -875,6 +881,9 @@ export class PocketBaseAdapter implements StorageAdapter {
     if (cur.length) chunks.push(cur);
     return chunks;
   }
+
+  /** Collections, die beim letzten Laden 403/404 lieferten (Rolle ohne Recht); _writeSnapshot überspringt sie. */
+  _forbidden = new Set<string>();
 
   /** Einstellungen (DB-Form) beim letzten Laden/Schreiben; Basis für den Drei-Wege-Abgleich. */
   _settingsBase: SyncRow | null = null;
