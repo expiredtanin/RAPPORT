@@ -287,6 +287,7 @@ export const defaultData: AppData = {
     pageMarginRight: 20,
     defaultWochenstunden: 35,
     defaultFerienWochen: 5,
+    defaultPkAGSatz: 8,
     closedMonths: [],
     blockMaiTag: true,
     roles: [

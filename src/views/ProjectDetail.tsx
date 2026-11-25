@@ -298,7 +298,7 @@ function ProjectDetail({ data, update, saveAll, projectId, onBack, onSelect, run
         )}
         {tab === "stunden" && (
           <div className="ws-stack">
-            <KpiRow project={project} data={data} entries={entries} totalMinutes={totalMinutes} totalHours={totalHours} budget={budget} budgetPct={budgetPct} budgetColor={budgetColor} isCostControl={isCostControl} isNonBilling={isNonBilling} invoicedMinutes={invoicedMinutes} openMinutes={openMinutes} />
+            <KpiRow project={project} data={data} entries={entries} totalMinutes={totalMinutes} totalHours={totalHours} budget={budget} budgetPct={budgetPct} budgetColor={budgetColor} isCostControl={isCostControl} isNonBilling={isNonBilling} invoicedMinutes={invoicedMinutes} openMinutes={openMinutes} showMoney={canSeeInvoices} />
             {phaseCard}
             {canSeeMitarbeiter && <EmployeeCard project={project} data={data} entries={entries} billingType={billingType} />}
             <TimeEntriesCard project={project} data={data} update={update} entries={entries} positions={positions} billingType={billingType} isAdmin={isAdmin} canSeeMitarbeiter={canSeeMitarbeiter} canSeeInvoices={canSeeInvoices} />

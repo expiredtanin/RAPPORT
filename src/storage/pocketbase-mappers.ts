@@ -185,8 +185,10 @@ export const fromDB = {
       monatslohn: row.monatslohn ?? null,
       lohnIban: row.lohnIban || "",
       dreizehnterLohn: !!row.dreizehnterLohn,
-      ahvSatz: row.ahvSatz ?? null,
-      alvSatz: row.alvSatz ?? null,
+      // PocketBase speichert ein leeres Zahlenfeld als 0 — AHV/ALV 0 % gibt es nicht (Befreiungen rechnet calcLohn
+      // über den Status): 0 → Standardsatz statt Lohn ohne Abzüge (Cloud-Test Runde 10)
+      ahvSatz: row.ahvSatz || null,
+      alvSatz: row.alvSatz || null,
       bvgSatz: row.bvgSatz ?? null,
       nbuSatz: row.nbuSatz ?? null,
       ktgSatz: row.ktgSatz ?? null,

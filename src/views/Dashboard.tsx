@@ -277,7 +277,7 @@ export default function Dashboard({ data, setView, currentUser, userPermissions,
         </div>
         {totalUnbilled===0?<div style={{fontSize:13,color:"var(--positive)",textAlign:"center",padding:"20px 0"}}>✓ Alles verrechnet</div>:<>
           <div style={{fontSize:22,fontFamily:"var(--font-ui)",fontWeight:700,color:"var(--warning)",marginBottom:2}}>{formatHours(totalUnbilled)}</div>
-          <div style={{fontSize:11,color:"var(--text5)",marginBottom:16}}>≈ {formatCHF(unbilledProjects.reduce((s,p)=>s+p.unbilledAmt,0))}</div>
+          {(userPermissions === null || (userPermissions||[]).includes("invoices")) && <div style={{fontSize:11,color:"var(--text5)",marginBottom:16}}>≈ {formatCHF(unbilledProjects.reduce((s,p)=>s+p.unbilledAmt,0))}</div>}
           {unbilledProjects.slice(0,5).map(p=><div key={p.id} style={{display:"flex",justifyContent:"space-between",padding:"5px 0",borderBottom:"1px solid var(--border2)",fontSize:12}}><span style={{color:"var(--text2)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:"60%"}}>{p.name}</span><span style={{color:"var(--warning)",flexShrink:0}}>{formatHours(p.unbilledMins)}</span></div>)}
         </>}
       </div>

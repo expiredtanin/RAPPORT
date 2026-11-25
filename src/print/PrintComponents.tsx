@@ -234,8 +234,9 @@ export function PrintView({ content, onClose, settings, assets }: { content: Con
           .sched-view { width: auto !important; height: auto !important; }
           .sched-view-inner { transform: none !important; width: auto !important; }
           .print-wrapper { overflow: visible !important; }
-          .print-page { box-shadow: none !important; margin: 0 !important; padding-top: ${mTop}mm !important; padding-bottom: ${mBottom}mm !important; padding-left: ${mLeft}mm !important; padding-right: ${mRight}mm !important; max-width: none !important; width: ${pageW}mm !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+          .print-page { box-shadow: none !important; margin: 0 !important; padding-top: ${isQrOnly ? 0 : mTop}mm !important; padding-bottom: ${isQrOnly ? 0 : mBottom}mm !important; padding-left: ${isQrOnly ? 0 : mLeft}mm !important; padding-right: ${isQrOnly ? 0 : mRight}mm !important; max-width: none !important; width: ${pageW}mm !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
           .print-page.paged { padding-bottom: 0 !important; }
+          ${isQrOnly ? `html, body, #root { height: 105mm !important; overflow: hidden !important; } .print-page { height: 105mm !important; overflow: hidden !important; }` : ""}
           /* paginate.ts verteilt die Zeilen selbst auf Seiten: der Browser soll den Tabellenkopf nicht zusätzlich am
              Papierrand wiederholen (stand sonst oben auf dem Briefpapier-Balken, darunter eine Lücke) */
           .print-page.paged thead { display: table-row-group !important; }
@@ -321,7 +322,7 @@ export function PrintView({ content, onClose, settings, assets }: { content: Con
           {content.type === "protokoll" && <ProtokollPrint protokoll={content.protokoll} data={content.data} settings={settings} />}
           {content.type === "mitarbeiterOverview" && <MitarbeiterOverviewPrint employees={content.employees} settings={settings} />}
           {content.type === "schedule" && (
-            <div ref={schedFitRef} style={schedFit < 1 ? { transform: `scale(${schedFit})`, transformOrigin: "0 0", width: `${100 / schedFit}%` } : undefined}>
+            <div ref={schedFitRef} style={schedFit < 1 ? { transform: `scale(${schedFit})`, transformOrigin: "0 0" } : undefined}>
               <SchedulePrint content={content} settings={settings} layout={sched!} pan={schedPan} viewScale={viewScale} />
             </div>
           )}

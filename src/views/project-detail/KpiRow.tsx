@@ -5,7 +5,9 @@ import { StatusBadge, KpiCard } from "../../components/UI";
 import { type ViewProps, type Project, type TimeEntry } from "../../types";
 
 /** Vier Kennzahlen-Kacheln; bei Kostenkontroll-Projekten (Pauschal/nicht verrechenbar) mit Budgetverbrauch statt Verrechnet/Offen. */
-export function KpiRow({ project, data, entries, totalMinutes, totalHours, budget, budgetPct, budgetColor, isCostControl, isNonBilling, invoicedMinutes, openMinutes }: {
+export function KpiRow({ project, data, entries, totalMinutes, totalHours, budget, budgetPct, budgetColor, isCostControl, isNonBilling, invoicedMinutes, openMinutes, showMoney = true }: {
+  /** Beträge (CHF) zeigen — nur mit Recht «Rechnungen» */
+  showMoney?: boolean;
   project: Project;
   data: ViewProps["data"];
   entries: TimeEntry[];
@@ -34,8 +36,9 @@ export function KpiRow({ project, data, entries, totalMinutes, totalHours, budge
       ];
       return [
         { label: "Stunden total", value: formatHours(totalMinutes), sub: budget > 0 ? `von ${budget}h Soll` : `${entries.length} Einträge`, color: "var(--accent)" },
-        { label: "Verrechnet", value: formatHours(invoicedMinutes), sub: formatCHF(invoicedMinutes / 60 * (project.hourlyRate as number)), color: "var(--positive)" },
-        { label: "Offen", value: formatHours(openMinutes), sub: formatCHF(openMinutes / 60 * (project.hourlyRate as number)), color: openMinutes > 0 ? "var(--warning)" : "var(--text5)" },
+        // Beträge nur mit Recht «Rechnungen» (sonst sah die Rolle Mitarbeiter verrechnete Honorare)
+        { label: "Verrechnet", value: formatHours(invoicedMinutes), sub: showMoney ? formatCHF(invoicedMinutes / 60 * (project.hourlyRate as number)) : undefined, color: "var(--positive)" },
+        { label: "Offen", value: formatHours(openMinutes), sub: showMoney ? formatCHF(openMinutes / 60 * (project.hourlyRate as number)) : undefined, color: openMinutes > 0 ? "var(--warning)" : "var(--text5)" },
         { label: "Status", value: <StatusBadge status={project.status} />, color: "var(--accent)" },
       ];
     })().map(c => (

@@ -192,12 +192,14 @@ export function useStudioData(currentUser: CurrentUser | null) {
       e => {
         console.error("Storage save failed:", e);
         setSaveError(describeSaveError(e) + (e instanceof RejectedSaveError && e.keys.length ? " Die abgelehnte Änderung wurde zurückgesetzt." : ""));
+        // abgelehnt (nicht verloren): wird vom Server zurückgeholt — zählt beim Abmelden nicht als «ungespeichert»
+        // (sonst schickte das Abmelden dieselbe Änderung erneut und fragte widersprüchlich nach)
+        if (e instanceof RejectedSaveError && e.keys.length) saveErrorRef.current = null;
         // Vom Server abgelehnt (z.B. abgeschlossener Monat): betroffene Bereiche vom Server übernehmen, damit die
         // abgelehnte Änderung nicht stehen bleibt und bei jedem weiteren Speichern erneut scheitert
         if (e instanceof RejectedSaveError && e.keys.length && cloudStorage.loadPartial) {
           cloudStorage.loadPartial(e.keys).then(partial => {
             if (!partial) return;
-            saveErrorRef.current = null;   // abgelehnte Änderung zurückgesetzt: nichts mehr ungespeichert (Banner bleibt sichtbar)
             const cur = dataRef.current;
             const next = migrate({ ...cur, ...(partial as RawData) });
             const synced = { ...syncedRef.current } as Record<string, unknown>;

@@ -120,7 +120,7 @@ routerAdd("POST", "/api/rapport/create-studio", (e) => {
       // keine Platzhalter (vorher «mail@studio.ch», «CH00 0000 …»): sie landeten unbemerkt auf Rechnungen und im QR-Teil
       email: "", phone: "",
       iban: "", ibanType: "qr", mwstRate: 8.1,
-      defaultHourlyRate: 120, defaultWochenstunden: 35, defaultFerienWochen: 5,
+      defaultHourlyRate: 120, defaultWochenstunden: 35, defaultFerienWochen: 5, defaultPkAGSatz: 8,
       formats: {
         projectNumberFormat: "YYYY/NN", invoiceNumberFormat: "YYYY-NNN",
         quoteNumberFormat: "YYYY-NNN", protocolNumberFormat: "YYYY-TT-NN",
