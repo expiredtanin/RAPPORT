@@ -49,3 +49,12 @@ describe("mergeValue: Listen aus Texten", () => {
     expect(mergeValue(["a", "b", "c"], ["a", "c"], ["a", "b", "c", "y"])).toEqual(["a", "c", "y"]);
   });
 });
+
+describe("mergeValue: Listen mit fester Position", () => {
+  it("Zahlenlisten (Mahngebühren je Stufe) bleiben ein Wert — keine vertauschten Stufen", () => {
+    expect(mergeValue([0, 20, 30], [0, 25, 30], [0, 20, 40])).toEqual([0, 25, 30]);
+  });
+  it("Textlisten mit Duplikaten ebenfalls", () => {
+    expect(mergeValue(["a", "a"], ["a", "a", "b"], ["a", "a", "c"])).toEqual(["a", "a", "b"]);
+  });
+});

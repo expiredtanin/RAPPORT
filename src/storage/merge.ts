@@ -18,7 +18,7 @@ type Json = unknown;
 type Obj = Record<string, Json>;
 
 const isObj = (v: Json): v is Obj => typeof v === "object" && v !== null && !Array.isArray(v);
-const isPrimList = (v: Json): v is (string | number)[] => Array.isArray(v) && v.every(x => typeof x === "string" || typeof x === "number");
+const isSetLike = (v: Json): v is string[] => Array.isArray(v) && v.every(x => typeof x === "string") && new Set(v).size === v.length;
 const isIdList = (v: Json): v is Obj[] => Array.isArray(v) && v.every(x => isObj(x) && typeof x.id === "string");
 
 /** Tiefer Vergleich (JSON-Werte; Schlüsselreihenfolge egal). */
@@ -77,7 +77,9 @@ export function mergeValue(base: Json, mine: Json, theirs: Json): Json {
   if (isIdList(mine) && isIdList(theirs)) return mergeIdLists(isIdList(base) ? base : undefined, mine, theirs);
   // Listen aus Texten/Zahlen (z.B. Spesenkategorien) als Menge: beide fügen etwas hinzu → beides bleibt
   // (vorher galt die ganze Liste als ein Wert, eine der beiden neuen Kategorien ging verloren)
-  if (isPrimList(mine) && isPrimList(theirs) && (base === undefined || isPrimList(base))) {
+  // Nur Textlisten ohne doppelte Einträge (Kategorien, Monate, Schlagworte) — Zahlenlisten mit fester Position
+  // (Mahngebühren je Stufe) bleiben ein Wert, sonst würden Stufen vertauscht oder fielen weg
+  if (isSetLike(mine) && isSetLike(theirs) && (base === undefined || isSetLike(base))) {
     const b = new Set(base === undefined ? [] : base), m = new Set(mine);
     const out = theirs.filter(x => m.has(x) || !b.has(x));   // was ich entfernt habe, fällt weg
     for (const x of mine) if (!b.has(x) && !out.includes(x)) out.push(x);   // was ich hinzugefügt habe, kommt dazu

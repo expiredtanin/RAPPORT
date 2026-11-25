@@ -83,6 +83,8 @@ describe("calcLohn — Schweizer Lohnabrechnung", () => {
     expect(hoechstlohnKumuliert("2026-03-16", "2026-03")).toBe(6175);
     expect(hoechstlohnKumuliert("2020-01-01", "2026-06", "2026-06-15")).toBe(67925);
     expect(hoechstlohnKumuliert("2020-01-01", "2026-12", "2026-06-15")).toBe(67925);
+    // Austritt am letzten Februartag zählt als 30. Tag (2 volle Monate)
+    expect(hoechstlohnKumuliert("2020-01-01", "2026-02", "2026-02-28")).toBe(24700);
     expect(calcLohn(emp({ monatslohn: 15000, eintrittsdatum: "2026-07-01" }), "2026-07").alvBasis).toBe(12350);
   });
 

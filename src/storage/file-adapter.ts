@@ -224,6 +224,17 @@ export class FileStorageAdapter implements StorageAdapter {
       const path = this.path(name);
       const st = await this.fs.stat(path);
       let result: Json = mine;
+      // Fehlt die Datei, nur dann als «von der anderen Person entfernt» werten, wenn sie wirklich nicht mehr im Ordner
+      // steht — weder als Datei (stat kurz fehlgeschlagen) noch als iCloud-Platzhalter «.name.icloud» (ausgelagert).
+      // Sonst würde der Abgleich gegen «leer» alle nicht selbst geänderten Einträge verwerfen (Review 25.11.2026).
+      if (!st && k && name !== STUDIO) {
+        const slash = name.lastIndexOf("/");
+        const dirName = slash >= 0 ? name.slice(0, slash) : "", base = name.slice(slash + 1);
+        const listed = await this.fs.list(dirName ? this.path(dirName) : this.dir);
+        if (listed.includes(base) || listed.includes(`.${base}.icloud`)) {
+          throw new DataFolderError(`Die Datei «${name}» ist im Datenordner gerade nicht lesbar (z.B. von iCloud ausgelagert). Die Änderung bleibt hier und wird beim nächsten Speichern erneut geschrieben.`);
+        }
+      }
       if (!st && k && name !== STUDIO) {
         // Zeitdatei von der anderen Person entfernt (alle Einträge gelöscht/verschoben): als leere Datei verrechnen —
         // vorher schrieb ein veralteter Stand alle gelöschten Einträge wieder zurück (Test 25.11.2026)

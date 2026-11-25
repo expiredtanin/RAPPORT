@@ -17,10 +17,11 @@
 
 import React, { useState } from "react";
 import { generateId, formatCHF, calcLohn, lohnAGSaetze, pensumImMonat, monatslohnImMonat } from "../utils";
-import { lohnAGBeitraege, lohnPersonalaufwand, lohnVorperioden, spesenFuerLohn, spesenWartend } from "../accounting";
+import { UEBERSTUNDEN_IM_LOHN_AB, lohnAGBeitraege, lohnPersonalaufwand, lohnVorperioden, spesenFuerLohn, spesenWartend } from "../accounting";
 import { Header, NavArrows, ShareButton, EmptyState } from "../components/UI";
 import { useConfirm } from "../hooks/useConfirm";
 import type { Employee, LohnEntry, LohnResult, SaetzeSnapshot, ViewProps } from "../types";
+
 
 export default
 function Payroll({ data, saveAll, setPrintContent, setView }: Pick<ViewProps, "data" | "update" | "saveAll" | "setPrintContent" | "setView">) {
@@ -74,13 +75,13 @@ function Payroll({ data, saveAll, setPrintContent, setView }: Pick<ViewProps, "d
   const getEffPensum = (emp: Employee) => pensumOverride[emp.id] != null ? pensumOverride[emp.id] : monthPensum(emp);
 
   const offeneSpesen = (empId: string) => spesenFuerLohn(data.expenses || [], empId, monatStr);
-  // Überstunden-Auszahlungen (Personal → Jahresabschluss) dieses oder des Vormonats, noch in keiner Lohnabrechnung:
-  // gehören als massgebender Lohn in den Lohnlauf (AHV/ALV/UVG/QST), vorher liefen sie daran vorbei
-  const prevMonat = (() => { const [y, m] = monatStr.split("-").map(Number); return m === 1 ? `${y - 1}-12` : `${y}-${String(m - 1).padStart(2, "0")}`; })();
+  // Überstunden-Auszahlungen (Personal → Jahresabschluss) bis und mit diesem Monat, noch in keiner Lohnabrechnung:
+  // gehören als massgebender Lohn in den Lohnlauf (AHV/ALV/UVG/QST), vorher liefen sie daran vorbei. Erst ab
+  // UEBERSTUNDEN_IM_LOHN_AB — ältere wurden separat ausbezahlt und dürfen nicht nochmals kommen.
   const ueberstundenVerrechnet = new Set(lohnEntries.flatMap(l => l.ueberstundenIds || []));
   const offeneUeberstunden = (empId: string) => (data.uberstundenAbschluss || []).filter(a =>
     a.empId === empId && a.type === "payout" && (a.auszahlungBetrag || 0) > 0 && !ueberstundenVerrechnet.has(a.id)
-    && (a.date || "").slice(0, 7) <= monatStr && (a.date || "").slice(0, 7) >= prevMonat);
+    && (a.date || "") >= UEBERSTUNDEN_IM_LOHN_AB && (a.date || "").slice(0, 7) <= monatStr);
   const ueberstundenSumme = (empId: string) => offeneUeberstunden(empId).reduce((t, a) => t + (a.auszahlungBetrag || 0), 0);
   const findEntry = (empId: string) => lohnEntries.find(l => l.monat === monatStr && l.employeeId === empId);
   /** Vorschau/Abschluss mit den Overrides dieses Laufs und den früheren Abrechnungen des Jahres. */

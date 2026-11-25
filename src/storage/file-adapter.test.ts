@@ -251,3 +251,19 @@ describe("Datenordner: zwei Personen, Zeitdateien (Test 25.11.2026)", () => {
     expect(list.filter(x => x.startsWith("t2:"))).toHaveLength(1);
   });
 });
+
+describe("Datenordner: Zeitdatei von iCloud ausgelagert", () => {
+  it("ein Platzhalter «.name.icloud» gilt nicht als gelöscht — Speichern scheitert statt Einträge zu verwerfen", async () => {
+    const te = (id: string, date: string) => ({ id, employeeId: "e2", date, minutes: 60 }) as never;
+    const start: AppData = { ...sampleData(), expenses: [], timeEntries: [te("t1", "2026-11-03"), te("t2", "2026-11-04")] };
+    const A = new FileStorageAdapter(dir, nodeFs, "A");
+    await A.save(start);
+    const a = (await A.load()) as unknown as AppData;
+    // iCloud lagert die Datei aus: nur noch der Platzhalter liegt im Ordner
+    await rename(join(dir, "time/e2_2026-11.json"), join(dir, "time/.e2_2026-11.json.icloud"));
+    await expect(A.save({ ...a, timeEntries: a.timeEntries.map(e => e.id === "t1" ? { ...e, minutes: 90 } : e) })).rejects.toThrow(/nicht lesbar/);
+    await rename(join(dir, "time/.e2_2026-11.json.icloud"), join(dir, "time/e2_2026-11.json"));
+    const back = (await new FileStorageAdapter(dir, nodeFs, "C").load()) as unknown as AppData;
+    expect(back.timeEntries.map(e => e.id).sort()).toEqual(["t1", "t2"]);
+  });
+});

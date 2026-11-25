@@ -1324,7 +1324,12 @@ export function hoechstlohnKumuliert(eintrittsdatum: string | undefined, monat: 
     const mm = String(k).padStart(2, "0");
     let von = 1, bis = 30;
     if (ein) { const em = ein.slice(5, 7); if (mm < em) continue; if (mm === em) von = Math.min(30, parseInt(ein.slice(8, 10), 10) || 1); }
-    if (aus) { const am = aus.slice(5, 7); if (mm > am) continue; if (mm === am) bis = Math.min(30, parseInt(aus.slice(8, 10), 10) || 30); }
+    if (aus) {
+      const am = aus.slice(5, 7); if (mm > am) continue;
+      // letzter Kalendertag (auch 28./29. Februar) zählt als 30. Tag
+      const lastDay = new Date(Date.UTC(Number(year), k, 0)).getUTCDate();
+      if (mm === am) { const d = parseInt(aus.slice(8, 10), 10) || 30; bis = d >= lastDay ? 30 : Math.min(30, d); }
+    }
     tage += Math.max(0, bis - von + 1);
   }
   return Math.round(tage * HOECHSTLOHN_ALV_UVG / 360 * 100) / 100;

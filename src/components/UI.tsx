@@ -741,11 +741,17 @@ export function RowMenu({ items, label = "Aktionen" }: { items: RowMenuItem[]; l
   const [pos, setPos] = useState<CSSProperties>({});
   const toggle = (btn: HTMLElement) => {
     if (!open) {
-      const br = btn.getBoundingClientRect();
+      const r = btn.getBoundingClientRect();
+      // Darstellungs-Zoom (Einstellungen, `zoom` auf .main-content/.sched-full): fixe Koordinaten im gezoomten
+      // Bereich werden nochmals skaliert → Fensterkoordinaten durch den Zoom teilen
+      let z = 1;
+      for (let el: HTMLElement | null = btn; el; el = el.parentElement) { const v = parseFloat(el.style.zoom || ""); if (v > 0) z *= v; }
+      const br = { left: r.left / z, right: r.right / z, top: r.top / z, bottom: r.bottom / z };
+      const W = window.innerWidth / z, H = window.innerHeight / z;
       const need = items.filter(i => !i.hidden).length * 36 + 16;
-      const horiz: CSSProperties = br.right - MENU_EST_W < 4 ? { left: br.left } : { right: window.innerWidth - br.right };
-      const vert: CSSProperties = br.bottom + 4 + need > window.innerHeight && br.top - 4 - need >= 0
-        ? { top: "auto", bottom: window.innerHeight - br.top + 4 } : { top: br.bottom + 4 };
+      const horiz: CSSProperties = br.right - MENU_EST_W < 4 ? { left: br.left } : { right: W - br.right };
+      const vert: CSSProperties = br.bottom + 4 + need > H && br.top - 4 - need >= 0
+        ? { top: "auto", bottom: H - br.top + 4 } : { top: br.bottom + 4 };
       setPos({ position: "fixed", ...horiz, ...vert });
     }
     setOpen(o => !o);

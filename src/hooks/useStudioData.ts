@@ -173,9 +173,17 @@ export function useStudioData(currentUser: CurrentUser | null) {
   }, [setData, migrate]);
   const save = useCallback((next: AppData | ((prev: AppData) => AppData)) => {
     const newData = typeof next === "function" ? next(dataRef.current) : next;
+    const syncedAtStart = syncedRef.current;
     setLocal(newData);
     storage.save(newData).then(
-      () => { syncedRef.current = newData; setSaveError(null); },
+      () => {
+        // nur Bereiche nachführen, die nicht inzwischen per Nachladen (adopt) neuer geworden sind — sonst wurde der
+        // frische Serverstand eines anderen Bereichs wieder durch den älteren ersetzt (Review 25.11.2026)
+        const synced = { ...syncedRef.current } as Record<string, unknown>;
+        for (const k of Object.keys(newData)) if (syncedRef.current[k as keyof AppData] === syncedAtStart[k as keyof AppData]) synced[k] = (newData as unknown as Record<string, unknown>)[k];
+        syncedRef.current = synced as unknown as AppData;
+        setSaveError(null);
+      },
       e => {
         console.error("Storage save failed:", e);
         setSaveError(describeSaveError(e) + (e instanceof RejectedSaveError && e.keys.length ? " Die abgelehnte Änderung wurde zurückgesetzt." : ""));
