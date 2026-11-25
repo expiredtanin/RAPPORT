@@ -101,8 +101,8 @@ function Expenses({ data, update, standalone, currentUser }: Pick<ViewProps, "da
     const isNew = modal === "new";
     // über eine Lohnabrechnung ausbezahlt: Betrag und Person stehen in der Abrechnung → nur nach deren Storno ändern
     const orig = isNew ? null : (data.expenses || []).find(e => e.id === modal);
-    if (orig?.lohnEntryId && (roundCHF(Number(form.amount)) !== orig.amount || form.employeeId !== orig.employeeId || form.date !== orig.date)) {
-      showToast("Diese Spese ist über eine Lohnabrechnung ausbezahlt. Betrag, Person und Datum erst nach Storno der Lohnabrechnung ändern.");
+    if (orig?.lohnEntryId && (roundCHF(Number(form.amount)) !== roundCHF(Number(orig.amount) || 0) || form.employeeId !== orig.employeeId || form.date !== orig.date || (form.status || "offen") !== (orig.status || "offen"))) {
+      showToast("Diese Spese ist über eine Lohnabrechnung ausbezahlt. Betrag, Person, Datum und Status erst nach Storno der Lohnabrechnung ändern.");
       return;
     }
     const newId = isNew ? generateId() : (modal as string);

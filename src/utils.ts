@@ -1117,11 +1117,15 @@ export function letterToTemplate(body: string, names: { client?: string; project
   if (names.client?.trim()) pairs.push([escHtml(names.client.trim()), "{{client}}"]);
   if (names.project?.trim()) pairs.push([escHtml(names.project.trim()), "{{project}}"]);
   pairs.sort((a, b) => b[0].length - a[0].length);
-  let out = body;
-  for (const [name, ph] of pairs) {
-    out = out.replace(new RegExp(`(^|[^\\p{L}\\p{N}])${reEsc(name)}(?![\\p{L}\\p{N}])`, "gu"), (_m, pre: string) => pre + ph);
-  }
-  return out;
+  // nur im Text, nie in Tags/Attributen (Kunde «br» oder «left» zerstörte sonst «<br>» bzw. «text-align: left»)
+  return body.split(/(<[^>]*>)/).map(part => {
+    if (part.startsWith("<")) return part;
+    let out = part;
+    for (const [name, ph] of pairs) {
+      out = out.replace(new RegExp(`(^|[^\\p{L}\\p{N}])${reEsc(name)}(?![\\p{L}\\p{N}])`, "gu"), (_m, pre: string) => pre + ph);
+    }
+    return out;
+  }).join("");
 }
 
 /** HTML zurück in Klartext (Druck-Fallback). Braucht das DOM. */

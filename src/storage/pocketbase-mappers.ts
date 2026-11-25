@@ -185,17 +185,16 @@ export const fromDB = {
       monatslohn: row.monatslohn ?? null,
       lohnIban: row.lohnIban || "",
       dreizehnterLohn: !!row.dreizehnterLohn,
-      // PocketBase speichert ein leeres Zahlenfeld als 0 — AHV/ALV 0 % gibt es nicht (Befreiungen rechnet calcLohn
-      // über den Status): 0 → Standardsatz statt Lohn ohne Abzüge (Cloud-Test Runde 10)
-      ahvSatz: row.ahvSatz || null,
-      alvSatz: row.alvSatz || null,
-      // BVG/NBU/KTG alle 0 = nie gesetzt (leere Felder) → Standardsätze; einzeln 0 bleibt 0 (z. B. ohne Pensionskasse)
-      ...(!row.bvgSatz && !row.nbuSatz && !row.ktgSatz
-        ? { bvgSatz: null, nbuSatz: null, ktgSatz: null }
-        : { bvgSatz: row.bvgSatz ?? null, nbuSatz: row.nbuSatz ?? null, ktgSatz: row.ktgSatz ?? null }),
+      // Lohnsätze: 0 bleibt 0 (ausdrücklich abgewählt). PocketBase speichert ein leeres Zahlenfeld als 0 —
+      // deshalb setzen alle Wege, die Mitarbeiter anlegen (Dialog, Import, Einrichtung, Umzug in die Cloud),
+      // die Standardsätze ausdrücklich (`withDefaultRates`), statt 0 beim Lesen zu raten (Review Runde 13).
+      ahvSatz: row.ahvSatz ?? null,
+      alvSatz: row.alvSatz ?? null,
+      bvgSatz: row.bvgSatz ?? null,
+      nbuSatz: row.nbuSatz ?? null,
+      ktgSatz: row.ktgSatz ?? null,
       quellensteuerPflichtig: !!row.quellensteuerPflichtig,
-      // quellensteuerpflichtig mit 0 % ist ein leeres Feld → Standardsatz statt keine Quellensteuer
-      quellensteuerSatz: row.quellensteuerPflichtig && !row.quellensteuerSatz ? null : (row.quellensteuerSatz ?? null),
+      quellensteuerSatz: row.quellensteuerSatz ?? null,
       // JS-Property heisst "pkAGSatz" (nicht "pkAgSatz") — Employees.jsx/
       // utils.js lesen/schreiben ausschliesslich "emp.pkAGSatz". "pkAgSatz"
       // bleibt der PocketBase-Feldname.

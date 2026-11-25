@@ -70,7 +70,7 @@ interface EntityConfig {
   restFieldLabel?: string;
   uploadHint?: string;
   postProcess?: (values: ImportRecord) => void;
-  buildRecord: (values: ImportRecord) => ImportRecord;
+  buildRecord: (values: ImportRecord, settings?: AppData["settings"]) => ImportRecord;
   dedupKey: (record: ImportRecord) => string;
   dedupAgainst: (data: AppData) => { key: string }[];
 }
@@ -371,12 +371,12 @@ const ENTITY_CONFIGS: Record<string, EntityConfig> = {
     resultLabel: "Mitarbeiter",
     targetKey: "employees",
     fields: EMPLOYEE_FIELDS,
-    buildRecord: (m) => ({
+    buildRecord: (m, settings) => ({
       id: generateId(), name: "", role: "", personalNr: "", eintrittsdatum: "", geburtsdatum: "",
       email: "", adresse: "", ort: "", ahvNr: "", pensum: 100, wochenstunden: 35, ferienWochen: 5,
       monatslohn: 0, lohnIban: "", dreizehnterLohn: false, ferienUebertragVorjahr: {}, active: true,
       // Standard-Lohnsätze wie im Mitarbeiter-Dialog (leer → in der Cloud 0 %); importierte Werte gehen vor
-      ...withDefaultRates(m),
+      ...withDefaultRates(m, settings?.defaultPkAGSatz),
     }),
     dedupKey: (rec) => (rec.personalNr || "").trim() ? `pnr:${rec.personalNr.trim()}` : `name:${normalizeHeader(rec.name)}`,
     dedupAgainst: (data) => (data.employees || []).map(e => ({
@@ -760,7 +760,7 @@ export default function DataImport({ data, saveAll, setView }: Pick<ViewProps, "
     const opts = { appendRest: appendRestToNote, restField: cfg.restField, headers, postProcess: cfg.postProcess };
     return dataRows.map(raw => {
       const { values, missingRequired, invalid } = buildMappedValues(cfg.fields, colMap, valueMaps, raw, data, opts);
-      const previewRecord = cfg.buildRecord(values);
+      const previewRecord = cfg.buildRecord(values, data.settings);
       const key = cfg.dedupKey(previewRecord);
       const dupExisting = !!key && existingKeys.has(key);
       const dupBatch = !!key && seenBatch.has(key);
@@ -804,7 +804,7 @@ export default function DataImport({ data, saveAll, setView }: Pick<ViewProps, "
         values[fieldKey] = newStubsByCollection[fkTarget.dataKey].get(key)!.id;
       }
       delete values.__newStub;
-      finalRecords.push(cfg!.buildRecord(values));
+      finalRecords.push(cfg!.buildRecord(values, data.settings));
     });
 
     const patch: Record<string, unknown[]> = { [cfg!.targetKey]: [...((data[cfg!.targetKey] as unknown[]) || []), ...finalRecords] };

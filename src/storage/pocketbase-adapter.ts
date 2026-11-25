@@ -926,8 +926,11 @@ export class PocketBaseAdapter implements StorageAdapter {
     // Dateifelder vorbereiten: Uploads (multipart) gehen einzeln, alles andere wie bisher (Batch)
     const ops: Op[] = [];
     const uploads: { op: Op; prepared: PreparedBody }[] = [];
+    // Dateien nur bei einzelnen Löschungen merken (Rückgängig betrifft eine Zeile); Sammellöschungen nicht
+    // mit je einer Abfrage + Download verlangsamen
+    const keepFiles = !!PB_FILE_FIELDS[table] && allOps.filter(op => op.type === "delete").length <= 3;
     for (const op of allOps) {
-      if (op.type === "delete" && PB_FILE_FIELDS[table]) await this._keepFileBeforeDelete(table, op.id);
+      if (op.type === "delete" && keepFiles) await this._keepFileBeforeDelete(table, op.id);
       if (op.type === "delete" || !PB_FILE_FIELDS[table]) { ops.push(op); continue; }
       const prepared = await this._files.prepareBody(table, op.type === "update" ? op.id : String(op.body.id ?? ""), op.body, op.type === "create");
       if (prepared.multipart) uploads.push({ op, prepared });

@@ -12,7 +12,7 @@
 import React, { useState, useRef } from "react";
 import type { CSSProperties } from "react";
 import { defaultData } from "../constants";
-import { generateId, hashPassword, localISODate } from "../utils";
+import { generateId, hashPassword, localISODate, withDefaultRates } from "../utils";
 import type { AppData, Employee } from "../types";
 import { checkBackup } from "../storage/validate";
 import { applyMigrations } from "../storage/migrations";
@@ -270,7 +270,7 @@ export default function Setup({ onComplete }: { onComplete: (data: AppData) => v
         }],
         // FIXME(karim): `aktiv` ist nicht das Feld `active` aus dem Datenmodell (Employee.active);
         // der Cast verdeckt, dass hier Pflichtfelder (role, pensum) fehlen. Verhalten unverändert.
-        employees: [{
+        employees: [withDefaultRates({
           id: empId,
           name: account.displayName.trim(),
           email: studio.email.trim() || "",
@@ -279,7 +279,7 @@ export default function Setup({ onComplete }: { onComplete: (data: AppData) => v
           eintrittsdatum: localISODate(),
           aktiv: true,
           appUserId: "admin",
-        } as unknown as Employee],
+        } as unknown as Employee)],
       });
     } finally {
       setBusy(false);

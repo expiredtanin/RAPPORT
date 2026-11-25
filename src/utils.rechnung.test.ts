@@ -105,6 +105,10 @@ describe("Briefvorlagen: Platzhalter bleiben beim Speichern", () => {
     const tpl = "Guten Tag {{client}}, betreffend {{project}}";
     expect(letterToTemplate(fillLetterTemplate(tpl, {}), {})).toBe(tpl);
   });
+  it("Tags und Attribute bleiben unberührt (Kunde «br», Projekt «left»)", () => {
+    const html = '<p style="text-align: left">Guten Tag br<br>Projekt left</p>';
+    expect(letterToTemplate(html, { client: "br", project: "left" })).toBe('<p style="text-align: left">Guten Tag {{client}}<br>Projekt {{project}}</p>');
+  });
   it("nur ganze Wörter: «Bau» im Wort «Bauherr» bleibt", () => {
     expect(letterToTemplate("Bau AG, Bauherr", { client: "Bau AG" })).toBe("{{client}}, Bauherr");
     expect(letterToTemplate("Neubau, Bau", { project: "Bau" })).toBe("Neubau, {{project}}");
