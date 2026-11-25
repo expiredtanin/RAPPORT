@@ -2,6 +2,7 @@
 
 import React from "react";
 import { arbeitszeitAm, formatDate, localISODate } from "../../utils";
+import { defaultAppRoleId } from "../../auth";
 import type { Employee, ViewProps } from "../../types";
 import { RowMenu } from "../../components/UI";
 import type { EmpForm, ModalKind } from "./types";
@@ -20,13 +21,13 @@ export default function StaffListTab({ data, employees, nextPersonalNr, setEmpFo
   /** Öffnet den Bearbeiten-Dialog samt Daten des verknüpften App-Zugangs. */
   const openEmp = (emp: Employee) => {
     const linked = (data.users || []).find(u => u.id === emp.appUserId);
-    setEmpForm({ ...emp, _appAccess: !!linked, _appUsername: linked?.username || "", _appPassword: "", _appRoleId: linked?.appRoleId || (data.appRoles || []).find(r => r.id !== "r-admin")?.id || "", _appUserId: linked?.id });
+    setEmpForm({ ...emp, _appAccess: !!linked, _appUsername: linked?.username || "", _appPassword: "", _appRoleId: linked?.appRoleId || defaultAppRoleId(data.appRoles), _appUserId: linked?.id });
     setModal("emp");
   };
   return (
     <div>
       <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 16 }}>
-        <button className="btn btn-primary" onClick={() => { setEmpForm({ pensum: 100, wochenstunden: data.settings.defaultWochenstunden || 35, ferienWochen: data.settings.defaultFerienWochen || 5, pkAGSatz: data.settings.defaultPkAGSatz ?? 8.0, ferienUebertragVorjahr: {}, personalNr: nextPersonalNr(), _appAccess: false, _appUsername: "", _appPassword: "", _appRoleId: (data.appRoles || []).find(r => r.id !== "r-admin")?.id || "", _appUserId: undefined }); setModal("emp"); }}>+ Mitarbeiter</button>
+        <button className="btn btn-primary" onClick={() => { setEmpForm({ pensum: 100, wochenstunden: data.settings.defaultWochenstunden || 35, ferienWochen: data.settings.defaultFerienWochen || 5, pkAGSatz: data.settings.defaultPkAGSatz ?? 8.0, ferienUebertragVorjahr: {}, personalNr: nextPersonalNr(), _appAccess: false, _appUsername: "", _appPassword: "", _appRoleId: defaultAppRoleId(data.appRoles), _appUserId: undefined }); setModal("emp"); }}>+ Mitarbeiter</button>
       </div>
       <div className="card" style={{ padding: 0 }}>
         <table>

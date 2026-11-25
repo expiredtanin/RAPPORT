@@ -19,6 +19,7 @@
 
 import React, { useState } from "react";
 import { generateId, getAbsenzTypes, hashPassword, localISODate, withDefaultRates } from "../utils";
+import { defaultAppRoleId } from "../auth";
 import { isCloudBackend } from "../storage/adapter";
 import { overtimeHourlyRate } from "../worktime";
 import { showToast } from "../toast";
@@ -186,7 +187,21 @@ function Employees({ data, update, saveAll, setPrintContent, userPermissions, cu
     if (isNew) setSelectedEmpId(empId);
     setModal(null);
   };
-  const delEmp = async (id: string) => { if (await askConfirm("Mitarbeiter löschen?")) { update("employees", employees.filter(e => e.id !== id)); if (selectedEmpId === id) setSelectedEmpId(null); } };
+  // Mit dem Mitarbeiter auch sein Konto entfernen (lokal/Datenordner) — sonst meldete sich ein Ehemaliger weiter an.
+  // Cloud: Konten sind Mitgliedschaften (Einstellungen → Team), dort hier nur der Hinweis.
+  const delEmp = async (id: string) => {
+    const emp = employees.find(e => e.id === id);
+    const linked = isCloudBackend ? [] : (data.users || []).filter(u => u.employeeId === id || (!!emp?.appUserId && u.id === emp.appUserId));
+    if (id === currentEmployeeId) { showToast("Den eigenen Mitarbeiter-Eintrag kannst du nicht löschen."); return; }
+    const admins = (data.users || []).filter(u => u.role === "admin");
+    if (linked.some(u => u.role === "admin") && admins.every(a => linked.some(u => u.id === a.id))) { showToast("Mindestens ein Administrator muss bestehen bleiben."); return; }
+    const msg = linked.length
+      ? `Mitarbeiter löschen? Das Konto «${linked.map(u => u.username).join("», «")}» wird ebenfalls entfernt.`
+      : isCloudBackend && emp?.appUserId ? "Mitarbeiter löschen? Das Cloud-Konto bleibt bestehen — Zugang unter Einstellungen → Team entfernen." : "Mitarbeiter löschen?";
+    if (!await askConfirm(msg)) return;
+    saveAll(prev => ({ ...prev, employees: (prev.employees || []).filter(e => e.id !== id), users: (prev.users || []).filter(u => !linked.some(l => l.id === u.id)) }));
+    if (selectedEmpId === id) setSelectedEmpId(null);
+  };
 
   const saveAbs = () => {
     if (!absForm.employeeId || !absForm.type || !absForm.dateFrom) { showToast("Bitte Mitarbeiter, Absenztyp und Datum angeben."); return; }
@@ -248,7 +263,7 @@ function Employees({ data, update, saveAll, setPrintContent, userPermissions, cu
       <Header title="Personal" action={
         <div style={{ display: "flex", gap: 8 }}>
           <ShareButton options={[{ label: "PDF Übersicht", onClick: () => setPrintContent({ type: "mitarbeiterOverview", employees, settings: data.settings }) }]} />
-          <button className="btn btn-primary" onClick={() => { setEmpForm({ pensum: 100, wochenstunden: data.settings.defaultWochenstunden || 35, ferienWochen: data.settings.defaultFerienWochen || 5, pkAGSatz: data.settings.defaultPkAGSatz ?? 8.0, ferienUebertragVorjahr: {}, personalNr: nextPersonalNr(), _appAccess: false, _appUsername: "", _appPassword: "", _appRoleId: (data.appRoles || []).find(r => r.id !== "r-admin")?.id || "", _appUserId: undefined }); setModal("emp"); }}>+ Mitarbeiter</button>
+          <button className="btn btn-primary" onClick={() => { setEmpForm({ pensum: 100, wochenstunden: data.settings.defaultWochenstunden || 35, ferienWochen: data.settings.defaultFerienWochen || 5, pkAGSatz: data.settings.defaultPkAGSatz ?? 8.0, ferienUebertragVorjahr: {}, personalNr: nextPersonalNr(), _appAccess: false, _appUsername: "", _appPassword: "", _appRoleId: defaultAppRoleId(data.appRoles), _appUserId: undefined }); setModal("emp"); }}>+ Mitarbeiter</button>
         </div>
       } tabs={<PageTabs tabs={TABS} value={tab} onChange={setTab} />} />
 

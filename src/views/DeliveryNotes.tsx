@@ -9,6 +9,7 @@ import React, { useState } from "react";
 import { generateId, formatDate, linkedClientForNote, localISODate } from "../utils";
 import { Header, Modal, FormField, DateInput, SortTh, RowMenu, EmptyState } from "../components/UI";
 import { removeWithUndo } from "../undo";
+import { showToast } from "../toast";
 import type { DeliveryNote, ViewProps } from "../types";
 
 /** Formularstand: wie `DeliveryNote`, aber die Id wird erst beim Speichern vergeben. */
@@ -58,11 +59,15 @@ function DeliveryNotes({ data, saveAll, setPrintContent }: Pick<ViewProps, "data
 
   const save = () => {
     const isNew = modal === "new";
-    const entry: DeliveryNote = { ...form, id: isNew ? generateId() : (modal as string) };
-    const updated = isNew
-      ? [...notes, { ...entry, createdAt: new Date().toISOString() }]
-      : notes.map(n => n.id === modal ? entry : n);
-    saveAll({ ...data, deliveryNotes: updated });
+    // leere Positionen weglassen; Menge muss positiv sein (vorher wurden 0, leer und −3 gespeichert und gedruckt)
+    const items = form.items.filter(it => (it.desc || "").trim() || (it.note || "").trim());
+    if (items.length === 0) { showToast("Bitte mindestens eine Position erfassen."); return; }
+    if (items.some(it => !(Number(it.qty) > 0))) { showToast("Die Menge jeder Position muss grösser als 0 sein."); return; }
+    const entry: DeliveryNote = { ...form, items, id: isNew ? generateId() : (modal as string) };
+    // auf den aktuellen Stand (prev), nicht den beim Öffnen: sonst gingen inzwischen gespeicherte Lieferscheine verloren
+    saveAll(prev => ({ ...prev, deliveryNotes: isNew
+      ? [...(prev.deliveryNotes || []), { ...entry, createdAt: new Date().toISOString() }]
+      : (prev.deliveryNotes || []).map(n => n.id === modal ? entry : n) }));
     closeModal();
   };
 

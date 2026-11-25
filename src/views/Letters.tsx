@@ -22,16 +22,25 @@ function Letters({ data, update, setPrintContent }: Pick<ViewProps, "data" | "up
   const { askConfirm, ConfirmModalEl } = useConfirm();
   const [subject, setSubject] = useState(data.letterTemplates[0]?.name || "");
 
-  // Vorlage mit Kunde/Projekt füllen; läuft bei jeder Auswahländerung (überschreibt den Text wie bisher)
-  const fillTemplate = (tplId: string, cId: string, pId: string) => {
+  const nameOf = (cId: string, pId: string) => ({
+    client: (data.persons || []).find(c => c.id === cId)?.name,
+    project: data.projects.find(p => p.id === pId)?.name,
+  });
+  // Vorlage mit Kunde/Projekt füllen (neue Vorlage gewählt). Ist der Text schon bearbeitet, vorher fragen.
+  const fillTemplate = async (tplId: string, cId: string, pId: string, ask = true) => {
     const tpl = data.letterTemplates.find(t => t.id === tplId);
     if (!tpl) return;
-    const client = (data.persons || []).find(c => c.id === cId);
-    const proj = data.projects.find(p => p.id === pId);
+    const untouched = body === textToHtml(fillLetterTemplate(data.letterTemplates.find(t => t.id === selectedTemplate)?.body || "", nameOf(clientId, projectId)));
+    if (ask && !untouched && !(await askConfirm("Den bearbeiteten Brieftext durch die Vorlage ersetzen?", "Ersetzen"))) return false;
     // Namen landen im HTML des Editors: fillLetterTemplate maskiert «&», «<» usw. (z.B. «Müller & Partner»)
-    const text = fillLetterTemplate(tpl.body || "", { client: client?.name, project: proj?.name });
-    setBody(textToHtml(text));
+    setBody(textToHtml(fillLetterTemplate(tpl.body || "", nameOf(cId, pId))));
     setSubject(tpl.name);
+    return true;
+  };
+  // Kunde/Projekt gewechselt: im bestehenden Text nur die eingesetzten Namen austauschen (vorher ersetzte die
+  // Auswahl den ganzen, evtl. schon geschriebenen Brief durch die Vorlage)
+  const swapNames = (cId: string, pId: string) => {
+    setBody(fillLetterTemplate(letterToTemplate(body, nameOf(clientId, projectId)), nameOf(cId, pId)));
   };
 
   const client = ((data.persons||[])).find(c => c.id === clientId);
@@ -63,7 +72,7 @@ function Letters({ data, update, setPrintContent }: Pick<ViewProps, "data" | "up
     const remaining = data.letterTemplates.filter(t => t.id !== selectedTemplate);
     update("letterTemplates", remaining);
     setSelectedTemplate(remaining[0]?.id || "");
-    fillTemplate(remaining[0]?.id || "", clientId, projectId);
+    void fillTemplate(remaining[0]?.id || "", clientId, projectId, false);
   };
 
   // Vorschau rechts standardmässig auf breiten Fenstern
@@ -87,7 +96,7 @@ function Letters({ data, update, setPrintContent }: Pick<ViewProps, "data" | "up
           <div className="card">
             <div style={{ fontSize: 10, letterSpacing: "0.12em", color: "var(--text4)", fontWeight: 600, marginBottom: 12 }}>VORLAGE</div>
             <div style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 8 }}>
-              <select value={selectedTemplate} onChange={e => { setSelectedTemplate(e.target.value); fillTemplate(e.target.value, clientId, projectId); }} style={{ flex: 1, minWidth: 0 }}>
+              <select value={selectedTemplate} onChange={async e => { const id = e.target.value; if (await fillTemplate(id, clientId, projectId) !== false) setSelectedTemplate(id); }} style={{ flex: 1, minWidth: 0 }}>
                 {data.letterTemplates.length === 0 && <option value="">— keine Vorlage —</option>}
                 {data.letterTemplates.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
               </select>
@@ -109,13 +118,13 @@ function Letters({ data, update, setPrintContent }: Pick<ViewProps, "data" | "up
           <div className="card">
             <div style={{ fontSize: 10, letterSpacing: "0.12em", color: "var(--text4)", fontWeight: 600, marginBottom: 12 }}>EMPFÄNGER</div>
             <FormField label="Kunde">
-              <select value={clientId} onChange={e => { setClientId(e.target.value); fillTemplate(selectedTemplate, e.target.value, projectId); }}>
+              <select value={clientId} onChange={e => { swapNames(e.target.value, projectId); setClientId(e.target.value); }}>
                 <option value="">— wählen —</option>
                 {((data.persons||[])).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
             </FormField>
             <FormField label="Projekt (optional)">
-              <select value={projectId} onChange={e => { setProjectId(e.target.value); fillTemplate(selectedTemplate, clientId, e.target.value); }}>
+              <select value={projectId} onChange={e => { swapNames(clientId, e.target.value); setProjectId(e.target.value); }}>
                 <option value="">— keines —</option>
                 {data.projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
               </select>

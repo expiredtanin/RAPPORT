@@ -39,3 +39,13 @@ export function getVisibleNavItems(userPermissions: string[] | null): NavItem[] 
     return userPermissions.includes(item.id) || (item.alsoWith && userPermissions.includes(item.alsoWith)) ? item : null;
   }).filter((item): item is NavItem => !!item);
 }
+
+/**
+ * Vorgeschlagene Rolle für ein neues Konto: die mit den wenigsten Rechten (Standard «Mitarbeiter»), nicht einfach
+ * die erste Nicht-Admin-Rolle (das war «Projektleiter» mit Personal und Offerten).
+ */
+export function defaultAppRoleId(roles: AppData["appRoles"] | undefined): string {
+  const cand = (roles || []).filter(r => r.id !== "r-admin" && Array.isArray(r.permissions));
+  if (cand.some(r => r.id === "r-mitarbeiter")) return "r-mitarbeiter";
+  return [...cand].sort((a, b) => (a.permissions || []).length - (b.permissions || []).length)[0]?.id || "";
+}

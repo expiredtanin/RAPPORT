@@ -186,7 +186,12 @@ function PostModal({ initial, onSave, onClose, data }: {
   const handleSave = (draft = false) => {
     if (!form.body.trim()) return;
     const finalPoll = pollEnabled && poll.question.trim() && poll.options.filter(o => o.label.trim()).length >= 2
-      ? { ...poll, options: poll.options.filter(o => o.label.trim()), votes: initial?.poll?.votes || {} }
+      ? (() => {
+          // Stimmen für entfernte Optionen verwerfen (sonst zählten sie im Total, aber bei keiner Option)
+          const options = poll.options.filter(o => o.label.trim());
+          const ids = new Set(options.map(o => o.id));
+          return { ...poll, options, votes: Object.fromEntries(Object.entries(initial?.poll?.votes || {}).filter(([, v]) => ids.has(v))) };
+        })()
       : null;
     // Datum nur bei Events (sonst bliebe nach dem Typwechsel ein Datums-Chip am Beitrag)
     onSave({ ...form, eventDate: form.type === "event" ? form.eventDate : "", poll: finalPoll }, draft);
