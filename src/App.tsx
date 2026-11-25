@@ -313,7 +313,8 @@ export default function App() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Escape" || e.defaultPrevented) return;
-      const overlays = [...document.querySelectorAll<HTMLElement>(".modal-overlay")];
+      // nur sichtbare Dialoge (unter der Druckansicht ausgeblendete nicht mitschliessen)
+      const overlays = [...document.querySelectorAll<HTMLElement>(".modal-overlay")].filter(el => el.getClientRects().length > 0);
       if (overlays.length === 0) return;
       const z = (el: HTMLElement) => Number(getComputedStyle(el).zIndex) || 0;
       const top = overlays.reduce((best, el) => (z(el) >= z(best) ? el : best));
@@ -403,15 +404,15 @@ export default function App() {
     </>;
   }
 
-  if (printContent) {
-    return (
-      <ErrorBoundary>
-        <Suspense fallback={<ViewFallback />}>
-          <PrintView content={printContent} onClose={() => setPrintContent(null)} settings={data.settings} assets={data.docAssets} />
-        </Suspense>
-      </ErrorBoundary>
-    );
-  }
+  // Druckansicht über der App, die darunter (ausgeblendet) gemountet bleibt: vorher ersetzte sie den ganzen Baum,
+  // und ungespeicherte Ansichtszustände gingen verloren (Brieftext, offenes Protokoll; Test Dokumente 25.11.2026)
+  const printNode = printContent ? (
+    <ErrorBoundary>
+      <Suspense fallback={<ViewFallback />}>
+        <PrintView content={printContent} onClose={() => setPrintContent(null)} settings={data.settings} assets={data.docAssets} />
+      </Suspense>
+    </ErrorBoundary>
+  ) : null;
 
   /** Führt einen Treffer der Befehlspalette aus (Ansicht, Datensatz oder Aktion). Views übernehmen `modal`-Aufträge beim Öffnen. */
   const runPalette = (t: PaletteTarget) => {
@@ -433,8 +434,9 @@ export default function App() {
     }
   };
 
-  return (
-    <div className="app-wrapper" data-theme={darkMode ? "dark" : "light"} style={{ display: "flex", height: "100%", overflow: "hidden", background: "var(--bg)", fontFamily: "var(--font-ui)", color: "var(--text)" }}>
+  return (<>
+    {printNode}
+    <div className="app-wrapper" data-theme={darkMode ? "dark" : "light"} style={{ display: printContent ? "none" : "flex", height: "100%", overflow: "hidden", background: "var(--bg)", fontFamily: "var(--font-ui)", color: "var(--text)" }}>
       <style>{statusCssVars()}</style>
 
       {/* Mobile Header */}
@@ -556,5 +558,5 @@ export default function App() {
 
       {showAbout && <AboutModal onClose={() => setShowAbout(false)} />}
     </div>
-  );
+  </>);
 }

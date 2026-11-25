@@ -563,7 +563,10 @@ export function sanitizeHtml(html: unknown): string {
 
 /** Betrag als «CHF 1’234.50» (de-CH); fehlender Wert zählt als 0. */
 export function formatCHF(amount?: number | null): string {
-  return new Intl.NumberFormat("de-CH", { style: "currency", currency: "CHF" }).format(amount || 0);
+  const v = amount || 0;
+  // negativ als «−CHF 450.50» (Intl de-CH liefert «CHF-450.50», z.B. Abzüge in der Lohnabrechnung)
+  const f = new Intl.NumberFormat("de-CH", { style: "currency", currency: "CHF" }).format(Math.abs(v));
+  return v < 0 && f !== "CHF 0.00" ? `−${f}` : f;
 }
 
 /** ISO-Datum als «17.10.2026»; leer → «—». */
@@ -827,7 +830,7 @@ export function buildReminderLetter(
     : "";
   // Firma (mit Ansprechpartnern): neutrale Anrede statt «Sehr geehrte/r Baugenossenschaft …»
   const anrede = client && (client.contacts || []).length > 0 ? "Sehr geehrte Damen und Herren" : `Sehr geehrte/r ${client?.name || "[Kunde]"}`;
-  const body = `${anrede}\n\n${intro}${kostenText}\n\nIBAN: ${formatIban(settings.iban)}\nReferenz: ${ref.display}\n\nFreundliche Grüsse\n${settings.name}`;
+  const body = `${anrede}\n\n${intro}${kostenText}\n\nIBAN: ${formatIban(settings.iban)}\nReferenz: ${ref.display}\n\nFreundliche Grüsse`;   // Absender setzt der Brief-Abschluss (LetterPrint), sonst stand er doppelt
   const subject = nr === 1 ? `Zahlungserinnerung – Rechnung Nr. ${inv.number}` : `${nr}. Mahnung – Rechnung Nr. ${inv.number}`;
   return { client, subject, body, kosten: k };
 }
