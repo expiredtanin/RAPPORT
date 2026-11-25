@@ -456,7 +456,8 @@ export function createWorktime(data: WorkData, today: DateStr) {
       absenz += absenceHoursForDay(emp, ds);
     }
     const ist = (data.timeEntries || []).reduce((s, e) =>
-      e.employeeId === emp.id && e.date >= from && e.date <= to && countsForBalance(emp, e.date) ? s + (e.minutes || 0) : s, 0) / 60;
+      // Ist wie das Soll nur bis `upTo`: vorausgeplante Einträge erschienen im laufenden Monat sonst als Plus
+      e.employeeId === emp.id && e.date >= from && e.date <= last && countsForBalance(emp, e.date) ? s + (e.minutes || 0) : s, 0) / 60;
     return { sollBrutto, ferien, soll: sollBrutto - ferien, ist, absenz, saldo: ist + absenz + ferien - sollBrutto };
   };
 
