@@ -122,8 +122,11 @@ onRecordUpdateRequest((e) => {
     throw new BadRequestError("Bis liegt vor Von.");
   }
   if (name === "overtimeClosings" && !has("loehne")) {
-    for (const f of ["auszahlungBetrag", "stundenlohn", "zuschlagPercent", "imLohn", "hoursSettled"]) {
-      if (JSON.stringify(r.get(f)) !== JSON.stringify(o.get(f))) throw new ForbiddenError("Überstunden-Auszahlungen ändert, wer das Recht Löhne hat (" + f + ").");
+    // alle Felder (Runde 27: Umhängen auf andere Person, Typ/Jahr änderte sonst Salden ohne Lohnrecht)
+    for (const f of e.record.collection().fields) {
+      const n = f.name;
+      if (n === "updated") continue;
+      if (JSON.stringify(r.get(n)) !== JSON.stringify(o.get(n))) throw new ForbiddenError("Überstunden-Abschlüsse ändert, wer das Recht Löhne hat (" + n + ").");
     }
   }
   if (name === "timeEntries" && r.getString("date") && r.getString("date") !== o.getString("date") && new Date(r.getString("date").slice(0, 10) + "T00:00:00Z").getTime() > Date.now() + 366 * 86400000) {
@@ -196,7 +199,7 @@ onRecordDeleteRequest((e) => {
         ? [["invoices", "project"], ["quotes", "project"], ["contracts", "project"], ["expenses", "project"], ["protocols", "project"], ["deliveryNotes", "project"], ["timeEntries", "project"]]
         : name === "quotes"
           ? [["invoices", "quote"], ["contracts", "quote"]]
-          : [["payrollEntries", "employee"], ["overtimeClosings", "employee"], ["vacationEntries", "employee"], ["absences", "employee"]];
+          : [["payrollEntries", "employee"], ["overtimeClosings", "employee"], ["vacationEntries", "employee"], ["absences", "employee"], ["timeEntries", "employee"], ["expenses", "employee"]];
     // auch mit Vollzugriff nicht — «Rückgängig» stellt geleerte Verweise nicht wieder her. Nur Stunden: Admin darf.
     const LABEL = { invoices: "Rechnungen", quotes: "Offerten", contracts: "Verträge", timeEntries: "Zeiteinträge", expenses: "Spesen",
       protocols: "Protokolle", deliveryNotes: "Lieferscheine", payrollEntries: "Lohnabrechnungen", overtimeClosings: "Überstunden-Abschlüsse",
@@ -204,7 +207,7 @@ onRecordDeleteRequest((e) => {
     for (const [coll, field] of refs) {
       let used = false;
       try { e.app.findFirstRecordByFilter(coll, field + " = {:id}", { id: r.id }); used = true; } catch { used = false; }
-      if (used && (coll !== "timeEntries" || !full)) throw new ForbiddenError("Wird noch verwendet (" + LABEL[coll] + ") und kann darum nicht gelöscht werden.");
+      if (used && (coll !== "timeEntries" || name !== "projects" || !full)) throw new ForbiddenError("Wird noch verwendet (" + LABEL[coll] + ") und kann darum nicht gelöscht werden.");
     }
     return e.next();
   }

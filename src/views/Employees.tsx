@@ -216,8 +216,9 @@ function Employees({ data, update, saveAll, setPrintContent, userPermissions, cu
     if (id === currentEmployeeId) { showToast("Den eigenen Mitarbeiter-Eintrag kannst du nicht löschen."); return; }
     // Lohnabrechnungen und Überstunden-Abschlüsse sind aufzubewahren (der Server löscht sie sonst mit) → auf inaktiv setzen
     if ((data.lohnEntries || []).some(l => l.employeeId === id) || (data.uberstundenAbschluss || []).some(a => a.empId === id)
-      || (data.ferienEntries || []).some(f => f.employeeId === id) || (data.absences || []).some(a => a.employeeId === id)) {
-      showToast("Für diese Person gibt es Lohnabrechnungen, Überstunden, Ferien oder Absenzen — bitte auf «inaktiv» setzen statt löschen."); return;
+      || (data.ferienEntries || []).some(f => f.employeeId === id) || (data.absences || []).some(a => a.employeeId === id)
+      || (data.timeEntries || []).some(t => t.employeeId === id) || (data.expenses || []).some(x => x.employeeId === id)) {
+      showToast("Für diese Person gibt es Stunden, Spesen, Lohnabrechnungen, Überstunden, Ferien oder Absenzen — bitte auf «inaktiv» setzen statt löschen."); return;
     }
     if (isCloudBackend && userPermissions !== null) { showToast("Mitarbeitende löscht ein Admin."); return; }
     const admins = (data.users || []).filter(u => u.role === "admin");

@@ -361,6 +361,20 @@ check("Rechnungsnummer mit Leerzeichen am Rand abgelehnt", r.status >= 400, `HTT
   must(await api("POST", "/api/collections/overtimeClosings/records", tA, { id: otA, studio: sid, employee: empOther, year: 2026, date: "2026-11-20", type: "payout", hoursSettled: 5, auszahlungBetrag: 300, imLohn: true }), "Auszahlung A");
   r = await api("DELETE", `/api/collections/overtimeClosings/records/${otA}`, tP);
   check("P (ohne Löhne): Überstunden-Auszahlung nicht löschbar", r.status >= 400, `HTTP ${r.status}`);
+  for (const [f, v] of [["employee", empM], ["type", "other"], ["year", 2020]]) {
+    r = await api("PATCH", `/api/collections/overtimeClosings/records/${otA}`, tP, { [f]: v });
+    check(`P (ohne Löhne): Überstunden-Abschluss nicht ändern (${f})`, r.status >= 400, `HTTP ${r.status}`);
+  }
+  // Mitarbeiter nur mit Stunden: Kaskade/Leeren verwaiste sonst die Zeiteinträge (Review Runde 27)
+  const empT = rid("empt");
+  must(await api("POST", "/api/collections/employees/records", tA, { id: empT, studio: sid, name: "Nur Stunden" }), "Mitarbeiter T");
+  must(await api("POST", "/api/collections/timeEntries/records", tA, { id: rid("tet"), studio: sid, employee: empT, date: "2026-11-10", minutes: 60 }), "Stunden T");
+  r = await api("DELETE", `/api/collections/employees/records/${empT}`, tA);
+  check("A: Mitarbeiter mit Zeiteinträgen nicht löschbar", r.status >= 400, `HTTP ${r.status}`);
+  const empU = rid("empu");
+  must(await api("POST", "/api/collections/employees/records", tA, { id: empU, studio: sid, name: "Ohne alles" }), "Mitarbeiter U");
+  r = await api("DELETE", `/api/collections/employees/records/${empU}`, tA);
+  check("A: Mitarbeiter ohne Einträge löschbar", r.status === 204, `HTTP ${r.status}`);
   r = await api("DELETE", `/api/collections/employees/records/${empM}`, tA);
   check("A: Mitarbeiter mit Ferien/Absenzen nicht löschbar (Kaskade)", r.status >= 400, `HTTP ${r.status}`);
   const q = rid("quo");
