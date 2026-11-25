@@ -10,6 +10,7 @@ import { generateId, formatDate, linkedClientForNote, localISODate } from "../ut
 import { Header, Modal, FormField, DateInput, SortTh, RowMenu, EmptyState } from "../components/UI";
 import { removeWithUndo } from "../undo";
 import { showToast } from "../toast";
+import { applyEdit } from "../storage/merge";
 import type { DeliveryNote, ViewProps } from "../types";
 
 /** Formularstand: wie `DeliveryNote`, aber die Id wird erst beim Speichern vergeben. */
@@ -54,7 +55,8 @@ function DeliveryNotes({ data, saveAll, setPrintContent }: Pick<ViewProps, "data
     setForm({ ...emptyForm, number: nextNumber() });
     setModal("new");
   };
-  const openEdit = (n: DeliveryNote) => { setForm({ ...n }); setModal(n.id); };
+  const [editBase, setEditBase] = useState<DeliveryNote | null>(null);
+  const openEdit = (n: DeliveryNote) => { setForm({ ...n }); setEditBase(n); setModal(n.id); };
   const closeModal = () => { setModal(null); setForm(emptyForm); };
 
   const save = () => {
@@ -67,7 +69,9 @@ function DeliveryNotes({ data, saveAll, setPrintContent }: Pick<ViewProps, "data
     // auf den aktuellen Stand (prev), nicht den beim Öffnen: sonst gingen inzwischen gespeicherte Lieferscheine verloren
     saveAll(prev => ({ ...prev, deliveryNotes: isNew
       ? [...(prev.deliveryNotes || []), { ...entry, createdAt: new Date().toISOString() }]
-      : (prev.deliveryNotes || []).map(n => n.id === modal ? entry : n) }));
+      // Bearbeiten: nur die eigenen Änderungen (applyEdit gegen den Stand beim Öffnen) — sonst überschrieb ein länger
+      // offenes Fenster die Bemerkung, die jemand anderes inzwischen gespeichert hatte (Cloud-Test Runde 21)
+      : (prev.deliveryNotes || []).map(n => n.id === modal ? (editBase ? applyEdit(editBase, entry, n) : entry) : n) }));
     closeModal();
   };
 

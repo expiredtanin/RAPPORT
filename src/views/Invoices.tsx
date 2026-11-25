@@ -69,6 +69,19 @@ function Invoices({ data, update, saveAll, modal, setModal, setPrintContent }: P
   };
 
   const [sendModal, setSendModal] = useState<Invoice | null>(null);
+  // Neue Rechnung vom Server abgelehnt (z.B. dieselbe Nummer gleichzeitig auf einem anderen Gerät vergeben): die App
+  // setzt sie zurück — Versanddialog nicht auf eine verschwundene Rechnung zeigen, sondern den Inhalt mit neuer Nummer
+  // wieder zum Bearbeiten öffnen (vorher war er still weg; Cloud-Test Runde 21)
+  useEffect(() => {
+    if (!sendModal || invoices.some(i => i.id === sendModal.id)) return;
+    const { id: _id, ...rest } = sendModal;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- Reaktion auf den vom Server zurückgesetzten Stand
+    setSendModal(null);
+    setForm({ ...(rest as unknown as InvoiceForm), number: nextNumber(), status: "entwurf" });
+    setModal({ type: "invoice" });
+    showToast("Die Rechnung wurde nicht gespeichert (Nummer inzwischen vergeben?). Inhalt mit neuer Nummer wieder geöffnet — bitte erneut speichern.", { timeout: 10000 });
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- nur auf Daten/Versanddialog reagieren
+  }, [sendModal, invoices]);
   const [newInvModal, setNewInvModal] = useState(false);
   const [ni, setNi] = useState<NewInvoiceState>({ tab: "projekt", projectId: "", quoteId: "", mode: "teilrechnung", pct: 30, amt: 0, phaseId: "" });
 
@@ -342,7 +355,7 @@ function Invoices({ data, update, saveAll, modal, setModal, setPrintContent }: P
         <AkontoPlanModal ap={ap} setAp={setAp} apRows={apRows} data={data} clients={clients} onClose={() => setAkontoModal(false)} onCreate={createAkontoInvoices} />
       )}
 
-      {sendModal && (
+      {sendModal && invoices.some(i => i.id === sendModal.id) && (
         <InvoiceSendModal invoice={sendModal} invoices={invoices} clients={clients} update={update} setPrintContent={printWithSummary} freeze={(i, status) => freezeOnStatus(i, status, data)} onClose={() => setSendModal(null)} />
       )}
     </div>

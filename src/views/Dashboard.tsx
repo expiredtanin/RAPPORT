@@ -21,6 +21,7 @@ import { dueFollowUps, isOpenLead, pipelineValue } from "../crm";
 import { formatCHF, formatDate, formatHours, migrateDashboardLayout, widgetsToRows, generateId, getFeiertageForYear, localISODate, invoiceNet, yearRevenue, dailySollHours, getWeekNumber, arbeitszeitAm } from "../utils";
 import { createWorktime } from "../worktime";
 import { KpiCard } from "../components/UI";
+import { isCloudBackend } from "../storage/adapter";
 import type { AppData, Employee, DashboardRow, DashboardTemplate, TimeEntry, ViewProps } from "../types";
 
 const HEIGHT_OPTS = [
@@ -114,7 +115,10 @@ export default function Dashboard({ data, setView, currentUser, userPermissions,
   // userPermissions === null = Vollzugriff (Admin/uneingeschränkte Rolle,
   // bereits fail-closed in App.jsx aufgelöst) — sonst nur Widgets aus Modulen,
   // auf die die Rolle tatsächlich Zugriff hat (siehe DASHBOARD_WIDGETS.perm).
-  const canSaveTemplate = userPermissions === null || userPermissions.includes("dashboard-vorlage");
+  // Vorlagen schreibt in der Cloud nur Vollzugriff (Regeln von dashboardTemplates) — sonst bot die Übersicht «persönliche
+  // Vorlage» an und der Server lehnte ab (Cloud-Test Runde 21). Das eigene Layout («Speichern») bleibt für alle.
+  const canWriteTemplates = !isCloudBackend || userPermissions === null;
+  const canSaveTemplate = canWriteTemplates && (userPermissions === null || userPermissions.includes("dashboard-vorlage"));
   const visibleWidgets = userPermissions === null ? DASHBOARD_WIDGETS : DASHBOARD_WIDGETS.filter(w => !w.perm || userPermissions.includes(w.perm));
   const visibleWidgetIds = new Set(visibleWidgets.map(w => w.id));
 
@@ -764,7 +768,7 @@ export default function Dashboard({ data, setView, currentUser, userPermissions,
                   <option key={t.id} value={t.id}>{t.name} (persönlich)</option>
                 ))}
               </select>
-              <div data-popover style={{position:"relative"}}>
+              {canWriteTemplates && <div data-popover style={{position:"relative"}}>
                 <button onClick={()=>setSaveTemplateOpen(v=>!v)} className={saveTemplateOpen?activeCtrlBtn:ctrlBtn}>Vorlage speichern…</button>
                 {saveTemplateOpen&&(
                   <div style={{position:"absolute",top:"calc(100% + 4px)",right:0,zIndex:200,background:"var(--surface)",border:"1px solid var(--border)",borderRadius:8,minWidth:240,boxShadow:"0 4px 20px rgba(0,0,0,0.15)",overflow:"hidden"}}>
@@ -785,6 +789,7 @@ export default function Dashboard({ data, setView, currentUser, userPermissions,
                       </div>
                       <div style={{height:1,background:"var(--border)"}}/>
                     </>)}
+                    {canWriteTemplates && <>
                     <div style={{padding:"8px 14px 4px",fontSize:9,color:"var(--text4)",letterSpacing:"0.1em",fontWeight:600}}>PERSÖNLICHE VORLAGE</div>
                     {(data.dashboardTemplates||[]).filter(t=>!t.isPublic&&t.createdBy===currentUser?.id).map(t=>(
                       <button key={t.id} onClick={()=>saveAsTemplate(t.id)} style={{display:"flex",justifyContent:"space-between",alignItems:"center",width:"100%",padding:"6px 14px",background:"none",border:"none",color:"var(--text)",cursor:"pointer",fontFamily:"inherit",fontSize:12,textAlign:"left"}}>
@@ -799,9 +804,10 @@ export default function Dashboard({ data, setView, currentUser, userPermissions,
                         <button onClick={()=>createTemplate(newPrivateName,false)} className={ctrlBtn}>+</button>
                       </div>
                     </div>
+                    </>}
                   </div>
                 )}
-              </div>
+              </div>}
               <button onClick={cancelEdit} className={ctrlBtn}>Abbrechen</button>
               <button onClick={saveEdit} className="btn btn-primary" style={{fontSize:11}}>Speichern</button>
             </>

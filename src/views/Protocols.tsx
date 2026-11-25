@@ -22,6 +22,7 @@ import { PROTOKOLL_TYPES } from "../constants";
 import { generateId, formatDate, htmlToText, initialsOf, participantKuerzel, responsibleLabel, protocolApproval, nextProtoNumber, protoScopeKey, protoSeqOf, applyProtoNumberFormat, localISODate } from "../utils";
 import { TableToolbar, Header, Modal, FormField, RichEditor, DateInput, ShareButton, SortTh, RowMenu, EmptyState } from "../components/UI";
 import { useConfirm } from "../hooks/useConfirm";
+import { applyEdit } from "../storage/merge";
 import { changeWithUndo, removeWithUndo } from "../undo";
 import { openTasks, type OpenTask } from "../today";
 import { setLinkedStatus, baselineChanges, entryDue, glyphOf, scheduleOf, TRACK_LABELS, trackItems, upcomingItems } from "../schedule";
@@ -125,7 +126,7 @@ function Protokolle({ data, saveAll, setPrintContent, modal, setModal }: Pick<Vi
   useEffect(() => { leaveRef.current = { detailId, data, saveAll }; });
   // Entwurf des offenen Protokolls (vom Detail gemeldet): beim Verlassen wird Ungespeichertes gespeichert statt
   // verworfen (vorher war ein geänderter Titel nach Zurück/Seitenleiste weg), Unberührtes entfernt
-  const draftRef = useRef<{ p: Protocol; dirty: boolean } | null>(null);
+  const draftRef = useRef<{ p: Protocol; dirty: boolean; base: Protocol } | null>(null);
   const leaveDetail = () => {
     const { detailId: id, data: d, saveAll: save } = leaveRef.current;
     if (!id) return;
@@ -136,7 +137,7 @@ function Protokolle({ data, saveAll, setPrintContent, modal, setModal }: Pick<Vi
     // entfernen nur, wenn auch der gespeicherte Stand unberührt ist (ein bestehendes Protokoll mit geleertem Titel
     // verschwand sonst ohne Rückfrage)
     if (isUntouchedProtocol(cur) && isUntouchedProtocol(list.find(x => x.id === id))) save({ ...d, protocols: list.filter(x => x.id !== id) });
-    else if (draft?.dirty) save({ ...d, protocols: list.map(x => x.id === id ? draft.p : x) });
+    else if (draft?.dirty) save(prev => ({ ...prev, protocols: (prev.protocols || []).map(x => x.id === id ? applyEdit(draft.base, draft.p, x) : x) }));
   };
   const leaveDetailRef = useRef(leaveDetail);
   useEffect(() => { leaveDetailRef.current = leaveDetail; });
@@ -165,8 +166,10 @@ function Protokolle({ data, saveAll, setPrintContent, modal, setModal }: Pick<Vi
         leaveDetail();
         setDetailId(null);
       }}
-      onDraft={(p, dirty) => { draftRef.current = { p, dirty }; }}
-      onSave={p => { saveAll({ ...data, protocols: protokolle.map(x => x.id === p.id ? p : x) }); }}
+      onDraft={(p, dirty, base) => { draftRef.current = { p, dirty, base }; }}
+      // nur die eigenen Änderungen auf den aktuellen Stand (applyEdit, wie die Bearbeiten-Fenster): vorher schrieb ein
+      // länger offenes Protokoll die ganze alte Kopie zurück und verwarf Änderungen anderer (Cloud-Test Runde 21)
+      onSave={(p, base) => { saveAll(prev => ({ ...prev, protocols: (prev.protocols || []).map(x => x.id === p.id ? applyEdit(base, p, x) : x) })); }}
       onDelete={id => { saveAll({ ...data, protocols: protokolle.filter(x => x.id !== id) }); setDetailId(null); }}
       onOpen={setDetailId}
       setPrintContent={setPrintContent}
@@ -382,30 +385,32 @@ function ItemEditor({ item, pos, handle, today, whoListId, onUpdate, onRemove }:
 
 export
 function ProtokollDetail({ protokoll, data, onBack, onSave, onDelete, onOpen, setPrintContent, saveAll, onDraft }: {
-  protokoll: Protocol; data: AppData; onBack: () => void; onSave: (p: Protocol) => void; onDelete: (id: string) => void;
+  protokoll: Protocol; data: AppData; onBack: () => void; onSave: (p: Protocol, base: Protocol) => void; onDelete: (id: string) => void;
   /** meldet den aktuellen Entwurf (für Speichern beim Verlassen) */
-  onDraft?: (p: Protocol, dirty: boolean) => void;
+  onDraft?: (p: Protocol, dirty: boolean, base: Protocol) => void;
   /** anderes Protokoll öffnen (z.B. die eben erstellte Folgesitzung) */
   onOpen: (id: string) => void;
   setPrintContent: ViewProps["setPrintContent"]; saveAll: ViewProps["saveAll"];
 }) {
   const [p, setP] = useState<Protocol>(() => JSON.parse(JSON.stringify(protokoll)));
-  const isDirty = JSON.stringify(p) !== JSON.stringify(protokoll);
-  useEffect(() => { onDraft?.(p, isDirty); });
+  // Stand beim Öffnen bzw. letzten Speichern: Basis für applyEdit
+  const [base, setBase] = useState<Protocol>(() => JSON.parse(JSON.stringify(protokoll)));
+  const isDirty = JSON.stringify(p) !== JSON.stringify(base);
+  useEffect(() => { onDraft?.(p, isDirty, base); });
   const today = localISODate();
   const [showFolge, setShowFolge] = useState(false);
   const { askConfirm, ConfirmModalEl } = useConfirm();
   const [folgeSelection, setFolgeSelection] = useState<FolgeSelection[] | null>(null); // built on open
 
-  const save = () => onSave(p);
+  const save = () => { onSave(p, base); setBase(p); };
   // ⌘S / Ctrl+S speichert bei ungespeicherten Änderungen
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "s" && isDirty) { e.preventDefault(); onSave(p); }
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "s" && isDirty) { e.preventDefault(); save(); }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [isDirty, p, onSave]);
+  });
   const setField = <K extends keyof Protocol>(k: K, v: Protocol[K]) => setP(prev => {
     const updated = { ...prev, [k]: v };
     if (k === "projectId" || k === "date" || k === "type") {

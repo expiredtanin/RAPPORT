@@ -3,6 +3,7 @@
 
 import { formatCHF, formatDate, buildReminderLetter, localISODate, mahnKosten, roundCHF } from "../utils";
 import { DateInput } from "./UI";
+import { showToast } from "../toast";
 import type { Invoice, InvoiceReminder, ViewProps } from "../types";
 
 /**
@@ -11,7 +12,7 @@ import type { Invoice, InvoiceReminder, ViewProps } from "../types";
  * (Status → «überfällig») und öffnet die Druckansicht mit dem Brieftext aus `buildReminderLetter`.
  * @param mahnMode "new" oder `reprint-<Index>` einer bisherigen Mahnung
  */
-export function MahnModal({ inv, data, update, setPrintContent, onClose, mahnMode, setMahnMode, mahnSentDate, setMahnSentDate }: Pick<ViewProps, "data" | "update" | "setPrintContent"> & {
+export function MahnModal({ inv: invAtOpen, data, update, setPrintContent, onClose, mahnMode, setMahnMode, mahnSentDate, setMahnSentDate }: Pick<ViewProps, "data" | "update" | "setPrintContent"> & {
   inv: Invoice;
   onClose: () => void;
   mahnMode: string;
@@ -19,6 +20,9 @@ export function MahnModal({ inv, data, update, setPrintContent, onClose, mahnMod
   mahnSentDate: string;
   setMahnSentDate: (date: string) => void;
 }) {
+  // immer der aktuelle Stand der Rechnung (Realtime): mit der Momentaufnahme beim Öffnen setzte eine Mahnung eine
+  // inzwischen bezahlte Rechnung zurück auf «überfällig» bzw. vergab die Mahnstufe doppelt (Cloud-Test Runde 21)
+  const inv = data.invoices.find(i => i.id === invAtOpen.id) || invAtOpen;
   const reminders = inv.reminders || [];
   const nextNr = reminders.length + 1;
   const nextLabel = nextNr === 1 ? "Zahlungserinnerung" : `${nextNr}. Mahnung`;
@@ -35,15 +39,15 @@ export function MahnModal({ inv, data, update, setPrintContent, onClose, mahnMod
       const { client, subject, body } = buildReminderLetter(inv, r.nr, r.sentDate || r.date, (data.persons||[]), data.settings, stored);
       setPrintContent({ type: "letter", client, subject, body, settings: data.settings });
     } else {
+      if (inv.status === "bezahlt") { showToast("Diese Rechnung ist inzwischen bezahlt — keine Mahnung."); onClose(); return; }
       const { client, subject, body, kosten } = buildReminderLetter(inv, nextNr, mahnSentDate, (data.persons||[]), data.settings);
       setPrintContent({ type: "letter", client, subject, body, settings: data.settings });
       const newReminder: InvoiceReminder = { nr: nextNr, date: localISODate(), sentDate: mahnSentDate, daysPast: Math.max(0, Math.floor((new Date(`${mahnSentDate || localISODate()}T00:00:00Z`).getTime() - new Date(`${inv.dueDate}T00:00:00Z`).getTime()) / 86400000)),
         ...(kosten.zins > 0 ? { zins: kosten.zins, zinsTage: kosten.zinsTage, zinsSatz: kosten.zinsSatz } : {}),
         ...(kosten.gebuehr > 0 ? { gebuehr: kosten.gebuehr } : {}) };
-      update("invoices", data.invoices.map(i => i.id === inv.id
-        ? { ...i, status: "überfällig", reminders: [...reminders, newReminder] }
-        : i
-      ));
+      // auf den aktuellen Stand: nicht über eine Zahlung hinweg, Mahnstufe nicht doppelt
+      update("invoices", prev => (prev || []).map(i => i.id !== inv.id || i.status === "bezahlt" || (i.reminders || []).length >= nextNr ? i
+        : { ...i, status: "überfällig", reminders: [...(i.reminders || []), newReminder] }));
     }
     onClose();
   };
