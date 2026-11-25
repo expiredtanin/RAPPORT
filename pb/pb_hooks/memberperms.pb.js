@@ -95,17 +95,25 @@ onRecordUpdateRequest((e) => {
     const OPEN_FIELDS = { studioBudget: "studio-budget", studioBudgetVersions: "studio-budget" };
     const OPEN_UI = { expenseCategories: "expenses", internalExpenseCategories: "internal-expenses", closedMonths: "mitarbeiter" };
     const old = e.record.original();
+    // Projektnummern-Zähler: wer Projekte anlegt (auch aus einer Offerte), zählt ihn hoch — vorher meldete «Neues
+    // Projekt» ohne Admin «Speichern fehlgeschlagen» (Cloud-Test Runde 15). Nur vorwärts und plausibel (Jahr höchstens
+    // nächstes Jahr, Zähler < 100000); ein Rückschritt (zweiter Client mit älterem Stand) oder Unsinn wird still
+    // verworfen statt abgelehnt — sonst sähe der zweite Client ein Fehlerbanner bzw. ein «vergifteter» Zähler
+    // sperrte das Anlegen für alle.
+    const counterOk = has("projects") || has("quotes");
+    if (counterOk) {
+      const ny = e.record.getInt("lastProjectYear"), oy = old.getInt("lastProjectYear");
+      const ns = e.record.getInt("lastProjectSeq"), os = old.getInt("lastProjectSeq");
+      const maxYear = new Date().getFullYear() + 1;
+      const ok = ny <= maxYear && ns >= 0 && ns < 100000 && (ny > oy || (ny === oy && ns >= os));
+      if (!ok) { e.record.set("lastProjectYear", old.get("lastProjectYear")); e.record.set("lastProjectSeq", old.get("lastProjectSeq")); }
+    }
     const changed = [];
     for (const f of e.record.collection().fields) {
       const n = f.name;
       if (n === "ui" || n === "updated") continue;
       if (OPEN_FIELDS[n] && has(OPEN_FIELDS[n])) continue;
-      // Projektnummern-Zähler: wer Projekte anlegt (auch aus einer Offerte), zählt ihn hoch — vorher meldete
-      // «Neues Projekt» ohne Admin «Speichern fehlgeschlagen» (Cloud-Test Runde 15); nur vorwärts
-      if ((n === "lastProjectSeq" || n === "lastProjectYear") && (has("projects") || has("quotes"))) {
-        const ny = e.record.getInt("lastProjectYear"), oy = old.getInt("lastProjectYear");
-        if (ny > oy || (ny === oy && e.record.getInt("lastProjectSeq") >= old.getInt("lastProjectSeq"))) continue;
-      }
+      if (counterOk && (n === "lastProjectSeq" || n === "lastProjectYear")) continue;
       if (JSON.stringify(e.record.get(n)) !== JSON.stringify(old.get(n))) changed.push(n);
     }
     let uiNew = {}, uiOld = {};

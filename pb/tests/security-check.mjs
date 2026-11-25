@@ -117,8 +117,11 @@ check("A: eigenen Entwurf lesbar", r.status === 200, `HTTP ${r.status}`);
   const st0 = (await api("GET", `/api/collections/studioSettings/records?filter=${enc(`studio="${sid}"`)}`, tA)).json.items[0];
   r = await api("PATCH", `/api/collections/studioSettings/records/${st0.id}`, tM, { lastProjectSeq: (st0.lastProjectSeq || 0) + 1, lastProjectYear: st0.lastProjectYear || 2026 });
   check("M: Projektzähler hochzählen (Projekt anlegen)", r.status === 200, `HTTP ${r.status} ${r.status !== 200 ? JSON.stringify(r.json) : ""}`);
-  r = await api("PATCH", `/api/collections/studioSettings/records/${st0.id}`, tM, { lastProjectSeq: 0 });
-  check("M: Projektzähler nicht zurücksetzen", r.status >= 400, `HTTP ${r.status}`);
+  const before = (await api("GET", `/api/collections/studioSettings/records/${st0.id}`, tA)).json;
+  await api("PATCH", `/api/collections/studioSettings/records/${st0.id}`, tM, { lastProjectSeq: 0 });
+  await api("PATCH", `/api/collections/studioSettings/records/${st0.id}`, tM, { lastProjectYear: 99999, lastProjectSeq: 999999 });
+  const after = (await api("GET", `/api/collections/studioSettings/records/${st0.id}`, tA)).json;
+  check("M: Projektzähler nicht zurücksetzen/vergiften (still verworfen)", after.lastProjectSeq === before.lastProjectSeq && after.lastProjectYear === before.lastProjectYear, `${before.lastProjectYear}/${before.lastProjectSeq} → ${after.lastProjectYear}/${after.lastProjectSeq}`);
 }
 
 const o4 = await orc(`payrollEntries_via_studio.monat = "2026-11"`);

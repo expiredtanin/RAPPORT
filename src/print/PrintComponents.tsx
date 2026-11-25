@@ -47,6 +47,11 @@ import { MitarbeiterOverviewPrint, TimeReportPrint } from "./docs/EmployeePrints
 import { StudioBudgetPrint } from "./docs/StudioBudgetPrint";
 import { buildQrBillData } from "./docs/qrBillData";
 
+/** Gibt es einen echten Zahlteil (nicht nur einen Hinweis)? Fehler in den Daten → nein, der Druck bleibt offen. */
+function qrBillOk(...args: Parameters<typeof buildQrBillData>): boolean {
+  try { return buildQrBillData(args[0], args[1], args[2] || {}).ok; } catch { return false; }
+}
+
 /** Briefpapier-Ebenen hinter dem Inhalt: erste Seite oben, Folgeseiten als Raster ab 297 mm (Höhe setzt der Paginator). */
 function LetterheadLayers({ design, followRef }: { design: ResolvedDocDesign; followRef?: React.Ref<HTMLDivElement> }) {
   const layer: React.CSSProperties = { position: "absolute", left: 0, width: "210mm", zIndex: 0, pointerEvents: "none" };
@@ -307,7 +312,7 @@ export function PrintView({ content, onClose, settings, assets }: { content: Con
               <InvoicePrint inv={content.inv} client={content.client} settings={settings} />
               {/* eigene Seite nur für einen echten Zahlteil — ein Hinweis (Gutschrift, Betrag 0, keine IBAN) bekäme
                   sonst eine Seite mit einem einzigen Satz */}
-              <div className={`qr-bill-wrapper${settings?.qrNewPage !== false && buildQrBillData(content.inv, content.client, settings || {}).ok ? " qr-bill-newpage" : ""}`}>
+              <div className={`qr-bill-wrapper${settings?.qrNewPage !== false && qrBillOk(content.inv, content.client, settings) ? " qr-bill-newpage" : ""}`}>
                 <QRBillPrint inv={content.inv} client={content.client} settings={settings} />
               </div>
             </>
