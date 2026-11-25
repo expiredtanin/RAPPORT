@@ -197,6 +197,7 @@ export function useStudioData(currentUser: CurrentUser | null) {
         if (e instanceof RejectedSaveError && e.keys.length && cloudStorage.loadPartial) {
           cloudStorage.loadPartial(e.keys).then(partial => {
             if (!partial) return;
+            saveErrorRef.current = null;   // abgelehnte Änderung zurückgesetzt: nichts mehr ungespeichert (Banner bleibt sichtbar)
             const cur = dataRef.current;
             const next = migrate({ ...cur, ...(partial as RawData) });
             const synced = { ...syncedRef.current } as Record<string, unknown>;

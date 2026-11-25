@@ -248,9 +248,17 @@ export default function App() {
     setLoggingOut("busy");
     void (async () => {
       await new Promise(r => setTimeout(r, 0));
-      await flushStorage().catch(() => {});
+      // höchstens 20 s warten (eine hängende Verbindung blockierte sonst «Wird abgemeldet …» ohne Ausweg)
+      const flushed = (ms: number) => Promise.race([flushStorage().then(() => true, () => true), new Promise<boolean>(r => setTimeout(() => r(false), ms))]);
+      let done = await flushed(20000);
       await new Promise(r => setTimeout(r, 0));   // Speicher-Callbacks (Fehler setzen) zuerst laufen lassen
-      const err = lastSaveError();
+      // Fehler von früher (z.B. offline, inzwischen wieder online): einmal neu speichern, dann erst urteilen
+      if (done && lastSaveError()) {
+        save(prev => ({ ...prev }));
+        done = await flushed(20000);
+        await new Promise(r => setTimeout(r, 0));
+      }
+      const err = done ? lastSaveError() : "Das Speichern dauert zu lange (keine Antwort vom Server).";
       if (err) { setLogoutError(err); setLoggingOut("failed"); return; }
       await finishLogout();
     })();

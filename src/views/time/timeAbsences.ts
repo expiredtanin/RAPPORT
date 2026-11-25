@@ -22,8 +22,8 @@ interface AbsenceArgs {
 /** Absenz-Typen, Absenzen des Tages, Tages-Differenz und die Aktionen addAbs / updateAbs / delAbs. */
 export function buildAbsenceState({ data, update, currentDate, selectedEmpId, selectedEmp, employees, daySoll, dayTotalMins, lockApproved = false }: AbsenceArgs) {
   const lockedMsg = (a: Absence | undefined) => {
-    if (!lockApproved || a?.status !== "approved") return false;
-    showToast("Genehmigte Absenzen ändert, wer sie genehmigt hat (Admin oder Personal).");
+    if (!lockApproved || !a || a.status === "pending") return false;
+    showToast("Eigene genehmigte oder abgelehnte Absenzen ändert nur ein Admin.");
     return true;
   };
   // Intern / Absenz — inline editing
