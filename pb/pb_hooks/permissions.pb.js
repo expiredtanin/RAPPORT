@@ -261,6 +261,17 @@ onRecordUpdateRequest((e) => {
         allowed = false;
       }
     }
+    // Büro-Einstellungen mit «projects»/«quotes» ohne «settings»: nur der Projektnummern-Zähler — welche Felder,
+    // prüft memberperms.pb.js (Migration 1787960000_project_counter_rule.js)
+    if (!allowed && authId && studioId && e.collection.name === "studioSettings") {
+      try {
+        const member = e.app.findFirstRecordByFilter("studioMembers", "studio = {:sid} && user = {:uid} && active = true", { sid: studioId, uid: authId });
+        const p = member.getString("perms");
+        allowed = p.indexOf("|projects|") >= 0 || p.indexOf("|quotes|") >= 0;
+      } catch {
+        allowed = false;
+      }
+    }
     // Eigene Datensätze ohne Recht (pb_migrations/1787880000_own_records.js): Besitz hier, Status prüfen die Regeln
     if (!allowed && authId && ["vacationEntries", "absences", "expenses", "employees"].indexOf(e.collection.name)   /* employees: nur Adresse, integrity.pb.js */ >= 0) {
       allowed = [e.record].every((r) => {

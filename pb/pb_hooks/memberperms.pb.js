@@ -108,11 +108,13 @@ onRecordUpdateRequest((e) => {
       const ok = ny <= maxYear && ns >= 0 && ns < 100000 && (ny > oy || (ny === oy && ns >= os));
       if (!ok) { e.record.set("lastProjectYear", old.get("lastProjectYear")); e.record.set("lastProjectSeq", old.get("lastProjectSeq")); }
     }
+    // ohne «settings» (Zugang nur über «projects»/«quotes», Migration 1787960000) ausschliesslich der Zähler
+    const settingsRight = has("settings");
     const changed = [];
     for (const f of e.record.collection().fields) {
       const n = f.name;
       if (n === "ui" || n === "updated") continue;
-      if (OPEN_FIELDS[n] && has(OPEN_FIELDS[n])) continue;
+      if (settingsRight && OPEN_FIELDS[n] && has(OPEN_FIELDS[n])) continue;
       if (counterOk && (n === "lastProjectSeq" || n === "lastProjectYear")) continue;
       if (JSON.stringify(e.record.get(n)) !== JSON.stringify(old.get(n))) changed.push(n);
     }
@@ -123,7 +125,7 @@ onRecordUpdateRequest((e) => {
     for (const k of Object.keys(uiNew)) keys[k] = 1;
     for (const k of Object.keys(uiOld)) keys[k] = 1;
     for (const k of Object.keys(keys)) {
-      if (OPEN_UI[k] && has(OPEN_UI[k])) continue;
+      if (settingsRight && OPEN_UI[k] && has(OPEN_UI[k])) continue;
       if (JSON.stringify(uiNew[k]) !== JSON.stringify(uiOld[k])) changed.push("ui." + k);
     }
     if (changed.length) throw new ForbiddenError("Diese Büro-Einstellungen kann nur ein Admin ändern (" + changed.slice(0, 5).join(", ") + ").");

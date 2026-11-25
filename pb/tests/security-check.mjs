@@ -122,6 +122,15 @@ check("A: eigenen Entwurf lesbar", r.status === 200, `HTTP ${r.status}`);
   await api("PATCH", `/api/collections/studioSettings/records/${st0.id}`, tM, { lastProjectYear: 99999, lastProjectSeq: 999999 });
   const after = (await api("GET", `/api/collections/studioSettings/records/${st0.id}`, tA)).json;
   check("M: Projektzähler nicht zurücksetzen/vergiften (still verworfen)", after.lastProjectSeq === before.lastProjectSeq && after.lastProjectYear === before.lastProjectYear, `${before.lastProjectYear}/${before.lastProjectSeq} → ${after.lastProjectYear}/${after.lastProjectSeq}`);
+  // Rolle mit «projects», ohne «settings» (Migration 1787960000): nur der Zähler, sonst nichts
+  const roleM0 = (await api("GET", `/api/collections/appRoles/records?filter=${enc(`studio="${sid}" && roleId="r-mitarbeiter"`)}`, tA)).json.items[0];
+  must(await api("PATCH", `/api/collections/appRoles/records/${roleM0.id}`, tA, { permissions: ["dashboard", "projects", "time", "mitarbeiter"] }), "Rolle ohne settings");
+  const st1 = (await api("GET", `/api/collections/studioSettings/records/${st0.id}`, tA)).json;
+  r = await api("PATCH", `/api/collections/studioSettings/records/${st0.id}`, tM, { lastProjectSeq: (st1.lastProjectSeq || 0) + 1, lastProjectYear: st1.lastProjectYear || 2026 });
+  check("M (projects ohne settings): Projektzähler hochzählen", r.status === 200, `HTTP ${r.status} ${r.status !== 200 ? JSON.stringify(r.json) : ""}`);
+  r = await api("PATCH", `/api/collections/studioSettings/records/${st0.id}`, tM, { ui: { ...(st1.ui || {}), closedMonths: ["2026-01"] } });
+  check("M (projects ohne settings): sonst keine Einstellungen", r.status >= 400, `HTTP ${r.status}`);
+  must(await api("PATCH", `/api/collections/appRoles/records/${roleM0.id}`, tA, { permissions: roleM0.permissions }), "Rolle zurück");
 }
 
 const o4 = await orc(`payrollEntries_via_studio.monat = "2026-11"`);
