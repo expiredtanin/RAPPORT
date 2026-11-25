@@ -605,9 +605,12 @@ function buildMappedValues(
   rawRow: Row,
   data: AppData,
   opts: { appendRest?: boolean; restField?: string; headers?: string[]; postProcess?: (values: ImportRecord) => void } = {},
-): { values: ImportRecord; missingRequired: string[] } {
+): { values: ImportRecord; missingRequired: string[]; invalid: string[] } {
   const values: ImportRecord = {};
   const missingRequired: string[] = [];
+  // Werte, die da sind, aber nicht gelesen werden können (Datum «32.13.2026», Zahl «abc», negative Stunden):
+  // die Zeile wird wie bei einem fehlenden Pflichtwert ausgelassen — vorher wurde daraus still 0 bzw. «kein Datum»
+  const invalid: string[] = [];
   for (const f of fields) {
     const idx = colMap[f.key];
     const raw = (idx === undefined || idx === "" || idx == null) ? "" : String(rawRow[idx] ?? "").trim();
@@ -628,9 +631,13 @@ function buildMappedValues(
       values[f.key] = /^(ja|yes|true|1|x)$/i.test(raw);
     } else if (f.numeric) {
       const n = parseNumber(raw);
-      values[f.key] = isNaN(n) ? 0 : n;
+      if (isNaN(n) || Math.abs(n) > 1e9 || (n < 0 && NON_NEGATIVE.has(f.key))) { invalid.push(f.label); continue; }
+      // Geldbeträge auf Rappen (12.345 blieb sonst ungerundet in Spesen/Positionen)
+      values[f.key] = MONEY.has(f.key) ? Math.round(n * 100) / 100 : n;
     } else if (f.date) {
-      values[f.key] = parseFlexibleDate(raw);
+      const d = parseFlexibleDate(raw);
+      if (!d) { invalid.push(f.label); continue; }
+      values[f.key] = d;
     } else {
       values[f.key] = raw;
     }
@@ -660,8 +667,13 @@ function buildMappedValues(
 
   if (opts.postProcess) opts.postProcess(values);
 
-  return { values, missingRequired };
+  return { values, missingRequired, invalid };
 }
+
+/** Felder, die nicht negativ sein dürfen (Stunden, Pensum, Sätze, Lohn). */
+const NON_NEGATIVE = new Set(["hourlyRate", "budget", "pensum", "wochenstunden", "ferienWochen", "monatslohn", "ahvSatz", "alvSatz", "bvgSatz", "pkAGSatz", "nbuSatz", "ktgSatz", "quellensteuerSatz", "hoursDecimal", "minutesRaw", "mwstRate"]);
+/** Geldbeträge: auf Rappen runden. */
+const MONEY = new Set(["amount", "budget", "monatslohn", "hourlyRate", "price", "total"]);
 
 function fkDisplayValue(field: ImportField, row: { values: ImportRecord }, data: AppData): string {
   const target = FK_TARGETS[field.fk as string];
@@ -709,7 +721,11 @@ export default function DataImport({ data, saveAll, setView }: Pick<ViewProps, "
       setFileName(file.name);
       setStep("mapping");
     } catch (err) {
-      setError("Datei konnte nicht gelesen werden: " + ((err as Error)?.message || String(err)));
+      // Bibliotheksmeldungen (ExcelJS/JSZip, englisch) in Klartext
+      const msg = (err as Error)?.message || String(err);
+      setError(/zip|central directory|corrupt|end of data|invalid signature/i.test(msg)
+        ? "Datei konnte nicht gelesen werden: keine gültige Excel-Datei (.xlsx) — beschädigt oder altes .xls-Format? In Excel als .xlsx oder CSV speichern."
+        : "Datei konnte nicht gelesen werden: " + msg);
     }
   };
 
@@ -741,18 +757,19 @@ export default function DataImport({ data, saveAll, setView }: Pick<ViewProps, "
     const seenBatch = new Set();
     const opts = { appendRest: appendRestToNote, restField: cfg.restField, headers, postProcess: cfg.postProcess };
     return dataRows.map(raw => {
-      const { values, missingRequired } = buildMappedValues(cfg.fields, colMap, valueMaps, raw, data, opts);
+      const { values, missingRequired, invalid } = buildMappedValues(cfg.fields, colMap, valueMaps, raw, data, opts);
       const previewRecord = cfg.buildRecord(values);
       const key = cfg.dedupKey(previewRecord);
       const dupExisting = !!key && existingKeys.has(key);
       const dupBatch = !!key && seenBatch.has(key);
       if (key) seenBatch.add(key);
-      return { values, missingRequired, dupExisting, dupBatch };
+      return { values, missingRequired, invalid, dupExisting, dupBatch };
     });
   }, [cfg, dataRows, colMap, valueMaps, data, appendRestToNote, headers]);
 
-  const effectiveSkip = (row: { missingRequired: string[]; dupExisting: boolean; dupBatch: boolean }, i: number) =>
-    rowSkips[i] !== undefined ? rowSkips[i] : (row.missingRequired.length > 0 || row.dupExisting || row.dupBatch);
+  const effectiveSkip = (row: { missingRequired: string[]; invalid: string[]; dupExisting: boolean; dupBatch: boolean }, i: number) =>
+    row.missingRequired.length > 0 || row.invalid.length > 0 ? true
+      : rowSkips[i] !== undefined ? rowSkips[i] : (row.dupExisting || row.dupBatch);
 
   const requiredMapped = cfg
     ? cfg.fields.filter(f => f.required).every(f => colMap[f.key] !== undefined && colMap[f.key] !== "")
@@ -933,7 +950,7 @@ export default function DataImport({ data, saveAll, setView }: Pick<ViewProps, "
               <tbody>
                 {mappedRows.slice(0, 50).map((row, i) => {
                   const skip = effectiveSkip(row, i);
-                  const forced = row.missingRequired.length > 0;
+                  const forced = row.missingRequired.length > 0 || row.invalid.length > 0;
                   return (
                     <tr key={i}>
                       <td>
@@ -950,7 +967,8 @@ export default function DataImport({ data, saveAll, setView }: Pick<ViewProps, "
                         </td>
                       ))}
                       <td style={{ fontSize: 11 }}>
-                        {forced ? <span style={{ color: "var(--negative)" }}>fehlender Pflichtwert</span>
+                        {row.invalid.length > 0 ? <span style={{ color: "var(--negative)" }}>ungültig: {row.invalid.join(", ")}</span>
+                          : forced ? <span style={{ color: "var(--negative)" }}>fehlender Pflichtwert</span>
                           : row.dupExisting ? <span style={{ color: "var(--warning)" }}>bereits vorhanden</span>
                           : row.dupBatch ? <span style={{ color: "var(--warning)" }}>Duplikat in Datei</span>
                           : <span style={{ color: "var(--positive)" }}>neu</span>}

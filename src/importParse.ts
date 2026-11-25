@@ -43,7 +43,7 @@ export function parseCSV(input: string): Row[] {
   const text = input.charCodeAt(0) === 0xfeff ? input.slice(1) : input;
   const delimiter = detectDelimiter(text);
   const rows: Row[] = [];
-  let row: string[] = [], field = "", inQuotes = false;
+  let row: string[] = [], field = "", inQuotes = false, quoteRow = 0;
   for (let i = 0; i < text.length; i++) {
     const c = text[i];
     if (inQuotes) {
@@ -52,6 +52,7 @@ export function parseCSV(input: string): Row[] {
       } else field += c;
     } else if (c === '"') {
       inQuotes = true;
+      quoteRow = rows.length + 1;
     } else if (c === delimiter) {
       row.push(field); field = "";
     } else if (c === "\n" || c === "\r") {
@@ -62,6 +63,8 @@ export function parseCSV(input: string): Row[] {
       field += c;
     }
   }
+  // Offenes Anführungszeichen am Dateiende: sonst verschwand der ganze Rest der Datei in einer Zelle
+  if (inQuotes) throw new Error(`Anführungszeichen in Zeile ${quoteRow} wird nicht geschlossen — bitte die Datei prüfen.`);
   if (field !== "" || row.length > 0) { row.push(field); rows.push(row); }
   return rows.filter(r => r.some(c => c.trim() !== ""));
 }
@@ -74,6 +77,8 @@ export function parseCSV(input: string): Row[] {
 export function parseNumber(raw: string): number {
   let s = String(raw ?? "").trim();
   if (!/\d/.test(s)) return NaN;
+  // Exponentialschreibweise aus Excel/CSV («1e3», «1.5E-2»): vorher wurde daraus 13
+  if (/^[-+]?\d+(\.\d+)?[eE][-+]?\d+$/.test(s)) return Number(s);
   const negative = /^\(.*\)$/.test(s) || /^[^\d]*[-−–]/.test(s) || /\d\s*[-−]$/.test(s);
   s = s.replace(/[.,][-–—]$/, "");          // «1234.–»
   s = s.replace(/[^\d.,]/g, "");             // Währung, Apostrophe, Leerzeichen, Vorzeichen

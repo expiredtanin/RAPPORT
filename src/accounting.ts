@@ -329,7 +329,7 @@ export function accountingSummary(data: SummaryData, period: string, today = tod
 }
 
 /**
- * CSV-Text des Buchhaltungs-Exports (`;`-getrennt, ohne BOM): Einnahmen, Spesen, interne Ausgaben,
+ * CSV-Text des Buchhaltungs-Exports (`;`-getrennt; das BOM für Excel hängt `exportBuchhaltungCSV` an): Einnahmen, Spesen, interne Ausgaben,
  * Löhne und Zusammenfassung. Summenzeilen gehen auf die sichtbaren Zeilen auf; die Zusammenfassung
  * entspricht `accountingSummary` (gleiche Zahlen wie Ansicht und PDF).
  * @param period `inPeriod`-Periode; leer = alle

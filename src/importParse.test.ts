@@ -32,6 +32,8 @@ describe("parseCSV", () => {
 describe("parseNumber", () => {
   it("Schweizer, deutsche und englische Schreibweisen", () => {
     expect(parseNumber("1'234.50")).toBe(1234.5);
+    expect(parseNumber("1e3")).toBe(1000);
+    expect(parseNumber("1.5E-2")).toBe(0.015);
     expect(parseNumber("1’234.50")).toBe(1234.5);
     expect(parseNumber("1.234,50")).toBe(1234.5);
     expect(parseNumber("1,234.50")).toBe(1234.5);
@@ -77,5 +79,11 @@ describe("excelCellText", () => {
     expect(excelCellText(new Date(Date.UTC(1899, 11, 30, 8, 15)))).toBe("08:15");
     expect(excelCellText({ error: "#DIV/0!" })).toBe("");
     expect(excelCellText(null)).toBe("");
+  });
+});
+
+describe("parseCSV: offenes Anführungszeichen", () => {
+  it("meldet die Zeile statt den Rest der Datei zu verschlucken", () => {
+    expect(() => parseCSV('Name;Strasse\n"Offen AG;Str\nNaechste;x\n')).toThrow(/Zeile 2/);
   });
 });

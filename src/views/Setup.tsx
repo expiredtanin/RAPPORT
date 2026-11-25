@@ -15,6 +15,7 @@ import { defaultData } from "../constants";
 import { generateId, hashPassword, localISODate } from "../utils";
 import type { AppData, Employee } from "../types";
 import { checkBackup } from "../storage/validate";
+import { applyMigrations } from "../storage/migrations";
 
 // ─── Palette — matches the app's light theme exactly ─────────────────────────
 const C = {
@@ -195,7 +196,7 @@ export default function Setup({ onComplete }: { onComplete: (data: AppData) => v
     reader.onload = (ev) => {
       try {
         const parsed = JSON.parse(ev.target?.result as string);
-        if (!parsed.settings || !Array.isArray(parsed.projects)) {
+        if (!parsed || typeof parsed !== "object" || !parsed.settings || !Array.isArray(parsed.projects)) {
           setImportErr("Ungültiges Backup-Format.");
           return;
         }
@@ -203,12 +204,14 @@ export default function Setup({ onComplete }: { onComplete: (data: AppData) => v
         // Standardkonto «admin»/«admin» aus defaultData (Audit 24.11.2026)
         const problem = checkBackup(parsed, true);
         if (problem) { setImportErr(problem); return; }
+        // Formprüfung wie beim Einspielen in den Einstellungen (vorher gingen Rohdaten direkt in den Speicher;
+        // «Heute» stürzte z.B. bei Zeiteinträgen als Objekt oder null-Einträgen ab)
+        const migrated = applyMigrations(parsed, defaultData);
         onComplete({
-          ...defaultData,
-          ...parsed,
-          settings: { ...defaultData.settings, ...parsed.settings, setupCompleted: true },
-          appRoles: parsed.appRoles || defaultData.appRoles,
-          users: parsed.users,
+          ...migrated,
+          settings: { ...migrated.settings, setupCompleted: true },
+          appRoles: parsed.appRoles ? migrated.appRoles : defaultData.appRoles,
+          users: migrated.users,
         });
       } catch {
         setImportErr("Datei konnte nicht gelesen werden.");

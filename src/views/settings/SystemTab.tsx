@@ -123,14 +123,22 @@ export function SystemTab({ s, setField, data, setView, isAdmin, currentUser }: 
       const problem = checkBackup(imported, !isCloudBackend);
       if (problem) { showToast(problem, { timeout: 10000 }); return; }
       // Cloud: nicht über save() überschreiben, sondern wie ein Umzug (Leer-Prüfung, Fortschritt, Prüfung)
+      // Formprüfung mit Liste der Reparaturen: vorher verschwanden z.B. alle Zeiteinträge (als Objekt statt Liste)
+      // still beim Einspielen (Robustheitstest 25.11.2026)
+      const problems: string[] = [];
+      const migrated = applyMigrations(imported as Parameters<typeof applyMigrations>[0], defaultData, p => problems.push(...p));
+      const problemText = problems.length
+        ? <> Die Datei ist nicht ganz in Ordnung — beim Einspielen wird repariert bzw. weggelassen:<ul style={{ margin: "8px 0 0", paddingLeft: 18, fontSize: 12 }}>{problems.slice(0, 8).map(p => <li key={p}>{p}</li>)}{problems.length > 8 && <li>… und {problems.length - 8} weitere</li>}</ul></>
+        : null;
       if (isCloudBackend) {
-        setMigration({ mode: "backup", data: applyMigrations(imported as Parameters<typeof applyMigrations>[0], defaultData) });
+        if (problems.length && !await askConfirm(<>Backup trotzdem übernehmen?{problemText}</>, "Weiter")) return;
+        setMigration({ mode: "backup", data: migrated });
         return;
       }
-      if (!await askConfirm("Aktuelle Daten wirklich überschreiben?", "Überschreiben")) return;
+      if (!await askConfirm(<>Aktuelle Daten wirklich überschreiben?{problemText}</>, "Überschreiben")) return;
       try {
         // In aktuelle Form bringen, bevor der Adapter es zerlegt (Datenordner erwartet z.B. Listen)
-        await storage.save(applyMigrations(imported as Parameters<typeof applyMigrations>[0], defaultData));
+        await storage.save(migrated);
         window.location.reload();
       } catch (err) {
         showToast(`Backup konnte nicht gespeichert werden: ${(err as Error).message || err}`, { timeout: 10000 });
