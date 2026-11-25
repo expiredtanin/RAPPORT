@@ -1,6 +1,6 @@
-// Tests für die Zerlegung von Freitext im Druck (PrintText.tsx, `printLines`).
+// Tests für die Zerlegung von Freitext im Druck (printLines.ts).
 import { describe, expect, it } from "vitest";
-import { printLines } from "./PrintText";
+import { printLines } from "./printLines";
 
 describe("printLines", () => {
   it("Zeilen bleiben Zeilen (auch CRLF), Leerzeilen bleiben", () => {

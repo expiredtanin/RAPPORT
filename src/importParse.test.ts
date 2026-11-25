@@ -87,3 +87,10 @@ describe("parseCSV: offenes Anführungszeichen", () => {
     expect(() => parseCSV('Name;Strasse\n"Offen AG;Str\nNaechste;x\n')).toThrow(/Zeile 2/);
   });
 });
+
+describe("parseNumber: Stunden als H:MM", () => {
+  it("«7:30» ist 7.5 (nicht 730)", () => {
+    expect(parseNumber("7:30")).toBe(7.5);
+    expect(parseNumber("12:45")).toBe(12.75);
+  });
+});

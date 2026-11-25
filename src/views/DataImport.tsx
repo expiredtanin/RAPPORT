@@ -69,7 +69,8 @@ interface EntityConfig {
   restField?: string;
   restFieldLabel?: string;
   uploadHint?: string;
-  postProcess?: (values: ImportRecord) => void;
+  /** Abgeleitete Felder setzen; zurückgegebene Feldnamen gelten als ungültig (Zeile wird übersprungen). */
+  postProcess?: (values: ImportRecord) => string[] | void;
   buildRecord: (values: ImportRecord, settings?: AppData["settings"]) => ImportRecord;
   dedupKey: (record: ImportRecord) => string;
   dedupAgainst: (data: AppData) => { key: string }[];
@@ -93,10 +94,17 @@ function wordTokens(s: unknown): string[] {
 
 // "08:00", "8:00:00" -> Minuten seit Mitternacht. Für die Dauer-Berechnung
 // bei Zeiterfassungs-Import aus Von/Bis-Spalten.
+/** Von/Bis vertauscht → tauschen (sonst ein Eintrag mit umgekehrtem Zeitraum, der 0 Tage zählt). */
+function swapRange(values: ImportRecord): void {
+  if (values.dateFrom && values.dateTo && values.dateTo < values.dateFrom) [values.dateFrom, values.dateTo] = [values.dateTo, values.dateFrom];
+}
+
 function parseTimeToMinutesOfDay(raw: unknown): number | null {
-  const m = String(raw || "").trim().match(/^(\d{1,2}):(\d{2})/);
+  // «8:00», «08.30», «8» (volle Stunde); vorher nur «HH:MM» — «8.00» ergab still 0 Minuten
+  const m = String(raw || "").trim().match(/^(\d{1,2})(?:[:.](\d{2}))?(?::\d{2})?$/);
   if (!m) return null;
-  return parseInt(m[1], 10) * 60 + parseInt(m[2], 10);
+  const h = parseInt(m[1], 10), min = m[2] ? parseInt(m[2], 10) : 0;
+  return h <= 24 && min < 60 ? h * 60 + min : null;
 }
 
 /** Liest die erste Tabelle einer .csv- oder .xlsx-Datei als Zeilen von Texten. */
@@ -406,8 +414,11 @@ const ENTITY_CONFIGS: Record<string, EntityConfig> = {
       } else if (values.startTime && values.endTime) {
         const a = parseTimeToMinutesOfDay(values.startTime);
         const b = parseTimeToMinutesOfDay(values.endTime);
-        if (a != null && b != null) values.minutes = Math.max(0, b - a);
+        // über Mitternacht (22:00–02:00): Ende am Folgetag
+        if (a != null && b != null) values.minutes = b > a ? b - a : b + 1440 - a;
       }
+      // ohne verwertbare Dauer keinen 0-Minuten-Eintrag anlegen (leer, «0», unlesbare Zeiten)
+      if (!(Number(values.minutes) > 0) || Number(values.minutes) > 1440) return ["Dauer"];
     },
     dedupKey: (rec) => [rec.employeeId || "", rec.projectId || "", rec.date || "", rec.minutes || 0].join("::"),
     dedupAgainst: (data) => (data.timeEntries || []).map(t => ({
@@ -422,6 +433,7 @@ const ENTITY_CONFIGS: Record<string, EntityConfig> = {
     restField: "note",
     restFieldLabel: "Notiz",
     uploadHint: "Importierte Ferien werden direkt als genehmigt markiert (kein Antrags-Workflow).",
+    postProcess: swapRange,
     buildRecord: (m) => ({
       id: generateId(), employeeId: "", dateFrom: "", dateTo: "", note: "", status: "approved", originalData: null, ...m,
     }),
@@ -437,8 +449,11 @@ const ENTITY_CONFIGS: Record<string, EntityConfig> = {
     fields: ABSENCE_FIELDS,
     restField: "note",
     restFieldLabel: "Notiz",
+    // wie Ferien: Altbestand gilt als genehmigt — «pending» zählte nicht zum Saldo und musste einzeln genehmigt werden
+    uploadHint: "Importierte Absenzen werden direkt als genehmigt markiert (kein Antrags-Workflow).",
+    postProcess: swapRange,
     buildRecord: (m) => ({
-      id: generateId(), employeeId: "", type: "", dateFrom: "", dateTo: "", note: "", status: "pending", ...m,
+      id: generateId(), employeeId: "", type: "", dateFrom: "", dateTo: "", note: "", status: "approved", ...m,
     }),
     dedupKey: (rec) => [rec.employeeId || "", rec.type || "", rec.dateFrom || "", rec.dateTo || ""].join("::"),
     dedupAgainst: (data) => (data.absences || []).map(a => ({
@@ -606,7 +621,7 @@ function buildMappedValues(
   valueMaps: Record<string, Record<string, string>>,
   rawRow: Row,
   data: AppData,
-  opts: { appendRest?: boolean; restField?: string; headers?: string[]; postProcess?: (values: ImportRecord) => void } = {},
+  opts: { appendRest?: boolean; restField?: string; headers?: string[]; postProcess?: (values: ImportRecord) => string[] | void } = {},
 ): { values: ImportRecord; missingRequired: string[]; invalid: string[] } {
   const values: ImportRecord = {};
   const missingRequired: string[] = [];
@@ -630,7 +645,7 @@ function buildMappedValues(
         values[f.key] = sel;
       }
     } else if (f.boolLike) {
-      values[f.key] = /^(ja|yes|true|1|x)$/i.test(raw);
+      values[f.key] = /^(ja|yes|true|wahr|1|x|✓|oui|vrai|si|sì)$/i.test(raw);   // «WAHR» aus deutschem Excel
     } else if (f.numeric) {
       const n = parseNumber(raw);
       if (isNaN(n) || Math.abs(n) > 1e9 || (n < 0 && NON_NEGATIVE.has(f.key))) { invalid.push(f.label); continue; }
@@ -667,7 +682,7 @@ function buildMappedValues(
     }
   }
 
-  if (opts.postProcess) opts.postProcess(values);
+  if (opts.postProcess) invalid.push(...(opts.postProcess(values) || []));
 
   return { values, missingRequired, invalid };
 }
@@ -807,6 +822,13 @@ export default function DataImport({ data, saveAll, setView }: Pick<ViewProps, "
       finalRecords.push(cfg!.buildRecord(values, data.settings));
     });
 
+    // Neu angelegte Mitarbeitende (unbekannter Name in der Datei): als ehemalig/inaktiv mit Ein- und Austritt aus dem
+    // Zeitraum ihrer importierten Einträge — vorher ohne Eintritt mit vollem Soll seit jeher (stark negativer Saldo)
+    for (const stub of newStubsByCollection.employees?.values() || []) {
+      const dates = finalRecords.filter(r => Object.values(r).includes(stub.id))
+        .flatMap(r => [r.date, r.dateFrom, r.dateTo]).filter((d): d is string => typeof d === "string" && /^\d{4}-\d{2}-\d{2}$/.test(d)).sort();
+      if (dates.length) Object.assign(stub, { eintrittsdatum: dates[0], austrittsdatum: dates[dates.length - 1], active: false });
+    }
     const patch: Record<string, unknown[]> = { [cfg!.targetKey]: [...((data[cfg!.targetKey] as unknown[]) || []), ...finalRecords] };
     for (const [dataKey, map] of Object.entries(newStubsByCollection)) {
       patch[dataKey] = [...((data[dataKey as keyof AppData] as unknown[]) || []), ...Array.from(map.values())];

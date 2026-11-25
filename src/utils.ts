@@ -698,8 +698,10 @@ export function formatReference(ref?: string | null): string {
 
 /** Minuten als «2h 30m» (bzw. «2h», wenn volle Stunden). */
 export function formatHours(minutes?: number | null): string {
-  const h = Math.floor((minutes || 0) / 60);
-  const m = (minutes || 0) % 60;
+  // auf ganze Minuten runden (Soll aus Pensum × Wochenstunden ergab «151h 12.000000000001819m»)
+  const total = Math.round(minutes || 0);
+  const h = Math.floor(total / 60);
+  const m = total % 60;
   return `${h}h${m > 0 ? " " + m + "m" : ""}`;
 }
 
