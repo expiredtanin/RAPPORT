@@ -107,7 +107,17 @@ onRecordUpdateRequest((e) => {
     let rOd = null, oOd = null;
     try { rOd = JSON.parse(od || "null"); } catch { rOd = null; }
     try { oOd = JSON.parse(o.getString("originalData") || "null"); } catch { oOd = null; }
+    // eigene Ferien/Absenzen nicht einer anderen Person zuordnen und fremde nicht sich selbst (sonst galten die
+    // Prüfungen für eigene Anträge nicht: über einen Wechsel des Mitarbeiters liess sich ein Antrag selbst
+    // genehmigen; Review 25.11.2026)
+    if ((name === "vacationEntries" || name === "absences") && JSON.stringify(r.get("employee")) !== JSON.stringify(o.get("employee"))) {
+      throw new ForbiddenError("Ferien und Absenzen lassen sich nicht einer anderen Person zuordnen.");
+    }
     if (name === "vacationEntries") {
+      // originalData entsteht nur beim Wechsel aus «approved» und bleibt danach unverändert (nicht aus «rejected»)
+      if (changeRequest && !(o.getString("status") === "approved" || (o.getString("status") === "pending" && JSON.stringify(rOd) === JSON.stringify(oOd)))) {
+        throw new ForbiddenError("Ein Änderungsantrag entsteht nur aus genehmigten Ferien.");
+      }
       // originalData ist der Stand, der genehmigt war — vom Server geprüft, nicht vom Client frei wählbar (Review
       // 25.11.2026: sonst liessen sich über «verwerfen» selbst gewählte Ferien genehmigen)
       if (o.getString("status") === "approved" && r.getString("status") === "pending"

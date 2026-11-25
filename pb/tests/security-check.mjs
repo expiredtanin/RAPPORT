@@ -255,6 +255,18 @@ r = await api("POST", "/api/collections/vacationEntries/records", tP, { id: rid(
 check("P: eigene Ferien nicht selbst genehmigen", r.status >= 400, `HTTP ${r.status}`);
 r = await api("POST", "/api/collections/vacationEntries/records", tP, { id: rid("vp2"), studio: sid, employee: empOther, dateFrom: "2026-12-21", dateTo: "2026-12-24", status: "approved" });
 check("P: Ferien anderer genehmigen (Recht Personal)", r.status === 200, `HTTP ${r.status}`);
+// Projektleiter (Recht «mitarbeiter»): Antrag für eine Kollegin mit originalData anlegen, dann sich selbst
+// zuordnen und «verwerfen» (= selbst genehmigen) — Review 25.11.2026
+const vacP = rid("vacp");
+r = await api("POST", "/api/collections/vacationEntries/records", tP, { id: vacP, studio: sid, employee: empOther, dateFrom: "2027-02-01", dateTo: "2027-02-05", status: "pending", originalData: { dateFrom: "2027-02-01", dateTo: "2027-02-05" } });
+r = await api("PATCH", `/api/collections/vacationEntries/records/${vacP}`, tP, { employee: empP, status: "approved", originalData: null });
+check("P: fremden Antrag nicht sich selbst zuordnen und genehmigen", r.status >= 400, `HTTP ${r.status}`);
+r = await api("PATCH", `/api/collections/vacationEntries/records/${vacP}`, tP, { employee: empP });
+check("P: Ferien nicht einer anderen Person zuordnen", r.status >= 400, `HTTP ${r.status}`);
+const vacR = rid("vacr");
+r = await api("POST", "/api/collections/vacationEntries/records", tA, { id: vacR, studio: sid, employee: empP, dateFrom: "2027-03-01", dateTo: "2027-03-05", status: "rejected" });
+r = await api("PATCH", `/api/collections/vacationEntries/records/${vacR}`, tP, { status: "pending", originalData: { dateFrom: "2027-03-01", dateTo: "2027-03-05" } });
+check("P: abgelehnte eigene Ferien nicht zum «Änderungsantrag» machen", r.status >= 400, `HTTP ${r.status}`);
 r = await api("PATCH", `/api/collections/employees/records/${empP}`, tP, { monatslohn: 25000 });
 check("P: eigenen Lohn nicht ändern", r.status >= 400, `HTTP ${r.status}`);
 r = await api("PATCH", `/api/collections/employees/records/${empOther}`, tP, { monatslohn: 1 });
