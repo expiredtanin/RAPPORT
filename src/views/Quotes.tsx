@@ -21,7 +21,8 @@
 //     fangen das ab und öffnen ihr Formular vorbefüllt.
 // Nummern: «O<Jahr>-NNN» (laufend pro Jahr, kein konfigurierbares Format).
 
-import React, { useState, useEffect } from "react";
+import { applyEdit, jsonEqual } from "../storage/merge";
+import React, { useState, useEffect, useRef } from "react";
 import { SIA_PHASES, SIA_PHASE_WEIGHTS } from "../constants";
 import { calcSIAHours, calcManualHours, generateId, formatCHF, formatDate, formatHours, roundCHF, lineAmount, applyProjectNumberFormat, nextProjectSeq, migrateLinkedQuotes, localISODate, invoiceNet, quoteBudgetFields } from "../utils";
 import { invoicesForQuote } from "./invoices/invoiceHelpers";
@@ -104,6 +105,7 @@ function Quotes({ data, update, saveAll, modal, setModal, setPrintContent, setVi
   // eslint-disable-next-line react-hooks/exhaustive-deps -- nur beim Öffnen der Ansicht
   }, []);
   const openEdit = (q: Quote) => {
+    editOriginal.current = q;
     setForm({ ...emptyForm, ...q, manualPhases: q.manualPhases || emptyManualPhases(), quoteRoles: q.quoteRoles || defaultQuoteRoles(), sia: q.sia || emptyForm.sia, freeItems: q.freeItems || [{ id: generateId(), desc: "", qty: 1, price: 0 }] });
     setModal({ type: "quote", id: q.id });
   };
@@ -203,6 +205,7 @@ function Quotes({ data, update, saveAll, modal, setModal, setPrintContent, setVi
   const tax = form.mwst ? roundCHF(subTotal * (taxRate / 100)) : 0;
   const total = roundCHF(subTotal + tax);
 
+  const editOriginal = useRef<Quote | null>(null);
   const save = () => {
     if (!form.clientId) { showToast("Bitte einen Kunden auswählen."); return; }
     const num = (form.number || "").trim();
@@ -226,7 +229,21 @@ function Quotes({ data, update, saveAll, modal, setModal, setPrintContent, setVi
       }
     }
     const q: Quote = { ...form, estimate: form.mode === "manual" ? form.estimate ?? null : null, sub: subTotal, totalHours, tax, total, mwstRate: taxRate, id: (modal?.id as string | undefined) || generateId(), createdAt: modal?.id ? form.createdAt : new Date().toISOString() };
-    const quotes = modal?.id ? (data.quotes||[]).map(x => x.id === modal.id ? q : x) : [...(data.quotes||[]), q];
+    // Bearbeiten: Status, Nummer, Kunde usw. nur übernehmen, wo im Fenster geändert (applyEdit); den Inhalt
+    // (Modus, Positionen, Phasen, MWST samt Summen) als Block — aus dem Fenster, wenn dort etwas daran geändert
+    // wurde, sonst den aktuellen (Summen hängen an der ganzen Berechnung und lassen sich nicht feldweise mischen)
+    const current = modal?.id ? (data.quotes || []).find(x => x.id === modal.id) : undefined;
+    if (modal?.id && !current) { showToast("Diese Offerte wurde inzwischen gelöscht — die Änderungen sind nicht gespeichert."); return; }
+    let saved = q;
+    if (current) {
+      const original = editOriginal.current?.id === current.id ? editOriginal.current : current;
+      const CONTENT: (keyof Quote)[] = ["mode", "sia", "manualPhases", "freeItems", "quoteRoles", "estimate", "mwst", "mwstRate", "sub", "totalHours", "tax", "total"];
+      const mineContent = CONTENT.some(k => k !== "sub" && k !== "totalHours" && k !== "tax" && k !== "total" && !jsonEqual(q[k], original[k]) && !(q[k] == null && original[k] == null));
+      saved = applyEdit<Quote>(original, { ...original, ...q }, current);
+      const src = mineContent ? q : current;
+      for (const k of CONTENT) (saved as unknown as Record<string, unknown>)[k] = src[k];
+    }
+    const quotes = modal?.id ? (data.quotes||[]).map(x => x.id === modal.id ? saved : x) : [...(data.quotes||[]), q];
     // Mit Projekten verknüpfte Offerte: das aus den Offerten abgeleitete Projektbudget (Stunden, Betrag,
     // Phasen, Pauschalpreis) nachführen, sonst rechnen Akonto/Schlussrechnung mit dem alten Betrag.
     let budgetChanged = false;

@@ -16,7 +16,8 @@ export function useNavigation(initialView: string) {
   const navigate = useCallback((newView: string) => {
     const pos = navPosRef.current;
     const hist = navHistRef.current;
-    if (hist[pos] === newView) return;
+    // Klick auf die schon offene Ansicht (Seitenleiste): Ansichten mit Detailseite kehren zur Liste zurück
+    if (hist[pos] === newView) { window.dispatchEvent(new CustomEvent("rapport:reselect-view", { detail: { view: newView } })); return; }
     const trimmed = [...hist.slice(0, pos + 1), newView];
     navHistRef.current = trimmed;
     navPosRef.current  = trimmed.length - 1;

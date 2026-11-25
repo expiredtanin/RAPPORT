@@ -62,7 +62,7 @@ export function TeamTab({ s, setField, data, update, isAdmin }: DraftProps & Pic
   // App-Rollen
   const appRoles = data.appRoles || [];
   const openEditRole = (role: AppRole) => { setEditingRoleId(role.id); setRoleForm({ ...role, permissions: role.permissions ? [...role.permissions] : null }); };
-  const saveRole = () => { update("appRoles", appRoles.map(r => r.id === roleForm!.id ? { ...roleForm! } : r)); setEditingRoleId(null); };
+  const saveRole = () => { if (!roleForm?.name?.trim()) { showToast("Bitte einen Namen für die Rolle eingeben."); return; } update("appRoles", appRoles.map(r => r.id === roleForm!.id ? { ...roleForm! } : r)); setEditingRoleId(null); };
   const addRole = () => { const nr: AppRole = { id: generateId(), name: "Neue Rolle", permissions: ["dashboard", "projects", "time"] }; update("appRoles", [...appRoles, nr]); openEditRole(nr); };
   const deleteRole = async (id: string) => { if (!await askConfirm("Rolle löschen? Benutzer mit dieser Rolle verlieren ihren Zugang.")) return; update("appRoles", appRoles.filter(r => r.id !== id)); };
   const togglePerm = (permId: string) => { if (!roleForm || roleForm.permissions === null) return; const cur = roleForm.permissions || []; setRoleForm({ ...roleForm, permissions: cur.includes(permId) ? cur.filter(p => p !== permId) : [...cur, permId] }); };

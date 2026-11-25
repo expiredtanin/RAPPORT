@@ -162,7 +162,8 @@ export const buildAkontoInvoices = (rows: AkontoPlanRow[], ap: AkontoPlan, data:
   const numbers = generateSequentialNumbers(invoices, data.settings.invoiceNumberFormat, rows.map(r => r.date));
   return rows.map((row, i) => {
     const due = new Date(`${row.date}T00:00:00Z`); due.setUTCDate(due.getUTCDate() + 30);
-    const desc = row.desc || `Akontorechnung – ${proj?.name || ""}`;
+    // Ohne eigenen Text: «Akontorechnung 2/4 – Projekt» (vorher vier gleich lautende Entwürfe)
+    const desc = row.desc || `Akontorechnung${rows.length > 1 ? ` ${i + 1}/${rows.length}` : ""} – ${proj?.name || ""}`;
     const { sub, tax, total, subAfterDisc, globalDisc } = calcTotal(
       [{ id: generateId(), desc, qty: 1, price: row.amt, discount: 0 }],
       true, data.settings.mwstRate, "none", 0

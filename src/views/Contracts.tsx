@@ -14,6 +14,7 @@ import React, { useState, useEffect } from "react";
 import { generateId, formatCHF, formatDate, calcManualHours, localISODate, contractAmounts } from "../utils";
 import { Header, Modal, FormField, StatusSelect, DateInput, SortTh, RowMenu, EmptyState } from "../components/UI";
 import { removeWithUndo } from "../undo";
+import { showToast } from "../toast";
 import type { Contract, ViewProps } from "../types";
 
 /** Formularstand: wie `Contract`, aber ohne Id (wird beim Speichern vergeben). */
@@ -69,6 +70,7 @@ function Contracts({ data, saveAll, modal, setModal, setPrintContent }: Pick<Vie
   const closeFormModal = () => { setFormModal(null); setForm(emptyForm); };
 
   const save = () => {
+    if (!form.clientId) { showToast("Bitte einen Auftraggeber auswählen."); return; }
     const isNew = formModal === "new";
     const entry: Contract = { ...form, id: isNew ? generateId() : (formModal as string) };
     const updated = isNew

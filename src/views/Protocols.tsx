@@ -130,6 +130,19 @@ function Protokolle({ data, saveAll, setPrintContent, modal, setModal }: Pick<Vi
     if (isUntouchedProtocol(list.find(x => x.id === id))) save({ ...d, protocols: list.filter(x => x.id !== id) });
   }, []);
 
+  // «Protokolle» in der Seitenleiste, während ein Protokoll offen ist: zurück zur Liste (wie der Zurück-Pfeil)
+  useEffect(() => {
+    const onReselect = () => {
+      const { detailId: id, data: d, saveAll: save } = leaveRef.current;
+      if (!id) return;
+      const list = d.protocols || [];
+      if (isUntouchedProtocol(list.find(x => x.id === id))) save({ ...d, protocols: list.filter(x => x.id !== id) });
+      setDetailId(null);
+    };
+    window.addEventListener("rapport:reselect-view", onReselect);
+    return () => window.removeEventListener("rapport:reselect-view", onReselect);
+  }, []);
+
   // ── Detail-Ansicht ────────────────────────────────────────────
   if (detail) {
     return <ProtokollDetail
@@ -335,7 +348,7 @@ function ItemEditor({ item, pos, handle, today, whoListId, onUpdate, onRemove }:
             </select>
             {(item.dueDateType || "kw") === "kw" ? (
               <>
-                <input type="number" min={1} max={53} value={item.dueKW || ""} onChange={e => onUpdate({ dueKW: e.target.value })} placeholder="KW" style={{ ...small, width: 60 }} />
+                <input type="number" min={1} max={53} value={item.dueKW || ""} onChange={e => onUpdate({ dueKW: e.target.value === "" ? "" : String(Math.max(1, Math.min(53, Math.round(+e.target.value) || 1))) })} placeholder="KW" style={{ ...small, width: 60 }} />
                 <input type="number" min={2024} max={2035} value={item.dueYear || year} onChange={e => onUpdate({ dueYear: +e.target.value })} style={{ ...small, width: 72 }} />
               </>
             ) : (

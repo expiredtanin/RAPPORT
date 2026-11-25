@@ -17,6 +17,7 @@
 // Nicht-Admins sehen nur «Mein Profil».
 
 import { applyEdit, jsonEqual } from "../storage/merge";
+import { showToast } from "../toast";
 import React, { useState, useEffect } from "react";
 import { Header, PageTabs } from "../components/UI";
 import UpdatesSupport from "../components/UpdatesSupport";
@@ -62,6 +63,9 @@ export default function Settings({ data, update, currentUser, uiZoom, setUiZoom,
   const setField = (changes: Partial<StudioSettings>) => { setS(prev => ({ ...prev, ...changes })); setSaved(false); };
 
   const save = () => {
+    const roleIds = (s.roles || []).map(r => (r.id || "").trim());
+    if ((s.roles || []).some(r => !r.id?.trim() || !r.label?.trim())) { showToast("Offerten-Rollen brauchen Kürzel und Bezeichnung."); return; }
+    if (new Set(roleIds).size !== roleIds.length) { showToast("Jedes Kürzel der Offerten-Rollen nur einmal."); return; }
     let merged = s;
     update("settings", prev => (merged = applyEdit(base, s, prev)));
     setBase(merged); setS(merged);
