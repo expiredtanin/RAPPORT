@@ -17,7 +17,8 @@
 // (`pensumVerlauf`) und Saldo-Übertrag per Stichtag (`saldoStichtag`) rechnet worktime.ts.
 // Passwörter werden beim Speichern gehasht (`hashPassword`), nie im Klartext abgelegt.
 
-import React, { useState } from "react";
+import React, { useState, useEffect, useRef } from "react";
+import { applyEdit } from "../storage/merge";
 import { closedMonthMsg, ferienOverlap, generateId, getAbsenzTypes, hashPassword, localISODate, withDefaultRates } from "../utils";
 import { defaultAppRoleId } from "../auth";
 import { isCloudBackend } from "../storage/adapter";
@@ -104,6 +105,12 @@ function Employees({ data, update, saveAll, setPrintContent, userPermissions, cu
     return String(next).padStart(3, "0");
   };
 
+  // Stand des Mitarbeiters beim Öffnen des Dialogs (Basis für applyEdit)
+  const empBaseRef = useRef<Employee | undefined>(undefined);
+  useEffect(() => {
+    if (modal === "emp") empBaseRef.current = empForm.id ? employees.find(e => e.id === empForm.id) : undefined;
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- nur beim Öffnen merken
+  }, [modal]);
   const saveEmp = async () => {
     if (!empForm.name?.trim()) { showToast("Bitte einen Namen eingeben."); return; }
     if (!empForm.eintrittsdatum) { showToast("Bitte ein Eintrittsdatum angeben."); return; }
@@ -135,15 +142,21 @@ function Employees({ data, update, saveAll, setPrintContent, userPermissions, cu
     // Cloud: Konten, Passwörter und Rollen verwaltet der Server (Einladen/Rolle unter Einstellungen → Team);
     // hier nur die Mitarbeiter-Felder speichern und die Verknüpfung appUserId unverändert lassen. Vorher verlangte
     // der Dialog ein Passwort für verknüpfte Personen, und ohne Haken trennte er das Konto still ab (E2E 25.11.2026).
+    // Bearbeiten: nur die eigenen Änderungen gegen den Stand beim Öffnen auf den aktuellen Stand (applyEdit) — vorher
+    // schrieb der Dialog das ganze Objekt zurück und verwarf z.B. einen inzwischen bestätigten Ferienübertrag (Audit R22)
+    const base = empBaseRef.current?.id === emp.id ? empBaseRef.current : undefined;
+    const mergeEmp = (list: Employee[], next: Employee) => isNew ? [...list, next] : list.map(e => e.id === next.id ? (base ? applyEdit(base, next, e) : next) : e);
     if (isCloudBackend) {
       const kept = isNew ? emp : { ...emp, appUserId: employees.find(e => e.id === emp.id)?.appUserId };
-      saveAll({ ...data, employees: isNew ? [...employees, kept] : employees.map(e => e.id === kept.id ? kept : e) });
+      saveAll(prev => ({ ...prev, employees: mergeEmp(prev.employees || [], kept) }));
       if (isNew) setSelectedEmpId(empId);
       setModal(null);
       return;
     }
     const existingUserId = _appUserId;
-    let updatedUsers = data.users || [];
+    // Konto-Änderung als Funktion auf die (nach dem Passwort-Hashen) aktuelle Benutzerliste
+    let applyUsers: (users: User[]) => User[] = u => u;
+    const updatedUsers = data.users || [];
     if (_appAccess) {
       const userId = existingUserId || generateId();
       const existing = updatedUsers.find(u => u.id === userId);
@@ -173,19 +186,19 @@ function Employees({ data, update, saveAll, setPrintContent, userPermissions, cu
         employeeId: empId,
         appRoleId: _appRoleId || "",
       };
-      updatedUsers = existing ? updatedUsers.map(u => u.id === userId ? userEntry : u) : [...updatedUsers, userEntry];
+      applyUsers = users => users.some(u => u.id === userId) ? users.map(u => u.id === userId ? userEntry : u) : [...users, userEntry];
       emp.appUserId = userId;
     } else if (existingUserId) {
       const targetUser = (data.users || []).find(u => u.id === existingUserId);
       const isLastAdmin = (data.users || []).filter(u => u.role === "admin").length <= 1
         && targetUser?.role === "admin";
       if (isLastAdmin) { showToast("Mindestens ein Administrator muss bestehen bleiben."); return; }
-      updatedUsers = updatedUsers.filter(u => u.id !== existingUserId);
+      applyUsers = users => users.filter(u => u.id !== existingUserId);
       delete emp.appUserId;
     }
 
-    const updatedEmployees = isNew ? [...employees, emp] : employees.map(e => e.id === emp.id ? emp : e);
-    saveAll({ ...data, employees: updatedEmployees, users: updatedUsers });
+    // nach `await hashPassword` auf den aktuellen Stand (sonst gingen Änderungen anderer in dieser Zeit verloren)
+    saveAll(prev => ({ ...prev, employees: mergeEmp(prev.employees || [], emp), users: applyUsers(prev.users || []) }));
     if (isNew) setSelectedEmpId(empId);
     setModal(null);
   };

@@ -67,7 +67,7 @@ export function TeamTab({ s, setField, data, update, isAdmin }: DraftProps & Pic
   // «Abbrechen» bei einer eben angelegten Rolle entfernt sie wieder (sonst sammelten sich «Neue Rolle»-Leichen)
   const [newRoleId, setNewRoleId] = useState<string | null>(null);
   const cancelRole = () => { if (newRoleId && newRoleId === editingRoleId) update("appRoles", appRoles.filter(r => r.id !== newRoleId)); setNewRoleId(null); setEditingRoleId(null); };
-  const deleteRole = async (id: string) => { if (!await askConfirm("Rolle löschen? Benutzer mit dieser Rolle verlieren ihren Zugang.")) return; update("appRoles", appRoles.filter(r => r.id !== id)); };
+  const deleteRole = async (id: string) => { if (!await askConfirm("Rolle löschen? Benutzer mit dieser Rolle verlieren ihren Zugang.")) return; update("appRoles", prev => (prev || []).filter(r => r.id !== id)); };
   const togglePerm = (permId: string) => { if (!roleForm || roleForm.permissions === null) return; const cur = roleForm.permissions || []; setRoleForm({ ...roleForm, permissions: cur.includes(permId) ? cur.filter(p => p !== permId) : [...cur, permId] }); };
 
   return (

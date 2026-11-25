@@ -63,7 +63,8 @@ export default function DocDesignSettings({ s, setField, data, update }: {
       if (tooBig) { setMsg({ error: true, text: `«${tooBig.name}» ist zu gross (${formatSize(assetSize(tooBig))}, max. ${formatSize(CLOUD_ASSET_LIMIT)}).` }); return false; }
     }
     const removedIds = new Set(removed.map(a => a.id));
-    update("docAssets", [...assets.filter(a => !removedIds.has(a.id)), ...added]);
+    // nach dem Lesen der Dateien (kann dauern): auf den aktuellen Stand
+    update("docAssets", prev => [...(prev || []).filter(a => !removedIds.has(a.id)), ...added]);
     return true;
   };
 

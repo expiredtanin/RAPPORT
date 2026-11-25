@@ -15,6 +15,7 @@ import { generateId, formatCHF, formatDate, calcManualHours, localISODate, contr
 import { Header, Modal, FormField, StatusSelect, DateInput, SortTh, RowMenu, EmptyState } from "../components/UI";
 import { removeWithUndo } from "../undo";
 import { showToast } from "../toast";
+import { applyEdit } from "../storage/merge";
 import type { Contract, ViewProps } from "../types";
 
 /** Formularstand: wie `Contract`, aber ohne Id (wird beim Speichern vergeben). */
@@ -66,17 +67,18 @@ function Contracts({ data, saveAll, modal, setModal, setPrintContent }: Pick<Vie
     setForm({ ...emptyForm, number: nextNumber() });
     setFormModal("new");
   };
-  const openEdit = (v: Contract) => { setForm({ ...emptyForm, ...v }); setFormModal(v.id); };
+  const [editBase, setEditBase] = useState<Contract | null>(null);
+  const openEdit = (v: Contract) => { setForm({ ...emptyForm, ...v }); setEditBase({ ...emptyForm, ...v }); setFormModal(v.id); };
   const closeFormModal = () => { setFormModal(null); setForm(emptyForm); };
 
   const save = () => {
     if (!form.clientId) { showToast("Bitte einen Auftraggeber auswählen."); return; }
     const isNew = formModal === "new";
     const entry: Contract = { ...form, id: isNew ? generateId() : (formModal as string) };
-    const updated = isNew
-      ? [...contracts, { ...entry, createdAt: new Date().toISOString() }]
-      : contracts.map(v => v.id === formModal ? entry : v);
-    saveAll({ ...data, contracts: updated });
+    // auf den aktuellen Stand; Bearbeiten mit applyEdit (sonst setzte das Fenster z.B. einen inzwischen geänderten Status zurück)
+    saveAll(prev => ({ ...prev, contracts: isNew
+      ? [...(prev.contracts || []), { ...entry, createdAt: new Date().toISOString() }]
+      : (prev.contracts || []).map(v => v.id === entry.id ? (editBase?.id === entry.id ? applyEdit(editBase, entry, v) : entry) : v) }));
     closeFormModal();
   };
 

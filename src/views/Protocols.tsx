@@ -136,7 +136,7 @@ function Protokolle({ data, saveAll, setPrintContent, modal, setModal }: Pick<Vi
     const cur = draft ? draft.p : list.find(x => x.id === id);
     // entfernen nur, wenn auch der gespeicherte Stand unberührt ist (ein bestehendes Protokoll mit geleertem Titel
     // verschwand sonst ohne Rückfrage)
-    if (isUntouchedProtocol(cur) && isUntouchedProtocol(list.find(x => x.id === id))) save({ ...d, protocols: list.filter(x => x.id !== id) });
+    if (isUntouchedProtocol(cur) && isUntouchedProtocol(list.find(x => x.id === id))) save(prev => ({ ...prev, protocols: (prev.protocols || []).filter(x => x.id !== id) }));
     else if (draft?.dirty) save(prev => ({ ...prev, protocols: (prev.protocols || []).map(x => x.id === id ? applyEdit(draft.base, draft.p, x) : x) }));
   };
   const leaveDetailRef = useRef(leaveDetail);
@@ -170,7 +170,7 @@ function Protokolle({ data, saveAll, setPrintContent, modal, setModal }: Pick<Vi
       // nur die eigenen Änderungen auf den aktuellen Stand (applyEdit, wie die Bearbeiten-Fenster): vorher schrieb ein
       // länger offenes Protokoll die ganze alte Kopie zurück und verwarf Änderungen anderer (Cloud-Test Runde 21)
       onSave={(p, base) => { saveAll(prev => ({ ...prev, protocols: (prev.protocols || []).map(x => x.id === p.id ? applyEdit(base, p, x) : x) })); }}
-      onDelete={id => { saveAll({ ...data, protocols: protokolle.filter(x => x.id !== id) }); setDetailId(null); }}
+      onDelete={id => { saveAll(prev => ({ ...prev, protocols: (prev.protocols || []).filter(x => x.id !== id) })); setDetailId(null); }}
       onOpen={setDetailId}
       setPrintContent={setPrintContent}
       saveAll={saveAll}
@@ -988,7 +988,7 @@ function ProtokollDetail({ protokoll, data, onBack, onSave, onDelete, onOpen, se
           };
           // Aktuelles Protokoll und Folgesitzung in einem Schritt speichern: zwei getrennte saveAll-Aufrufe
           // mit dem Stand dieses Renders überschrieben sich gegenseitig (die Folgesitzung ging verloren).
-          saveAll(prev => ({ ...prev, protocols: [...(prev.protocols || []).map(x => x.id === p.id ? p : x), folge] }));
+          saveAll(prev => ({ ...prev, protocols: [...(prev.protocols || []).map(x => x.id === p.id ? applyEdit(base, p, x) : x), folge] }));
           setShowFolge(false);
           setFolgeSelection(null);
           onOpen(folge.id);

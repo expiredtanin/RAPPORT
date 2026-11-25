@@ -13,6 +13,7 @@ import { expandInternalExpenses, expenseNet, expenseTax } from "../accounting";
 import { showToast } from "../toast";
 import { extractReceiptText, parseReceiptFields } from "../ocr";
 import type { InternalExpense, ViewProps } from "../types";
+import { applyEdit } from "../storage/merge";
 import { ReceiptViewer, type ReceiptTarget } from "../components/ReceiptViewer";
 
 type InternalForm = Omit<InternalExpense, "id"> & { id?: string };
@@ -45,16 +46,17 @@ function InternalExpenses({ data, update }: Pick<ViewProps, "data" | "update" | 
   const openEdit = (e: InternalExpense & { occurrenceOf?: string }) => {
     const src = e.occurrenceOf ? items.find(x => x.id === e.occurrenceOf) : e;
     if (!src) return;
-    setForm({ ...src }); setModal(src.id);
+    setForm({ ...src }); setEditBase(src); setModal(src.id);
   };
+  const [editBase, setEditBase] = useState<InternalExpense | null>(null);
   const closeModal = () => { setModal(null); setForm(emptyItem); };
   const save = () => {
     if (!form.amount) { showToast("Bitte einen Betrag eingeben."); return; }
     const isNew = modal === "new";
-    const updated = isNew
-      ? [...items, { ...form, id: generateId() }]
-      : items.map(e => e.id === modal ? { ...form, id: modal } : e);
-    update("internalExpenses", updated);
+    // Bearbeiten: nur eigene Änderungen auf den aktuellen Stand (applyEdit)
+    const next = { ...form, id: isNew ? generateId() : modal } as InternalExpense;
+    update("internalExpenses", prev => isNew ? [...(prev || []), next]
+      : (prev || []).map(e => e.id === next.id ? (editBase?.id === next.id ? applyEdit(editBase, next, e) : next) : e));
     closeModal();
   };
   const del = (rawId: string) => { const id = rawId.split("@")[0]; const e = items.find(x => x.id === id); removeWithUndo(`Ausgabe${e?.description ? " «" + e.description + "»" : ""} gelöscht`, "internalExpenses", x => x.id === id); };

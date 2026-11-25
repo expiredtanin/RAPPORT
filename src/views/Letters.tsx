@@ -70,7 +70,7 @@ function Letters({ data, update, setPrintContent }: Pick<ViewProps, "data" | "up
   const deleteTemplate = async () => {
     if (!(await askConfirm("Vorlage löschen?"))) return;
     const remaining = data.letterTemplates.filter(t => t.id !== selectedTemplate);
-    update("letterTemplates", remaining);
+    update("letterTemplates", prev => (prev || []).filter(t => t.id !== selectedTemplate));   // nach der Rückfrage: aktueller Stand
     setSelectedTemplate(remaining[0]?.id || "");
     void fillTemplate(remaining[0]?.id || "", clientId, projectId, false);
   };

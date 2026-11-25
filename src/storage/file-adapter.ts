@@ -142,7 +142,8 @@ export class FileStorageAdapter implements StorageAdapter {
     const placeholder = (n: string) => n.startsWith(".") && n.endsWith(".icloud") && isDataName(n.slice(1, -7));
     return {
       names: [...(top.includes(STUDIO) ? [STUDIO] : []), ...time.filter(isDataName).map(n => `time/${n}`)],
-      icloudPending: top.some(placeholder) || time.some(placeholder),
+      // oben nur studio.json (andere JSON-Dateien liest Rapport nicht); ein Platzhalter neben der echten Datei zählt nicht
+      icloudPending: (top.includes(`.${STUDIO}.icloud`) && !top.includes(STUDIO)) || time.some(placeholder),
     };
   }
 
@@ -230,11 +231,12 @@ export class FileStorageAdapter implements StorageAdapter {
     let pulled = false;
     // Ausgelagerte Datei (iCloud-Platzhalter) unter den zu schreibenden: gar nichts schreiben (keine Teilzustände) —
     // die Änderungen bleiben in der App und werden beim nächsten Speichern erneut versucht
-    const timeListing = await this.fs.list(this.path("time"));
+    const [timeListing, topListing] = await Promise.all([this.fs.list(this.path("time")), this.fs.list(this.dir)]);
     for (const [name, mine] of next) {
       const k = this.known.get(name);
-      if (name === STUDIO || (k && jsonEqual(k.content, mine))) continue;
-      if (timeListing.includes(`.${name.slice(5)}.icloud`)) {
+      if (k && jsonEqual(k.content, mine)) continue;
+      const placeholder = name === STUDIO ? topListing.includes(`.${STUDIO}.icloud`) && !topListing.includes(STUDIO) : timeListing.includes(`.${name.slice(5)}.icloud`);
+      if (placeholder) {
         throw new DataFolderError(`Die Datei «${name}» ist im Datenordner gerade nicht geladen (von iCloud ausgelagert). Nichts wurde gespeichert; die Änderungen bleiben hier und werden erneut versucht. Im Finder den Ordner «Rapport» auf «Download behalten» stellen — und Rapport erst danach beenden.`);
       }
     }

@@ -135,7 +135,7 @@ export default function App() {
     if (needsPasswordUpgrade(u)) {   // Klartext-Altbestand oder Hash mit alter Rundenzahl → neu hashen
       try {
         const upgraded = await withHashedPassword(u, password);
-        save({ ...data, users: (data.users || []).map(x => x.id === u.id ? upgraded : x) });
+        save(prev => ({ ...prev, users: (prev.users || []).map(x => x.id === u.id ? upgraded : x) }));   // nach dem Hashen: aktueller Stand
         handleLogin(upgraded);
         return upgraded;
       } catch (e) {

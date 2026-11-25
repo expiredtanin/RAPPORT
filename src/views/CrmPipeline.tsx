@@ -15,6 +15,7 @@ import { formatCHF, formatDate, generateId, localISODate } from "../utils";
 import ActivityLog from "../components/ActivityLog";
 import { DateInput, FormField, KpiCard, Modal, StatusBadge } from "../components/UI";
 import { useConfirm } from "../hooks/useConfirm";
+import { applyEdit } from "../storage/merge";
 import type { Lead, LeadStage, ViewProps } from "../types";
 
 const today = () => localISODate();
@@ -54,16 +55,18 @@ export default function CrmPipeline({ data, update, setView, newRequest = 0 }: P
   const openNew = () => { setForm(emptyLead()); setIsNew(true); };
   const [seenRequest, setSeenRequest] = useState(newRequest);
   if (seenRequest !== newRequest) { setSeenRequest(newRequest); openNew(); }
-  const openEdit = (l: Lead) => { setForm({ ...l }); setIsNew(false); };
+  const [editBase, setEditBase] = useState<Lead | null>(null);
+  const openEdit = (l: Lead) => { setForm({ ...l }); setEditBase(l); setIsNew(false); };
   const save = () => {
     if (!form || !form.title.trim()) return;
     const lead = { ...form, title: form.title.trim() };
-    update("leads", isNew ? [...leads, lead] : leads.map(l => l.id === lead.id ? lead : l));
+    // Bearbeiten: applyEdit — ein inzwischen per Ziehen verschobener Lead behielt sonst nicht die neue Stufe
+    update("leads", prev => isNew ? [...(prev || []), lead] : (prev || []).map(l => l.id === lead.id ? (editBase?.id === lead.id ? applyEdit(editBase, lead, l) : lead) : l));
     setForm(null);
   };
   const remove = async () => {
     if (!form || isNew || !(await askConfirm(`Lead «${form.title}» löschen? Der Kontaktverlauf der Person bleibt erhalten.`))) return;
-    update("leads", leads.filter(l => l.id !== form.id));
+    update("leads", prev => (prev || []).filter(l => l.id !== form.id));   // nach der Rückfrage: aktueller Stand
     setForm(null);
   };
   const move = (id: string, stage: LeadStage) => {

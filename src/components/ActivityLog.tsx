@@ -31,10 +31,10 @@ export default function ActivityLog({ data, update, personId, leadId }: { data: 
     update("activities", [...activities, entry]);
     setNote(""); setFollowUpDate(""); setDate(today());
   };
-  const patch = (id: string, p: Partial<Activity>) => update("activities", activities.map(a => a.id === id ? { ...a, ...p } : a));
+  const patch = (id: string, p: Partial<Activity>) => update("activities", prev => (prev || []).map(a => a.id === id ? { ...a, ...p } : a));
   const remove = async (id: string) => {
     if (!(await askConfirm("Eintrag aus dem Verlauf löschen?"))) return;
-    update("activities", activities.filter(a => a.id !== id));
+    update("activities", prev => (prev || []).filter(a => a.id !== id));   // nach der Rückfrage: aktueller Stand
   };
 
   return (

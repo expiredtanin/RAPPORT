@@ -24,6 +24,7 @@ import { removeWithUndo } from "../undo";
 import { showToast } from "../toast";
 import { extractReceiptText, parseReceiptFields } from "../ocr";
 import type { Expense, ViewProps } from "../types";
+import { applyEdit } from "../storage/merge";
 import { ReceiptViewer, type ReceiptTarget } from "../components/ReceiptViewer";
 
 /** Formularstand einer Spese: wie `Expense`, Id wird beim Speichern vergeben. */
@@ -93,7 +94,9 @@ function Expenses({ data, update, standalone, currentUser }: Pick<ViewProps, "da
   };
 
   const openNew = () => { setForm(emptyExp); setModal("new"); };
-  const openEdit = (e: Expense) => { setForm({ ...e }); setModal(e.id); };
+  // Stand beim Öffnen: Basis für applyEdit (eine inzwischen genehmigte Spese wurde sonst beim Speichern wieder «offen»)
+  const [editBase, setEditBase] = useState<Expense | null>(null);
+  const openEdit = (e: Expense) => { setForm({ ...e }); setEditBase(e); setModal(e.id); };
   const closeModal = () => { setModal(null); setForm(emptyExp); };
   const saveExp = () => {
     if (!form.amount) { showToast("Bitte einen Betrag eingeben."); return; }
@@ -106,10 +109,9 @@ function Expenses({ data, update, standalone, currentUser }: Pick<ViewProps, "da
       return;
     }
     const newId = isNew ? generateId() : (modal as string);
-    const expenses = isNew
-      ? [...(data.expenses || []), { ...form, amount: roundCHF(Number(form.amount)), id: newId } as Expense]
-      : (data.expenses || []).map(e => e.id === modal ? { ...form, amount: roundCHF(Number(form.amount)), id: modal as string } : e);
-    update("expenses", expenses as Expense[]);
+    const next = { ...form, amount: roundCHF(Number(form.amount)), id: newId } as Expense;
+    update("expenses", prev => isNew ? [...(prev || []), next]
+      : (prev || []).map(e => e.id === newId ? (editBase?.id === newId ? applyEdit(editBase, next, e) : next) : e));
     closeModal();
   };
   const delExp = (id: string) => { const e = (data.expenses || []).find(x => x.id === id); if (e?.lohnEntryId) { showToast("Diese Spese ist über eine Lohnabrechnung ausbezahlt. Zuerst die Lohnabrechnung stornieren."); return; } removeWithUndo(`Spese${e?.description ? " «" + e.description + "»" : ""} gelöscht`, "expenses", x => x.id === id); };

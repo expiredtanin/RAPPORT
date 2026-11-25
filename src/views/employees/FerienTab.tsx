@@ -70,7 +70,8 @@ export default function FerienTab({ ownEmployeeId = null, data, update, askConfi
           }
           const isChange = !!f0?.originalData;
           if (!(await askConfirm(isChange ? "Änderung ablehnen? Die bisher genehmigten Ferien bleiben bestehen." : "Ferienantrag ablehnen?", "Ablehnen"))) return;
-          update("ferienEntries", (data.ferienEntries || []).map(f => {
+          // nach der Rückfrage auf den aktuellen Stand (prev): sonst verwarf das Ablehnen inzwischen gestellte Anträge
+          update("ferienEntries", prev => (prev || []).map(f => {
             if (f.id !== id) return f;
             if (!f.originalData) return { ...f, status: "rejected" };
             const { originalData, ...rest } = f;
@@ -78,7 +79,7 @@ export default function FerienTab({ ownEmployeeId = null, data, update, askConfi
           }));
         };
         const approveAbs = (id: string) => !closedA(id) && update("absences", (data.absences || []).map(a => a.id === id ? { ...a, status: "approved" } : a));
-        const rejectAbs = async (id: string) => { if (closedA(id)) return; if (await askConfirm("Absenzantrag ablehnen?", "Ablehnen")) update("absences", (data.absences || []).map(a => a.id === id ? { ...a, status: "rejected" } : a)); };
+        const rejectAbs = async (id: string) => { if (closedA(id)) return; if (await askConfirm("Absenzantrag ablehnen?", "Ablehnen")) update("absences", prev => (prev || []).map(a => a.id === id ? { ...a, status: "rejected" } : a)); };
         return (
           <div className="card mark" style={{ marginBottom: 20, padding: "14px 20px", ["--mark" as string]: "var(--warning)" } as React.CSSProperties}>
             <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.1em", color: "var(--warning)", marginBottom: 12 }}>

@@ -12,6 +12,7 @@ import { isLocalBackend } from "../storage/adapter";
 import type { BlogPost, CurrentUser, AppData, Poll, ViewProps } from "../types";
 import { EmptyState, Header, PageTabs } from "../components/UI";
 import { useGuardedClose } from "../hooks/useGuardedClose";
+import { applyEdit } from "../storage/merge";
 import { showToast } from "../toast";
 
 type PostForm = Partial<BlogPost> & Pick<BlogPost, "title" | "body" | "type" | "pinned"> & { eventDate: string; image: string; poll: Poll | null };
@@ -320,7 +321,11 @@ export default function Pinboard({ data, update, currentUser }: Pick<ViewProps, 
   const savePost = (form: PostForm, draft = false) => {
     const status = draft ? "entwurf" : "published";
     if (modal?.mode === "edit") {
-      update("blogPosts", posts.map(p => p.id === form.id ? { ...p, ...form, status } as BlogPost : p));
+      // nur eigene Änderungen gegen den Stand beim Öffnen (applyEdit): sonst gingen Umfragestimmen und «angeheftet»
+      // verloren, die andere inzwischen gesetzt hatten (Audit Runde 22)
+      const base = modal.post;
+      const edited = { ...base, ...form, status } as BlogPost;
+      update("blogPosts", prev => (prev || []).map(p => p.id === form.id ? applyEdit(base, edited, p) : p));
     } else {
       const newPost: BlogPost = {
         ...form,
@@ -331,7 +336,7 @@ export default function Pinboard({ data, update, currentUser }: Pick<ViewProps, 
         pinned: false,
         status,
       };
-      update("blogPosts", [newPost, ...posts]);
+      update("blogPosts", prev => [newPost, ...(prev || [])]);
     }
     setModal(null);
   };

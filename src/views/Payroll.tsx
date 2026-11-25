@@ -143,8 +143,10 @@ function Payroll({ data, saveAll, setPrintContent, setView }: Pick<ViewProps, "d
   const stornieren = async (id: string) => {
     if (!(await askConfirm("Lohnabrechnung stornieren? Spesen werden wieder freigegeben.", "Stornieren"))) return;
     const entry = lohnEntries.find(l => l.id === id);
-    const updatedExp = (data.expenses || []).map(e => e.lohnEntryId === id ? { ...e, lohnEntryId: null, status: "auf nächsten Lohn" } : e);
-    saveAll({ ...data, lohnEntries: lohnEntries.filter(l => l.id !== id), expenses: updatedExp });
+    // auf den aktuellen Stand (nach der Rückfrage): sonst setzte das Storno alles zurück, was andere inzwischen
+    // gespeichert hatten (Audit Runde 22)
+    saveAll(prev => ({ ...prev, lohnEntries: (prev.lohnEntries || []).filter(l => l.id !== id),
+      expenses: (prev.expenses || []).map(e => e.lohnEntryId === id ? { ...e, lohnEntryId: null, status: "auf nächsten Lohn" } : e) }));
     // Overrides wiederherstellen, die abschliessen() gesetzt hatte — sonst
     // muss die Pensum-/Bonus-Korrektur, die zu dieser (jetzt stornierten)
     // Abrechnung führte, von Hand neu eingetippt werden.
