@@ -264,7 +264,7 @@ export default function Today({ data, currentUser, userPermissions, run, onOpenP
                 <div><span>Ausstehend</span><b className="num">{chf0(open.reduce((s, i) => s + (i.total || 0), 0))}</b>{overdue > 0 && <em className="late">{overdue} überfällig</em>}</div>
                 <div><span>Umsatz {today.slice(0, 4)}</span><b className="num">{chf0(yearPaid)}</b></div>
                 <div><span>Wiedervorlagen</span><b className={followUps > 0 ? "warn" : ""}>{followUps > 0 ? `${followUps} fällig` : "keine"}</b></div>
-                <div><span>Stunden {new Date(today + "T12:00:00").toLocaleDateString("de-CH", { month: "short" })}</span><b className="num">{formatHours(monthMins)}</b></div>
+                <div><span>Büro gesamt {new Date(today + "T12:00:00").toLocaleDateString("de-CH", { month: "short" })}</span><b className="num">{formatHours(monthMins)}</b></div>
               </div>
             </section>
           )}

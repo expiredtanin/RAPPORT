@@ -224,7 +224,7 @@ export default function Dashboard({ data, setView, currentUser, userPermissions,
     "kpi-projekte": () => <KpiCard label="Aktive Projekte" value={activeProjects.length} go="projects" setView={!editMode?setView:undefined} sub={`${data.projects.filter(p=>p.status==="abgeschlossen").length} abgeschlossen`} />,
     "kpi-stunden": () => (!myEmpId && !canSeeAllEmp)
       ? <KpiCard label={`Stunden ${new Date().toLocaleString("de-CH",{month:"long"})}`} value="—" color="var(--positive)" sub="Kein Mitarbeiterprofil verknüpft" />
-      : <KpiCard label={`Stunden ${new Date().toLocaleString("de-CH",{month:"long"})}`} value={formatHours(myEmpId?myMonthMins:monthMins)} color="var(--positive)" go="time" setView={!editMode?setView:undefined} sub={!myEmpId&&lastMoMins>0?`Vormonat: ${formatHours(lastMoMins)}`:undefined} />,
+      : <KpiCard label={`${myEmpId ? "Meine Stunden" : "Stunden Büro"} ${new Date().toLocaleString("de-CH",{month:"long"})}`} value={formatHours(myEmpId?myMonthMins:monthMins)} color="var(--positive)" go="time" setView={!editMode?setView:undefined} sub={!myEmpId&&lastMoMins>0?`Vormonat: ${formatHours(lastMoMins)}`:undefined} />,
     "kpi-ausstehend": () => <KpiCard label="Ausstehend" value={formatCHF(openAmount)} color={overdueInvoices.length>0?"var(--negative)":"var(--warning)"} go="invoices" setView={!editMode?setView:undefined} sub={overdueInvoices.length>0?`${overdueInvoices.length} überfällig`:`${openInvoices.length} gesendet`} />,
     "kpi-umsatz": () => <KpiCard label="Umsatz dieses Jahr" value={formatCHF(paidThisYear)} color="var(--positive)" go="invoices" setView={!editMode?setView:undefined} sub="gestellt (netto)" />,
     "warnungen": () => {

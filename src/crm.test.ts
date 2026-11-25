@@ -40,4 +40,8 @@ describe("Pipeline", () => {
     const r = dueFollowUps(data, "2026-11-20");
     expect(r.map(a => [a.id, a.overdue])).toEqual([["a1", true], ["a2", false]]);
   });
+  it("Wiedervorlagen abgeschlossener Leads zählen nicht mehr", () => {
+    const d2 = { ...data, leads: leads.map(l => l.id === "efh" ? { ...l, stage: "verloren", closedAt: "2026-11-18" } : l) };
+    expect(dueFollowUps(d2 as typeof data, "2026-11-20").map(a => a.id)).toEqual(["a2"]);
+  });
 });

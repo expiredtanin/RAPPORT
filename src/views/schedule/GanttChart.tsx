@@ -109,8 +109,16 @@ const fmtShort = (d: DateStr) => `${d.slice(8, 10)}.${d.slice(5, 7)}.`;
 const fmtLong = (d: DateStr) => `${d.slice(8, 10)}.${d.slice(5, 7)}.${d.slice(0, 4)}`;
 
 type DragMode = "move" | "start" | "end" | "link" | "draw";
+/** Produkt der CSS-`zoom`-Werte der Vorfahren (Darstellungs-Zoom auf .main-content bzw. .sched-full). */
+const cssZoom = (el: Element | null | undefined): number => {
+  let z = 1;
+  for (let n = el as HTMLElement | null; n; n = n.parentElement) { const v = parseFloat(n.style?.zoom || ""); if (v > 0) z *= v; }
+  return z;
+};
 interface Drag {
   id: Id; mode: DragMode; x0: number; y0: number; sl0: number; days: number; moved: boolean;
+  /** Darstellungs-Zoom (CSS `zoom` der Vorfahren): Zeigerwege sind Bildschirm-, Breiten CSS-Pixel */
+  z?: number;
   px?: number; py?: number; target?: Id | null;
   /** «draw» (leere Zeile aufziehen): Tag beim Drücken und aktueller Tag */
   a?: number; b?: number; alt?: boolean;
@@ -307,7 +315,8 @@ export function GanttChart({
       edgeScrollY(scrollRef.current, e.clientY);
       const sl = el?.scrollLeft || 0;
       const moved = d.moved || Math.abs(e.clientX - d.x0) > 3 || Math.abs(e.clientY - d.y0) > 3;
-      const raw = (e.clientX - d.x0 + (sl - d.sl0)) / dw;
+      const z = d.z || 1;
+      const raw = ((e.clientX - d.x0) / z + (sl - d.sl0)) / dw;
       const step = e.altKey ? 1 : snapDays;
       const days = Math.round(raw / step) * step;
       const rect = svgRef.current?.getBoundingClientRect();
@@ -316,8 +325,8 @@ export function GanttChart({
         target = (document.elementFromPoint(e.clientX, e.clientY) as Element | null)?.closest("[data-item]")?.getAttribute("data-item") || null;
         if (target === d.id) target = null;
       }
-      const b = d.mode === "draw" && rect ? dayAtX(e.clientX - rect.left, range.s, dw) : d.b;
-      const next = { ...d, moved, days, px: rect ? e.clientX - rect.left : 0, py: rect ? e.clientY - rect.top : 0, target, b, alt: e.altKey };
+      const b = d.mode === "draw" && rect ? dayAtX((e.clientX - rect.left) / z, range.s, dw) : d.b;
+      const next = { ...d, moved, days, px: rect ? (e.clientX - rect.left) / z : 0, py: rect ? (e.clientY - rect.top) / z : 0, target, b, alt: e.altKey };
       dragRef.current = next;
       setDrag(next);
     };
@@ -358,10 +367,10 @@ export function GanttChart({
     if (!onChange && mode !== "link" && mode !== "draw") { onSelect?.(id); return; }
     e.stopPropagation();
     e.preventDefault();
-    const d: Drag = { id, mode, x0: e.clientX, y0: e.clientY, sl0: scrollRef.current?.scrollLeft || 0, days: 0, moved: false };
+    const d: Drag = { id, mode, x0: e.clientX, y0: e.clientY, sl0: scrollRef.current?.scrollLeft || 0, days: 0, moved: false, z: cssZoom(svgRef.current) };
     if (mode === "draw") {
       const rect = svgRef.current?.getBoundingClientRect();
-      d.a = d.b = rect ? dayAtX(e.clientX - rect.left, range.s, dw) : range.s;
+      d.a = d.b = rect ? dayAtX((e.clientX - rect.left) / (d.z || 1), range.s, dw) : range.s;
       onSelect?.(id);
     }
     dragRef.current = d;
@@ -378,7 +387,7 @@ export function GanttChart({
       edgeScrollY(labelRef.current, e.clientY);
       const top = labelRef.current?.getBoundingClientRect().top || 0;
       const moved = d.moved || Math.abs(e.clientY - d.y0) > 4;
-      const pos = (e.clientY - top - HEADER_H) / ROW_H;
+      const pos = ((e.clientY - top) / cssZoom(labelRef.current) - HEADER_H) / ROW_H;
       const next = { ...d, moved, pos, target: moved ? rowDropTarget(dropRows(), pos, d.id) : null };
       rowDragRef.current = next;
       setRowDrag(next);

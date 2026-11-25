@@ -284,12 +284,12 @@ label { font-size: 12px; color: var(--text3); font-weight: 500; }
 .sched-full > .card { flex: 1; min-height: 0; margin: 0 !important; border-radius: 0; border: none; box-shadow: none; overflow: auto; display: flex; flex-direction: column; }
 
 /* ── Kennzahl-Kachel (UI.tsx KpiCard) ───────────────────────────────────────── */
-.kpi { height: 100%; box-sizing: border-box; padding: 18px 20px !important; transition: border-color 0.15s, background 0.15s; }
+.kpi { height: 100%; min-width: 0; box-sizing: border-box; padding: 18px 20px !important; transition: border-color 0.15s, background 0.15s; }
 .kpi-link { cursor: pointer; }
 .kpi-link:hover { border-color: var(--border3); background: color-mix(in srgb, var(--surface) 70%, var(--surface2)); }
 .kpi-label { display: flex; align-items: center; gap: 7px; font-size: 12px; color: var(--text3); font-weight: 500; margin-bottom: 10px; }
 .kpi-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
-.kpi-value { font-size: clamp(20px, 2vw, 26px); font-weight: 600; letter-spacing: -0.03em; color: var(--text); line-height: 1.1; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.kpi-value { font-size: clamp(20px, 2vw, 26px); font-weight: 600; letter-spacing: -0.03em; color: var(--text); line-height: 1.1; font-variant-numeric: tabular-nums; } /* darf nach «CHF» umbrechen statt «CHF 120'56…» abzuschneiden (schmales Fenster, Zoom) */
 .kpi-sub { font-size: 12px; color: var(--text4); margin-top: 5px; }
 
 /* ── Menüs (RowMenu, ShareButton) ──────────────────────────────────────────── */

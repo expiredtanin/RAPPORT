@@ -334,7 +334,7 @@ function Payroll({ data, saveAll, setPrintContent, setView }: Pick<ViewProps, "d
                         <td>
                           <strong>{emp.name}</strong>
                           {emp.role && <div style={{ fontSize: 11, color: "var(--text4)" }}>{emp.role}</div>}
-                          {!available && <div style={{ fontSize: 10, color: "var(--text5)" }}>vor Eintritt</div>}
+                          {!available && <div style={{ fontSize: 10, color: "var(--text5)" }}>{emp.austrittsdatum && emp.austrittsdatum.slice(0, 7) < monatStr ? "nach Austritt" : "vor Eintritt"}</div>}
                         </td>
                         <td style={{ textAlign: "right" }}>{available ? formatCHF(calc.bruttoTotal) : "—"}</td>
                         <td className="hide-mid" style={{ textAlign: "right" }}>{available ? formatCHF(calc.netto) : "—"}</td>

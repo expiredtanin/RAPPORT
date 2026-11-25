@@ -162,8 +162,10 @@ export function lastContact(data: AppData, personId: Id): string | null {
 
 /** Offene Wiedervorlagen, früheste zuerst. `overdue` = Termin liegt vor `today`. */
 export function dueFollowUps(data: AppData, today: string): (Activity & { overdue: boolean })[] {
+  // Wiedervorlagen zu gewonnenen/verlorenen Leads erledigen sich mit dem Abschluss (blieben sonst «überfällig»)
+  const closedLeads = new Set((data.leads || []).filter(l => !isOpenLead(l)).map(l => l.id));
   return (data.activities || [])
-    .filter(a => a.followUpDate && !a.followUpDone)
+    .filter(a => a.followUpDate && !a.followUpDone && !(a.leadId && closedLeads.has(a.leadId)))
     .sort((a, b) => (a.followUpDate as string).localeCompare(b.followUpDate as string))
     .map(a => ({ ...a, overdue: (a.followUpDate as string) < today }));
 }

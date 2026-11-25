@@ -73,6 +73,7 @@ export function ScheduleEditor({ project, data, update, setPrintContent, canEdit
     return !v;
   });
   const [history, setHistory] = useState<ProjectSchedule[]>([]);
+  const [future, setFuture] = useState<ProjectSchedule[]>([]);
   const [templateStart, setTemplateStart] = useState("");
   const [breaksOpen, setBreaksOpen] = useState(false);
   const cardRef = useRef<HTMLDivElement>(null);
@@ -95,6 +96,7 @@ export function ScheduleEditor({ project, data, update, setPrintContent, canEdit
   /** Speichert das Programm (Nachfolger rücken nach) und merkt den alten Stand für «Rückgängig». */
   const save = (next: ProjectSchedule) => {
     setHistory(h => [...h.slice(-(MAX_UNDO - 1)), schedule]);
+    setFuture([]);
     const shifted = { ...next, items: shiftSuccessors(next.items) };
     update("projects", prev => prev.map(p => p.id === project.id ? { ...p, schedule: shifted } : p));
   };
@@ -102,7 +104,16 @@ export function ScheduleEditor({ project, data, update, setPrintContent, canEdit
     const prevState = history[history.length - 1];
     if (!prevState) return;
     setHistory(h => h.slice(0, -1));
+    setFuture(f => [...f, schedule]);
     update("projects", prev => prev.map(p => p.id === project.id ? { ...p, schedule: prevState } : p));
+  };
+  /** Wiederherstellen (⌘⇧Z / Ctrl+Y): vorher machte ⌘⇧Z ein weiteres Rückgängig, bis das Programm leer war */
+  const redo = () => {
+    const nextState = future[future.length - 1];
+    if (!nextState) return;
+    setFuture(f => f.slice(0, -1));
+    setHistory(h => [...h.slice(-(MAX_UNDO - 1)), schedule]);
+    update("projects", prev => prev.map(p => p.id === project.id ? { ...p, schedule: nextState } : p));
   };
   /** Ersetzt die Elemente dieses Programms, das andere bleibt unverändert. */
   const saveTrack = (trackList: ScheduleItem[]) => {
@@ -255,6 +266,7 @@ export function ScheduleEditor({ project, data, update, setPrintContent, canEdit
       return;
     }
     if (!canEdit) return;
+    if ((e.metaKey || e.ctrlKey) && ((e.key.toLowerCase() === "z" && e.shiftKey) || e.key.toLowerCase() === "y")) { e.preventDefault(); redo(); return; }
     if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z") { e.preventDefault(); undo(); return; }
     if (!selected) return;
     if ((e.key === "ArrowUp" || e.key === "ArrowDown") && e.altKey) {
@@ -364,6 +376,7 @@ export function ScheduleEditor({ project, data, update, setPrintContent, canEdit
               <span className="msr" style={{ fontSize: 16 }}>add</span>Zeile
             </button>
             <button className="btn-icon" onClick={undo} disabled={!history.length} title="Letzte Änderung rückgängig (⌘Z / Ctrl+Z)" aria-label="Rückgängig"><span className="msr" style={{ fontSize: 19 }}>undo</span></button>
+            <button className="btn-icon" onClick={redo} disabled={!future.length} title="Wiederherstellen (⌘⇧Z / Ctrl+Y)" aria-label="Wiederherstellen"><span className="msr" style={{ fontSize: 19 }}>redo</span></button>
           </>}
           <RowMenu label="Weitere Aktionen" items={[
             { label: "Aufgabe mit Dialog hinzufügen …", icon: "add_box", hidden: !canEdit, onClick: () => addItem("task") },

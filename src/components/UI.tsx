@@ -226,7 +226,8 @@ export function KpiCard({ label, value, sub, color, go, setView }: {
       onKeyDown={go && setView ? e => { if (e.key === "Enter") setView(go); } : undefined}
     >
       <div className="kpi-label">{color && <span className="kpi-dot" style={{ background: color }} />}{label}</div>
-      <div className="kpi-value">{value}</div>
+      {/* «CHF 120'569.34»: nach «CHF» darf umbrechen (formatCHF setzt ein geschütztes Leerzeichen) */}
+      <div className="kpi-value">{typeof value === "string" ? value.replace(/^CHF\u00a0/, "CHF ") : value}</div>
       {sub && <div className="kpi-sub">{sub}</div>}
     </div>
   );
@@ -310,7 +311,9 @@ export function DateInput({ value, onChange, style, ...props }: {
     const m = de.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
     if (!m) return null;
     const iso = `${m[3]}-${m[2].padStart(2, "0")}-${m[1].padStart(2, "0")}`;
-    return isNaN(new Date(iso).getTime()) ? null : iso;
+    // Round-Trip: «31.02.2027» rollt sonst auf den 3.3. weiter und wurde als «2027-02-31» gespeichert
+    const d = new Date(`${iso}T00:00:00Z`);
+    return !isNaN(d.getTime()) && d.toISOString().slice(0, 10) === iso && +m[3] >= 1900 && +m[3] <= 2100 ? iso : null;
   };
   const [text, setText] = React.useState(() => toDE(value));
   // Neuer Wert von aussen: Text direkt beim Rendern nachziehen (statt per Effekt, spart einen Render)
