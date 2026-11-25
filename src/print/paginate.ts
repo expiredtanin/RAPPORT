@@ -168,7 +168,9 @@ export function paginate(sheet: HTMLElement, content: HTMLElement, geo: PageGeom
       if (h <= pageH) {
         const page = t <= (k + 1) * pageH - h - QR_GAP + 0.5 ? k : k + 1;
         placeAt(a.el, (page + 1) * pageH - h - QR_GAP, t);
-        qrPage = page;
+        // nur eine Seite allein für den Zahlteil zählt als QR-Seite (ohne Folgeseiten-Briefpapier); steht er unter
+        // dem Inhalt, trägt die Seite das Briefpapier wie jede andere
+        if (page > k) qrPage = page;
       }
       lastMovedIndex = i;
       continue;

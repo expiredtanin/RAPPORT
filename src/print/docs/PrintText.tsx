@@ -4,19 +4,24 @@
 
 import React from "react";
 
-/** Text mit Zeilenumbrüchen als Folge von Zeilen-Blöcken; Leerzeilen bleiben als Abstand. */
-export function PrintText({ text, style }: { text: string; style?: React.CSSProperties }) {
+/**
+ * Text mit Zeilenumbrüchen als Folge von Zeilen-Blöcken; Leerzeilen bleiben als Abstand. `lineStyle` gilt für jede
+ * Zeile (z.B. Hintergrund/Randlinie einer Box: auf dem Container liefe beides beim Umbruch durch die Seitenränder).
+ */
+export function PrintText({ text, style, lineStyle }: { text: string; style?: React.CSSProperties; lineStyle?: React.CSSProperties }) {
   // sehr lange Absätze (ohne Zeilenumbruch) zusätzlich an Satzenden teilen — sonst wieder ein Block über die Seite
-  // (Notlösung ohne Satzzeichen: an einem Leerzeichen um 500 Zeichen)
+  // (ohne Lookbehind-Regex: ältere WebKit-Versionen kennen ihn nicht, der ganze Druck-Chunk würde nicht laden);
+  // Notlösung ohne Satzzeichen: an einem Leerzeichen um 500 Zeichen
   const chunk = (l: string): string[] => {
     if (l.length <= 600) return [l];
     const cut = l.lastIndexOf(" ", 500);
     return cut > 100 ? [l.slice(0, cut), ...chunk(l.slice(cut + 1))] : [l];
   };
-  const lines = String(text).split("\n").flatMap(l => l.length > 600 ? l.split(/(?<=[.!?;])\s+/).flatMap(chunk) : [l]);
+  const sentences = (l: string) => (l.match(/[^.!?;]+(?:[.!?;]+|$)\s*/g) || [l]).map(x => x.trim()).filter(Boolean);
+  const lines = String(text).replace(/\r\n?/g, "\n").split("\n").flatMap(l => l.length > 600 ? sentences(l).flatMap(chunk) : [l]);
   return (
     <div style={style}>
-      {lines.map((l, i) => <div key={i} style={{ whiteSpace: "pre-wrap", minHeight: "1em" }}>{l || " "}</div>)}
+      {lines.map((l, i) => <div key={i} style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere", minHeight: "1em", ...lineStyle }}>{l || "\u00a0"}</div>)}
     </div>
   );
 }

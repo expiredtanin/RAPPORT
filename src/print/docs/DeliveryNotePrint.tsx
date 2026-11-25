@@ -74,9 +74,9 @@ export function LieferscheinPrint({ note, client, data, settings }: { note: Deli
 
       {/* Notizen */}
       {note.notes && (
-        <div style={{ marginBottom: 40, padding: "12px 16px", background: "#f8f8f6", borderLeft: "3px solid #ddd", fontSize: 10, color: "#555", lineHeight: 1.7 }}>
-          <PrintText text={note.notes} />
-        </div>
+        // Hintergrund und Randlinie je Zeile, damit die Box beim Seitenumbruch nicht durch die Ränder läuft
+        <PrintText text={note.notes} style={{ marginBottom: 40, fontSize: 10, color: "#555", lineHeight: 1.7 }}
+          lineStyle={{ padding: "0 16px", background: "#f8f8f6", borderLeft: "3px solid #ddd" }} />
       )}
 
       {/* Unterschriften */}

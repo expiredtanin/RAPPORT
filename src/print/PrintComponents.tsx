@@ -45,6 +45,7 @@ import { LohnPrint } from "./docs/PayrollPrint";
 import { BuchhaltungPrint } from "./docs/AccountingPrint";
 import { MitarbeiterOverviewPrint, TimeReportPrint } from "./docs/EmployeePrints";
 import { StudioBudgetPrint } from "./docs/StudioBudgetPrint";
+import { buildQrBillData } from "./docs/qrBillData";
 
 /** Briefpapier-Ebenen hinter dem Inhalt: erste Seite oben, Folgeseiten als Raster ab 297 mm (Höhe setzt der Paginator). */
 function LetterheadLayers({ design, followRef }: { design: ResolvedDocDesign; followRef?: React.Ref<HTMLDivElement> }) {
@@ -304,7 +305,9 @@ export function PrintView({ content, onClose, settings, assets }: { content: Con
           {content.type === "invoice+qr" && (
             <>
               <InvoicePrint inv={content.inv} client={content.client} settings={settings} />
-              <div className={`qr-bill-wrapper${settings?.qrNewPage !== false ? " qr-bill-newpage" : ""}`}>
+              {/* eigene Seite nur für einen echten Zahlteil — ein Hinweis (Gutschrift, Betrag 0, keine IBAN) bekäme
+                  sonst eine Seite mit einem einzigen Satz */}
+              <div className={`qr-bill-wrapper${settings?.qrNewPage !== false && buildQrBillData(content.inv, content.client, settings || {}).ok ? " qr-bill-newpage" : ""}`}>
                 <QRBillPrint inv={content.inv} client={content.client} settings={settings} />
               </div>
             </>
