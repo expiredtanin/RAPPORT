@@ -97,6 +97,7 @@ function Expenses({ data, update, standalone, currentUser }: Pick<ViewProps, "da
   const closeModal = () => { setModal(null); setForm(emptyExp); };
   const saveExp = () => {
     if (!form.amount) { showToast("Bitte einen Betrag eingeben."); return; }
+    if (!(Number(form.amount) > 0 && Number(form.amount) < 1e7)) { showToast("Der Betrag muss positiv sein (unter CHF 10 Mio.)."); return; }
     const isNew = modal === "new";
     const newId = isNew ? generateId() : (modal as string);
     const expenses = isNew

@@ -50,6 +50,7 @@ function Projects({ data, saveAll, modal, setModal, onSelect, setPrintContent }:
 
   const saveProject = () => {
     if (!form.name?.trim()) { showToast("Bitte einen Projektnamen eingeben."); return; }
+    if ([form.hourlyRate, form.budgetHours].some(v => v != null && String(v) !== "" && !(Number(v) >= 0))) { showToast("Stundensatz und Budgetstunden dürfen nicht negativ sein."); return; }
     const isNew = !modal?.id;
     const projects = isNew
       ? [...data.projects, { ...form, id: generateId(), createdAt: new Date().toISOString() }]

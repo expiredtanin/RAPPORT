@@ -105,6 +105,11 @@ function Employees({ data, update, saveAll, setPrintContent, userPermissions, cu
     if (!empForm.name?.trim()) { showToast("Bitte einen Namen eingeben."); return; }
     if (!empForm.eintrittsdatum) { showToast("Bitte ein Eintrittsdatum angeben."); return; }
     if (empForm._appAccess && !empForm._appUsername?.trim()) { showToast("Bitte einen Benutzernamen eingeben."); return; }
+    // Bereiche (sonst rechnete der Saldo mit «-25 h/Woche» oder 500 % Pensum weiter)
+    const pens = [empForm.pensum, ...(empForm.pensumVerlauf || []).map(v => v.pensum)].filter(v => v !== undefined && v !== null && String(v) !== "");
+    if (pens.some(v => !(Number(v) >= 0 && Number(v) <= 100))) { showToast("Das Pensum liegt zwischen 0 und 100 %."); return; }
+    if (empForm.wochenstunden != null && !(Number(empForm.wochenstunden) >= 0 && Number(empForm.wochenstunden) <= 80)) { showToast("Wochenstunden zwischen 0 und 80."); return; }
+    if (empForm.ferienWochen != null && !(Number(empForm.ferienWochen) >= 0 && Number(empForm.ferienWochen) <= 20)) { showToast("Ferienwochen zwischen 0 und 20."); return; }
     const isNew = !empForm.id;
     const { _appAccess, _appUsername, _appPassword, _appRoleId, _appUserId, ...empData } = empForm;
     const empId = empData.id || generateId();
