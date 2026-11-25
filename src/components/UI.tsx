@@ -287,7 +287,7 @@ export function ShareButton({ options, className = "btn btn-ghost", style, title
 export function StudioLogo({ settings, size = 24 }: { settings: Pick<Settings, "logo" | "logoSize" | "name">; size?: number }) {
   if (settings.logo) {
     const h = settings.logoSize || 60;
-    return <img src={settings.logo} alt={settings.name} style={{ maxHeight: h, maxWidth: `min(${h * 5}px, 55%)`, display: "block" }} />;
+    return <img src={settings.logo} alt={settings.name} style={{ maxHeight: h, maxWidth: `min(${h * 5}px, 105mm)`, display: "block" }} />;
   }
   // `--doc-font-logo` setzt nur die Druckansicht (print/docDesign.ts); sonst gilt Inter
   return <div style={{ fontFamily: "var(--doc-font-logo, var(--font-ui))", fontSize: size, fontWeight: 400, fontStyle: "italic", letterSpacing: "-0.01em" }}>{settings.name}</div>;

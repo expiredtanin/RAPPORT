@@ -145,7 +145,7 @@ export function applyMigrations(raw: RawData, defaultData: AppData, onProblems?:
     const rows = u.dashboardWidgets ? migrateDashboardLayout(u.dashboardWidgets) : undefined;
     // Konto ohne Rolle (früher speicherbar, «— Rolle wählen —»): hatte Vollzugriff, hätte seit der Korrektur keine
     // Rechte mehr — Standardrolle Mitarbeiter nachtragen (wie der Cloud-Umzug)
-    const fixRole = u.role !== "admin" && !u.appRoleId && !Array.isArray((u as { permissions?: unknown }).permissions) && roles.some(r => r.id === "r-mitarbeiter") ? { appRoleId: "r-mitarbeiter" } : {};
+    const fixRole = u.role !== "admin" && !u.appRoleId && roles.some(r => r.id === "r-mitarbeiter") ? { appRoleId: "r-mitarbeiter" } : {};
     return { ...u, ...fixRole, dashboardWidgets: rows?.length ? rows : u.dashboardWidgets === undefined ? undefined : null };
   });
 

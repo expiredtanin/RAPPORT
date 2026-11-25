@@ -195,7 +195,13 @@ function Employees({ data, update, saveAll, setPrintContent, userPermissions, cu
     update("absences", isNew ? [...absences, a] : absences.map(x => x.id === a.id ? a : x));
     setModal(null);
   };
-  const delAbs = (id: string) => removeWithUndo("Absenz gelöscht", "absences", a => a.id === id);
+  // eigene genehmigte Einträge ohne Vollzugriff nimmt nur zurück, wer genehmigt (Server lehnt sonst ab → Banner)
+  const ownApprovedLocked = (employeeId?: string, status?: string) => {
+    if (!userPermissions || !currentEmployeeId || employeeId !== currentEmployeeId || (status && status !== "approved")) return false;
+    showToast("Eigene genehmigte Einträge nimmt zurück, wer sie genehmigt hat (Admin).");
+    return true;
+  };
+  const delAbs = (id: string) => { const a = (data.absences || []).find(x => x.id === id); if (ownApprovedLocked(a?.employeeId, a?.status || "approved")) return; removeWithUndo("Absenz gelöscht", "absences", a => a.id === id); };
 
   const saveFerien = () => {
     if (!ferienForm.employeeId || !ferienForm.dateFrom) { showToast("Bitte Mitarbeiter und Datum angeben."); return; }
@@ -216,7 +222,7 @@ function Employees({ data, update, saveAll, setPrintContent, userPermissions, cu
     update("ferienEntries", isNew ? [...ferienEntries, f] : ferienEntries.map(x => x.id === f.id ? f : x));
     setModal(null);
   };
-  const delFerien = (id: string) => removeWithUndo("Ferien gelöscht", "ferienEntries", f => f.id === id);
+  const delFerien = (id: string) => { const f = ferienEntries.find(x => x.id === id); if (ownApprovedLocked(f?.employeeId, f?.status || "approved")) return; removeWithUndo("Ferien gelöscht", "ferienEntries", f => f.id === id); };
 
 
   const closedMonths = data.settings.closedMonths || [];

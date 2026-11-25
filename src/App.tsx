@@ -18,7 +18,7 @@
 // Neue Ansicht: lazy importieren (unten), in NAV_ITEMS (constants.ts) eintragen und im
 // Render-Block mit `hasViewAccess` einbinden. Versions-Changelog: `CHANGELOGS` + `LATEST_VERSION` in changelog.ts.
 
-import React, { useState, useEffect, useMemo, Suspense, lazy } from "react";
+import React, { useState, useEffect, useMemo, useRef, Suspense, lazy } from "react";
 import { createPortal } from "react-dom";
 import { defaultData, statusCssVars } from "./constants";
 import { hashPassword, verifyPassword, withHashedPassword, stripCredentials, needsPasswordUpgrade } from "./utils";
@@ -231,19 +231,27 @@ export default function App() {
       throw new LoginError("unknown", (e as Error)?.message);
     }
   };
-  const handleLogout = () => {
+  // Abmelden in zwei Schritten: zuerst die Ansichten aushängen (ein offenes Protokoll speichert dabei) und alle
+  // Änderungen schreiben, erst dann Sitzung löschen und neu laden — mit blockierendem «Wird abgemeldet …» statt der
+  // Anmeldemaske (sonst konnte sich jemand während des Speicherns anmelden und landete nach dem Neuladen in einem
+  // leeren Büro). Scheitert das Speichern, wird gefragt statt still verworfen. Neu laden setzt Ansicht, Verlauf und
+  // Dialoge der vorigen Person zurück (sonst «Zurück» in deren Datenimport).
+  const [loggingOut, setLoggingOut] = useState<null | "busy" | "failed">(null);
+  const saveErrorRef = useRef(saveError);
+  useEffect(() => { saveErrorRef.current = saveError; });
+  const finishLogout = async () => {
     sessionStorage.removeItem("rapport_user");
     sessionStorage.removeItem("rapport_studio_id");
-    setCurrentUser(null);
-    // Ansicht, Verlauf, offene Dialoge und Auswahl der vorigen Person nicht stehen lassen (sonst landete die nächste
-    // Anmeldung am selben Fenster per «Zurück» z.B. im Datenimport des Admins): sauber neu laden — aber erst, wenn die
-    // Ansichten ausgehängt (offenes Protokoll speichert dabei) und alle Änderungen geschrieben sind (vorher ging ein
-    // eben angelegter Beitrag beim sofortigen Abmelden verloren)
+    if (isCloudBackend) await cloudStorage.signOut?.().catch(() => {});
+    window.location.reload();
+  };
+  const handleLogout = () => {
+    setLoggingOut("busy");
     void (async () => {
       await new Promise(r => setTimeout(r, 0));
       await flushStorage().catch(() => {});
-      if (isCloudBackend) await cloudStorage.signOut?.().catch(() => {});
-      window.location.reload();
+      if (saveErrorRef.current) { setLoggingOut("failed"); return; }
+      await finishLogout();
     })();
   };
   const handleSetupComplete = (newData: AppData) => {
@@ -403,6 +411,23 @@ export default function App() {
   // UpdateNotifier wird hier auch gerendert, damit der Auto-Update-Check auch
   // ohne Login läuft (sonst kommt man bei einem fehlerhaften Setup-Screen nie
   // an ein neueres Build, das den Bug fixt).
+  if (loggingOut) {
+    return (
+      <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center", background: "#ebe7e1", fontFamily: "var(--font-ui)", color: "#1a1a18" }}>
+        {loggingOut === "busy" ? <div style={{ fontSize: 14 }}>Wird abgemeldet … (Änderungen werden gespeichert)</div> : (
+          <div style={{ maxWidth: 420, padding: 24, background: "#fdfcfa", borderRadius: 12, boxShadow: "0 8px 40px rgba(0,0,0,0.12)" }}>
+            <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 8 }}>Nicht alles gespeichert</div>
+            <div style={{ fontSize: 13, lineHeight: 1.6, marginBottom: 16 }}>{saveError}</div>
+            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+              <button className="btn btn-ghost" onClick={() => setLoggingOut(null)}>Zurück zur App</button>
+              <button className="btn btn-danger" onClick={() => { void finishLogout(); }}>Trotzdem abmelden</button>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
   if (!currentUser) {
     // Init-/Registrierungs-Screen NUR wenn der API-Call erfolgreich war UND
     // wirklich 0 Studios lieferte. Bei !cloudUnreachable ausgeschlossen, dass

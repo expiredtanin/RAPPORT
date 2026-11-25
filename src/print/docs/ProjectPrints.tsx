@@ -187,9 +187,9 @@ export function ProjectsOverviewPrint({ projects, data, settings }: { projects: 
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 10, tableLayout: "fixed" }}>
             <colgroup>
               {/* Stunden «1216h 30m / 2650h» und Beträge «CHF 356'000.00» brauchen Platz (liefen ineinander) */}
-              <col style={{ width: "32%" }} />
-              <col style={{ width: "21%" }} />
-              <col style={{ width: "10%" }} />
+              <col style={{ width: "29%" }} />
+              <col style={{ width: "20%" }} />
+              <col style={{ width: "14%" }} />
               <col style={{ width: "19%" }} />
               <col style={{ width: "18%" }} />
             </colgroup>
@@ -209,8 +209,8 @@ export function ProjectsOverviewPrint({ projects, data, settings }: { projects: 
                   <tr key={p.id} style={{ borderBottom: "1px solid #f0f0f0" }}>
                     <td style={{ padding: "6px 0", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}><strong>{p.name}</strong></td>
                     <td style={{ padding: "6px 0", color: "#666", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{client?.name || "—"}</td>
-                    <td style={{ padding: "6px 0", color: "#666" }}>{p.status}</td>
-                    <td style={{ textAlign: "right", padding: "6px 0", whiteSpace: "nowrap" }}>
+                    <td style={{ padding: "6px 6px 6px 0", color: "#666", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.status}</td>
+                    <td style={{ textAlign: "right", padding: "6px 0 6px 6px", whiteSpace: "nowrap" }}>
                       {formatHours(projectMinutes(p.id))}
                       {(p.budgetHours || 0) > 0 && <span style={{ color: "#aaa" }}> / {p.budgetHours}h</span>}
                     </td>

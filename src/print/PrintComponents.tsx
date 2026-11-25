@@ -224,6 +224,8 @@ export function PrintView({ content, onClose, settings, assets }: { content: Con
           /* paginate.ts verteilt die Zeilen selbst auf Seiten: der Browser soll den Tabellenkopf nicht zusätzlich am
              Papierrand wiederholen (stand sonst oben auf dem Briefpapier-Balken, darunter eine Lücke) */
           .print-page.paged thead { display: table-row-group !important; }
+          /* ebenso der Tabellenfuss (Total stand sonst unten auf jeder Seite, über dem Briefpapier-Fussband) */
+          .print-page tfoot { display: table-row-group !important; }
           .print-page, .print-page * { text-align: left !important; }
           .print-page .align-right, .print-page .align-right * { text-align: right !important; }
           .qr-bill-wrapper { margin: 0 -${mLeft}mm 0 -${mLeft}mm !important; width: 210mm !important; }

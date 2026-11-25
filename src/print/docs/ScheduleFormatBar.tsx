@@ -87,6 +87,11 @@ export function ScheduleFormatBar({ opts, setOpts, layout, pageH, usableMm }: {
           : <div style={{ width: 120 }}><DateInput value={opts.to || layout.to} onChange={e => e.target.value && setOpts({ ...opts, to: e.target.value, from: opts.from || layout.from })} placeholder="Ende" /></div>}
         <span style={{ color: "#888", marginLeft: 6 }}>{span} Tage · in der Vorschau ziehen verschiebt</span>
       </div>
+      {layout.tooTall && (
+        <div style={{ color: "#8a1a1a", fontSize: 12, marginTop: 6 }}>
+          Nicht alle {layout.items.length} Zeilen passen auf dieses Blatt — unten wird abgeschnitten. Grösseres Papier (A3/A2) oder «Nach Bedarf» wählen.
+        </div>
+      )}
     </div>
   );
 }

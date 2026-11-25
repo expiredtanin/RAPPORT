@@ -75,6 +75,8 @@ export interface SchedulePrintLayout {
   full: { start: DateStr; end: DateStr } | null;
   /** fester Massstab in mm je Tag (null = eingepasst) */
   mmPerDay: number | null;
+  /** Zeilen passen auch mit der kleinsten Zeilenhöhe nicht aufs Blatt (unten abgeschnitten) */
+  tooTall?: boolean;
 }
 
 /** Zeilen im Zeitstrahl: Elemente plus Gruppenköpfe. */
@@ -114,7 +116,7 @@ export function schedulePrintLayout(
   const dayWidth = scaled ? scaled * PX_PER_MM : usable / days;
   const avail = (paper.h - margins.top - margins.bottom) * PX_PER_MM - HEAD_PX - FOOT_PX - 40;
   const rowHeight = Math.max(13, Math.min(26, Math.floor(avail / rows)));
-  return { pageW: paper.w, pageH: paper.h, dayWidth, rowHeight, from, to, items, cropped, full, mmPerDay: scaled };
+  return { pageW: paper.w, pageH: paper.h, dayWidth, rowHeight, from, to, items, cropped, full, mmPerDay: scaled, tooTall: rows * 13 > avail };
 }
 
 /** Bezeichnung eines Massstabs (aus SCHEDULE_SCALES, sonst «1 Woche ≈ n mm»). */
