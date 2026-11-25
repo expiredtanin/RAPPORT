@@ -200,6 +200,15 @@ export function useStudioData(currentUser: CurrentUser | null) {
     save(prev => ({ ...prev, [key]: typeof value === "function" ? (value as (p: AppData[K]) => AppData[K])(prev[key]) : value }));
   }, [save]);
 
+  // Cloud: Fenster schliessen, während noch geschrieben wird → Rückfrage des Browsers (sonst gingen die letzten
+  // Eingaben verloren; Speichern sammelt 250 ms und braucht bei langsamem Netz länger)
+  useEffect(() => {
+    if (!isCloudBackend) return;
+    const onBeforeUnload = (e: BeforeUnloadEvent) => { if (cloudStorage.isBusy) { e.preventDefault(); e.returnValue = ""; } };
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => window.removeEventListener("beforeunload", onBeforeUnload);
+  }, []);
+
   // «Rückgängig» für Löschungen (undo.ts) speichert über denselben Weg
   useEffect(() => registerUndoSaver(save), [save]);
 

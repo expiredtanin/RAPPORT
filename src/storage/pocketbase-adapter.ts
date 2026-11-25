@@ -171,6 +171,9 @@ export class PocketBaseAdapter implements StorageAdapter {
   _fileToken: { token: Promise<string>; at: number } | null = null;
   /** Wartezeiten (ms) zwischen den Wiederholungen bei vorübergehenden Fehlern. */
   static RETRY_DELAYS = [1000, 3000, 10000];
+  /** Kurz sammeln, bevor geschrieben wird: Tippen in einem Feld wird ein PATCH statt einer pro Taste (jede löste
+   *  bei allen anderen ein Nachladen aus; Test 25.11.2026). Tests setzen 0. */
+  static SAVE_DEBOUNCE_MS = 250;
 
   constructor(url: string) {
     if (!url) throw new Error("PocketBaseAdapter: URL ist erforderlich.");
@@ -238,6 +241,9 @@ export class PocketBaseAdapter implements StorageAdapter {
   }
 
   /** Wartet, bis kein Schreibvorgang mehr läuft (Fehler zählen als fertig). */
+  /** true, solange Änderungen noch nicht geschrieben sind (Warnung beim Schliessen des Fensters). */
+  get isBusy(): boolean { return !!this._currentWrite || !!this._pendingData; }
+
   async whenIdle(): Promise<void> {
     while (this._currentWrite) {
       try { await this._currentWrite; } catch { /* Fehler meldet save() selbst */ }
@@ -667,6 +673,7 @@ export class PocketBaseAdapter implements StorageAdapter {
     if (this._currentWrite) return this._currentWrite;
     this._currentWrite = (async () => {
       try {
+        if (PocketBaseAdapter.SAVE_DEBOUNCE_MS > 0) await new Promise(r => setTimeout(r, PocketBaseAdapter.SAVE_DEBOUNCE_MS));
         let attempt = 0;
         let lastErr: unknown = null;
         while (this._pendingData) {

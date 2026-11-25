@@ -10,6 +10,7 @@ const err = (status: number) => Object.assign(new Error("HTTP " + status), { sta
 describe("PocketBaseAdapter.save", () => {
   const delays = PocketBaseAdapter.RETRY_DELAYS;
   afterEach(() => { PocketBaseAdapter.RETRY_DELAYS = delays; });
+  PocketBaseAdapter.SAVE_DEBOUNCE_MS = 0;
 
   it("wiederholt bei Netzfehler, Rate-Limit und 5xx und schreibt dann den neuesten Stand", async () => {
     PocketBaseAdapter.RETRY_DELAYS = [0, 0, 0];
