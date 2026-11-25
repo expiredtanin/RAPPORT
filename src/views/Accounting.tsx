@@ -68,7 +68,7 @@ function Accounting({ data, update, setView, setModal, setPrintContent }: Pick<V
   const [receiptView, setReceiptView] = useState<Expense | null>(null);
 
   const overdueInvoices = data.invoices.filter(i =>
-    (i.status === "gesendet" || i.status === "überfällig") && i.dueDate && i.dueDate < today
+    (i.status === "gesendet" || i.status === "überfällig") && (i.total || 0) > 0 && i.dueDate && i.dueDate < today
   ).sort((a, b) => (a.dueDate || "").localeCompare(b.dueDate || ""));
 
   const sendReminder = (inv: Invoice) => {

@@ -63,7 +63,7 @@ export const buildNewInvoiceForm = (
         items: [{ id: generateId(), desc, qty: hours, price: proj.hourlyRate || 0, discount: 0 }] };
     };
     const single = (kind: string, desc: string, price: number): InvoiceForm =>
-      ({ ...head, invoiceKind: kind, items: [{ id: generateId(), desc, qty: 1, price: Math.round(price * 100) / 100, discount: 0 }] });
+      ({ ...head, invoiceKind: kind, items: [{ id: generateId(), desc, qty: 1, price: roundCHF(price), discount: 0 }] });
     const phaseLabel = SIA_PHASES.find(p => p.id === ni.phaseId)?.label || ni.phaseId;
 
     if (ni.mode === "teilrechnung") {
@@ -105,7 +105,7 @@ export const buildNewInvoiceForm = (
     if (!q) return null;
     // MWST-Pflicht aus der Offerte, Satz von heute (eine Offerte von 2023 mit 7.7 % ergab sonst 2024 falsche MWST)
     const qBase = { ...base, mwst: q.mwst !== false, mwstRate: data.settings.mwstRate };
-    const pctAmt = Math.round((q.sub || 0) * (ni.pct / 100) * 100) / 100;
+    const pctAmt = roundCHF((q.sub || 0) * (ni.pct / 100));
     let items: InvoiceItem[], invoiceKind = "akonto";
     let notes = `Gemäss Offerte ${q.number}. Zahlbar innert 30 Tagen netto.`;
     if (ni.mode === "schluss") {

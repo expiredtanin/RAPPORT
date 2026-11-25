@@ -36,7 +36,8 @@ function readResetToken(): string | null {
 }
 
 /** Versendete Rechnung, deren Fälligkeit vor `today` liegt. */
-const isNowOverdue = (inv: Invoice, today: string) => inv.status === "gesendet" && !!inv.dueDate && inv.dueDate < today;
+// Gutschriften (Total ≤ 0) werden nie «überfällig» und nicht gemahnt (Runde 28)
+const isNowOverdue = (inv: Invoice, today: string) => inv.status === "gesendet" && (inv.total || 0) > 0 && !!inv.dueDate && inv.dueDate < today;
 
 /** Speicherfehler als kurze Meldung für die Kopfzeile. */
 function describeSaveError(e: unknown): string {

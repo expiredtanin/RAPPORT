@@ -24,7 +24,7 @@
 //    Lohn, `monatsAnteilNachEintritt`, mit Ein- und Austritt; mit Pensumwechsel/Stichtag Tag für Tag summiert). Mindestens 4 Wochen, bis zum Kalenderjahr
 //    des 20. Geburtstags 5 Wochen (OR 329a Abs. 1).
 
-import { arbeitszeitAm, monatsAnteilNachEintritt, monatslohnAm } from "./utils";
+import { arbeitszeitAm, monatsAnteilNachEintritt, monatslohnAm, roundCHF } from "./utils";
 import type { AppData, DateStr, Employee, Feiertag, FerienEntry, Kanton, Settings } from "./types";
 
 /** Datenausschnitt, den die Rechnung braucht. */
@@ -319,7 +319,7 @@ export function overtimeHourlyRate(emp: Pick<Employee, "monatslohn" | "wochenstu
   const lohn = ds ? monatslohnAm(emp, ds) : (emp.monatslohn || 0);
   if (!lohn) return 0;
   const wochenstunden = ds ? arbeitszeitAm(emp, ds).wochenstunden : (emp.wochenstunden || 35);
-  return Math.round((lohn * (emp.dreizehnterLohn ? 13 : 12) / (wochenstunden * 52)) * 100) / 100;
+  return roundCHF(lohn * (emp.dreizehnterLohn ? 13 : 12) / (wochenstunden * 52));
 }
 
 /** Zählt der Tag für Saldo und Ferien: angestellt und nicht vor dem Saldo-Stichtag. */

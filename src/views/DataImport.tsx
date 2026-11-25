@@ -381,7 +381,7 @@ const ENTITY_CONFIGS: Record<string, EntityConfig> = {
     fields: EMPLOYEE_FIELDS,
     buildRecord: (m, settings) => ({
       id: generateId(), name: "", role: "", personalNr: "", eintrittsdatum: "", geburtsdatum: "",
-      email: "", adresse: "", ort: "", ahvNr: "", pensum: 100, wochenstunden: 35, ferienWochen: 5,
+      email: "", adresse: "", ort: "", ahvNr: "", pensum: 100, wochenstunden: settings?.defaultWochenstunden || 35, ferienWochen: settings?.defaultFerienWochen || 5,
       monatslohn: 0, lohnIban: "", dreizehnterLohn: false, ferienUebertragVorjahr: {}, active: true,
       // Standard-Lohnsätze wie im Mitarbeiter-Dialog (leer → in der Cloud 0 %); importierte Werte gehen vor
       ...withDefaultRates(m, settings?.defaultPkAGSatz),

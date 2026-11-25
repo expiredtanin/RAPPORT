@@ -14,6 +14,11 @@ const emp = (over: Partial<Employee> = {}): Employee =>
   ({ id: "e1", name: "Anna Muster", role: "Architektin", pensum: 100, wochenstunden: 42, ferienWochen: 5, monatslohn: 7500, ...over }) as Employee;
 
 describe("calcLohn — Schweizer Lohnabrechnung", () => {
+  it("halbe Rappen kaufmännisch aufgerundet (3'005 × 5.3 % = 159.265 → 159.27)", () => {
+    const r = calcLohn(emp({ monatslohn: 3005 }), "2026-03");
+    expect(r.ahv).toBe(159.27);
+    expect(calcLohn(emp({ monatslohn: 3205 }), "2026-03").ktg).toBe(16.03);
+  });
   it("7'500 bei 100 %: Standardabzüge und AG-Kosten", () => {
     const r = calcLohn(emp(), "2026-03");
     expect(r.bruttoTotal).toBe(7500);

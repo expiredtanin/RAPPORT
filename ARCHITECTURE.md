@@ -352,7 +352,7 @@ Alle Views liegen in [src/views/](src/views/), werden in [App.tsx](src/App.tsx) 
 **Formatierung (de-CH):**
 - `formatCHF(amount)` → `"CHF 1'234.50"`
 - `formatDate(iso)` → `"14. Mai 2025"`
-- `roundCHF(amount)` → kaufmännische Rundung auf Rappen, robust gegen Gleitkomma (1.005 → 1.01, −0.405 → −0.41; keine 5-Rappen-Rundung, QR-Rechnungen werden elektronisch bezahlt); `lineAmount(qty, price, rabatt%)` = Positionsbetrag auf Rappen
+- `roundCHF(amount)` → kaufmännische Rundung auf Rappen, robust gegen Gleitkomma (1.005 → 1.01, −0.405 → −0.41; keine 5-Rappen-Rundung, QR-Rechnungen werden elektronisch bezahlt); auch Lohnposten (`calcLohn`), Akonto-Beträge und Überstunden-Auszahlungen runden darüber (vorher `Math.round(x*100)/100`: 159.265 → 159.26), Gutschriften (Total ≤ 0) werden nie überfällig/gemahnt; Mitarbeiter-Dialog schreibt Wochenstunden/Ferienwochen (Studio-Standard) fest, damit Anzeige und Rechnung übereinstimmen; `lineAmount(qty, price, rabatt%)` = Positionsbetrag auf Rappen
 - `formatHours(minutes)` → `"2h 30m"`
 
 **Schweizer QR-Rechnung:**

@@ -19,7 +19,7 @@
 
 import React, { useState, useEffect, useRef } from "react";
 import { applyEdit } from "../storage/merge";
-import { closedMonthMsg, ferienOverlap, generateId, getAbsenzTypes, hashPassword, localISODate, withDefaultRates } from "../utils";
+import { closedMonthMsg, ferienOverlap, generateId, getAbsenzTypes, hashPassword, localISODate, roundCHF, withDefaultRates } from "../utils";
 import { defaultAppRoleId } from "../auth";
 import { isCloudBackend } from "../storage/adapter";
 import { overtimeHourlyRate } from "../worktime";
@@ -80,7 +80,7 @@ function Employees({ data, update, saveAll, setPrintContent, userPermissions, cu
     // Stundenlohn per Ende des Abschlussjahrs (bzw. heute, solange es läuft), wie im Formular angezeigt
     const stundenlohn = overtimeHourlyRate(emp, [`${abschlussYear}-12-31`, localISODate()].sort()[0]);
     if (!stundenlohn || !(form.ubHours > 0)) return;
-    const auszahlungBetrag = Math.round(form.ubHours * stundenlohn * (1 + form.ubZuschlag / 100) * 100) / 100;
+    const auszahlungBetrag = roundCHF(form.ubHours * stundenlohn * (1 + form.ubZuschlag / 100));
     const entry: OvertimeClosing = {
       id: generateId(),
       empId: emp.id,
@@ -139,7 +139,10 @@ function Employees({ data, update, saveAll, setPrintContent, userPermissions, cu
     const lohnVerlauf = (empData.lohnVerlauf || []).filter(v => v.ab && Number(v.monatslohn) > 0).sort((a, b) => a.ab.localeCompare(b.ab));
     if ((empData.lohnVerlauf || []).length !== lohnVerlauf.length) showToast("Lohnänderungen ohne Datum oder Betrag wurden nicht übernommen.");
     // angezeigte Standardsätze ausdrücklich speichern (sonst «leer» → in der Cloud 0 % → Lohn ohne Sozialabzüge)
-    const emp = { ...withDefaultRates(empData, data.settings.defaultPkAGSatz), id: empId, pensumVerlauf, lohnVerlauf, ...(empData.saldoStichtag ? {} : { saldoUebertragStunden: 0 })   /* 0 wie der Server speichert: sonst bei jedem Speichern eine «Änderung» */ } as Employee;
+    const emp = { ...withDefaultRates(empData, data.settings.defaultPkAGSatz), id: empId, pensumVerlauf, lohnVerlauf,
+      // angezeigten Studio-Standard festschreiben (sonst zeigte der Dialog 41 h / 5 Wo., gerechnet wurde mit 35 h / 4 Wo. — Runde 28)
+      wochenstunden: empData.wochenstunden || data.settings.defaultWochenstunden || 35, ferienWochen: empData.ferienWochen || data.settings.defaultFerienWochen || 5,
+      ...(empData.saldoStichtag ? {} : { saldoUebertragStunden: 0 })   /* 0 wie der Server speichert: sonst bei jedem Speichern eine «Änderung» */ } as Employee;
 
     // Cloud: Konten, Passwörter und Rollen verwaltet der Server (Einladen/Rolle unter Einstellungen → Team);
     // hier nur die Mitarbeiter-Felder speichern und die Verknüpfung appUserId unverändert lassen. Vorher verlangte

@@ -21,14 +21,14 @@ export function NewInvoiceQuotePane({ ni, setNi, data, invoices, q }: {
         <select value={ni.quoteId} onChange={e => setNi(n => ({ ...n, quoteId: e.target.value }))} style={!ni.quoteId ? { borderColor: "var(--warning)" } : {}}>
           <option value="">— Offerte wählen —</option>
           {(data.quotes || []).map(x => {
-            const alrInv = invoicesForQuote(x, invoices, data.projects).filter(i => i.status !== "entwurf" && i.invoiceKind !== "schluss").reduce((s, i) => s + invoiceNet(i), 0);
+            const alrInv = invoicesForQuote(x, invoices, data.projects).filter(i => i.status !== "entwurf").reduce((s, i) => s + invoiceNet(i), 0);
             const rem = Math.max(0, (x.sub || 0) - alrInv);
             return <option key={x.id} value={x.id}>{x.number}{x.projectName ? ` · ${x.projectName}` : ""} — {formatCHF(x.total)}{alrInv > 0 ? ` (offen netto: ${formatCHF(rem)})` : ""}</option>;
           })}
         </select>
       </div>
       {q && (() => {
-        const alrInv = invoicesForQuote(q, invoices, data.projects).filter(i => i.status !== "entwurf" && i.invoiceKind !== "schluss").reduce((s, i) => s + invoiceNet(i), 0);
+        const alrInv = invoicesForQuote(q, invoices, data.projects).filter(i => i.status !== "entwurf").reduce((s, i) => s + invoiceNet(i), 0);
         const rem = Math.max(0, (q.sub || 0) - alrInv);
         const qKind = ni.mode === "schluss" ? "schluss"
           : (ni.mode === "akonto-percent" || ni.mode === "akonto-amount") ? "akonto"

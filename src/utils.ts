@@ -887,7 +887,7 @@ function addDaysISO(d: DateStr, n: number): DateStr {
  *   nicht in der Buchhaltung gebucht (erst der Zahlungseingang wird erfasst).
  */
 export function mahnKosten(inv: Pick<Invoice, "total" | "dueDate">, nr: number, stichtag: DateStr, settings: MahnSettings): MahnKosten {
-  const offen = roundCHF(inv.total || 0);
+  const offen = Math.max(0, roundCHF(inv.total || 0));   // Gutschrift: kein (negativer) Zins
   const zinsSatz = settings.verzugszinsAktiv ? (settings.verzugszinsSatz ?? 5) : 0;
   const tage = inv.dueDate ? Math.max(0, Math.round((Date.parse(`${stichtag}T00:00:00Z`) - Date.parse(`${inv.dueDate}T00:00:00Z`)) / 86400000)) : 0;
   const zinsTage = zinsSatz > 0 ? tage : 0;
@@ -1351,7 +1351,7 @@ export function hoechstlohnKumuliert(eintrittsdatum: string | undefined, monat: 
     }
     tage += Math.max(0, bis - von + 1);
   }
-  return Math.round(tage * HOECHSTLOHN_ALV_UVG / 360 * 100) / 100;
+  return roundCHF(tage * HOECHSTLOHN_ALV_UVG / 360);
 }
 
 /** Bereits abgerechnete Lohnsummen eines Mitarbeiters im selben Jahr vor `monat` (für den kumulierten Höchstlohn). */
@@ -1432,7 +1432,7 @@ export function calcLohn(
   agSaetze?: LohnAGSaetze,
   ueberstunden?: number,
 ): LohnResult {
-  const r2 = (n: number) => Math.round(n * 100) / 100;
+  const r2 = roundCHF;   // kaufmännisch, ohne Gleitkomma-Abrundung bei halben Rappen (159.265 → 159.27, Runde 28)
   const hinweise: string[] = [];
   // Lohn × Pensum des Monats: mit Lohn- oder Pensumwechsel tagesgenau gewichtet (lohnImMonat)
   const monatsLohn = lohnImMonat(emp, monat);

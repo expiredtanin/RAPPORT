@@ -1,7 +1,7 @@
 // Reiter «Jahresabschluss»: Ferienübertrag ins Folgejahr bestätigen und Überstunden auszahlen.
 
 import React from "react";
-import { arbeitszeitAm, formatCHF, localISODate } from "../../utils";
+import { arbeitszeitAm, formatCHF, localISODate, roundCHF } from "../../utils";
 import { overtimeHourlyRate } from "../../worktime";
 import type { Employee, ViewProps } from "../../types";
 import type { EmployeeCalc } from "./calc";
@@ -49,7 +49,7 @@ export default function YearCloseTab({ data, employees, abschlussYear, setAbschl
         const setForm = (val: Partial<AbschlussForm>) => setAbschlussForm(prev => ({ ...prev, [emp.id]: { ...form, ...val } }));
         const stundenlohn = overtimeHourlyRate(emp, stichtag);
         const az = arbeitszeitAm(emp, `${abschlussYear}-12-31`);
-        const auszahlungBetrag = Math.round(form.ubHours * stundenlohn * (1 + form.ubZuschlag / 100) * 100) / 100;
+        const auszahlungBetrag = roundCHF(form.ubHours * stundenlohn * (1 + form.ubZuschlag / 100));
         const existingPayouts = (data.uberstundenAbschluss || []).filter(a => a.empId === emp.id && a.year === abschlussYear);
 
         return (
