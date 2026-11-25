@@ -99,6 +99,12 @@ function Expenses({ data, update, standalone, currentUser }: Pick<ViewProps, "da
     if (!form.amount) { showToast("Bitte einen Betrag eingeben."); return; }
     if (!(Number(form.amount) > 0 && Number(form.amount) < 1e7)) { showToast("Der Betrag muss positiv sein (unter CHF 10 Mio.)."); return; }
     const isNew = modal === "new";
+    // über eine Lohnabrechnung ausbezahlt: Betrag und Person stehen in der Abrechnung → nur nach deren Storno ändern
+    const orig = isNew ? null : (data.expenses || []).find(e => e.id === modal);
+    if (orig?.lohnEntryId && (roundCHF(Number(form.amount)) !== orig.amount || form.employeeId !== orig.employeeId || form.date !== orig.date)) {
+      showToast("Diese Spese ist über eine Lohnabrechnung ausbezahlt. Betrag, Person und Datum erst nach Storno der Lohnabrechnung ändern.");
+      return;
+    }
     const newId = isNew ? generateId() : (modal as string);
     const expenses = isNew
       ? [...(data.expenses || []), { ...form, amount: roundCHF(Number(form.amount)), id: newId } as Expense]
@@ -106,7 +112,7 @@ function Expenses({ data, update, standalone, currentUser }: Pick<ViewProps, "da
     update("expenses", expenses as Expense[]);
     closeModal();
   };
-  const delExp = (id: string) => { const e = (data.expenses || []).find(x => x.id === id); removeWithUndo(`Spese${e?.description ? " «" + e.description + "»" : ""} gelöscht`, "expenses", x => x.id === id); };
+  const delExp = (id: string) => { const e = (data.expenses || []).find(x => x.id === id); if (e?.lohnEntryId) { showToast("Diese Spese ist über eine Lohnabrechnung ausbezahlt. Zuerst die Lohnabrechnung stornieren."); return; } removeWithUndo(`Spese${e?.description ? " «" + e.description + "»" : ""} gelöscht`, "expenses", x => x.id === id); };
 
   // Statuswechsel auf "ausbezahlt" erzeugte früher zusätzlich einen
   // internalExpenses-Eintrag ("Barauszahlung Spese: …") — die Spesa selbst

@@ -33,6 +33,8 @@ interface DayViewProps {
   dayExpenses: Expense[];
   updateExp: (id: string, changes: Partial<Expense>) => void;
   delExp: (id: string) => void;
+  /** Spese gesperrt (über Lohn ausbezahlt bzw. eigene nicht mehr offen) */
+  isExpLocked: (e: Expense) => boolean;
   addExp: () => void;
   setReceiptView: (e: Expense | null) => void;
   setUploadingExpId: (id: string | null) => void;
@@ -59,7 +61,7 @@ function DelBtn({ onClick, disabled, label }: { onClick: () => void; disabled?: 
 }
 
 /** Tagesliste: Einträge bearbeiten, Absenzen und Spesen des gewählten Tages erfassen. */
-export function DayView({ data, selectedEmp, dayEntries, dayTotalMins, daySoll, dayIst, dayDiff, isMonthClosed, updateEntry, delEntry, addEntry, dayAbs, absenzTypes, updateAbs, delAbs, addAbs, dayExpenses, updateExp, delExp, addExp, setReceiptView, setUploadingExpId, expReceiptInputRef, handleExpReceiptUpload, liveTimer, now }: DayViewProps) {
+export function DayView({ data, selectedEmp, dayEntries, dayTotalMins, daySoll, dayIst, dayDiff, isMonthClosed, updateEntry, delEntry, addEntry, dayAbs, absenzTypes, updateAbs, delAbs, addAbs, dayExpenses, updateExp, delExp, isExpLocked, addExp, setReceiptView, setUploadingExpId, expReceiptInputRef, handleExpReceiptUpload, liveTimer, now }: DayViewProps) {
   const liveMins = liveTimer && now ? Math.max(0, Math.round((now.getTime() - new Date(liveTimer.start).getTime()) / 60000)) : 0;
   const under = daySoll > 0 && dayDiff < -0.5;
   const expTotal = dayExpenses.reduce((s, e) => s + (e.amount || 0), 0);
@@ -188,25 +190,25 @@ export function DayView({ data, selectedEmp, dayEntries, dayTotalMins, daySoll, 
             </span>
           </div>
           <div className="zeit-list">
-            {dayExpenses.map(e => (
-              <div key={e.id} className="zeit-drow exp" style={e.projectId ? { "--pc-solid": projectColor(e.projectId).solid } as CSSProperties : undefined}>
+            {dayExpenses.map(e => { const lk = isExpLocked(e); return (
+              <div key={e.id} className="zeit-drow exp" title={lk ? (e.lohnEntryId ? "Über Lohnabrechnung ausbezahlt" : "Genehmigt — Änderungen über die Buchhaltung") : undefined} style={e.projectId ? { "--pc-solid": projectColor(e.projectId).solid } as CSSProperties : undefined}>
                 <span className="s" />
-                <select className="p" aria-label="Kategorie" value={e.category} onChange={ev => updateExp(e.id, { category: ev.target.value })} style={{ fontWeight: 550 }}>{(data.settings.expenseCategories || EXPENSE_CATEGORIES).map(c => <option key={c}>{c}</option>)}</select>
-                <select className="ph" aria-label="Projekt" value={e.projectId || ""} onChange={ev => updateExp(e.id, { projectId: ev.target.value })}><option value="">kein Projekt</option>{data.projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
-                <input className="d" aria-label="Beschreibung" value={e.description || ""} onChange={ev => updateExp(e.id, { description: ev.target.value })} placeholder="Beschreibung …" />
-                <input className="h" aria-label="Betrag CHF" title="Betrag CHF" type="number" step="0.05" min={0} value={e.amount || ""} onChange={ev => updateExp(e.id, { amount: +ev.target.value })} placeholder="CHF" style={{ textAlign: "right" }} />
+                <select className="p" aria-label="Kategorie" disabled={lk} value={e.category} onChange={ev => updateExp(e.id, { category: ev.target.value })} style={{ fontWeight: 550 }}>{(data.settings.expenseCategories || EXPENSE_CATEGORIES).map(c => <option key={c}>{c}</option>)}</select>
+                <select className="ph" aria-label="Projekt" disabled={lk} value={e.projectId || ""} onChange={ev => updateExp(e.id, { projectId: ev.target.value })}><option value="">kein Projekt</option>{data.projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
+                <input className="d" aria-label="Beschreibung" disabled={lk} value={e.description || ""} onChange={ev => updateExp(e.id, { description: ev.target.value })} placeholder="Beschreibung …" />
+                <input className="h" aria-label="Betrag CHF" title="Betrag CHF" disabled={lk} type="number" step="0.05" min={0} value={e.amount || ""} onChange={ev => updateExp(e.id, { amount: +ev.target.value })} placeholder="CHF" style={{ textAlign: "right" }} />
                 {e.receiptData ? (
                   <button className="btn-icon rcpt r" title={e.receiptName || "Beleg anzeigen"} aria-label="Beleg anzeigen" onClick={() => setReceiptView(e)}>
                     <span className="msr ok" style={{ fontSize: 18 }}>receipt_long</span>
                   </button>
                 ) : (
-                  <button className="btn-icon rcpt r" title="Beleg hochladen" aria-label="Beleg hochladen" onClick={() => { setUploadingExpId(e.id); expReceiptInputRef.current?.click(); }}>
+                  <button className="btn-icon rcpt r" title="Beleg hochladen" aria-label="Beleg hochladen" disabled={lk} onClick={() => { setUploadingExpId(e.id); expReceiptInputRef.current?.click(); }}>
                     <span className="msr" style={{ fontSize: 18 }}>upload</span>
                   </button>
                 )}
-                <DelBtn onClick={() => delExp(e.id)} label="Spese löschen" />
+                <DelBtn disabled={lk} onClick={() => delExp(e.id)} label="Spese löschen" />
               </div>
-            ))}
+            ); })}
           </div>
         </section>
       )}

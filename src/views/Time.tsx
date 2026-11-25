@@ -128,7 +128,7 @@ function Time({ data, update, currentUser, userPermissions, setPrintContent }: P
 
   const { addEntry, updateEntry, delEntry, duplicateToNextDay } = createEntryActions({ data, update, currentDate, selectedEmpId, isMonthClosed });
 
-  const { dayExpenses, addExp, updateExp, delExp, receiptView, setReceiptView, setUploadingExpId, expReceiptInputRef, handleExpReceiptUpload } = useExpenses(data, update, currentDate, selectedEmpId);
+  const { dayExpenses, addExp, updateExp, delExp, isExpLocked, receiptView, setReceiptView, setUploadingExpId, expReceiptInputRef, handleExpReceiptUpload } = useExpenses(data, update, currentDate, selectedEmpId, !isAdmin && !(userPermissions || []).includes("expenses") && !!myEmployeeId && selectedEmpId === myEmployeeId);
 
   const { absenzTypes, dayAbs, dayIst, dayDiff, addAbs, updateAbs, delAbs } = buildAbsenceState({ data, update, currentDate, selectedEmpId, selectedEmp, employees, daySoll, dayTotalMins, lockApproved: !isAdmin && !!myEmployeeId && selectedEmpId === myEmployeeId });
 
@@ -332,7 +332,7 @@ function Time({ data, update, currentUser, userPermissions, setPrintContent }: P
               data={data} selectedEmp={selectedEmp} dayEntries={dayEntries} dayTotalMins={dayTotalMins} daySoll={daySoll} dayIst={dayIst} dayDiff={dayDiff}
               isMonthClosed={isMonthClosed} updateEntry={updateEntry} delEntry={delEntry} addEntry={addEntry}
               dayAbs={dayAbs} absenzTypes={absenzTypes} updateAbs={updateAbs} delAbs={delAbs} addAbs={addAbs}
-              dayExpenses={dayExpenses} updateExp={updateExp} delExp={delExp} addExp={addExp}
+              dayExpenses={dayExpenses} updateExp={updateExp} delExp={delExp} isExpLocked={isExpLocked} addExp={addExp}
               setReceiptView={setReceiptView} setUploadingExpId={setUploadingExpId}
               expReceiptInputRef={expReceiptInputRef} handleExpReceiptUpload={handleExpReceiptUpload}
               liveTimer={shownTimer && currentDate === todayStr && localISODate(new Date(shownTimer.start)) === todayStr ? shownTimer : null} now={now}
