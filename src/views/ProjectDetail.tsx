@@ -89,7 +89,7 @@ function ProjectDetail({ data, update, saveAll, projectId, onBack, onSelect, run
     if (!settingsForm.name?.trim()) { showToast("Bitte einen Projektnamen eingeben."); return; }
     if ([settingsForm.hourlyRate, settingsForm.budget, settingsForm.budgetHours].some(v => v != null && String(v) !== "" && !(Number(v) >= 0))) { showToast("Stundensatz, Budget und Budgetstunden dürfen nicht negativ sein."); return; }
     const num = (settingsForm.number || "").trim();
-    if (num && data.projects.some(p => p.id !== projectId && (p.number || "").trim() === num)) { showToast(`Die Projektnummer ${num} ist schon vergeben.`); return; }
+    if (num && num !== (project?.number || "").trim() && data.projects.some(p => p.id !== projectId && (p.number || "").trim() === num)) { showToast(`Die Projektnummer ${num} ist schon vergeben.`); return; }
     saveEdited(settingsForm as Partial<Project>);
     setSettingsOpen(false);
   };

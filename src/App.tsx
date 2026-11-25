@@ -21,7 +21,7 @@
 import React, { useState, useEffect, useMemo, Suspense, lazy } from "react";
 import { createPortal } from "react-dom";
 import { defaultData, statusCssVars } from "./constants";
-import { verifyPassword, withHashedPassword, stripCredentials, needsPasswordUpgrade } from "./utils";
+import { hashPassword, verifyPassword, withHashedPassword, stripCredentials, needsPasswordUpgrade } from "./utils";
 import { storage, cloudStorage, isCloudBackend, isServerMode } from "./storage/adapter";
 import { pickAndActivateDataFolder } from "./storage/data-folder";
 import { applyMigrations } from "./storage/migrations";
@@ -123,8 +123,13 @@ export default function App() {
 
     // Benutzername ohne Rücksicht auf Gross-/Kleinschreibung und Leerzeichen am Rand
     const uname = usernameOrEmail.trim().toLowerCase();
-    const u = (data.users || []).find(x => (x.username || "").trim().toLowerCase() === uname);
-    if (!u) return null;
+    // genauer Treffer zuerst; bei Altbeständen mit «Anna»/«anna» das Konto, dessen Passwort passt
+    const matches = (data.users || []).filter(x => (x.username || "").trim().toLowerCase() === uname)
+      .sort((a, b) => Number(b.username === usernameOrEmail) - Number(a.username === usernameOrEmail));
+    let u = matches[0];
+    for (const m of matches.slice(1)) if (!(await verifyPassword(password, u)) && await verifyPassword(password, m)) { u = m; break; }
+    // unbekannter Name: gleich lange rechnen wie bei einem echten Konto (sonst verrät die Antwortzeit die Namen)
+    if (!u) { await hashPassword(password); return null; }
     const ok = await verifyPassword(password, u);
     if (!ok) return null;
     if (needsPasswordUpgrade(u)) {   // Klartext-Altbestand oder Hash mit alter Rundenzahl → neu hashen
@@ -229,10 +234,11 @@ export default function App() {
   const handleLogout = () => {
     sessionStorage.removeItem("rapport_user");
     sessionStorage.removeItem("rapport_studio_id");
-    if (isCloudBackend) {
-      cloudStorage.signOut?.().catch(() => {});
-    }
     setCurrentUser(null);
+    // Ansicht, Verlauf, offene Dialoge und Auswahl der vorigen Person nicht stehen lassen (sonst landete die nächste
+    // Anmeldung am selben Fenster per «Zurück» z.B. im Datenimport des Admins): sauber neu laden
+    if (isCloudBackend) cloudStorage.signOut?.().catch(() => {}).finally(() => window.location.reload());
+    else window.location.reload();
   };
   const handleSetupComplete = (newData: AppData) => {
     localStorage.setItem("rapport_v0_5_migrated", "1");
@@ -544,7 +550,7 @@ export default function App() {
           {hasViewAccess && view === "mitarbeiter" && <Employees data={data} update={update} saveAll={save} setPrintContent={setPrintContent} userPermissions={userPermissions} currentEmployeeId={currentUser?.employeeId ?? null} />}
           {hasViewAccess && view === "letters" && <Letters data={data} update={update} setPrintContent={setPrintContent} />}
           {hasViewAccess && view === "settings" && <Settings data={data} update={update} currentUser={currentUser} uiZoom={uiZoom} setUiZoom={setUiZoom} setView={navigate} />}
-          {(userPermissions === null || userPermissions.includes("settings")) && view === "dataImport" && <DataImport data={data} saveAll={save} setView={navigate} />}
+          {userPermissions === null && view === "dataImport" && <DataImport data={data} saveAll={save} setView={navigate} />}
           {hasViewAccess && view === "studio-budget" && <StudioBudget data={data} update={update} setView={navigate} setPrintContent={setPrintContent} />}
         </Suspense>
         </ErrorBoundary>

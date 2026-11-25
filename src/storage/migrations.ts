@@ -143,7 +143,10 @@ export function applyMigrations(raw: RawData, defaultData: AppData, onProblems?:
   // Leeres Ergebnis (nur unbekannte Widget-Ids) wie eine leere Liste → null, sonst wechselt es beim nächsten Laden.
   const users: User[] = (merged.users || []).map(u => {
     const rows = u.dashboardWidgets ? migrateDashboardLayout(u.dashboardWidgets) : undefined;
-    return { ...u, dashboardWidgets: rows?.length ? rows : u.dashboardWidgets === undefined ? undefined : null };
+    // Konto ohne Rolle (früher speicherbar, «— Rolle wählen —»): hatte Vollzugriff, hätte seit der Korrektur keine
+    // Rechte mehr — Standardrolle Mitarbeiter nachtragen (wie der Cloud-Umzug)
+    const fixRole = u.role !== "admin" && !u.appRoleId && roles.some(r => r.id === "r-mitarbeiter") ? { appRoleId: "r-mitarbeiter" } : {};
+    return { ...u, ...fixRole, dashboardWidgets: rows?.length ? rows : u.dashboardWidgets === undefined ? undefined : null };
   });
 
   // Ensure dashboardTemplates exist (old data won't have them)

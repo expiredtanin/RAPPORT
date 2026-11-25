@@ -54,7 +54,9 @@ function Projects({ data, saveAll, modal, setModal, onSelect, setPrintContent }:
     if (!form.name?.trim()) { showToast("Bitte einen Projektnamen eingeben."); return; }
     if ([form.hourlyRate, form.budgetHours, form.budget].some(v => v != null && String(v) !== "" && !(Number(v) >= 0))) { showToast("Stundensatz, Budget und Budgetstunden dürfen nicht negativ sein."); return; }
     const num = (form.number || "").trim();
-    if (num && data.projects.some(p => p.id !== modal?.id && (p.number || "").trim() === num)) { showToast(`Die Projektnummer ${num} ist schon vergeben.`); return; }
+    // nur bei neuer/geänderter Nummer prüfen (Altbestände mit doppelten Nummern bleiben speicherbar)
+    const prevNum = (data.projects.find(p => p.id === modal?.id)?.number || "").trim();
+    if (num && num !== prevNum && data.projects.some(p => p.id !== modal?.id && (p.number || "").trim() === num)) { showToast(`Die Projektnummer ${num} ist schon vergeben.`); return; }
 
     const isNew = !modal?.id;
     const projects = isNew

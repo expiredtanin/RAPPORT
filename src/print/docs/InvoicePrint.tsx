@@ -77,9 +77,9 @@ export function InvoicePrint({ inv, client, settings }: { inv: Invoice; client: 
 
       <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 50 }}>
         <div style={{ width: 300 }}>
-          {(inv.globalDisc || 0) > 0 && <>
+          {(inv.globalDisc || 0) !== 0 && <>
             <div style={{ display: "flex", justifyContent: "space-between", padding: "4px 0" }}><span style={{ color: "#666" }}>Zwischentotal</span><span>{formatCHF(inv.sub)}</span></div>
-            <div style={{ display: "flex", justifyContent: "space-between", padding: "4px 0", color: "#b5621e" }}><span>{inv.discountLabel || "Rabatt"}</span><span>−{formatCHF(inv.globalDisc)}</span></div>
+            <div style={{ display: "flex", justifyContent: "space-between", padding: "4px 0", color: "#b5621e" }}><span>{inv.discountLabel || "Rabatt"}</span><span>{(inv.globalDisc || 0) > 0 ? `−${formatCHF(inv.globalDisc)}` : `+${formatCHF(-(inv.globalDisc || 0))}`}</span></div>
           </>}
           {inv.mwst && <>
             <div style={{ display: "flex", justifyContent: "space-between", padding: "4px 0" }}><span style={{ color: "#666" }}>Netto</span><span>{formatCHF(invoiceNet(inv))}</span></div>

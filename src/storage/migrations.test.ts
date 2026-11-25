@@ -68,3 +68,11 @@ describe("applyMigrations", () => {
     expect(raw).toEqual(copy);
   });
 });
+
+describe("Konten ohne Rolle", () => {
+  it("bekommen die Standardrolle Mitarbeiter (sonst seit der Korrektur keine Rechte mehr); Admin bleibt", () => {
+    const out = applyMigrations({ users: [{ id: "a", username: "admin", role: "admin" }, { id: "m", username: "m", role: "mitarbeiter", appRoleId: "" }] } as never, defaultData);
+    expect(out.users.find(u => u.id === "m")?.appRoleId).toBe("r-mitarbeiter");
+    expect(out.users.find(u => u.id === "a")?.appRoleId).toBeUndefined();
+  });
+});

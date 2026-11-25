@@ -109,7 +109,8 @@ function Employees({ data, update, saveAll, setPrintContent, userPermissions, cu
     if (empForm._appAccess && !empForm._appUsername?.trim()) { showToast("Bitte einen Benutzernamen eingeben."); return; }
     if (empForm._appAccess && !isCloudBackend) {
       const uname = (empForm._appUsername || "").trim().toLowerCase();
-      if ((data.users || []).some(u => u.id !== empForm._appUserId && (u.username || "").trim().toLowerCase() === uname)) { showToast(`Den Benutzernamen «${empForm._appUsername?.trim()}» gibt es schon.`); return; }
+      const prevName = ((data.users || []).find(u => u.id === empForm._appUserId)?.username || "").trim().toLowerCase();
+      if (uname !== prevName && (data.users || []).some(u => u.id !== empForm._appUserId && (u.username || "").trim().toLowerCase() === uname)) { showToast(`Den Benutzernamen «${empForm._appUsername?.trim()}» gibt es schon.`); return; }
       const ownUser = (data.users || []).find(u => u.id === empForm._appUserId);
       if (!empForm._appRoleId && ownUser?.role !== "admin") { showToast("Bitte eine Rolle für den App-Zugang wählen."); return; }
     }

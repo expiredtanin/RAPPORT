@@ -63,7 +63,7 @@ export function InvoiceEditModal({ modal, setModal, form, setForm, data, clients
   const footer = (
     <div className="num" style={{ lineHeight: 1.3, minWidth: 0 }}>
       <div style={{ fontSize: 11, color: "var(--text4)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-        {globalDisc > 0 ? `Zwischentotal ${formatCHF(sub)} · ${form.discountLabel || "Rabatt"} −${formatCHF(globalDisc)} · ` : ""}Netto {formatCHF(subAfterDisc)}{form.mwst ? ` · MWST ${rate} % ${formatCHF(tax)}` : " · ohne MWST"}
+        {globalDisc !== 0 ? `Zwischentotal ${formatCHF(sub)} · ${form.discountLabel || "Rabatt"} ${globalDisc > 0 ? "−" : "+"}${formatCHF(Math.abs(globalDisc))} · ` : ""}Netto {formatCHF(subAfterDisc)}{form.mwst ? ` · MWST ${rate} % ${formatCHF(tax)}` : " · ohne MWST"}
       </div>
       <div style={{ fontSize: 13, color: "var(--text3)", whiteSpace: "nowrap" }}>Total <b style={{ color: "var(--text)", fontSize: 15 }}>{formatCHF(total)}</b></div>
     </div>
@@ -168,7 +168,7 @@ export function InvoiceEditModal({ modal, setModal, form, setForm, data, clients
             </select>
             <input type="number" aria-label="Rabatt" step={form.discountType === "amount" ? "1" : "0.5"} min={0} value={form.discountValue || 0} onChange={e => setForm({ ...form, discountType: form.discountType === "amount" ? "amount" : "percent", discountValue: +e.target.value })} style={{ ...NUM_INPUT, width: 96, height: 30 }} />
             <input aria-label="Bezeichnung des Rabatts" placeholder="Bezeichnung (z.B. Stammkundenrabatt)" value={form.discountLabel || ""} onChange={e => setForm({ ...form, discountLabel: e.target.value })} style={{ flex: 1, minWidth: 120, height: 30, fontSize: 12 }} />
-            {globalDisc > 0 && <span className="num" style={{ fontSize: 12, color: "var(--warning)", whiteSpace: "nowrap" }}>−{formatCHF(globalDisc)}</span>}
+            {globalDisc !== 0 && <span className="num" style={{ fontSize: 12, color: "var(--warning)", whiteSpace: "nowrap" }}>{globalDisc > 0 ? "−" : "+"}{formatCHF(Math.abs(globalDisc))}</span>}
             <button className="btn-icon" title="Rabatt entfernen" aria-label="Rabatt entfernen" onClick={() => { setDiscountOpen(false); setForm({ ...form, discountType: "none", discountValue: 0 }); }}><span className="msr" style={{ fontSize: 18 }}>close</span></button>
           </div>
         ) : (
