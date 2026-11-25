@@ -22,11 +22,11 @@
 // Datenmodell steht in types.ts; die `buildRecord`-Funktionen müssen dazu passen.
 
 import { useMemo, useState } from "react";
-import { generateId, getAbsenzTypes, normalizeTime, roundCHF, withDefaultRates } from "../utils";
+import { closedMonthMsg, generateId, getAbsenzTypes, normalizeTime, roundCHF, withDefaultRates } from "../utils";
 import { PROJECT_TYPES, CONTACT_TYPES, CONTACT_CATEGORIES, EXPENSE_CATEGORIES, INTERNAL_EXPENSE_CATEGORIES } from "../constants";
 import { Header, FormField } from "../components/UI";
 import { isCloudBackend } from "../storage/adapter";
-import type { AppData, ViewProps } from "../types";
+import type { AppData, Employee, ViewProps } from "../types";
 import { decodeText, excelCellText, parseCSV, parseFlexibleDate, parseNumber, type Row } from "../importParse";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -104,7 +104,7 @@ function parseTimeToMinutesOfDay(raw: unknown): number | null {
   const m = String(raw || "").trim().match(/^(\d{1,2})(?:[:.](\d{2}))?(?::\d{2})?$/);
   if (!m) return null;
   const h = parseInt(m[1], 10), min = m[2] ? parseInt(m[2], 10) : 0;
-  return h <= 24 && min < 60 ? h * 60 + min : null;
+  return (h < 24 && min < 60) || (h === 24 && min === 0) ? h * 60 + min : null;
 }
 
 /** Liest die erste Tabelle einer .csv- oder .xlsx-Datei als Zeilen von Texten. */
@@ -407,15 +407,21 @@ const ENTITY_CONFIGS: Record<string, EntityConfig> = {
       description: m.description || "", createdAt: new Date().toISOString(),
     }),
     postProcess: (values) => {
-      if (values.minutesRaw !== undefined) {
+      const a = values.startTime ? parseTimeToMinutesOfDay(values.startTime) : null;
+      const b = values.endTime ? parseTimeToMinutesOfDay(values.endTime) : null;
+      // Von/Bis als «HH:MM» speichern («8» → «08:00»)
+      const hhmm = (m: number) => `${String(Math.floor(m / 60) % 24).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
+      if (a != null) values.startTime = hhmm(a);
+      if (b != null) values.endTime = hhmm(b);
+      if (Number(values.minutesRaw) > 0) {
         values.minutes = Math.round(values.minutesRaw);
-      } else if (values.hoursDecimal !== undefined) {
+      } else if (Number(values.hoursDecimal) > 0) {
         values.minutes = Math.round(values.hoursDecimal * 60);
-      } else if (values.startTime && values.endTime) {
-        const a = parseTimeToMinutesOfDay(values.startTime);
-        const b = parseTimeToMinutesOfDay(values.endTime);
-        // über Mitternacht (22:00–02:00): Ende am Folgetag
-        if (a != null && b != null) values.minutes = b > a ? b - a : b + 1440 - a;
+      } else if (a != null && b != null && a !== b) {
+        // über Mitternacht (22:00–02:00): Ende am Folgetag; Von = Bis (z.B. leeres Bis als 0:00) ist keine Dauer
+        values.minutes = b > a ? b - a : b + 1440 - a;
+      } else {
+        values.minutes = 0;
       }
       // ohne verwertbare Dauer keinen 0-Minuten-Eintrag anlegen (leer, «0», unlesbare Zeiten)
       if (!(Number(values.minutes) > 0) || Number(values.minutes) > 1440) return ["Dauer"];
@@ -775,6 +781,11 @@ export default function DataImport({ data, saveAll, setView }: Pick<ViewProps, "
     const opts = { appendRest: appendRestToNote, restField: cfg.restField, headers, postProcess: cfg.postProcess };
     return dataRows.map(raw => {
       const { values, missingRequired, invalid } = buildMappedValues(cfg.fields, colMap, valueMaps, raw, data, opts);
+      // Monatsabschluss: Zeiteinträge, Ferien und Absenzen nicht in abgeschlossene Monate importieren
+      if (cfg.targetKey === "timeEntries" || cfg.targetKey === "ferienEntries" || cfg.targetKey === "absences") {
+        const from = values.date || values.dateFrom, to = values.date || values.dateTo || values.dateFrom;
+        if (closedMonthMsg(data.settings.closedMonths, [from, to])) invalid.push("Monat abgeschlossen");
+      }
       const previewRecord = cfg.buildRecord(values, data.settings);
       const key = cfg.dedupKey(previewRecord);
       const dupExisting = !!key && existingKeys.has(key);
@@ -824,14 +835,26 @@ export default function DataImport({ data, saveAll, setView }: Pick<ViewProps, "
 
     // Neu angelegte Mitarbeitende (unbekannter Name in der Datei): als ehemalig/inaktiv mit Ein- und Austritt aus dem
     // Zeitraum ihrer importierten Einträge — vorher ohne Eintritt mit vollem Soll seit jeher (stark negativer Saldo)
+    // Eintritt = frühestes Datum; kein Austritt, bleibt aktiv —
+    // ein unbekannter Name ist oft jemand Aktuelles, der noch nicht erfasst ist. Ein früher importierter Platzhalter
+    // (ohne Personalnummer und Lohn) wird nach vorne erweitert, wenn ein weiterer Import ältere Einträge bringt.
+    const workTarget = cfg!.targetKey === "timeEntries" || cfg!.targetKey === "ferienEntries" || cfg!.targetKey === "absences";
+    const earliest = (id: string) => finalRecords.filter(r => r.employeeId === id)
+      .flatMap(r => [r.date, r.dateFrom]).filter((d): d is string => typeof d === "string" && /^\d{4}-\d{2}-\d{2}$/.test(d)).sort()[0];
     for (const stub of newStubsByCollection.employees?.values() || []) {
-      const dates = finalRecords.filter(r => Object.values(r).includes(stub.id))
-        .flatMap(r => [r.date, r.dateFrom, r.dateTo]).filter((d): d is string => typeof d === "string" && /^\d{4}-\d{2}-\d{2}$/.test(d)).sort();
-      if (dates.length) Object.assign(stub, { eintrittsdatum: dates[0], austrittsdatum: dates[dates.length - 1], active: false });
+      // neu angelegt: Eintritt am frühesten Datum (sonst Soll seit jeher); Spesen-Daten nur hier, nicht zum Erweitern
+      const first = earliest(stub.id);
+      if (first) stub.eintrittsdatum = first;
     }
+    const placeholderEmps = workTarget ? (data.employees || []).filter(e => !e.personalNr && !e.monatslohn && e.eintrittsdatum) : [];
+    const widened = placeholderEmps.map(e => { const first = earliest(e.id); return first && first < e.eintrittsdatum! ? { ...e, eintrittsdatum: first } : null; }).filter(Boolean);
     const patch: Record<string, unknown[]> = { [cfg!.targetKey]: [...((data[cfg!.targetKey] as unknown[]) || []), ...finalRecords] };
     for (const [dataKey, map] of Object.entries(newStubsByCollection)) {
       patch[dataKey] = [...((data[dataKey as keyof AppData] as unknown[]) || []), ...Array.from(map.values())];
+    }
+    if (widened.length) {
+      const byId = new Map(widened.map(w => [w!.id, w!]));
+      patch.employees = ((patch.employees || data.employees || []) as Employee[]).map(e => byId.get(e.id) || e);
     }
 
     saveAll({ ...data, ...patch } as AppData);

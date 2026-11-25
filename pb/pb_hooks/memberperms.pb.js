@@ -121,11 +121,10 @@ onRecordUpdateRequest((e) => {
     let uiNew = {}, uiOld = {};
     try { uiNew = JSON.parse(e.record.getString("ui") || "{}") || {}; } catch { uiNew = {}; }
     try { uiOld = JSON.parse(old.getString("ui") || "{}") || {}; } catch { uiOld = {}; }
-    const keys = {};
-    for (const k of Object.keys(uiNew)) keys[k] = 1;
-    for (const k of Object.keys(uiOld)) keys[k] = 1;
-    for (const k of Object.keys(keys)) {
-      if (settingsRight && OPEN_UI[k] && has(OPEN_UI[k])) continue;
+    // Schlüssel als Set (ein Objekt verschluckte «__proto__»: damit liessen sich beliebige Daten in ui ablegen)
+    const keys = new Set([...Object.keys(uiNew), ...Object.keys(uiOld)]);
+    for (const k of keys) {
+      if (settingsRight && Object.prototype.hasOwnProperty.call(OPEN_UI, k) && has(OPEN_UI[k])) continue;
       if (JSON.stringify(uiNew[k]) !== JSON.stringify(uiOld[k])) changed.push("ui." + k);
     }
     if (changed.length) throw new ForbiddenError("Diese Büro-Einstellungen kann nur ein Admin ändern (" + changed.slice(0, 5).join(", ") + ").");

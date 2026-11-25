@@ -92,5 +92,9 @@ describe("parseNumber: Stunden als H:MM", () => {
   it("«7:30» ist 7.5 (nicht 730)", () => {
     expect(parseNumber("7:30")).toBe(7.5);
     expect(parseNumber("12:45")).toBe(12.75);
+    expect(parseNumber("-2:30")).toBe(-2.5);
+    expect(parseNumber("(1:30)")).toBe(-1.5);
+    expect(parseNumber("7:30:00")).toBe(7.5);
+    expect(parseNumber("2:30 h")).toBe(2.5);
   });
 });

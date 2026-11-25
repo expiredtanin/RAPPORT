@@ -130,6 +130,8 @@ check("A: eigenen Entwurf lesbar", r.status === 200, `HTTP ${r.status}`);
   check("M (projects ohne settings): Projektzähler hochzählen", r.status === 200, `HTTP ${r.status} ${r.status !== 200 ? JSON.stringify(r.json) : ""}`);
   r = await api("PATCH", `/api/collections/studioSettings/records/${st0.id}`, tM, { ui: { ...(st1.ui || {}), closedMonths: ["2026-01"] } });
   check("M (projects ohne settings): sonst keine Einstellungen", r.status >= 400, `HTTP ${r.status}`);
+  r = await api("PATCH", `/api/collections/studioSettings/records/${st0.id}`, tM, { ui: { ...(st1.ui || {}), ["__proto__"]: { evil: "x".repeat(50) } } });
+  check("M: kein «__proto__»-Schlüssel in ui", r.status >= 400, `HTTP ${r.status}`);
   must(await api("PATCH", `/api/collections/appRoles/records/${roleM0.id}`, tA, { permissions: roleM0.permissions }), "Rolle zurück");
 }
 
