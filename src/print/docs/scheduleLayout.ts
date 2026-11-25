@@ -114,7 +114,9 @@ export function schedulePrintLayout(
     return { pageW, pageH: null, dayWidth: scaled! * PX_PER_MM, rowHeight: 22, from, to, items, cropped, full, mmPerDay: scaled };
   }
   const dayWidth = scaled ? scaled * PX_PER_MM : usable / days;
-  const avail = (paper.h - margins.top - margins.bottom) * PX_PER_MM - HEAD_PX - FOOT_PX - 40;
+  // Fuss wächst mit der Termine-Liste (eine Zeile je Meilenstein; sonst lag sie bei vielen Zeilen unter dem Blattrand)
+  const footPx = Math.max(FOOT_PX, 60 + items.filter(it => it.kind === "milestone").length * 14);
+  const avail = (paper.h - margins.top - margins.bottom) * PX_PER_MM - HEAD_PX - footPx - 40;
   const rowHeight = Math.max(13, Math.min(26, Math.floor(avail / rows)));
   return { pageW: paper.w, pageH: paper.h, dayWidth, rowHeight, from, to, items, cropped, full, mmPerDay: scaled, tooTall: rows * 13 > avail };
 }

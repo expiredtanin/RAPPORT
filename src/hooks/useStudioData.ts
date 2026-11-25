@@ -85,7 +85,12 @@ export function useStudioData(currentUser: CurrentUser | null) {
     setLocal(next);
   }, [setLocal]);
   /** Letzter Speicherfehler (z.B. Speicher voll, Server nicht erreichbar); null = zuletzt erfolgreich. */
-  const [saveError, setSaveError] = useState<string | null>(null);
+  const [saveError, setSaveErrorState] = useState<string | null>(null);
+  // derselbe Stand ohne Render-Verzögerung: Abmelden prüft ihn direkt nach dem Schreiben (App.tsx handleLogout)
+  const saveErrorRef = useRef<string | null>(null);
+  const setSaveError = useCallback((v: string | null) => { saveErrorRef.current = v; setSaveErrorState(v); }, []);
+  /** Letzter Speicherfehler, sofort aktuell (auch zwischen zwei Renders). */
+  const lastSaveError = useCallback(() => saveErrorRef.current, []);
   const [loading, setLoading] = useState(true);
   const [isNewInstall, setIsNewInstall] = useState(false);
   /** Datenordner: Meldung, warum nicht geladen werden konnte (null = alles gut). */
@@ -202,7 +207,7 @@ export function useStudioData(currentUser: CurrentUser | null) {
         }
       },
     );
-  }, [setLocal, migrate]);
+  }, [setLocal, setSaveError, migrate]);
 
   const update = useCallback(<K extends keyof AppData>(key: K, value: AppData[K] | ((prev: AppData[K]) => AppData[K])) => {
     save(prev => ({ ...prev, [key]: typeof value === "function" ? (value as (p: AppData[K]) => AppData[K])(prev[key]) : value }));
@@ -349,7 +354,7 @@ export function useStudioData(currentUser: CurrentUser | null) {
   }, [loading, loadError, update]);
 
   return {
-    data, setData, loading, loadError, saveError, isNewInstall, cloudStudios, cloudUnreachable,
+    data, setData, loading, loadError, saveError, lastSaveError, isNewInstall, cloudStudios, cloudUnreachable,
     passwordRecovery, setPasswordRecovery, resetToken, setResetToken, save, update,
     dataNotices, dismissDataNotices,
   };

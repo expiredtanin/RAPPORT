@@ -214,7 +214,7 @@ export function ProjectsOverviewPrint({ projects, data, settings }: { projects: 
                       {formatHours(projectMinutes(p.id))}
                       {(p.budgetHours || 0) > 0 && <span style={{ color: "#aaa" }}> / {p.budgetHours}h</span>}
                     </td>
-                    <td style={{ textAlign: "right", padding: "6px 0 6px 8px", whiteSpace: "nowrap" }}>{formatCHF(projectAmount(p))}</td>
+                    <td style={{ textAlign: "right", padding: "6px 0 6px 12px", whiteSpace: "nowrap" }}>{formatCHF(projectAmount(p))}</td>
                   </tr>
                 );
               })}

@@ -197,8 +197,8 @@ function Employees({ data, update, saveAll, setPrintContent, userPermissions, cu
   };
   // eigene genehmigte Einträge ohne Vollzugriff nimmt nur zurück, wer genehmigt (Server lehnt sonst ab → Banner)
   const ownApprovedLocked = (employeeId?: string, status?: string) => {
-    if (!userPermissions || !currentEmployeeId || employeeId !== currentEmployeeId || (status && status !== "approved")) return false;
-    showToast("Eigene genehmigte Einträge nimmt zurück, wer sie genehmigt hat (Admin).");
+    if (!userPermissions || !currentEmployeeId || employeeId !== currentEmployeeId || status === "pending") return false;
+    showToast("Eigene genehmigte oder abgelehnte Einträge nimmt nur ein Admin zurück.");
     return true;
   };
   const delAbs = (id: string) => { const a = (data.absences || []).find(x => x.id === id); if (ownApprovedLocked(a?.employeeId, a?.status || "approved")) return; removeWithUndo("Absenz gelöscht", "absences", a => a.id === id); };

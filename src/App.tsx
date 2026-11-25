@@ -18,7 +18,7 @@
 // Neue Ansicht: lazy importieren (unten), in NAV_ITEMS (constants.ts) eintragen und im
 // Render-Block mit `hasViewAccess` einbinden. Versions-Changelog: `CHANGELOGS` + `LATEST_VERSION` in changelog.ts.
 
-import React, { useState, useEffect, useMemo, useRef, Suspense, lazy } from "react";
+import React, { useState, useEffect, useMemo, Suspense, lazy } from "react";
 import { createPortal } from "react-dom";
 import { defaultData, statusCssVars } from "./constants";
 import { hashPassword, verifyPassword, withHashedPassword, stripCredentials, needsPasswordUpgrade } from "./utils";
@@ -98,7 +98,7 @@ export default function App() {
     try { return JSON.parse(sessionStorage.getItem("rapport_user") || "null") || null; } catch { return null; }
   });
   const {
-    data, setData, loading, loadError, saveError, isNewInstall, cloudStudios, cloudUnreachable,
+    data, setData, loading, loadError, saveError, lastSaveError, isNewInstall, cloudStudios, cloudUnreachable,
     passwordRecovery, setPasswordRecovery, resetToken, setResetToken, save, update,
     dataNotices, dismissDataNotices,
   } = useStudioData(sessionUser);
@@ -237,8 +237,7 @@ export default function App() {
   // leeren Büro). Scheitert das Speichern, wird gefragt statt still verworfen. Neu laden setzt Ansicht, Verlauf und
   // Dialoge der vorigen Person zurück (sonst «Zurück» in deren Datenimport).
   const [loggingOut, setLoggingOut] = useState<null | "busy" | "failed">(null);
-  const saveErrorRef = useRef(saveError);
-  useEffect(() => { saveErrorRef.current = saveError; });
+  const [logoutError, setLogoutError] = useState<string | null>(null);
   const finishLogout = async () => {
     sessionStorage.removeItem("rapport_user");
     sessionStorage.removeItem("rapport_studio_id");
@@ -250,7 +249,9 @@ export default function App() {
     void (async () => {
       await new Promise(r => setTimeout(r, 0));
       await flushStorage().catch(() => {});
-      if (saveErrorRef.current) { setLoggingOut("failed"); return; }
+      await new Promise(r => setTimeout(r, 0));   // Speicher-Callbacks (Fehler setzen) zuerst laufen lassen
+      const err = lastSaveError();
+      if (err) { setLogoutError(err); setLoggingOut("failed"); return; }
       await finishLogout();
     })();
   };
@@ -417,7 +418,7 @@ export default function App() {
         {loggingOut === "busy" ? <div style={{ fontSize: 14 }}>Wird abgemeldet … (Änderungen werden gespeichert)</div> : (
           <div style={{ maxWidth: 420, padding: 24, background: "#fdfcfa", borderRadius: 12, boxShadow: "0 8px 40px rgba(0,0,0,0.12)" }}>
             <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 8 }}>Nicht alles gespeichert</div>
-            <div style={{ fontSize: 13, lineHeight: 1.6, marginBottom: 16 }}>{saveError}</div>
+            <div style={{ fontSize: 13, lineHeight: 1.6, marginBottom: 16 }}>{logoutError || "Die letzten Änderungen konnten nicht gespeichert werden."}</div>
             <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
               <button className="btn btn-ghost" onClick={() => setLoggingOut(null)}>Zurück zur App</button>
               <button className="btn btn-danger" onClick={() => { void finishLogout(); }}>Trotzdem abmelden</button>
