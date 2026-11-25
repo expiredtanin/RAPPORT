@@ -137,7 +137,8 @@ export default function App() {
         const upgraded = await withHashedPassword(u, password);
         // nach dem Hashen auf den aktuellen Stand und nur die Anmeldedaten ersetzen (Rolle usw. nicht zurücksetzen)
         save(prev => ({ ...prev, users: (prev.users || []).map(x => {
-          if (x.id !== u.id) return x;
+          // nur, wenn das Passwort inzwischen nicht geändert wurde (sonst überschriebe das Upgrade das neue)
+          if (x.id !== u.id || x.passwordHash !== u.passwordHash || x.passwordSalt !== u.passwordSalt || x.password !== u.password) return x;
           const { password: _plain, ...rest } = x;
           return { ...rest, passwordHash: upgraded.passwordHash, passwordSalt: upgraded.passwordSalt };
         }) }));
