@@ -8,6 +8,7 @@ import { generateId, getAbsenzTypes } from "../../utils";
 import { KANTON_FEIERTAGE, KANTONE, replaceHolidayTemplate, swissHolidayTemplate } from "../../worktime";
 import { useConfirm } from "../../hooks/useConfirm";
 import { showToast } from "../../toast";
+import { changeWithUndo, removeWithUndo } from "../../undo";
 import { FormField, Modal, DateInput } from "../../components/UI";
 import type { AbsenzType, Feiertag, Kanton, Settings, ViewProps } from "../../types";
 
@@ -33,7 +34,8 @@ export function CalendarTab({ data, update, onSettingsSaved }: Pick<ViewProps, "
     update("feiertage", isNew ? [...feiertage, ft] : feiertage.map(f => f.id === ft.id ? ft : f));
     setKalModal(null);
   };
-  const delFt = (id: string) => update("feiertage", feiertage.filter(f => f.id !== id));
+  // Löschen mit «Rückgängig» wie sonst überall (undo.ts)
+  const delFt = (id: string) => removeWithUndo(`Feiertag «${feiertage.find(f => f.id === id)?.label || ""}» gelöscht`, "feiertage", f => f.id === id);
 
   /** Kanton wählen; bestehende Vorlagen-Feiertage auf Wunsch durch die des neuen Kantons ersetzen (eigene bleiben). */
   const changeKanton = async (k: Kanton) => {
@@ -58,13 +60,13 @@ export function CalendarTab({ data, update, onSettingsSaved }: Pick<ViewProps, "
   const delAbsenzType = (id: string) => {
     const inUse = (data.absences || []).some(a => a.type === id);
     if (inUse) { showToast("Dieser Absenztyp ist bereits vergeben und kann nicht gelöscht werden."); return; }
-    if (defaultAbsenzIds.has(id)) {
-      const custom = data.absenzTypes || [];
+    const label = absenzTypes.find(t => t.id === id)?.label || "";
+    changeWithUndo(`Absenztyp «${label}» gelöscht`, prev => {
+      const custom = prev.absenzTypes || [];
+      if (!defaultAbsenzIds.has(id)) return { ...prev, absenzTypes: custom.filter(t => t.id !== id) };
       const exists = custom.some(x => x.id === id);
-      update("absenzTypes", exists ? custom.map(x => x.id === id ? { ...x, deleted: true } : x) : [...custom, { id, deleted: true } as AbsenzType]);
-    } else {
-      update("absenzTypes", (data.absenzTypes || []).filter(t => t.id !== id));
-    }
+      return { ...prev, absenzTypes: exists ? custom.map(x => x.id === id ? { ...x, deleted: true } : x) : [...custom, { id, deleted: true } as AbsenzType] };
+    });
   };
 
   return (
@@ -133,7 +135,7 @@ export function CalendarTab({ data, update, onSettingsSaved }: Pick<ViewProps, "
                 {feiertage.length === 0 && <tr><td colSpan={4} style={{ textAlign: "center", color: "var(--text5)", padding: 24 }}>Noch keine Feiertage erfasst</td></tr>}
                 {[...feiertage].sort((a, b) => (a.date || "").slice(5).localeCompare((b.date || "").slice(5))).map(f => (
                   <tr key={f.id}>
-                    <td style={{ fontSize: 12 }}>{f.repeatsYearly ? f.date.slice(5).replace("-", ".") + " ↻" : f.date ? new Date(f.date).toLocaleDateString("de-CH") : "—"}</td>
+                    <td style={{ fontSize: 12 }}>{f.repeatsYearly ? `${f.date.slice(8, 10)}.${f.date.slice(5, 7)}. ↻` : f.date ? new Date(f.date).toLocaleDateString("de-CH") : "—"}</td>
                     <td style={{ fontWeight: 500, fontSize: 12 }}>{f.label}</td>
                     <td style={{ textAlign: "right", fontSize: 12, color: (f.stundenDelta ?? 0) < 0 ? "var(--warning)" : "var(--text5)" }}>{f.stundenDelta === 0 || f.stundenDelta === null ? "ganztag" : `${f.stundenDelta}h`}</td>
                     <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
@@ -163,7 +165,7 @@ export function CalendarTab({ data, update, onSettingsSaved }: Pick<ViewProps, "
         <div className="card">
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, paddingBottom: 8, borderBottom: "1px solid var(--border2)" }}>
             <div style={{ fontSize: 10, letterSpacing: "0.12em", color: "var(--text5)", fontWeight: 600 }}>ABSENZTYPEN</div>
-            <button className="btn btn-ghost" style={{ padding: "3px 10px", fontSize: 11 }} onClick={() => { setAbsenzTypeForm({ label: "", color: "var(--text2)" }); setKalModal("absenztype"); }}>+ Typ</button>
+            <button className="btn btn-ghost" style={{ padding: "3px 10px", fontSize: 11 }} onClick={() => { setAbsenzTypeForm({ label: "", color: "#6a6660" }); setKalModal("absenztype"); }}>+ Typ</button>
           </div>
           <table>
             <thead><tr><th>Bezeichnung</th><th>Farbe</th><th>Typ</th><th></th></tr></thead>

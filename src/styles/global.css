@@ -954,4 +954,4 @@ i.paid { background: var(--positive); } i.open { background: var(--accent); } i.
 .rich-edit p + p { margin-top: 0.7em; }
 
 /* Lange Namen ohne Leerzeichen (z.B. eingefügte Kennungen) umbrechen statt die Tabellenzeile zu sprengen */
-td strong { overflow-wrap: anywhere; }
+td strong.wrap-any { overflow-wrap: anywhere; }   /* nur Namen — Beträge/Nummern brachen sonst mitten im Wert um («CHF 30'786.8|8») */

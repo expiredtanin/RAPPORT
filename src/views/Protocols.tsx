@@ -123,20 +123,28 @@ function Protokolle({ data, saveAll, setPrintContent, modal, setModal }: Pick<Vi
   // Ansicht verlassen (Seitenleiste, Befehlspalette): ein unberührtes neues Protokoll ebenfalls entfernen
   const leaveRef = useRef({ detailId, data, saveAll });
   useEffect(() => { leaveRef.current = { detailId, data, saveAll }; });
-  useEffect(() => () => {
+  // Entwurf des offenen Protokolls (vom Detail gemeldet): beim Verlassen wird Ungespeichertes gespeichert statt
+  // verworfen (vorher war ein geänderter Titel nach Zurück/Seitenleiste weg), Unberührtes entfernt
+  const draftRef = useRef<{ p: Protocol; dirty: boolean } | null>(null);
+  const leaveDetail = () => {
     const { detailId: id, data: d, saveAll: save } = leaveRef.current;
     if (!id) return;
     const list = d.protocols || [];
-    if (isUntouchedProtocol(list.find(x => x.id === id))) save({ ...d, protocols: list.filter(x => x.id !== id) });
-  }, []);
+    const draft = draftRef.current?.p.id === id ? draftRef.current : null;
+    draftRef.current = null;
+    const cur = draft ? draft.p : list.find(x => x.id === id);
+    if (isUntouchedProtocol(cur)) save({ ...d, protocols: list.filter(x => x.id !== id) });
+    else if (draft?.dirty) save({ ...d, protocols: list.map(x => x.id === id ? draft.p : x) });
+  };
+  const leaveDetailRef = useRef(leaveDetail);
+  useEffect(() => { leaveDetailRef.current = leaveDetail; });
+  useEffect(() => () => leaveDetailRef.current(), []);
 
   // «Protokolle» in der Seitenleiste, während ein Protokoll offen ist: zurück zur Liste (wie der Zurück-Pfeil)
   useEffect(() => {
     const onReselect = () => {
-      const { detailId: id, data: d, saveAll: save } = leaveRef.current;
-      if (!id) return;
-      const list = d.protocols || [];
-      if (isUntouchedProtocol(list.find(x => x.id === id))) save({ ...d, protocols: list.filter(x => x.id !== id) });
+      if (!leaveRef.current.detailId) return;
+      leaveDetailRef.current();
       setDetailId(null);
     };
     window.addEventListener("rapport:reselect-view", onReselect);
@@ -151,10 +159,11 @@ function Protokolle({ data, saveAll, setPrintContent, modal, setModal }: Pick<Vi
       data={data}
       onBack={() => {
         // Unberührtes neues Protokoll (kein Titel, keine Teilnehmer, keine Einträge) beim Verlassen wieder entfernen —
-        // sonst blieb nach jedem Klick auf «Protokoll» eine leere Leiche zurück (E2E 25.11.2026)
-        if (isUntouchedProtocol(protokolle.find(x => x.id === detail.id))) saveAll({ ...data, protocols: protokolle.filter(x => x.id !== detail.id) });
+        // sonst blieb nach jedem Klick auf «Protokoll» eine leere Leiche zurück (E2E 25.11.2026); Geändertes speichern
+        leaveDetail();
         setDetailId(null);
       }}
+      onDraft={(p, dirty) => { draftRef.current = { p, dirty }; }}
       onSave={p => { saveAll({ ...data, protocols: protokolle.map(x => x.id === p.id ? p : x) }); }}
       onDelete={id => { saveAll({ ...data, protocols: protokolle.filter(x => x.id !== id) }); setDetailId(null); }}
       onOpen={setDetailId}
@@ -370,14 +379,17 @@ function ItemEditor({ item, pos, handle, today, whoListId, onUpdate, onRemove }:
 }
 
 export
-function ProtokollDetail({ protokoll, data, onBack, onSave, onDelete, onOpen, setPrintContent, saveAll }: {
+function ProtokollDetail({ protokoll, data, onBack, onSave, onDelete, onOpen, setPrintContent, saveAll, onDraft }: {
   protokoll: Protocol; data: AppData; onBack: () => void; onSave: (p: Protocol) => void; onDelete: (id: string) => void;
+  /** meldet den aktuellen Entwurf (für Speichern beim Verlassen) */
+  onDraft?: (p: Protocol, dirty: boolean) => void;
   /** anderes Protokoll öffnen (z.B. die eben erstellte Folgesitzung) */
   onOpen: (id: string) => void;
   setPrintContent: ViewProps["setPrintContent"]; saveAll: ViewProps["saveAll"];
 }) {
   const [p, setP] = useState<Protocol>(() => JSON.parse(JSON.stringify(protokoll)));
   const isDirty = JSON.stringify(p) !== JSON.stringify(protokoll);
+  useEffect(() => { onDraft?.(p, isDirty); });
   const today = localISODate();
   const [showFolge, setShowFolge] = useState(false);
   const { askConfirm, ConfirmModalEl } = useConfirm();

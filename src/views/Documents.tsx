@@ -119,7 +119,7 @@ export default function Documents({ data, setView }: Pick<ViewProps, "data" | "s
           </SectionCard>
 
           {/* Letzte Lieferscheine */}
-          <SectionCard title="LETZTE LIEFERSCHEINE" count={deliveryNotes.length} action="Alle Lieferscheine →" onAction={() => setView("lieferscheine")} accent="#e8f0fa">
+          <SectionCard title="LETZTE LIEFERSCHEINE" count={deliveryNotes.length} action="Alle Lieferscheine →" onAction={() => setView("lieferscheine")} accent="var(--info-bg)">
             {recentNotes.length === 0 ? (
               <div className="empty-state">Noch keine Lieferscheine erfasst.</div>
             ) : (
