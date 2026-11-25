@@ -144,7 +144,11 @@ function Employees({ data, update, saveAll, setPrintContent, userPermissions, cu
     // der Dialog ein Passwort für verknüpfte Personen, und ohne Haken trennte er das Konto still ab (E2E 25.11.2026).
     // Bearbeiten: nur die eigenen Änderungen gegen den Stand beim Öffnen auf den aktuellen Stand (applyEdit) — vorher
     // schrieb der Dialog das ganze Objekt zurück und verwarf z.B. einen inzwischen bestätigten Ferienübertrag (Audit R22)
-    const base = empBaseRef.current?.id === emp.id ? empBaseRef.current : undefined;
+    // Basis gleich normalisieren wie das Formular (leere Verläufe, Standardsätze, Übertrag 0): sonst galten diese
+    // Ergänzungen als «eigene Änderung» und überschrieben z.B. eine gleichzeitig erfasste Lohnänderung (Review R23)
+    const rawBase = empBaseRef.current?.id === emp.id ? empBaseRef.current : undefined;
+    const base = rawBase && ({ ...withDefaultRates(rawBase, data.settings.defaultPkAGSatz), pensumVerlauf: rawBase.pensumVerlauf || [], lohnVerlauf: rawBase.lohnVerlauf || [],
+      ...(rawBase.saldoStichtag ? {} : { saldoUebertragStunden: 0 }) } as Employee);
     const mergeEmp = (list: Employee[], next: Employee) => isNew ? [...list, next] : list.map(e => e.id === next.id ? (base ? applyEdit(base, next, e) : next) : e);
     if (isCloudBackend) {
       const kept = isNew ? emp : { ...emp, appUserId: employees.find(e => e.id === emp.id)?.appUserId };

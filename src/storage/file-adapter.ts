@@ -143,7 +143,7 @@ export class FileStorageAdapter implements StorageAdapter {
     return {
       names: [...(top.includes(STUDIO) ? [STUDIO] : []), ...time.filter(isDataName).map(n => `time/${n}`)],
       // oben nur studio.json (andere JSON-Dateien liest Rapport nicht); ein Platzhalter neben der echten Datei zählt nicht
-      icloudPending: (top.includes(`.${STUDIO}.icloud`) && !top.includes(STUDIO)) || time.some(placeholder),
+      icloudPending: (top.includes(`.${STUDIO}.icloud`) && !top.includes(STUDIO)) || time.some(n => placeholder(n) && !time.includes(n.slice(1, -7))),
     };
   }
 
@@ -235,7 +235,8 @@ export class FileStorageAdapter implements StorageAdapter {
     for (const [name, mine] of next) {
       const k = this.known.get(name);
       if (k && jsonEqual(k.content, mine)) continue;
-      const placeholder = name === STUDIO ? topListing.includes(`.${STUDIO}.icloud`) && !topListing.includes(STUDIO) : timeListing.includes(`.${name.slice(5)}.icloud`);
+      const placeholder = name === STUDIO ? topListing.includes(`.${STUDIO}.icloud`) && !topListing.includes(STUDIO)
+        : timeListing.includes(`.${name.slice(5)}.icloud`) && !timeListing.includes(name.slice(5));   // Platzhalter neben der echten Datei zählt nicht
       if (placeholder) {
         throw new DataFolderError(`Die Datei «${name}» ist im Datenordner gerade nicht geladen (von iCloud ausgelagert). Nichts wurde gespeichert; die Änderungen bleiben hier und werden erneut versucht. Im Finder den Ordner «Rapport» auf «Download behalten» stellen — und Rapport erst danach beenden.`);
       }

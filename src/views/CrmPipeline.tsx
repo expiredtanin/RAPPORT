@@ -74,7 +74,7 @@ export default function CrmPipeline({ data, update, setView, newRequest = 0 }: P
     if (!lead || lead.stage === stage) return;
     const moved = withStage(lead, stage);
     update("leads", leads.map(l => l.id === id ? moved : l));
-    if (stage === "verloren") { setForm(moved); setIsNew(false); } // Absagegrund gleich abfragen
+    if (stage === "verloren") { setForm(moved); setEditBase(moved); setIsNew(false); } // Absagegrund gleich abfragen
   };
   const newQuote = () => {
     if (!form?.clientId) return;
