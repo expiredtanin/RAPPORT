@@ -29,7 +29,7 @@ export function createEntryActions({ data, update, currentDate, selectedEmpId, i
     let startMins = 8 * 60;
     if (todayEnds.length > 0) {
       const maxEnd = todayEnds.reduce((max, e) => { const [h, m] = (e.endTime as string).split(":").map(Number); return Math.max(max, h * 60 + m); }, 0);
-      if (maxEnd > 0) startMins = maxEnd;
+      if (maxEnd > 0) startMins = Math.min(maxEnd, 23 * 60);   // neuer Eintrag endet spätestens 24:00
     }
     const defaultMins = 60;
     const newEntry = { id: generateId(), date: currentDate, projectId: firstActive?.id || "", phaseId, positionId, minutes: defaultMins, startTime: toTime(startMins), endTime: toTime(startMins + defaultMins), description: "", createdAt: new Date().toISOString(), ...(selectedEmpId ? { employeeId: selectedEmpId } : {}) } as TimeEntry;

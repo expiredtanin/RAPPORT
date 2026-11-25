@@ -1054,6 +1054,18 @@ export function textToHtml(text?: string | null): string {
 }
 
 /**
+ * Uhrzeit auf «HH:MM» bringen («8:00», «08:00:00», «8.30» → «08:00»/«08:30»); ungültig oder leer → "".
+ * Der Server nimmt nur «HH:MM» an (pb_migrations/1787890000_field_validation.js); 24:00 als Tagesende bleibt.
+ */
+export function normalizeTime(v: unknown): string {
+  const m = /^\s*(\d{1,2})[:.](\d{2})(?::\d{2})?\s*$/.exec(String(v ?? ""));
+  if (!m) return "";
+  const h = Number(m[1]), min = Number(m[2]);
+  if (min > 59 || h > 24 || (h === 24 && min !== 0)) return "";
+  return `${String(h).padStart(2, "0")}:${m[2]}`;
+}
+
+/**
  * Eine CSV-Zelle in Anführungszeichen. Text, der mit «=», «+», «-», «@», Tab oder Zeilenumbruch beginnt, bekommt
  * ein «'» davor, damit Excel/Numbers ihn nicht als Formel ausführt (CSV-Injection, z.B. ein Kundenname
  * «=HYPERLINK(…)»). Zahlen wie «-12.50» bleiben unverändert.

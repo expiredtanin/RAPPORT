@@ -57,3 +57,17 @@ describe("csvCell: keine Formeln aus Benutzertext", () => {
     expect(csvCell(0)).toBe('"0"');
   });
 });
+
+describe("normalizeTime: Uhrzeiten für den Server", () => {
+  it("bringt übliche Schreibweisen auf HH:MM, Ungültiges wird leer", async () => {
+    const { normalizeTime } = await import("./utils");
+    expect(normalizeTime("8:00")).toBe("08:00");
+    expect(normalizeTime("08:00:00")).toBe("08:00");
+    expect(normalizeTime("8.30")).toBe("08:30");
+    expect(normalizeTime("24:00")).toBe("24:00");
+    expect(normalizeTime("24:30")).toBe("");
+    expect(normalizeTime("99:99")).toBe("");
+    expect(normalizeTime("")).toBe("");
+    expect(normalizeTime(undefined)).toBe("");
+  });
+});

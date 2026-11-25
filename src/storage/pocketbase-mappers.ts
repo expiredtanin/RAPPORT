@@ -46,6 +46,7 @@
 import type { RecordModel } from "pocketbase";
 import { EXPENSE_CATEGORIES, INTERNAL_EXPENSE_CATEGORIES } from "../constants";
 import { pbFileRef } from "./pocketbase-files";
+import { normalizeTime } from "../utils";
 import type {
   AbsenzType, Absence, AppRole, BlogPost, ContactCategory, DashboardTemplate, ProtocolApproval, DeliveryNote, DocAsset, Employee,
   Expense, Feiertag, FerienEntry, Id, InternalExpense, Invoice, LetterTemplate, LohnEntry,
@@ -669,7 +670,7 @@ export const toDB = {
       id: t.id, studio: studioId,
       employee: t.employeeId || null, project: t.projectId || null,
       phaseId: t.phaseId, positionId: t.positionId,
-      date: t.date, minutes: t.minutes, startTime: t.startTime, endTime: t.endTime, description: t.description,
+      date: t.date, minutes: t.minutes, startTime: normalizeTime(t.startTime), endTime: normalizeTime(t.endTime), description: t.description,
       invoice: t.invoiceId || null,
     };
   },
@@ -698,7 +699,7 @@ export const toDB = {
     return {
       id: a.id, studio: studioId, employee: a.employeeId,
       typeId: a.type, date: a.date || null, dateFrom: a.dateFrom || null, dateTo: a.dateTo || null,
-      startTime: a.startTime, endTime: a.endTime, hours: a.hours, minutes: a.minutes,
+      startTime: normalizeTime(a.startTime), endTime: normalizeTime(a.endTime), hours: a.hours, minutes: a.minutes,
       note: a.note, status: a.status || "pending",
     };
   },

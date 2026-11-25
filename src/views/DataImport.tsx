@@ -22,7 +22,7 @@
 // Datenmodell steht in types.ts; die `buildRecord`-Funktionen müssen dazu passen.
 
 import { useMemo, useState } from "react";
-import { generateId, getAbsenzTypes, roundCHF } from "../utils";
+import { generateId, getAbsenzTypes, normalizeTime, roundCHF } from "../utils";
 import { PROJECT_TYPES, CONTACT_TYPES, CONTACT_CATEGORIES, EXPENSE_CATEGORIES, INTERNAL_EXPENSE_CATEGORIES } from "../constants";
 import { Header, FormField } from "../components/UI";
 import { isCloudBackend } from "../storage/adapter";
@@ -393,7 +393,7 @@ const ENTITY_CONFIGS: Record<string, EntityConfig> = {
     // Zwischenwerte für die Dauer-Berechnung, keine echten Zielfelder.
     buildRecord: (m) => ({
       id: generateId(), date: m.date || "", projectId: m.projectId || "", employeeId: m.employeeId || "",
-      phaseId: "", positionId: "", minutes: m.minutes ?? 0, startTime: m.startTime || "", endTime: m.endTime || "",
+      phaseId: "", positionId: "", minutes: m.minutes ?? 0, startTime: normalizeTime(m.startTime), endTime: normalizeTime(m.endTime),
       description: m.description || "", createdAt: new Date().toISOString(),
     }),
     postProcess: (values) => {
