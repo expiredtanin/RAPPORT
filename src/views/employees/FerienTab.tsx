@@ -2,7 +2,8 @@
 // Absenzliste und Ferienanspruch-Übersicht pro Mitarbeiter.
 
 import React from "react";
-import { arbeitszeitAm, formatDate, formatDays, localISODate } from "../../utils";
+import { arbeitszeitAm, closedMonthMsg, formatDate, formatDays, localISODate } from "../../utils";
+import { showToast } from "../../toast";
 import type { Absence, AbsenzType, Employee, FerienEntry, ViewProps } from "../../types";
 import type { useConfirm } from "../../hooks/useConfirm";
 import type { EmployeeCalc } from "./calc";
@@ -42,12 +43,26 @@ export default function FerienTab({ ownEmployeeId = null, data, update, askConfi
         if (total === 0) return null;
         // Änderungsantrag (originalData): genehmigen übernimmt die neuen Daten, ablehnen stellt die bisher
         // genehmigten wieder her — vorher verschwanden die schon bewilligten Ferien beim Ablehnen ganz.
-        const approveFerien = (id: string) => update("ferienEntries", (data.ferienEntries || []).map(f => {
+        // Monatsabschluss: Ferien/Absenzen im abgeschlossenen Monat nicht genehmigen/ablehnen (ändert den Saldo)
+        const closedF = (id: string) => {
+          const f = (data.ferienEntries || []).find(x => x.id === id);
+          const msg = closedMonthMsg(data.settings.closedMonths, [f?.dateFrom, f?.dateTo], [f?.originalData?.dateFrom, f?.originalData?.dateTo]);
+          if (msg) showToast(msg);
+          return !!msg;
+        };
+        const closedA = (id: string) => {
+          const a = (data.absences || []).find(x => x.id === id);
+          const msg = closedMonthMsg(data.settings.closedMonths, [a?.dateFrom || a?.date, a?.dateTo || a?.date]);
+          if (msg) showToast(msg);
+          return !!msg;
+        };
+        const approveFerien = (id: string) => !closedF(id) && update("ferienEntries", (data.ferienEntries || []).map(f => {
           if (f.id !== id) return f;
           const { originalData: _orig, ...rest } = f;
           return { ...rest, status: "approved" } as FerienEntry;
         }));
         const rejectFerien = async (id: string) => {
+          if (closedF(id)) return;
           const f0 = (data.ferienEntries || []).find(f => f.id === id);
           const isChange = !!f0?.originalData;
           if (!(await askConfirm(isChange ? "Änderung ablehnen? Die bisher genehmigten Ferien bleiben bestehen." : "Ferienantrag ablehnen?", "Ablehnen"))) return;
@@ -58,8 +73,8 @@ export default function FerienTab({ ownEmployeeId = null, data, update, askConfi
             return { ...rest, dateFrom: originalData.dateFrom, dateTo: originalData.dateTo, note: originalData.note, status: "approved" } as FerienEntry;
           }));
         };
-        const approveAbs = (id: string) => update("absences", (data.absences || []).map(a => a.id === id ? { ...a, status: "approved" } : a));
-        const rejectAbs = async (id: string) => { if (await askConfirm("Absenzantrag ablehnen?", "Ablehnen")) update("absences", (data.absences || []).map(a => a.id === id ? { ...a, status: "rejected" } : a)); };
+        const approveAbs = (id: string) => !closedA(id) && update("absences", (data.absences || []).map(a => a.id === id ? { ...a, status: "approved" } : a));
+        const rejectAbs = async (id: string) => { if (closedA(id)) return; if (await askConfirm("Absenzantrag ablehnen?", "Ablehnen")) update("absences", (data.absences || []).map(a => a.id === id ? { ...a, status: "rejected" } : a)); };
         return (
           <div className="card mark" style={{ marginBottom: 20, padding: "14px 20px", ["--mark" as string]: "var(--warning)" } as React.CSSProperties}>
             <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.1em", color: "var(--warning)", marginBottom: 12 }}>

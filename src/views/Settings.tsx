@@ -18,7 +18,7 @@
 
 import { applyEdit, jsonEqual } from "../storage/merge";
 import { showToast } from "../toast";
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { Header, PageTabs } from "../components/UI";
 import UpdatesSupport from "../components/UpdatesSupport";
 import DocDesignSettings from "../components/DocDesignSettings";
@@ -43,16 +43,24 @@ const TABS = [
 
 const SETTINGS_TABS = new Set(["studio", "dokumente", "erscheinungsbild", "team", "system"]);
 
+/**
+ * Ungespeicherter Entwurf, wenn man die Einstellungen verlässt (Modulebene: überlebt den Seitenwechsel in dieser
+ * Sitzung). Vorher waren getippte Änderungen beim Wechsel zu einer anderen Seite still verloren.
+ */
+let settingsDraft: { s: StudioSettings; base: StudioSettings } | null = null;
+
 export default function Settings({ data, update, currentUser, uiZoom, setUiZoom, setView }: Pick<ViewProps, "data" | "update" | "currentUser" | "setView"> & {
   /** Zoomfaktor der Oberfläche (1 = 100 %) */
   uiZoom?: number;
   setUiZoom?: React.Dispatch<React.SetStateAction<number>>;
 }) {
-  const [s, setS] = useState<StudioSettings>(data.settings);
+  // Entwurf nur übernehmen, wenn er auf demselben Stand beruht (sonst wäre er veraltet)
+  const [draft] = useState(() => { const d = settingsDraft; settingsDraft = null; return d && jsonEqual(d.base, data.settings) ? d : null; });
+  const [s, setS] = useState<StudioSettings>(draft?.s ?? data.settings);
   // Stand beim Öffnen bzw. letzten Speichern: Basis für applyEdit — gespeichert wird nur, was im Formular geändert
   // wurde. Vorher schrieb «Speichern» die ganze Kopie zurück und setzte fremde Änderungen zurück (Telefon, sogar
   // den Monatsabschluss eines anderen Clients; Test gleichzeitiges Arbeiten 25.11.2026).
-  const [base, setBase] = useState<StudioSettings>(data.settings);
+  const [base, setBase] = useState<StudioSettings>(draft?.base ?? data.settings);
   // Formular unverändert und die Einstellungen ändern sich von aussen → nachziehen
   if (data.settings !== base && jsonEqual(s, base)) { setBase(data.settings); setS(data.settings); }
   const [saved, setSaved] = useState(false);
@@ -76,6 +84,21 @@ export default function Settings({ data, update, currentUser, uiZoom, setUiZoom,
     setSaved(true);
     setTimeout(() => setSaved(false), 2500);
   };
+
+  // Beim Verlassen mit ungespeicherten Änderungen: Entwurf behalten und darauf hinweisen; Fenster schliessen warnt
+  const pending = useRef<{ s: StudioSettings; base: StudioSettings } | null>(null);
+  useEffect(() => { pending.current = isDirty ? { s, base } : null; });
+  useEffect(() => {
+    const onUnload = (e: BeforeUnloadEvent) => { if (pending.current) e.preventDefault(); };
+    window.addEventListener("beforeunload", onUnload);
+    return () => {
+      window.removeEventListener("beforeunload", onUnload);
+      if (pending.current) {
+        settingsDraft = pending.current;
+        showToast("Einstellungen noch nicht gespeichert — der Entwurf wartet unter Einstellungen.", { timeout: 8000 });
+      }
+    };
+  }, []);
 
   // ⌘S / Ctrl+S speichert ungespeicherte Einstellungen
   useEffect(() => {

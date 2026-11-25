@@ -55,8 +55,9 @@ export function TimeEntriesCard({ project, data, update, entries, positions, bil
                         const [ph, p] = val.split("|");
                         update("timeEntries", data.timeEntries.map(te => te.id === e.id ? { ...te, phaseId: ph, positionId: p || "" } : te));
                       }}
-                      disabled={!!e.invoiceId}
-                      style={{ border: "1px solid var(--border)", height: 26, fontSize: 11, maxWidth: "100%", opacity: e.invoiceId ? 0.6 : 1 }}
+                      // verrechnet oder im abgeschlossenen Monat (Monatsabschluss) nicht mehr umbuchen
+                      disabled={!!e.invoiceId || (data.settings.closedMonths || []).includes((e.date || "").slice(0, 7))}
+                      style={{ border: "1px solid var(--border)", height: 26, fontSize: 11, maxWidth: "100%", opacity: e.invoiceId || (data.settings.closedMonths || []).includes((e.date || "").slice(0, 7)) ? 0.6 : 1 }}
                     >
                       <option value="">—</option>
                       {(project.customPhases || []).map(cp => <option key={cp.id} value={cp.id}>{cp.label}</option>)}

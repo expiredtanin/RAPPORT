@@ -105,7 +105,9 @@ export default function Dashboard({ data, setView, currentUser, userPermissions,
       return d.toISOString().slice(0,7);
     });
   })();
-  const monthlyRevenue   = last6Months.map(m=>({m,paid:data.invoices.filter(i=>i.status==="bezahlt"&&(i.date||"").startsWith(m)).reduce((s,i)=>s+invoiceNet(i),0)}));
+  // Umsatz wie überall sonst (Kennzahl «Umsatz dieses Jahr», Buchhaltung → Monatsumsatz): gestellte Rechnungen
+  // netto nach Rechnungsdatum — vorher nur bezahlte, die zudem dem Rechnungs- statt dem Zahlungsmonat zugeordnet wurden
+  const monthlyRevenue   = last6Months.map(m=>({m,paid:data.invoices.filter(i=>i.status!=="entwurf"&&(i.date||"").startsWith(m)).reduce((s,i)=>s+invoiceNet(i),0)}));
   const maxRev           = Math.max(...monthlyRevenue.map(m=>m.paid),1);
 
   // ─── Permission ────────────────────────────────────────────────────
@@ -290,7 +292,7 @@ export default function Dashboard({ data, setView, currentUser, userPermissions,
         <div className="card" style={{height:"100%",boxSizing:"border-box"}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:14}}>
             <div style={{fontSize:11,fontWeight:600,letterSpacing:"0.1em",color:"var(--text4)"}}>UMSATZ LETZTE 6 MONATE</div>
-            <div style={{fontSize:11,color:"var(--text4)"}} title="Bezahlte Rechnungen, netto">{formatCHF(total)}</div>
+            <div style={{fontSize:11,color:"var(--text4)"}} title="Gestellte Rechnungen, netto">{formatCHF(total)}</div>
           </div>
           <div style={{display:"flex",alignItems:"flex-end",gap:8,height:104}}>
             {monthlyRevenue.map(({m,paid})=>(

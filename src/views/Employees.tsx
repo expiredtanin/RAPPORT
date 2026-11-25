@@ -18,7 +18,7 @@
 // Passwörter werden beim Speichern gehasht (`hashPassword`), nie im Klartext abgelegt.
 
 import React, { useState } from "react";
-import { generateId, getAbsenzTypes, hashPassword, localISODate, withDefaultRates } from "../utils";
+import { closedMonthMsg, generateId, getAbsenzTypes, hashPassword, localISODate, withDefaultRates } from "../utils";
 import { defaultAppRoleId } from "../auth";
 import { isCloudBackend } from "../storage/adapter";
 import { overtimeHourlyRate } from "../worktime";
@@ -208,6 +208,9 @@ function Employees({ data, update, saveAll, setPrintContent, userPermissions, cu
     const isNew = !absForm.id;
     const [from, to] = [absForm.dateFrom, absForm.dateTo || absForm.dateFrom].sort();
     const a = { ...absForm, dateFrom: from, dateTo: to, id: absForm.id || generateId() } as Absence;
+    const prevA = absences.find(x => x.id === a.id);
+    const closed = closedMonthMsg(data.settings.closedMonths, [from, to], [prevA?.dateFrom || prevA?.date, prevA?.dateTo || prevA?.date]);
+    if (closed) { showToast(closed); return; }
     update("absences", isNew ? [...absences, a] : absences.map(x => x.id === a.id ? a : x));
     setModal(null);
   };
@@ -217,7 +220,7 @@ function Employees({ data, update, saveAll, setPrintContent, userPermissions, cu
     showToast("Eigene genehmigte oder abgelehnte Einträge nimmt nur ein Admin zurück.");
     return true;
   };
-  const delAbs = (id: string) => { const a = (data.absences || []).find(x => x.id === id); if (ownApprovedLocked(a?.employeeId, a?.status || "approved")) return; removeWithUndo("Absenz gelöscht", "absences", a => a.id === id); };
+  const delAbs = (id: string) => { const a = (data.absences || []).find(x => x.id === id); const closed = closedMonthMsg(data.settings.closedMonths, [a?.dateFrom || a?.date, a?.dateTo || a?.date]); if (closed) { showToast(closed); return; } if (ownApprovedLocked(a?.employeeId, a?.status || "approved")) return; removeWithUndo("Absenz gelöscht", "absences", a => a.id === id); };
 
   const saveFerien = () => {
     if (!ferienForm.employeeId || !ferienForm.dateFrom) { showToast("Bitte Mitarbeiter und Datum angeben."); return; }
@@ -233,12 +236,14 @@ function Employees({ data, update, saveAll, setPrintContent, userPermissions, cu
     const originalData = !ownWithoutFull || !stored ? undefined
       : stored.status === "approved" || !stored.status ? { dateFrom: stored.dateFrom, dateTo: stored.dateTo, note: stored.note || "" }
       : stored.status === "pending" ? stored.originalData : undefined;
+    const closedF = closedMonthMsg(data.settings.closedMonths, [from, to], [stored?.dateFrom, stored?.dateTo]);
+    if (closedF) { showToast(closedF); return; }
     const f = { ...rest, ...(originalData ? { originalData } : {}), dateFrom: from, dateTo: to, status: ownWithoutFull ? "pending" : "approved", id: ferienForm.id || generateId() } as FerienEntry;
     if (ownWithoutFull) showToast("Eigene Ferien werden als Antrag gespeichert — genehmigt wird von einer anderen Person.");
     update("ferienEntries", isNew ? [...ferienEntries, f] : ferienEntries.map(x => x.id === f.id ? f : x));
     setModal(null);
   };
-  const delFerien = (id: string) => { const f = ferienEntries.find(x => x.id === id); if (ownApprovedLocked(f?.employeeId, f?.status || "approved")) return; removeWithUndo("Ferien gelöscht", "ferienEntries", f => f.id === id); };
+  const delFerien = (id: string) => { const f = ferienEntries.find(x => x.id === id); const closed = closedMonthMsg(data.settings.closedMonths, [f?.dateFrom, f?.dateTo]); if (closed) { showToast(closed); return; } if (ownApprovedLocked(f?.employeeId, f?.status || "approved")) return; removeWithUndo("Ferien gelöscht", "ferienEntries", f => f.id === id); };
 
 
   const closedMonths = data.settings.closedMonths || [];

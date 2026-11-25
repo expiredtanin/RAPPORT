@@ -1,7 +1,8 @@
 // Zeiterfassung: Ferien-Übersicht und Ferienantrag (Zustand der beiden Dialoge und ihre Aktionen).
 
 import { useState } from "react";
-import { generateId } from "../../utils";
+import { closedMonthMsg, generateId } from "../../utils";
+import { showToast } from "../../toast";
 import { removeWithUndo } from "../../undo";
 import type { AppData, Employee, FerienEntry, UpdateFn } from "../../types";
 
@@ -19,6 +20,9 @@ export function useFerienAntrag(data: AppData, update: UpdateFn, employees: Empl
     if (!antragForm.employeeId || !antragForm.dateFrom || !antragForm.dateTo) return;
     // Von/Bis vertauscht → tauschen (sonst zählte der Antrag 0 Tage und blieb trotzdem stehen)
     const form = antragForm.dateTo < antragForm.dateFrom ? { ...antragForm, dateFrom: antragForm.dateTo, dateTo: antragForm.dateFrom } : antragForm;
+    const prev = form.id ? (data.ferienEntries || []).find(f => f.id === form.id) : undefined;
+    const closed = closedMonthMsg(data.settings?.closedMonths, [form.dateFrom, form.dateTo], [prev?.dateFrom, prev?.dateTo]);
+    if (closed) { showToast(closed); return; }
     if (form.id) {
       const existing = (data.ferienEntries || []).find(f => f.id === form.id);
       let entry: FerienEntry;
@@ -39,7 +43,12 @@ export function useFerienAntrag(data: AppData, update: UpdateFn, employees: Empl
     }
     setAntragModal(null);
   };
-  const deleteFerien = (id: string) => removeWithUndo("Ferien gelöscht", "ferienEntries", f => f.id === id);
+  const deleteFerien = (id: string) => {
+    const f = (data.ferienEntries || []).find(x => x.id === id);
+    const closed = closedMonthMsg(data.settings?.closedMonths, [f?.dateFrom, f?.dateTo]);
+    if (closed) { showToast(closed); return; }
+    removeWithUndo("Ferien gelöscht", "ferienEntries", x => x.id === id);
+  };
   const cancelFerienEdit = (id: string) => update("ferienEntries", (data.ferienEntries || []).map(f => {
     if (f.id !== id || !f.originalData) return f;
     const { originalData, ...rest } = f;

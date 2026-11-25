@@ -1,7 +1,7 @@
 // Pensum über die Zeit: gültiges Pensum je Datum und tagesgenau anteiliger Monatslohn bei einem Pensumwechsel.
 // Referenzwerte von Hand: Monatslohn × Σ(Pensum × Tage) ÷ Kalendertage des Monats.
 import { describe, expect, it } from "vitest";
-import { arbeitszeitAm, calcLohn, pensumImMonat } from "./utils";
+import { arbeitszeitAm, calcLohn, closedMonthMsg, pensumImMonat } from "./utils";
 import type { Employee } from "./types";
 
 const emp: Employee = { id: "e", name: "Test", role: "", pensum: 80, wochenstunden: 42, ferienWochen: 5, monatslohn: 9000, eintrittsdatum: "2020-01-01", pensumVerlauf: [{ ab: "2026-06-16", pensum: 100 }] };
@@ -59,5 +59,15 @@ describe("Rechenprüfung 25.11.2026", () => {
     expect(Math.round((mit.ahv - ohne.ahv) * 100) / 100).toBe(185.5);
     expect(Math.round((mit.alv - ohne.alv) * 100) / 100).toBe(38.5);
     expect(mit.bvg).toBe(ohne.bvg);
+  });
+});
+
+describe("closedMonthMsg", () => {
+  it("findet abgeschlossene Monate in Zeiträumen (auch über mehrere Monate)", () => {
+    expect(closedMonthMsg(["2026-10"], ["2026-10-20", "2026-10-20"])).toMatch(/10\.2026/);
+    expect(closedMonthMsg(["2026-10"], ["2026-09-28", "2026-11-03"])).toMatch(/10\.2026/);
+    expect(closedMonthMsg(["2026-10"], ["2026-11-02", undefined], [undefined, undefined])).toBeNull();
+    expect(closedMonthMsg(["2026-10"], ["2026-11-02", "2026-11-02"], ["2026-10-05", "2026-10-06"])).toMatch(/abgeschlossen/);
+    expect(closedMonthMsg(undefined, ["2026-10-01", "2026-10-02"])).toBeNull();
   });
 });

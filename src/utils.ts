@@ -1376,6 +1376,21 @@ export interface LohnVorperioden {
  * Satzfeld wird in der Cloud als 0 gespeichert (PocketBase) → Lohn ohne Sozialabzüge; deshalb beim Speichern,
  * beim Import und beim Umzug in die Cloud ausfüllen.
  */
+/**
+ * Abgeschlossener Monat (Monatsabschluss) in einem der Zeiträume `[von, bis]`? Liefert die Meldung für den
+ * Toast oder null. Ferien und Absenzen zählen zum Saldo und werden darin wie Zeiteinträge gesperrt.
+ */
+export function closedMonthMsg(closedMonths: string[] | undefined, ...ranges: [string | undefined, string | undefined][]): string | null {
+  const closed = closedMonths || [];
+  for (const [from, to] of ranges) {
+    if (!from) continue;
+    const a = from.slice(0, 7), b = (to || from).slice(0, 7);
+    const hit = closed.filter(m => m >= (a < b ? a : b) && m <= (a < b ? b : a)).sort()[0];
+    if (hit) return `Der Monat ${hit.slice(5)}.${hit.slice(0, 4)} ist abgeschlossen. Zuerst unter Personal → Monatsabschluss wieder öffnen.`;
+  }
+  return null;
+}
+
 export function withDefaultRates<T extends Partial<Employee>>(emp: T, defaultPkAGSatz?: number | null): T {
   return {
     ...emp,
