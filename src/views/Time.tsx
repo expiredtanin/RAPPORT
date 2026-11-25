@@ -359,6 +359,7 @@ function Time({ data, update, currentUser, userPermissions, setPrintContent }: P
           ferienUebersicht={ferienUebersicht} setFerienUebersicht={setFerienUebersicht}
           antragModal={antragModal} setAntragModal={setAntragModal} antragForm={antragForm} setAntragForm={setAntragForm}
           saveAntrag={saveAntrag} editFerien={editFerien} cancelFerienEdit={cancelFerienEdit} deleteFerien={deleteFerien}
+          canWithdrawApproved={isAdmin || (canSwitchEmployee && selectedEmp?.id !== myEmployeeId)}
         />
 
         <aside className="zeit-side">

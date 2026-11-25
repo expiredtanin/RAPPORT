@@ -2,7 +2,6 @@
 
 import React from "react";
 import { arbeitszeitAm, formatCHF, localISODate } from "../../utils";
-import { UEBERSTUNDEN_IM_LOHN_AB } from "../../accounting";
 import { overtimeHourlyRate } from "../../worktime";
 import type { Employee, ViewProps } from "../../types";
 import type { EmployeeCalc } from "./calc";
@@ -124,7 +123,7 @@ export default function YearCloseTab({ data, employees, abschlussYear, setAbschl
                       <div key={p.id} style={{ fontSize: 11, color: "var(--st-c-bezahlt)", background: "var(--st-bg-bezahlt)", border: `1px solid color-mix(in srgb, var(--st-c-bezahlt) 30%, transparent)`, borderRadius: 20, padding: "4px 12px", marginBottom: 4 }}>
                         ✓ {p.hoursSettled}h ausbezahlt — {formatCHF(p.auszahlungBetrag)} ({p.zuschlagPercent}% Zuschlag){(() => {
                           const l = (data.lohnEntries || []).find(x => (x.ueberstundenIds || []).includes(p.id));
-                          return l ? ` · mit Lohn ${l.monat.slice(5)}.${l.monat.slice(0, 4)} abgerechnet` : (p.date || "") >= UEBERSTUNDEN_IM_LOHN_AB ? " · kommt in den nächsten Lohnlauf" : "";
+                          return l ? ` · mit Lohn ${l.monat.slice(5)}.${l.monat.slice(0, 4)} abgerechnet` : p.imLohn ? " · kommt in den nächsten Lohnlauf" : "";
                         })()}
                       </div>
                     ))}

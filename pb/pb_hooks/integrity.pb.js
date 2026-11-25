@@ -100,7 +100,15 @@ onRecordUpdateRequest((e) => {
     // erlaubt: Antrag bleibt Antrag; aus genehmigt nur als Änderungsantrag (pending mit originalData, FerienTab)
     const od = r.getString("originalData");
     const changeRequest = !!od && od !== "null" && od !== "{}";
-    if ((name === "vacationEntries" || name === "absences") && (r.getString("status") !== "pending" || (o.getString("status") !== "pending" && !changeRequest))) {
+    // eigenen Änderungsantrag verwerfen: zurück auf «approved» mit genau den bisherigen Daten (originalData)
+    let discard = false;
+    if (name === "vacationEntries" && o.getString("status") === "pending" && r.getString("status") === "approved" && !changeRequest) {
+      let prev = null;
+      try { prev = JSON.parse(o.getString("originalData") || "null"); } catch { prev = null; }
+      discard = !!prev && String(prev.dateFrom || "").slice(0, 10) === r.getString("dateFrom").slice(0, 10)
+        && String(prev.dateTo || "").slice(0, 10) === r.getString("dateTo").slice(0, 10);
+    }
+    if (!discard && (name === "vacationEntries" || name === "absences") && (r.getString("status") !== "pending" || (o.getString("status") !== "pending" && !changeRequest))) {
       throw new ForbiddenError("Eigene Ferien und Absenzen nur als Antrag; genehmigt wird von einer anderen Person.");
     }
     if (name === "overtimeClosings") throw new ForbiddenError("Eigene Überstunden schliesst ein Admin ab.");

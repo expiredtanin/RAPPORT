@@ -167,9 +167,9 @@ routerAdd("POST", "/api/rapport/create-studio", (e) => {
     const appRoles = [
       { roleId: "r-admin", name: "Administrator", permissions: null, dashboardTemplateId: "tpl-admin" },
       { roleId: "r-projektleiter", name: "Projektleiter", dashboardTemplateId: "tpl-projektleiter",
-        permissions: ["dashboard", "projects", "time", "quotes", "personen", "mitarbeiter", "settings"] },
+        permissions: ["dashboard", "projects", "time", "quotes", "personen", "mitarbeiter", "settings", "pinnwand", "pinnwand-schreiben"] },
       { roleId: "r-mitarbeiter", name: "Mitarbeiter", dashboardTemplateId: "tpl-mitarbeiter",
-        permissions: ["dashboard", "projects", "time", "personen", "settings"] },
+        permissions: ["dashboard", "projects", "time", "personen", "settings", "pinnwand"] },
     ];
     appRoles.forEach(r => mk("appRoles", r));
 

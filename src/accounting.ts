@@ -178,9 +178,6 @@ export function lohnVorperioden(lohnEntries: Pick<LohnEntry, "employeeId" | "mon
     }), { bruttoBisher: 0, alvBasisBisher: 0, dreizehnterBasisBisher: 0, dreizehnterBisher: 0 });
 }
 
-/** Überstunden-Auszahlungen ab diesem Datum laufen über den Lohnlauf (Payroll); ältere wurden separat ausbezahlt. */
-export const UEBERSTUNDEN_IM_LOHN_AB = "2026-12-01";
-
 /**
  * Spesen, die mit der Lohnabrechnung `monat` ausbezahlt werden: genehmigt («genehmigt» oder «auf
  * nächsten Lohn»), noch keiner Abrechnung zugeordnet, aus diesem oder einem früheren Monat.

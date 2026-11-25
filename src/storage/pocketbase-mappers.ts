@@ -416,6 +416,7 @@ export const fromDB = {
       zuschlagPercent: row.zuschlagPercent ?? 0,
       stundenlohn: row.stundenlohn ?? 0,
       auszahlungBetrag: row.auszahlungBetrag ?? 0,
+      ...(row.imLohn ? { imLohn: true } : {}),
     };
   },
 
@@ -722,7 +723,7 @@ export const toDB = {
       id: o.id, studio: studioId, employee: o.empId || null,
       year: o.year, date: o.date || null, type: o.type || "payout",
       hoursSettled: o.hoursSettled || 0, zuschlagPercent: o.zuschlagPercent || 0,
-      stundenlohn: o.stundenlohn || 0, auszahlungBetrag: o.auszahlungBetrag || 0,
+      stundenlohn: o.stundenlohn || 0, auszahlungBetrag: o.auszahlungBetrag || 0, imLohn: !!o.imLohn,
     };
   },
 

@@ -19,10 +19,13 @@ interface FerienModalsProps {
   editFerien: (f: FerienEntry) => void;
   cancelFerienEdit: (id: string) => void;
   deleteFerien: (id: string) => void;
+  /** Bestätigte Ferien zurücknehmen dürfen (Admin bzw. bei fremden Ferien Recht «mitarbeiter»); eigene bestätigte
+   *  nimmt sonst nur ein Admin zurück (Server lehnt ab) — ändern geht als Änderungsantrag */
+  canWithdrawApproved?: boolean;
 }
 
 /** Ferien-Übersicht des gewählten Mitarbeiters und Antragsformular. */
-export function FerienModals({ data, selectedEmp, employees, ferienUebersicht, setFerienUebersicht, antragModal, setAntragModal, antragForm, setAntragForm, saveAntrag, editFerien, cancelFerienEdit, deleteFerien }: FerienModalsProps) {
+export function FerienModals({ data, selectedEmp, employees, ferienUebersicht, setFerienUebersicht, antragModal, setAntragModal, antragForm, setAntragForm, saveAntrag, editFerien, cancelFerienEdit, deleteFerien, canWithdrawApproved = true }: FerienModalsProps) {
   return (
     <>
       {/* Modal: Ferien-Übersicht */}
@@ -68,7 +71,7 @@ export function FerienModals({ data, selectedEmp, employees, ferienUebersicht, s
                         ? <span style={{ fontSize: 11, color: "var(--text5)", flexShrink: 0, padding: "0 4px" }}>vergangen</span>
                         : isEditPending
                           ? <button onClick={() => cancelFerienEdit(f.id)} style={{ background: "none", border: "none", color: "var(--text5)", cursor: "pointer", fontSize: 13, padding: "0 2px", lineHeight: 1, flexShrink: 0 }} title="Änderung verwerfen"><span className="msr" style={{fontSize:16,verticalAlign:"middle"}}>close</span></button>
-                          : <button className="btn btn-sm btn-danger" onClick={() => deleteFerien(f.id)} title="Zurücknehmen"><span className="msr" style={{fontSize:16,verticalAlign:"middle"}}>close</span></button>
+                          : (canWithdrawApproved || f.status !== "approved") && <button className="btn btn-sm btn-danger" onClick={() => deleteFerien(f.id)} title="Zurücknehmen"><span className="msr" style={{fontSize:16,verticalAlign:"middle"}}>close</span></button>
                       }
                     </div>
                   );

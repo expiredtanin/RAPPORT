@@ -61,6 +61,7 @@ describe("PocketBaseAdapter._applyOpsSequential", () => {
       create: vi.fn(async (b: { id: string }) => { done.push("c:" + b.id); }),
       update: vi.fn(async (id: string) => { if (id === "weg") throw err(404); done.push("u:" + id); }),
       delete: vi.fn(async (id: string) => { if (id === "weg2") throw err(404); done.push("d:" + id); }),
+      getOne: vi.fn(async () => { throw err(404); }),
     };
     await a._applyOpsSequential(coll as never, [
       { type: "update", id: "weg", body: {} },
@@ -69,6 +70,12 @@ describe("PocketBaseAdapter._applyOpsSequential", () => {
       { type: "update", id: "da", body: {} },
     ]);
     expect(done).toEqual(["c:neu", "u:da"]);
+  });
+
+  it("404, aber Datensatz noch lesbar (Regel lehnt ab): gemeldet statt still übersprungen", async () => {
+    const a = new PocketBaseAdapter("http://test.invalid");
+    const coll = { update: vi.fn(async () => { throw err(404); }), getOne: vi.fn(async () => ({ id: "f1" })), create: vi.fn(), delete: vi.fn() };
+    await expect(a._applyOpsSequential(coll as never, [{ type: "update", id: "f1", body: {} }])).rejects.toMatchObject({ status: 400 });
   });
 
   it("andere Fehler werden gemeldet, halten die übrigen Operationen aber nicht auf", async () => {

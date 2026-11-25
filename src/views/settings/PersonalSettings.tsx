@@ -7,6 +7,7 @@ import { Header, FormField } from "../../components/UI";
 import { Section } from "./shared";
 import { showToast } from "../../toast";
 import type { ViewProps } from "../../types";
+import { isCloudBackend } from "../../storage/adapter";
 
 /** Persönliche Einstellungen des angemeldeten Benutzers; `nav` sind die Reiter, wenn eingebettet. */
 export function PersonalSettings({ data, update, currentUser, uiZoom, setUiZoom, nav = null }: Pick<ViewProps, "data" | "update" | "currentUser"> & {
@@ -78,7 +79,8 @@ export function PersonalSettings({ data, update, currentUser, uiZoom, setUiZoom,
                 </div>
                 <div>
                   <div style={{ fontSize: 14, fontWeight: 500, color: "var(--text)", marginBottom: 6 }}>{currentUser.displayName || currentUser.username}</div>
-                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                  {/* Cloud: Profilfotos werden (noch) nicht synchronisiert — Knopf ausblenden statt still verlieren */}
+                  {!isCloudBackend && <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                     <label className="btn btn-ghost" style={{ padding: "5px 12px", fontSize: 11, cursor: "pointer" }}>
                       {userRec?.avatar ? "Ersetzen" : "Foto hochladen"}
                       <input type="file" accept="image/*" style={{ display: "none" }} onChange={uploadAvatar} />
@@ -89,7 +91,7 @@ export function PersonalSettings({ data, update, currentUser, uiZoom, setUiZoom,
                         <span className="msr" style={{ fontSize: 16 }}>close</span>
                       </button>
                     )}
-                  </div>
+                  </div>}
                 </div>
               </div>
             </Section>

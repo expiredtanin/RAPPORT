@@ -228,7 +228,7 @@ function ProjectDetail({ data, update, saveAll, projectId, onBack, onSelect, run
     { label: "Stunden", value: formatHours(totalMinutes), sub: budget > 0 ? `von ${budget} h · ${Math.round(budgetPct)} %` : `${entries.length} Einträge`, tone: budgetPct >= 100 ? "neg" : budgetPct >= 80 ? "warn" : undefined },
     ...(canSeeInvoices ? [{ label: "Honorar verrechnet", value: chf0(invoicedTotal), sub: projectFee(project) ? `von CHF ${chf0(projectFee(project))}` : `${projectInvoices.length} Rechnung(en)` }] : []),
     showOffen
-      ? { label: "Offen zu verrechnen", value: formatHours(openMinutes), sub: project.hourlyRate ? `≈ CHF ${chf0(openMinutes / 60 * (project.hourlyRate as number))}` : undefined, tone: openMinutes > 0 ? "warn" as const : undefined }
+      ? { label: "Offen zu verrechnen", value: formatHours(openMinutes), sub: project.hourlyRate && canSeeInvoices ? `≈ CHF ${chf0(openMinutes / 60 * (project.hourlyRate as number))}` : undefined, tone: openMinutes > 0 ? "warn" as const : undefined }
       : { label: "Budget genutzt", value: budget > 0 ? `${Math.round(budgetPct)} %` : "—", sub: isCostControl ? "Kostenkontrolle" : undefined, tone: budgetPct >= 100 ? "neg" as const : undefined },
     { label: "Nächster Termin", value: nextTerm ? nextTerm.label : "—", sub: nextTerm ? new Date(nextTerm.date + "T12:00:00").toLocaleDateString("de-CH", { weekday: "short", day: "numeric", month: "numeric" }) : "nichts geplant" },
   ];

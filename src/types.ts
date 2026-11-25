@@ -887,6 +887,8 @@ export interface OvertimeClosing {
   zuschlagPercent: number;
   stundenlohn: number;
   auszahlungBetrag: number;
+  /** wird mit dem Lohn ausbezahlt (Lohnlauf übernimmt sie als Posten); fehlt bei früher separat bezahlten */
+  imLohn?: boolean;
 }
 
 /** Studio-Budget (StudioBudget.tsx): Annahmen für die Selbstkosten- und Honorarberechnung. Gespeichert in `settings.studioBudget`. */

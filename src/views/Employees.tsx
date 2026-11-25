@@ -87,6 +87,7 @@ function Employees({ data, update, saveAll, setPrintContent, userPermissions, cu
       zuschlagPercent: form.ubZuschlag,
       stundenlohn,
       auszahlungBetrag,
+      imLohn: true,
     };
     update("uberstundenAbschluss", [...(data.uberstundenAbschluss || []), entry]);
     setAbschlussForm(prev => ({ ...prev, [emp.id]: { ...form, ubHours: 0 } }));

@@ -163,6 +163,15 @@ r = await api("PATCH", `/api/collections/vacationEntries/records/${vac}`, tM, { 
 check("M: genehmigte Ferien nicht mehr ändern", r.status >= 400, `HTTP ${r.status}`);
 r = await api("DELETE", `/api/collections/vacationEntries/records/${vac}`, tM);
 check("M: genehmigte Ferien nicht löschen", r.status >= 400, `HTTP ${r.status}`);
+// Änderungsantrag zu genehmigten Ferien (1787930000_vacation_change_requests.js) und verwerfen
+r = await api("PATCH", `/api/collections/vacationEntries/records/${vac}`, tM, { status: "approved", dateTo: "2026-12-31", originalData: { dateFrom: "2026-12-21", dateTo: "2026-12-23" } });
+check("M: genehmigte Ferien nicht ohne Antrag ändern (approved bleibt)", r.status >= 400, `HTTP ${r.status}`);
+r = await api("PATCH", `/api/collections/vacationEntries/records/${vac}`, tM, { status: "pending", dateTo: "2026-12-31", originalData: { dateFrom: "2026-12-21", dateTo: "2026-12-23", note: "" } });
+check("M: genehmigte Ferien als Änderungsantrag ändern", r.status === 200, `HTTP ${r.status} ${r.status !== 200 ? JSON.stringify(r.json) : ""}`);
+r = await api("PATCH", `/api/collections/vacationEntries/records/${vac}`, tM, { status: "approved", dateTo: "2026-12-31", originalData: null });
+check("M: Änderungsantrag nicht mit neuen Daten «verwerfen» (= selbst genehmigen)", r.status >= 400, `HTTP ${r.status}`);
+r = await api("PATCH", `/api/collections/vacationEntries/records/${vac}`, tM, { status: "approved", dateTo: "2026-12-23", originalData: null });
+check("M: eigenen Änderungsantrag verwerfen (bisherige Daten zurück)", r.status === 200, `HTTP ${r.status} ${r.status !== 200 ? JSON.stringify(r.json) : ""}`);
 r = await api("GET", `/api/collections/vacationEntries/records?filter=${enc(`studio="${sid}"`)}`, tM);
 check("M: eigene Ferien lesen", r.status === 200 && r.json.items.length === 1, `HTTP ${r.status}`);
 const sp = rid("sp");

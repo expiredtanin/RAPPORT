@@ -1013,6 +1013,14 @@ export class PocketBaseAdapter implements StorageAdapter {
       } catch (err) {
         if (isTransient(err)) throw err;
         if (op.type !== "create" && pbError(err).status === 404) {
+          // 404 heisst «weg» ODER «Regel verbietet es». Ist der Datensatz noch lesbar, war es eine Ablehnung —
+          // melden statt still überspringen (sonst zeigte die App z.B. geänderte Ferien, die der Server nie
+          // übernahm; Cloud-Test 25.11.2026)
+          const stillThere = await c.getOne(op.id, { fields: "id" }).then(() => true, () => false);
+          if (stillThere) {
+            if (first === null) first = { status: 400, message: "Diese Änderung darf deine Rolle nicht speichern.", data: { message: "Diese Änderung darf deine Rolle nicht speichern." } };
+            continue;
+          }
           console.warn(`PocketBaseAdapter: ${op.type} ${op.id} nicht möglich (nicht gefunden), übersprungen.`);
           continue;
         }
