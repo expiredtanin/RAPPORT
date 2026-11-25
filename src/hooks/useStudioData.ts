@@ -23,6 +23,7 @@ import { storage, cloudStorage, isCloudBackend, isFileBackend, fileStorage } fro
 import { applyMigrations, type RawData } from "../storage/migrations";
 import { jsonEqual, mergeValue } from "../storage/merge";
 import { RejectedSaveError } from "../storage/pocketbase-adapter";
+import { showToast } from "../toast";
 import type { AppData, CurrentUser, Invoice } from "../types";
 import { localISODate } from "../utils";
 import { registerUndoSaver } from "../undo";
@@ -191,7 +192,11 @@ export function useStudioData(currentUser: CurrentUser | null) {
       },
       e => {
         console.error("Storage save failed:", e);
-        setSaveError(describeSaveError(e) + (e instanceof RejectedSaveError && e.keys.length ? " Die abgelehnte Änderung wurde zurückgesetzt." : ""));
+        // Löschschutz/Rollenrecht des Servers (z.B. Offerte hängt an einer für die Rolle unsichtbaren Rechnung):
+        // erwartbarer Hinweis, kein Fehler → Toast statt rotem Banner; der Stand wird unten trotzdem zurückgeholt
+        const hint = e instanceof RejectedSaveError && e.keys.length && e.message.split(" · ").every(m => /Wird noch verwendet|Mitarbeitende löscht ein Admin/.test(m));
+        if (hint) { showToast(e.message + " Die Änderung wurde zurückgesetzt."); setSaveError(null); }
+        else setSaveError(describeSaveError(e) + (e instanceof RejectedSaveError && e.keys.length ? " Die abgelehnte Änderung wurde zurückgesetzt." : ""));
         // abgelehnt (nicht verloren): wird vom Server zurückgeholt — zählt beim Abmelden nicht als «ungespeichert»
         // (sonst schickte das Abmelden dieselbe Änderung erneut und fragte widersprüchlich nach)
         if (e instanceof RejectedSaveError && e.keys.length) saveErrorRef.current = null;
