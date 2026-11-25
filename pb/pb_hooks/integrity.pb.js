@@ -43,6 +43,9 @@ onRecordCreateRequest((e) => {
   // 3. eigene Anträge / Abschlüsse
   if (own && !full) {
     if ((name === "vacationEntries" || name === "absences") && r.getString("status") !== "pending") throw new ForbiddenError("Eigene Ferien und Absenzen nur als Antrag.");
+    // ein neuer Antrag ist nie ein Änderungsantrag: originalData setzt nur der Wechsel aus «approved» (Update-Hook)
+    const odNew = r.getString("originalData");
+    if (name === "vacationEntries" && odNew && odNew !== "null" && odNew !== "{}") throw new ForbiddenError("Ein neuer Ferienantrag hat keine bisherigen Daten.");
     if (name === "overtimeClosings") throw new ForbiddenError("Eigene Überstunden schliesst ein Admin ab.");
   }
   e.next();
@@ -100,6 +103,21 @@ onRecordUpdateRequest((e) => {
     // erlaubt: Antrag bleibt Antrag; aus genehmigt nur als Änderungsantrag (pending mit originalData, FerienTab)
     const od = r.getString("originalData");
     const changeRequest = !!od && od !== "null" && od !== "{}";
+    const day = (v) => String(v || "").slice(0, 10);
+    let rOd = null, oOd = null;
+    try { rOd = JSON.parse(od || "null"); } catch { rOd = null; }
+    try { oOd = JSON.parse(o.getString("originalData") || "null"); } catch { oOd = null; }
+    if (name === "vacationEntries") {
+      // originalData ist der Stand, der genehmigt war — vom Server geprüft, nicht vom Client frei wählbar (Review
+      // 25.11.2026: sonst liessen sich über «verwerfen» selbst gewählte Ferien genehmigen)
+      if (o.getString("status") === "approved" && r.getString("status") === "pending"
+        && !(rOd && day(rOd.dateFrom) === day(o.getString("dateFrom")) && day(rOd.dateTo) === day(o.getString("dateTo")))) {
+        throw new ForbiddenError("Änderungsantrag: die bisherigen Daten müssen den genehmigten Ferien entsprechen.");
+      }
+      if (o.getString("status") === "pending" && r.getString("status") === "pending" && JSON.stringify(rOd) !== JSON.stringify(oOd)) {
+        throw new ForbiddenError("Die bisherigen Daten eines Änderungsantrags lassen sich nicht ändern.");
+      }
+    }
     // eigenen Änderungsantrag verwerfen: zurück auf «approved» mit genau den bisherigen Daten (originalData)
     let discard = false;
     if (name === "vacationEntries" && o.getString("status") === "pending" && r.getString("status") === "approved" && !changeRequest) {

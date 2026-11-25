@@ -172,8 +172,19 @@ r = await api("PATCH", `/api/collections/vacationEntries/records/${vac}`, tM, { 
 check("M: Änderungsantrag nicht mit neuen Daten «verwerfen» (= selbst genehmigen)", r.status >= 400, `HTTP ${r.status}`);
 r = await api("PATCH", `/api/collections/vacationEntries/records/${vac}`, tM, { status: "approved", dateTo: "2026-12-23", originalData: null });
 check("M: eigenen Änderungsantrag verwerfen (bisherige Daten zurück)", r.status === 200, `HTTP ${r.status} ${r.status !== 200 ? JSON.stringify(r.json) : ""}`);
+// Angriffe über selbst gewähltes originalData (Review 25.11.2026)
+const vac3 = rid("vacz");
+r = await api("POST", "/api/collections/vacationEntries/records", tM, { id: vac3, studio: sid, employee: empM, dateFrom: "2027-01-04", dateTo: "2027-01-08", status: "pending", originalData: { dateFrom: "2027-01-04", dateTo: "2027-01-08" } });
+check("M: neuer Antrag nicht mit erfundenen «bisherigen Daten»", r.status >= 400, `HTTP ${r.status}`);
+r = await api("POST", "/api/collections/vacationEntries/records", tM, { id: vac3, studio: sid, employee: empM, dateFrom: "2027-01-04", dateTo: "2027-01-08", status: "pending" });
+r = await api("PATCH", `/api/collections/vacationEntries/records/${vac3}`, tM, { originalData: { dateFrom: "2027-01-04", dateTo: "2027-01-08" } });
+check("M: «bisherige Daten» nicht nachträglich in einen Antrag schreiben", r.status >= 400, `HTTP ${r.status}`);
+r = await api("PATCH", `/api/collections/vacationEntries/records/${vac3}`, tM, { status: "approved", originalData: null });
+check("M: eigenen Antrag nicht über «verwerfen» genehmigen", r.status >= 400, `HTTP ${r.status}`);
+r = await api("PATCH", `/api/collections/vacationEntries/records/${vac}`, tM, { status: "pending", dateTo: "2026-12-31", originalData: { dateFrom: "2026-12-21", dateTo: "2026-12-31" } });
+check("M: Änderungsantrag nur mit den wirklich genehmigten Daten als «bisher»", r.status >= 400, `HTTP ${r.status}`);
 r = await api("GET", `/api/collections/vacationEntries/records?filter=${enc(`studio="${sid}"`)}`, tM);
-check("M: eigene Ferien lesen", r.status === 200 && r.json.items.length === 1, `HTTP ${r.status}`);
+check("M: eigene Ferien lesen", r.status === 200 && r.json.items.length === 2, `HTTP ${r.status}`);
 const sp = rid("sp");
 r = await api("POST", "/api/collections/expenses/records", tM, { id: sp, studio: sid, employee: empM, date: "2026-11-20", description: "Zug", amount: 12.4, status: "offen" });
 check("M: eigene Spese erfassen (offen)", r.status === 200, `HTTP ${r.status} ${r.status !== 200 ? JSON.stringify(r.json) : ""}`);
