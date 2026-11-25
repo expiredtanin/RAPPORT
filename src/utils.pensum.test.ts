@@ -1,7 +1,7 @@
 // Pensum über die Zeit: gültiges Pensum je Datum und tagesgenau anteiliger Monatslohn bei einem Pensumwechsel.
 // Referenzwerte von Hand: Monatslohn × Σ(Pensum × Tage) ÷ Kalendertage des Monats.
 import { describe, expect, it } from "vitest";
-import { arbeitszeitAm, calcLohn, closedMonthMsg, pensumImMonat } from "./utils";
+import { arbeitszeitAm, calcLohn, closedMonthMsg, ferienOverlap, pensumImMonat } from "./utils";
 import type { Employee } from "./types";
 
 const emp: Employee = { id: "e", name: "Test", role: "", pensum: 80, wochenstunden: 42, ferienWochen: 5, monatslohn: 9000, eintrittsdatum: "2020-01-01", pensumVerlauf: [{ ab: "2026-06-16", pensum: 100 }] };
@@ -69,5 +69,15 @@ describe("closedMonthMsg", () => {
     expect(closedMonthMsg(["2026-10"], ["2026-11-02", undefined], [undefined, undefined])).toBeNull();
     expect(closedMonthMsg(["2026-10"], ["2026-11-02", "2026-11-02"], ["2026-10-05", "2026-10-06"])).toMatch(/abgeschlossen/);
     expect(closedMonthMsg(undefined, ["2026-10-01", "2026-10-02"])).toBeNull();
+  });
+});
+
+describe("ferienOverlap", () => {
+  it("erkennt Überschneidungen derselben Person, ignoriert abgelehnte und sich selbst", () => {
+    const list = [{ id: "a", employeeId: "e", dateFrom: "2026-12-21", dateTo: "2026-12-23", status: "pending" }, { id: "b", employeeId: "e", dateFrom: "2026-11-02", dateTo: "2026-11-02", status: "rejected" }];
+    expect(ferienOverlap(list, { employeeId: "e", dateFrom: "2026-12-23", dateTo: "2026-12-24" })).toBe(true);
+    expect(ferienOverlap(list, { employeeId: "x", dateFrom: "2026-12-23" })).toBe(false);
+    expect(ferienOverlap(list, { employeeId: "e", dateFrom: "2026-11-02" })).toBe(false);
+    expect(ferienOverlap(list, { id: "a", employeeId: "e", dateFrom: "2026-12-21", dateTo: "2026-12-22" })).toBe(false);
   });
 });

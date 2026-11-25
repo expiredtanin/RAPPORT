@@ -1,7 +1,7 @@
 // Zeiterfassung: Ferien-Übersicht und Ferienantrag (Zustand der beiden Dialoge und ihre Aktionen).
 
 import { useState } from "react";
-import { closedMonthMsg, generateId } from "../../utils";
+import { closedMonthMsg, ferienOverlap, generateId } from "../../utils";
 import { showToast } from "../../toast";
 import { removeWithUndo } from "../../undo";
 import type { AppData, Employee, FerienEntry, UpdateFn } from "../../types";
@@ -23,6 +23,7 @@ export function useFerienAntrag(data: AppData, update: UpdateFn, employees: Empl
     const prev = form.id ? (data.ferienEntries || []).find(f => f.id === form.id) : undefined;
     const closed = closedMonthMsg(data.settings?.closedMonths, [form.dateFrom, form.dateTo], [prev?.dateFrom, prev?.dateTo]);
     if (closed) { showToast(closed); return; }
+    if (ferienOverlap(data.ferienEntries, form)) { showToast("Für diesen Zeitraum gibt es schon Ferien oder einen Antrag."); return; }
     if (form.id) {
       const existing = (data.ferienEntries || []).find(f => f.id === form.id);
       let entry: FerienEntry;

@@ -18,7 +18,7 @@
 // Passwörter werden beim Speichern gehasht (`hashPassword`), nie im Klartext abgelegt.
 
 import React, { useState } from "react";
-import { closedMonthMsg, generateId, getAbsenzTypes, hashPassword, localISODate, withDefaultRates } from "../utils";
+import { closedMonthMsg, ferienOverlap, generateId, getAbsenzTypes, hashPassword, localISODate, withDefaultRates } from "../utils";
 import { defaultAppRoleId } from "../auth";
 import { isCloudBackend } from "../storage/adapter";
 import { overtimeHourlyRate } from "../worktime";
@@ -150,6 +150,8 @@ function Employees({ data, update, saveAll, setPrintContent, userPermissions, cu
       const newPwTrimmed = _appPassword?.trim();
       const hasExistingCreds = !!(existing?.passwordHash || existing?.password);
       if (!newPwTrimmed && !hasExistingCreds) { showToast("Bitte ein Passwort vergeben."); return; }
+      // gleiche Mindestlänge wie Ersteinrichtung und «Mein Profil»
+      if (newPwTrimmed && newPwTrimmed.length < 8) { showToast("Das Passwort braucht mindestens 8 Zeichen."); return; }
 
       let credFields: Partial<User>;
       if (newPwTrimmed) {
@@ -238,6 +240,7 @@ function Employees({ data, update, saveAll, setPrintContent, userPermissions, cu
       : stored.status === "pending" ? stored.originalData : undefined;
     const closedF = closedMonthMsg(data.settings.closedMonths, [from, to], [stored?.dateFrom, stored?.dateTo]);
     if (closedF) { showToast(closedF); return; }
+    if (ferienOverlap(ferienEntries, { id: ferienForm.id, employeeId: ferienForm.employeeId, dateFrom: from, dateTo: to })) { showToast("Für diesen Zeitraum gibt es schon Ferien oder einen Antrag."); return; }
     const f = { ...rest, ...(originalData ? { originalData } : {}), dateFrom: from, dateTo: to, status: ownWithoutFull ? "pending" : "approved", id: ferienForm.id || generateId() } as FerienEntry;
     if (ownWithoutFull) showToast("Eigene Ferien werden als Antrag gespeichert — genehmigt wird von einer anderen Person.");
     update("ferienEntries", isNew ? [...ferienEntries, f] : ferienEntries.map(x => x.id === f.id ? f : x));

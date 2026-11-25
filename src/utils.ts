@@ -1358,6 +1358,18 @@ export interface LohnVorperioden {
 }
 
 /**
+ * Überschneidet sich ein Ferieneintrag mit einem anderen (nicht abgelehnten) derselben Person? Doppelte Anträge
+ * zählten in «beantragt» doppelt (UI-Rundgang Runde 18).
+ */
+export function ferienOverlap(entries: { id: string; employeeId?: string; dateFrom?: string; dateTo?: string; status?: string }[] | undefined,
+  e: { id?: string; employeeId?: string; dateFrom?: string; dateTo?: string }): boolean {
+  if (!e.dateFrom) return false;
+  const to = e.dateTo || e.dateFrom;
+  return (entries || []).some(x => x.id !== e.id && x.employeeId === e.employeeId && x.status !== "rejected" && !!x.dateFrom
+    && x.dateFrom <= to && (x.dateTo || x.dateFrom) >= e.dateFrom!);
+}
+
+/**
  * Abgeschlossener Monat (Monatsabschluss) in einem der Zeiträume `[von, bis]`? Liefert die Meldung für den
  * Toast oder null. Ferien und Absenzen zählen zum Saldo und werden darin wie Zeiteinträge gesperrt.
  */

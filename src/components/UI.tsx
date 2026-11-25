@@ -12,6 +12,7 @@ import type { CSSProperties, InputHTMLAttributes, ReactNode } from "react";
 import { STATUS_COLORS, STATUS_BG, statusVar } from "../constants";
 import type { Settings } from "../types";
 import { localISODate, sanitizeHtml } from "../utils";
+import { useConfirm } from "../hooks/useConfirm";
 
 /** Rückgabe der Datumsfelder: ein Mini-Event, das wie bei <input> `e.target.value` liefert. */
 export type DateChangeEvent = { target: { value: string } };
@@ -174,9 +175,18 @@ export function Modal({ title, onClose, onSave, saveLabel, hideSave, hideFooter,
   };
   const withPreview = !!preview && showPreview;
   const cls = ["modal", "modal-x", drawer && "drawer", wide && "wide", withPreview && "has-preview", overflow && "allow-overflow"].filter(Boolean).join(" ");
+  // Esc / Klick daneben bei getippten Änderungen erst nachfragen — vorher war eine halb erfasste Offerte oder Rechnung
+  // durch einen Fehlklick weg (UI-Rundgang Runde 18). «Abbrechen» und ✕ schliessen weiterhin sofort.
+  const dirty = useRef(false);
+  const { askConfirm, ConfirmModalEl } = useConfirm();
+  const requestClose = async () => {
+    if (dirty.current && !(await askConfirm("Ungespeicherte Eingaben verwerfen?", "Verwerfen"))) return;
+    onClose();
+  };
   return (
-    <div className={`modal-overlay${drawer ? " drawer-overlay" : ""}`} onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className={cls} role="dialog" aria-modal="true" onKeyDown={onKeyDown}>
+    <div className={`modal-overlay${drawer ? " drawer-overlay" : ""}`} onClick={e => { if (e.target === e.currentTarget) void requestClose(); }}>
+      {ConfirmModalEl}
+      <div className={cls} role="dialog" aria-modal="true" onKeyDown={onKeyDown} onChangeCapture={() => { dirty.current = true; }} onInputCapture={() => { dirty.current = true; }}>
         <div className="modal-main">
           <div className="modal-head">
             {title ? <h2>{title}</h2> : <span />}
