@@ -78,6 +78,9 @@ function collect(root: Element, out: Atom[], maxH: number) {
     const keepTogether = avoids(cs.breakInside) || avoids(cs.pageBreakInside);
     if (!forceNewPage && (cs.display === "block" || cs.display === "flow-root" || cs.display === "list-item")
       && hasBlockChildren(el) && (!keepTogether || tall)) {
+      // zu hoch zum Zusammenhalten: «nicht umbrechen» aufheben — sonst schob Chromium den ganzen Block beim Drucken
+      // trotzdem auf die nächste Seite, und alle gesetzten Abstände lagen daneben (Projektblatt, Druck-Test Runde 25)
+      if (keepTogether && tall) { (el as HTMLElement).style.breakInside = "auto"; (el as HTMLElement).style.pageBreakInside = "auto"; }
       collect(el, out, maxH);
       continue;
     }
