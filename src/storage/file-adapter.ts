@@ -99,7 +99,7 @@ export function joinData(files: Map<string, Json>): RawData | null {
 export class DataFolderError extends Error {}
 
 /** Cloud-/Sync-Dienste benennen Konfliktkopien so; solche Dateien werden nie als Daten gelesen. */
-const isConflictName = (n: string) => / \d+\.json$/.test(n) || /conflict|konflikt/i.test(n);
+const isConflictName = (n: string) => / \d+\.json$/.test(n) || / \(\d+\)\.json$/.test(n) || /conflict|konflikt/i.test(n);   // «x 2.json», «x (1).json» (Drive/Windows)
 const isDataName = (n: string) => n.endsWith(".json") && !n.includes(".tmp-") && !isConflictName(n);
 
 export class FileStorageAdapter implements StorageAdapter {
@@ -138,7 +138,9 @@ export class FileStorageAdapter implements StorageAdapter {
     const [top, time] = await Promise.all([this.fs.list(this.dir), this.fs.list(this.path("time"))]);
     return {
       names: [...(top.includes(STUDIO) ? [STUDIO] : []), ...time.filter(isDataName).map(n => `time/${n}`)],
-      icloudPending: !top.includes(STUDIO) && [...top, ...time].some(n => n.startsWith(".") && n.endsWith(".icloud")),
+      // ausgelagerte Datendatei (studio.json oder eine Zeitdatei): sonst lud die App still ohne deren Einträge, und ein
+      // Speichern legte die Datei mit nur den neuen Einträgen neu an (das Original wurde dann zur Konfliktkopie)
+      icloudPending: [...top.filter(n => n === `.${STUDIO}.icloud`), ...time].some(n => n.startsWith(".") && n.endsWith(".json.icloud")),
     };
   }
 
@@ -157,7 +159,14 @@ export class FileStorageAdapter implements StorageAdapter {
     const read = await Promise.all(names.map(async name => {
       const st = await this.fs.stat(this.path(name));
       if (!st) return null;
-      try { return [name, { content: JSON.parse(await this.fs.readText(this.path(name))), mtime: st.mtime, size: st.size }] as const; }
+      try {
+        const content = JSON.parse(await this.fs.readText(this.path(name)));
+        // Form prüfen: gültiges JSON mit falschem Inhalt (null, Liste, Einträge ohne Objekt) führte sonst zu rohen
+        // TypeErrors bzw. galt als leerer Ordner (Datenordner-Test Runde 17)
+        const isObj = (v: unknown) => typeof v === "object" && v !== null && !Array.isArray(v);
+        if (!isObj(content) || (name !== STUDIO && !(Array.isArray(content.entries) && content.entries.every(isObj)))) throw new Error("unerwarteter Inhalt");
+        return [name, { content, mtime: st.mtime, size: st.size }] as const;
+      }
       catch (e) { throw new DataFolderError(`Die Datei «${name}» ist beschädigt oder noch nicht fertig synchronisiert (${(e as Error).message}). Rapport wurde nicht geladen, damit nichts überschrieben wird.`); }
     }));
     this.known = new Map(read.filter(<T,>(x: T | null): x is T => x !== null));
@@ -227,7 +236,7 @@ export class FileStorageAdapter implements StorageAdapter {
       // Fehlt die Datei, nur dann als «von der anderen Person entfernt» werten, wenn sie wirklich nicht mehr im Ordner
       // steht — weder als Datei (stat kurz fehlgeschlagen) noch als iCloud-Platzhalter «.name.icloud» (ausgelagert).
       // Sonst würde der Abgleich gegen «leer» alle nicht selbst geänderten Einträge verwerfen (Review 25.11.2026).
-      if (!st && k && name !== STUDIO) {
+      if (!st && name !== STUDIO) {
         const slash = name.lastIndexOf("/");
         const dirName = slash >= 0 ? name.slice(0, slash) : "", base = name.slice(slash + 1);
         const listed = await this.fs.list(dirName ? this.path(dirName) : this.dir);
@@ -320,6 +329,7 @@ export class FileStorageAdapter implements StorageAdapter {
         catch (e) { throw new DataFolderError(`«${sub ? `${sub}/` : ""}${name}» ist nicht lesbar (${(e as Error).message}) — es wurde nichts gelöscht.`); }
       }
     }
+    for (const r of [...used]) used.add(r.normalize("NFC"));
     const removed: string[] = [];
     let bytes = 0;
     for (const area of await this.fs.list(this.path(FILES_DIR))) {
@@ -327,7 +337,8 @@ export class FileStorageAdapter implements StorageAdapter {
       for (const name of await this.fs.list(this.path(`${FILES_DIR}/${area}`))) {
         // «.»-Namen: iCloud-Platzhalter oder Systemdateien — nie anfassen
         const rel = `${FILES_DIR}/${area}/${name}`;
-        if (name.startsWith(".") || used.has(rel)) continue;
+        // Namen vom Dateisystem können NFD sein (SMB, HFS+), Verweise im JSON sind NFC — beide normalisiert vergleichen
+        if (name.startsWith(".") || used.has(rel) || used.has(rel.normalize("NFC"))) continue;
         const st = await this.fs.stat(this.path(rel));
         if (!st || now - st.mtime < minAgeMs) continue;
         try { await this.fs.remove(this.path(rel)); } catch { continue; }

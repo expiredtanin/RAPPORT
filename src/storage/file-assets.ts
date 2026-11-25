@@ -22,6 +22,9 @@
 // «rapport-datei:Dateien/Belege/Plan-<Prüfsumme>.dwg?typ=image%2Fvnd.dwg». So kommt beim Laden genau
 // derselbe Typ zurück, wie er gespeichert wurde.
 
+
+/** Ältere wiederverwendete Datei neu schreiben (frisches Änderungsdatum für das Aufräumen). */
+const REFRESH_AFTER_MS = 7 * 24 * 3600 * 1000;
 import type { FsApi } from "./file-adapter";
 
 /** Präfix der Verweise im gespeicherten JSON. */
@@ -233,7 +236,10 @@ export class FileAssetStore {
     const ext = (mime !== "application/octet-stream" && EXT_BY_MIME[mime]) || nameExt(name) || "bin";
     const rel = `${FILES_DIR}/${AREA_DIRS[area] || "Weitere"}/${hint ? `${hint}-` : ""}${hash}.${ext}`;
     const path = this.path(rel);
-    if (!(await this.fs.stat(path))) {
+    const existing = await this.fs.stat(path);
+    // Neu ablegen — oder eine ältere Datei mit gleichem Inhalt neu schreiben: ihr Änderungsdatum schützt sie beim
+    // Aufräumen (30 Tage), solange die andere Person den neuen Verweis noch nicht hat (Datenordner-Test Runde 17)
+    if (!existing || Date.now() - existing.mtime > REFRESH_AFTER_MS) {
       await this.fs.mkdir(path.slice(0, path.lastIndexOf("/")));
       const tmp = `${path}.tmp-${Math.random().toString(36).slice(2, 8)}`;
       await this.fs.writeBytes(tmp, bytes);

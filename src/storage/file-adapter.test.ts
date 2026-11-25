@@ -266,4 +266,29 @@ describe("Datenordner: Zeitdatei von iCloud ausgelagert", () => {
     const back = (await new FileStorageAdapter(dir, nodeFs, "C").load()) as unknown as AppData;
     expect(back.timeEntries.map(e => e.id).sort()).toEqual(["t1", "t2"]);
   });
+
+  it("Laden mit ausgelagerter Zeitdatei: Fehler statt still ohne deren Stunden; neuer Eintrag erzeugt keine Datei daneben", async () => {
+    const te = (id: string, date: string) => ({ id, employeeId: "e2", date, minutes: 60 }) as never;
+    await new FileStorageAdapter(dir, nodeFs, "A").save({ ...sampleData(), expenses: [], timeEntries: [te("t1", "2026-10-03")] });
+    await rename(join(dir, "time/e2_2026-10.json"), join(dir, "time/.e2_2026-10.json.icloud"));
+    const B = new FileStorageAdapter(dir, nodeFs, "B");
+    await expect(B.load()).rejects.toThrow(/iCloud/);
+    // auch ohne vorheriges Laden: Speichern in diesen Monat scheitert, statt die Datei neu (nur mit t3) anzulegen
+    await expect(B.save({ ...sampleData(), expenses: [], timeEntries: [te("t3", "2026-10-05")] })).rejects.toThrow(/nicht lesbar/);
+    expect(await readdir(join(dir, "time"))).not.toContain("e2_2026-10.json");
+  });
+
+  it("Kopien «name (1).json» (Drive/Windows) gelten als Konfliktkopie", async () => {
+    const te = (id: string, date: string) => ({ id, employeeId: "e2", date, minutes: 60 }) as never;
+    await new FileStorageAdapter(dir, nodeFs, "A").save({ ...sampleData(), expenses: [], timeEntries: [te("t1", "2026-11-03")] });
+    await writeFile(join(dir, "time/e2_2026-11 (1).json"), JSON.stringify({ format: 1, entries: [{ id: "tY", employeeId: "e2", date: "2026-11-09", minutes: 5 }] }));
+    const back = (await new FileStorageAdapter(dir, nodeFs, "C").load()) as unknown as AppData;
+    expect(back.timeEntries.map(e => e.id)).toEqual(["t1"]);
+  });
+
+  it("gültiges JSON mit falscher Form gilt als beschädigt (kein roher TypeError)", async () => {
+    await new FileStorageAdapter(dir, nodeFs, "A").save(sampleData());
+    await writeFile(join(dir, "time/e9_2026-01.json"), JSON.stringify({ format: 1, entries: [null] }));
+    await expect(new FileStorageAdapter(dir, nodeFs, "C").load()).rejects.toThrow(/beschädigt/);
+  });
 });
