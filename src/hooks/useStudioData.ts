@@ -21,7 +21,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { defaultData } from "../constants";
 import { storage, cloudStorage, isCloudBackend, isFileBackend, fileStorage } from "../storage/adapter";
 import { applyMigrations, type RawData } from "../storage/migrations";
-import { mergeValue } from "../storage/merge";
+import { jsonEqual, mergeValue } from "../storage/merge";
 import { RejectedSaveError } from "../storage/pocketbase-adapter";
 import type { AppData, CurrentUser, Invoice } from "../types";
 import { localISODate } from "../utils";
@@ -42,6 +42,10 @@ function describeSaveError(e: unknown): string {
   const err = e as { name?: string; message?: string };
   if (err?.name === "QuotaExceededError" || /quota/i.test(err?.message || ""))
     return "Speicher voll – Änderungen werden nicht mehr gespeichert. Grosse Belege oder Bilder entfernen oder in einen Datenordner wechseln.";
+  // PocketBase meldet fehlende Verbindung (Status 0) als «Something went wrong.»
+  const status = (e as { status?: number })?.status;
+  if (status === 0 || /something went wrong|failed to fetch|network/i.test(err?.message || ""))
+    return "Keine Verbindung zum Server – Änderungen werden gespeichert, sobald die Verbindung zurück ist (Fenster bis dahin offen lassen).";
   return "Speichern fehlgeschlagen: " + (err?.message || String(e));
 }
 
@@ -65,11 +69,21 @@ export function useStudioData(currentUser: CurrentUser | null) {
   // Immer der neueste Stand, auch zwischen zwei Renders: `update()`/`save()` bauen darauf auf,
   // damit mehrere Änderungen kurz hintereinander (oder nach einem await) sich nicht gegenseitig überschreiben.
   const dataRef = useRef<AppData>(defaultData);
-  /** Neuen Stand übernehmen, ohne zu speichern (Laden, Änderungen von aussen). */
-  const setData = useCallback((next: AppData) => {
+  // Letzter Stand, der sicher im Speicher liegt (geladen, von aussen übernommen oder erfolgreich gespeichert).
+  // Basis für den Abgleich beim Nachladen: was hier noch fehlt, ist eine eigene, ungespeicherte Änderung (z.B.
+  // offline gemacht) — die darf der Serverstand nicht still ersetzen (Test gleichzeitiges Arbeiten 25.11.2026).
+  const syncedRef = useRef<AppData>(defaultData);
+  /** Stand nur lokal setzen (eigene Änderung, Speichern läuft). */
+  const setLocal = useCallback((next: AppData) => {
     dataRef.current = next;
     setDataState(next);
   }, []);
+  /** Neuen Stand übernehmen, ohne zu speichern (Laden, Änderungen von aussen) — gilt als gespeichert. */
+  const setData = useCallback((next: AppData) => {
+    syncedRef.current = next;
+    if (isCloudBackend) cloudStorage.markSynced?.(next);
+    setLocal(next);
+  }, [setLocal]);
   /** Letzter Speicherfehler (z.B. Speicher voll, Server nicht erreichbar); null = zuletzt erfolgreich. */
   const [saveError, setSaveError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -159,9 +173,9 @@ export function useStudioData(currentUser: CurrentUser | null) {
   }, [setData, migrate]);
   const save = useCallback((next: AppData | ((prev: AppData) => AppData)) => {
     const newData = typeof next === "function" ? next(dataRef.current) : next;
-    setData(newData);
+    setLocal(newData);
     storage.save(newData).then(
-      () => setSaveError(null),
+      () => { syncedRef.current = newData; setSaveError(null); },
       e => {
         console.error("Storage save failed:", e);
         setSaveError(describeSaveError(e) + (e instanceof RejectedSaveError && e.keys.length ? " Die abgelehnte Änderung wurde zurückgesetzt." : ""));
@@ -171,12 +185,16 @@ export function useStudioData(currentUser: CurrentUser | null) {
           cloudStorage.loadPartial(e.keys).then(partial => {
             if (!partial) return;
             const cur = dataRef.current;
-            setData(migrate({ ...cur, ...(partial as RawData) }));
+            const next = migrate({ ...cur, ...(partial as RawData) });
+            const synced = { ...syncedRef.current } as Record<string, unknown>;
+            for (const k of Object.keys(partial)) synced[k] = (next as unknown as Record<string, unknown>)[k];
+            syncedRef.current = synced as unknown as AppData;
+            setLocal(next);
           }).catch(err => console.error("Neuladen nach Ablehnung fehlgeschlagen:", err));
         }
       },
     );
-  }, [setData, migrate]);
+  }, [setLocal, migrate]);
 
   const update = useCallback(<K extends keyof AppData>(key: K, value: AppData[K] | ((prev: AppData[K]) => AppData[K])) => {
     save(prev => ({ ...prev, [key]: typeof value === "function" ? (value as (p: AppData[K]) => AppData[K])(prev[key]) : value }));
@@ -212,28 +230,35 @@ export function useStudioData(currentUser: CurrentUser | null) {
     let dirtyKeys = new Set<keyof AppData>();
     let needsFull = false;
 
-    // Nachgeladenes übernehmen, ohne Eingaben zu verlieren, die während des Ladens
-    // gemacht wurden: wer einen Key seit dem Start der Anfrage (`before`) geändert hat,
-    // bekommt einen Drei-Wege-Merge (merge.ts) statt des Serverstands. Vorher ersetzte
-    // das Nachladen (z.B. das Realtime-Echo der eigenen Speicherung) frische Eingaben
-    // durch den älteren Serverstand.
-    const adopt = (before: AppData, loaded: RawData) => {
+    // Nachgeladenes übernehmen, ohne eigene Änderungen zu verlieren: Basis ist der letzte sicher gespeicherte
+    // Stand (`syncedRef`). Wer einen Key seither geändert hat — während des Ladens getippt, oder offline bzw. bei
+    // einem Speicherfehler —, bekommt einen Drei-Wege-Merge (merge.ts) statt des Serverstands, und das Ergebnis
+    // wird gleich wieder gespeichert. Vorher war die Basis der Stand beim Start der Anfrage: eine offline
+    // gemachte Änderung galt danach als «gespeichert» und sprang beim Wieder-online-Gehen zurück.
+    const adopt = (loaded: RawData) => {
       const cur = dataRef.current;
+      const base = syncedRef.current;
       const theirs = migrate({ ...cur, ...loaded });
       const next = { ...cur } as Record<string, unknown>;
+      const synced = { ...base } as Record<string, unknown>;
+      let pending = false;
       for (const k of Object.keys(loaded) as (keyof AppData)[]) {
         if (!(k in theirs)) continue;
-        next[k] = cur[k] === before[k] ? theirs[k] : mergeValue(before[k], cur[k], theirs[k]);
+        synced[k] = theirs[k];
+        if (cur[k] === base[k]) { next[k] = theirs[k]; continue; }
+        next[k] = mergeValue(base[k], cur[k], theirs[k]);
+        if (!jsonEqual(next[k], theirs[k])) pending = true;
       }
-      setData(next as unknown as AppData);
+      syncedRef.current = synced as unknown as AppData;
+      if (pending) save(next as unknown as AppData);
+      else setLocal(next as unknown as AppData);
     };
 
     const applyFull = async () => {
       try {
         await cloudStorage.whenIdle?.(); // zuerst eigene Änderungen fertig schreiben
-        const before = dataRef.current;
         const parsed = await storage.load();
-        if (!cancelled && parsed) adopt(before, parsed);
+        if (!cancelled && parsed) adopt(parsed);
       } catch (e) {
         console.error("Cloud refresh failed:", e);
       }
@@ -242,9 +267,8 @@ export function useStudioData(currentUser: CurrentUser | null) {
     const applyPartial = async (keys: Set<keyof AppData>) => {
       try {
         await cloudStorage.whenIdle?.();
-        const before = dataRef.current;
         const partial = await cloudStorage.loadPartial(Array.from(keys));
-        if (!cancelled && partial) adopt(before, partial as RawData);
+        if (!cancelled && partial) adopt(partial as RawData);
       } catch (e) {
         console.error("Cloud partial refresh failed:", e);
       }
@@ -276,6 +300,8 @@ export function useStudioData(currentUser: CurrentUser | null) {
     const onFocus = () => scheduleRefresh();
     document.addEventListener("visibilitychange", onVisibility);
     window.addEventListener("focus", onFocus);
+    // wieder online: Stand holen; ungespeicherte eigene Änderungen werden dabei verrechnet und neu gespeichert
+    window.addEventListener("online", onFocus);
 
     return () => {
       cancelled = true;
@@ -283,8 +309,9 @@ export function useStudioData(currentUser: CurrentUser | null) {
       cloudStorage.unsubscribeFromChanges?.();
       document.removeEventListener("visibilitychange", onVisibility);
       window.removeEventListener("focus", onFocus);
+      window.removeEventListener("online", onFocus);
     };
-  }, [currentUser, setData, migrate]);
+  }, [currentUser, setLocal, save, migrate]);
 
   // Auto-überfällig: nach dem Laden und danach stündlich prüfen, höchstens einmal pro Tag schreiben.
   const lastOverdueCheck = useRef<string | null>(null);

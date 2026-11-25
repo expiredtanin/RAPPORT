@@ -85,7 +85,12 @@ export function joinData(files: Map<string, Json>): RawData | null {
   const studio = files.get(STUDIO) as StudioFile | undefined;
   if (!studio) return null;
   const entries: TimeEntry[] = [];
-  for (const [name, content] of files) if (name !== STUDIO) entries.push(...((content as TimeFile).entries || []));
+  // Dieselbe id in zwei Dateien (Eintrag gleichzeitig verschoben und geändert — der Abgleich läuft pro Datei):
+  // nur einmal übernehmen, sonst zählten die Stunden doppelt; das nächste Speichern räumt die andere Datei auf
+  const seen = new Set<string>();
+  for (const [name, content] of files) if (name !== STUDIO) {
+    for (const e of (content as TimeFile).entries || []) { if (e?.id && seen.has(e.id)) continue; if (e?.id) seen.add(e.id); entries.push(e); }
+  }
   entries.sort((a, b) => (a.date || "").localeCompare(b.date || "") || String(a.id).localeCompare(String(b.id)));
   return { ...(studio.data as RawData), timeEntries: entries };
 }
@@ -219,7 +224,12 @@ export class FileStorageAdapter implements StorageAdapter {
       const path = this.path(name);
       const st = await this.fs.stat(path);
       let result: Json = mine;
-      if (st && (!k || st.mtime !== k.mtime || st.size !== k.size)) {
+      if (!st && k && name !== STUDIO) {
+        // Zeitdatei von der anderen Person entfernt (alle Einträge gelöscht/verschoben): als leere Datei verrechnen —
+        // vorher schrieb ein veralteter Stand alle gelöschten Einträge wieder zurück (Test 25.11.2026)
+        result = mergeValue(k.content, mine, { format: FORMAT, entries: [] });
+        if (!jsonEqual(result, mine)) pulled = true;
+      } else if (st && (!k || st.mtime !== k.mtime || st.size !== k.size)) {
         // Datei wurde von aussen geändert (oder neu angelegt) → verrechnen statt überschreiben
         const theirs = JSON.parse(await this.fs.readText(path));
         result = mergeValue(k?.content, mine, theirs);

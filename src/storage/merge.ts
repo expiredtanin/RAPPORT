@@ -11,12 +11,14 @@
 //   - Objekte → pro Schlüssel; Listen von Objekten mit `id` → pro Eintrag
 //   - Konflikt (beide ändern denselben Wert verschieden) → `mine` gewinnt
 //   - Eintrag gelöscht, aber von der Gegenseite geändert → bleibt (Löschen verliert)
-// Listen ohne `id` (z.B. Zahlen, Strings) gelten als ein Wert.
+//   - Listen aus Texten/Zahlen → als Menge (Hinzufügen und Entfernen beider Seiten)
+// Andere Listen ohne `id` gelten als ein Wert.
 
 type Json = unknown;
 type Obj = Record<string, Json>;
 
 const isObj = (v: Json): v is Obj => typeof v === "object" && v !== null && !Array.isArray(v);
+const isPrimList = (v: Json): v is (string | number)[] => Array.isArray(v) && v.every(x => typeof x === "string" || typeof x === "number");
 const isIdList = (v: Json): v is Obj[] => Array.isArray(v) && v.every(x => isObj(x) && typeof x.id === "string");
 
 /** Tiefer Vergleich (JSON-Werte; Schlüsselreihenfolge egal). */
@@ -73,5 +75,23 @@ export function mergeValue(base: Json, mine: Json, theirs: Json): Json {
     return out;
   }
   if (isIdList(mine) && isIdList(theirs)) return mergeIdLists(isIdList(base) ? base : undefined, mine, theirs);
+  // Listen aus Texten/Zahlen (z.B. Spesenkategorien) als Menge: beide fügen etwas hinzu → beides bleibt
+  // (vorher galt die ganze Liste als ein Wert, eine der beiden neuen Kategorien ging verloren)
+  if (isPrimList(mine) && isPrimList(theirs) && (base === undefined || isPrimList(base))) {
+    const b = new Set(base === undefined ? [] : base), m = new Set(mine);
+    const out = theirs.filter(x => m.has(x) || !b.has(x));   // was ich entfernt habe, fällt weg
+    for (const x of mine) if (!b.has(x) && !out.includes(x)) out.push(x);   // was ich hinzugefügt habe, kommt dazu
+    return out;
+  }
   return mine;
+}
+
+/**
+ * Ergebnis eines Bearbeiten-Fensters auf den aktuellen Stand anwenden: nur was im Fenster gegenüber dem Stand beim
+ * Öffnen (`original`) geändert wurde, überschreibt `current`; was inzwischen jemand anderes geändert hat, bleibt.
+ * Vorher schrieb das Fenster den ganzen beim Öffnen kopierten Datensatz zurück (z.B. Status «gesendet» → wieder
+ * «entwurf», Test gleichzeitiges Arbeiten 25.11.2026). Abgeleitete Werte (Summen) danach neu berechnen.
+ */
+export function applyEdit<T>(original: T, edited: T, current: T): T {
+  return mergeValue(original, edited, current) as T;
 }

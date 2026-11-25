@@ -160,6 +160,8 @@ export class PocketBaseAdapter implements StorageAdapter {
   _lastData: AppData | null;
   _batchSupported: boolean | null;
   _unsub?: (() => void) | null;
+  /** Wartender Neuversuch des Realtime-Abos (subscribeToChanges) */
+  _resubTimer: ReturnType<typeof setTimeout> | null = null;
   _pendingData?: AppData | null;
   _currentWrite?: Promise<void> | null;
   /** Abgleichsstand pro Collection (Datenbankform, nach Schlüssel), siehe pocketbase-sync.ts. */
@@ -434,7 +436,7 @@ export class PocketBaseAdapter implements StorageAdapter {
   // gezielten loadPartial([dataKey]) statt eines kompletten load() anstossen.
   // Ändert sich z.B. ein einzelner Zeiterfassungs-Eintrag eines anderen Nutzers,
   // muss nicht mehr über alle ~20 Collections neu geladen werden.
-  subscribeToChanges(onChange: (dataKey: DataKey | null) => void) {
+  subscribeToChanges(onChange: (dataKey: DataKey | null) => void, attempt = 0) {
     if (this._unsub) return;
     const collections = [
       "studioSettings", "studioRoles",
@@ -447,12 +449,36 @@ export class PocketBaseAdapter implements StorageAdapter {
         try { onChange(dataKey); } catch (e) { console.error("onChange handler:", e); }
       }, { filter: `studio = "${this._studioId}"` });
     });
-    this._unsub = () => subs.forEach(p => p.then(unsub => unsub()).catch(() => {}));
+    let stopped = false;
+    this._unsub = () => {
+      stopped = true;
+      if (this._resubTimer) { clearTimeout(this._resubTimer); this._resubTimer = null; }
+      subs.forEach(p => p.then(unsub => unsub()).catch(() => {}));
+    };
+    // Schlägt der erste Verbindungsaufbau fehl (Netz beim Anmelden weg), verbindet das SDK nicht von selbst neu —
+    // vorher blieb die Sitzung dann ganz ohne Live-Abgleich (Test 25.11.2026). Neu: alles abmelden und mit
+    // wachsender Wartezeit (5 s … 60 s) neu abonnieren; nach Erfolg einmal voll nachladen (verpasste Änderungen).
+    Promise.allSettled(subs).then(results => {
+      if (stopped) return;
+      if (results.every(r => r.status === "fulfilled")) { if (attempt > 0) onChange(null); return; }
+      subs.forEach(p => p.then(unsub => unsub()).catch(() => {}));
+      this._unsub = null;
+      const wait = Math.min(60000, 5000 * 2 ** Math.min(attempt, 4));
+      this._resubTimer = setTimeout(() => { this._resubTimer = null; if (!this._unsub) this.subscribeToChanges(onChange, attempt + 1); }, wait);
+    });
   }
+
+  /**
+   * Dieser Stand entspricht dem Server (gerade geladen): das nächste Speichern schreibt nur Bereiche, die sich
+   * danach ändern. Ohne das galt nach dem Laden alles als geändert — das erste Speichern fragte alle ~20 Collections
+   * nacheinander ab (bei 600 ms Latenz kam die Änderung erst nach 4 s an, Test 25.11.2026).
+   */
+  markSynced(data: AppData) { this._lastData = data; }
 
   /** Realtime-Abos beenden. */
   unsubscribeFromChanges() {
     if (this._unsub) { this._unsub(); this._unsub = null; }
+    if (this._resubTimer) { clearTimeout(this._resubTimer); this._resubTimer = null; }
   }
 
   /**

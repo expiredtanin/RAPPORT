@@ -4,13 +4,15 @@
 // Terminprogramm, Offerten/Nachträge, Rechnungen, Protokolle, Zeiteinträge); Datenmodell siehe Kopf von Projects.tsx.
 // Berechtigungen: Offerten- und Rechnungsdaten nur mit «quotes» bzw. «invoices» (`userPermissions`).
 
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import { NON_BILLING_CATEGORIES } from "../constants";
 import { deriveQuoteBudget, hasQuoteBudget, invoiceNet, migrateLinkedQuotes, projectFee } from "../utils";
 import { RowMenu } from "../components/UI";
 import type { PaletteTarget } from "../commandPalette";
 import { readTimer, writeTimer, weekAgenda } from "../today";
 import { showToast } from "../toast";
+import { applyEdit } from "../storage/merge";
+import type { Project } from "../types";
 import { formatHours, localISODate } from "../utils";
 import { ProjectList, PhaseBar, OverviewTab, PeopleList, type WsFigure } from "./project-detail/Workspace";
 import type { ProjectPosition, ViewProps } from "../types";
@@ -65,8 +67,17 @@ function ProjectDetail({ data, update, saveAll, projectId, onBack, onSelect, run
   const [addContactId, setAddContactId] = useState("");
   const [addPersonIds, setAddPersonIds] = useState<string[]>([]);
 
+  // Projekt beim Öffnen eines Fensters (Einstellungen, Budget): gespeichert wird nur, was im Fenster geändert
+  // wurde (applyEdit) — sonst setzte es Änderungen anderer seit dem Öffnen zurück
+  const openedAs = useRef<Project | null>(null);
+  const saveEdited = (fields: Partial<Project>) => update("projects", prev => prev.map(p => {
+    if (p.id !== projectId) return p;
+    const base = openedAs.current?.id === projectId ? openedAs.current : p;
+    return applyEdit<Project>(base, { ...base, ...fields } as Project, p);
+  }));
   const openSettings = () => {
     if (!project) return;
+    openedAs.current = project;
     setSettingsForm({ ...emptySettingsForm, ...project, enabledPhases: project.enabledPhases || [], projectContacts: project.projectContacts || [], internalMembers: project.internalMembers || [] });
     setShowAddBeteiligter(false);
     setEditingContactId(null);
@@ -76,7 +87,7 @@ function ProjectDetail({ data, update, saveAll, projectId, onBack, onSelect, run
   };
   const saveSettings = () => {
     if (!settingsForm.name?.trim()) { showToast("Bitte einen Projektnamen eingeben."); return; }
-    update("projects", data.projects.map(p => p.id === projectId ? { ...p, ...settingsForm } : p));
+    saveEdited(settingsForm as Partial<Project>);
     setSettingsOpen(false);
   };
 
@@ -104,6 +115,7 @@ function ProjectDetail({ data, update, saveAll, projectId, onBack, onSelect, run
   if (!project) return <div style={{ padding: 32 }}>Projekt nicht gefunden. <button className="btn btn-ghost" onClick={onBack}>Zurück</button></div>;
 
   const openBudgetModal = () => {
+    openedAs.current = project || null;
     const linked = migrateLinkedQuotes(project);
     setBudgetForm({
       budgetHours: project.budgetHours || 0,
@@ -153,7 +165,7 @@ function ProjectDetail({ data, update, saveAll, projectId, onBack, onSelect, run
   const saveBudget = () => {
     // Pauschalpreis mit den verknüpften Offerten (Hauptofferte + Nachträge) nachführen — eine Quelle (projectFee)
     const budget = budgetForm.billingType === "pauschal" && hasQuoteBudget(budgetForm) ? budgetForm.budgetAmount : project.budget;
-    update("projects", data.projects.map(p => p.id === projectId ? { ...p, ...budgetForm, budget } : p));
+    saveEdited({ ...budgetForm, budget } as Partial<Project>);
     setBudgetModal(false);
   };
 

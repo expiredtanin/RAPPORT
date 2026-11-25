@@ -26,11 +26,12 @@
 // Umwandlung aus Offerten: Quotes.tsx setzt `modal = { type: "newInvoice", quoteId }`.
 
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { generateId, localISODate, projectFee } from "../utils";
 import { Header } from "../components/UI";
 import { changeWithUndo } from "../undo";
 import { showToast } from "../toast";
+import { applyEdit } from "../storage/merge";
 import { MahnModal } from "../components/MahnModal";
 import type { Invoice, InvoiceItem, PrintContent, TimeEntry, ViewProps } from "../types";
 import { AkontoPlanModal } from "./invoices/AkontoPlanModal";
@@ -115,6 +116,9 @@ function Invoices({ data, update, saveAll, modal, setModal, setPrintContent }: P
     setModal({ type: "invoice" });
   };
 
+  // Stand der Rechnung beim Öffnen des Fensters (Basis für applyEdit)
+  const editOriginal = useRef<Invoice | null>(null);
+
   const save = (statusOverride?: string) => {
     if (!form.clientId) {
       showToast("Bitte einen Kunden auswählen.");
@@ -149,8 +153,20 @@ function Invoices({ data, update, saveAll, modal, setModal, setPrintContent }: P
       return e;
     });
 
+    // Bearbeiten: nur die im Fenster geänderten Felder übernehmen (fremde Änderungen seit dem Öffnen bleiben),
+    // dann Summen aus den zusammengeführten Positionen neu rechnen
+    const current = editingId ? invoices.find(i => i.id === editingId) : undefined;
+    if (editingId && !current) { showToast("Diese Rechnung wurde inzwischen gelöscht — die Änderungen sind nicht gespeichert."); return; }
+    let saved: Invoice = inv;
+    if (current) {
+      const original = editOriginal.current?.id === editingId ? editOriginal.current : current;
+      saved = applyEdit<Invoice>(original, { ...original, ...inv }, current);
+      const t = calcTotal(saved.items, saved.mwst, saved.mwstRate ?? data.settings.mwstRate, saved.discountType, saved.discountValue);
+      saved = { ...saved, sub: t.sub, globalDisc: t.globalDisc, subAfterDisc: t.subAfterDisc, tax: t.tax, total: t.total };
+      saved.billingSummary = invoiceBillingSummary(saved, data);
+    }
     const updatedInvoices = editingId
-      ? invoices.map(i => i.id === editingId ? { ...i, ...inv } : i)
+      ? invoices.map(i => i.id === editingId ? saved : i)
       : [...invoices, { ...inv, createdAt: new Date().toISOString() }];
 
     saveAll({ ...data, invoices: updatedInvoices, timeEntries: updatedEntries });
@@ -159,6 +175,7 @@ function Invoices({ data, update, saveAll, modal, setModal, setPrintContent }: P
   };
 
   const openEdit = (inv: Invoice) => {
+    editOriginal.current = inv;
     const entrySelections = entrySelectionsForEdit(inv, data.timeEntries);
     // Zeile 1 folgt der Zeitauswahl nur bei Rechnungen nach Stunden; die gespeicherten Beträge bleiben,
     // bis die Auswahl geändert wird.

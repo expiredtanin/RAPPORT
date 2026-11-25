@@ -224,3 +224,30 @@ describe("Datenordner mit zwei Personen", () => {
     expect(last.invoices.map(i => i.id)).toEqual(["r-ich"]);
   });
 });
+
+describe("Datenordner: zwei Personen, Zeitdateien (Test 25.11.2026)", () => {
+  const te = (id: string, emp: string, date: string, extra = {}) => ({ id, employeeId: emp, date, minutes: 60, ...extra }) as never;
+  const base = (): AppData => ({ ...sampleData(), expenses: [], timeEntries: [te("t1", "e1", "2026-11-03"), te("t2", "e2", "2026-11-04"), te("t3", "e2", "2026-11-05")] });
+  const setup = async () => {
+    await new FileStorageAdapter(dir, nodeFs, "init").save(base());
+    const A = new FileStorageAdapter(dir, nodeFs, "A"), B = new FileStorageAdapter(dir, nodeFs, "B");
+    const a = (await A.load()) as unknown as AppData, b = (await B.load()) as unknown as AppData;
+    return { A, B, a, b };
+  };
+  const ids = async () => (((await new FileStorageAdapter(dir, nodeFs, "C").load()) as unknown as AppData).timeEntries).map(e => `${e.id}:${e.description || ""}`).sort();
+
+  it("A leert eine Zeitdatei (Datei entfernt), B ändert einen Eintrag daraus: nur dieser bleibt", async () => {
+    const { A, B, a, b } = await setup();
+    await A.save({ ...a, timeEntries: a.timeEntries.filter(e => e.employeeId !== "e2") });
+    await B.save({ ...b, timeEntries: b.timeEntries.map(e => e.id === "t3" ? { ...e, description: "B" } : e) });
+    expect(await ids()).toEqual(["t1:", "t3:B"]);
+  });
+
+  it("Eintrag gleichzeitig verschoben (anderer Monat) und geändert: kommt nur einmal vor", async () => {
+    const { A, B, a, b } = await setup();
+    await A.save({ ...a, timeEntries: a.timeEntries.map(e => e.id === "t2" ? { ...e, date: "2026-12-01" } : e) });
+    await B.save({ ...b, timeEntries: b.timeEntries.map(e => e.id === "t2" ? { ...e, description: "B" } : e) });
+    const list = await ids();
+    expect(list.filter(x => x.startsWith("t2:"))).toHaveLength(1);
+  });
+});

@@ -16,6 +16,7 @@
 // Änderungen); Feiertage, Absenzen und Rollen werden dagegen sofort gespeichert.
 // Nicht-Admins sehen nur «Mein Profil».
 
+import { applyEdit, jsonEqual } from "../storage/merge";
 import React, { useState, useEffect } from "react";
 import { Header, PageTabs } from "../components/UI";
 import UpdatesSupport from "../components/UpdatesSupport";
@@ -47,15 +48,23 @@ export default function Settings({ data, update, currentUser, uiZoom, setUiZoom,
   setUiZoom?: React.Dispatch<React.SetStateAction<number>>;
 }) {
   const [s, setS] = useState<StudioSettings>(data.settings);
+  // Stand beim Öffnen bzw. letzten Speichern: Basis für applyEdit — gespeichert wird nur, was im Formular geändert
+  // wurde. Vorher schrieb «Speichern» die ganze Kopie zurück und setzte fremde Änderungen zurück (Telefon, sogar
+  // den Monatsabschluss eines anderen Clients; Test gleichzeitiges Arbeiten 25.11.2026).
+  const [base, setBase] = useState<StudioSettings>(data.settings);
+  // Formular unverändert und die Einstellungen ändern sich von aussen → nachziehen
+  if (data.settings !== base && jsonEqual(s, base)) { setBase(data.settings); setS(data.settings); }
   const [saved, setSaved] = useState(false);
   const [tab, setTab] = useState("studio");
-  const isDirty = JSON.stringify(s) !== JSON.stringify(data.settings);
+  const isDirty = !jsonEqual(s, base);
   const isAdmin = !currentUser || currentUser.role === "admin";
 
   const setField = (changes: Partial<StudioSettings>) => { setS(prev => ({ ...prev, ...changes })); setSaved(false); };
 
   const save = () => {
-    update("settings", s);
+    let merged = s;
+    update("settings", prev => (merged = applyEdit(base, s, prev)));
+    setBase(merged); setS(merged);
     setSaved(true);
     setTimeout(() => setSaved(false), 2500);
   };
@@ -65,12 +74,12 @@ export default function Settings({ data, update, currentUser, uiZoom, setUiZoom,
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "s" && isDirty) {
         e.preventDefault();
-        update("settings", s); setSaved(true); setTimeout(() => setSaved(false), 2500);
+        save();
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [isDirty, s, update]);
+  });
 
   if (!isAdmin) {
     return <PersonalSettings data={data} update={update} currentUser={currentUser} uiZoom={uiZoom || 1} setUiZoom={setUiZoom || (() => {})} />;
@@ -99,7 +108,7 @@ export default function Settings({ data, update, currentUser, uiZoom, setUiZoom,
         {tab === "dokumente" && <DocumentsTab s={s} setField={setField} />}
         {tab === "erscheinungsbild" && <DocDesignSettings s={s} setField={setField} data={data} update={update} />}
         {tab === "team" && <TeamTab s={s} setField={setField} data={data} update={update} isAdmin={isAdmin} />}
-        {tab === "kalender" && <CalendarTab data={data} update={update} onSettingsSaved={c => setS(prev => ({ ...prev, ...c }))} />}
+        {tab === "kalender" && <CalendarTab data={data} update={update} onSettingsSaved={c => { setS(prev => ({ ...prev, ...c })); setBase(prev => ({ ...prev, ...c })); }} />}
         {tab === "system" && <SystemTab s={s} setField={setField} data={data} setView={setView} isAdmin={isAdmin} currentUser={currentUser} />}
         {tab === "support" && <UpdatesSupport />}
       </>}

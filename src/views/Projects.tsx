@@ -18,7 +18,8 @@
 // Berechtigungen: Offerten- und Rechnungsdaten sind nur sichtbar, wenn die Rolle
 // «quotes» bzw. «invoices» hat (`userPermissions`).
 
-import React, { useState, useEffect } from "react";
+import { applyEdit } from "../storage/merge";
+import React, { useState, useEffect, useRef } from "react";
 import { PROJECT_TYPES } from "../constants";
 import { generateId, formatHours, applyProjectNumberFormat, nextProjectSeq, parseSeqFromNumber, projectReferences, localISODate } from "../utils";
 import { useConfirm } from "../hooks/useConfirm";
@@ -48,13 +49,15 @@ function Projects({ data, saveAll, modal, setModal, onSelect, setPrintContent }:
   // Bestehende Nummern zählen mit (nextProjectSeq), damit keine doppelte Nummer vorgeschlagen wird.
   const nextProjectNumber = () => applyProjectNumberFormat(data.settings.projectNumberFormat || "YYYY/NN", nextProjectSeq(data.settings, data.projects));
 
+  const openedAs = useRef<Project | null>(null);
   const saveProject = () => {
     if (!form.name?.trim()) { showToast("Bitte einen Projektnamen eingeben."); return; }
     if ([form.hourlyRate, form.budgetHours].some(v => v != null && String(v) !== "" && !(Number(v) >= 0))) { showToast("Stundensatz und Budgetstunden dürfen nicht negativ sein."); return; }
     const isNew = !modal?.id;
     const projects = isNew
       ? [...data.projects, { ...form, id: generateId(), createdAt: new Date().toISOString() }]
-      : data.projects.map(p => p.id === modal.id ? { ...p, ...form } : p);
+      // nur im Fenster Geändertes übernehmen (fremde Änderungen seit dem Öffnen bleiben)
+      : data.projects.map(p => p.id === modal.id ? applyEdit<Project>(openedAs.current?.id === p.id ? openedAs.current : p, { ...(openedAs.current?.id === p.id ? openedAs.current : p), ...form } as Project, p) : p);
     let settings = data.settings;
     if (isNew) {
       const seq = parseSeqFromNumber(form.number, data.settings.projectNumberFormat || "YYYY/NN");
@@ -68,7 +71,7 @@ function Projects({ data, saveAll, modal, setModal, onSelect, setPrintContent }:
   };
 
   const resetBeteiligter = () => { setShowAddBeteiligter(false); setEditingContactId(null); setAddContactId(""); setAddPersonIds([]); };
-  const openEdit = (p: Project, e?: React.MouseEvent) => { e?.stopPropagation(); setForm({ ...emptyForm, ...p, enabledPhases: p.enabledPhases || [], projectContacts: p.projectContacts || [] }); resetBeteiligter(); setModal({ type: "project", id: p.id }); };
+  const openEdit = (p: Project, e?: React.MouseEvent) => { e?.stopPropagation(); openedAs.current = p; setForm({ ...emptyForm, ...p, enabledPhases: p.enabledPhases || [], projectContacts: p.projectContacts || [] }); resetBeteiligter(); setModal({ type: "project", id: p.id }); };
   const openNew = () => { setForm({ ...emptyForm, number: nextProjectNumber(), startDate: localISODate() }); resetBeteiligter(); setModal({ type: "project" }); };
   const { askConfirm, ConfirmModalEl } = useConfirm();
   /** Löschen mit «Rückgängig»; hängen Zeiteinträge, Rechnungen usw. daran, vorher nachfragen (sie verlören die Zuordnung). */

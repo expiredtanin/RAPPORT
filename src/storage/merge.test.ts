@@ -1,6 +1,6 @@
 // Tests für den Drei-Wege-Merge (merge.ts), mit dem Datenordner und Cloud-Nachladen gleichzeitige Änderungen verrechnen.
 import { describe, expect, it } from "vitest";
-import { jsonEqual, mergeValue } from "./merge";
+import { jsonEqual, mergeValue, applyEdit } from "./merge";
 
 describe("mergeValue", () => {
   const base = { settings: { name: "A", iban: "1" }, invoices: [{ id: "r1", total: 10 }, { id: "r2", total: 20 }] };
@@ -31,5 +31,21 @@ describe("mergeValue", () => {
   it("jsonEqual ignoriert Schlüsselreihenfolge und undefined", () => {
     expect(jsonEqual({ a: 1, b: undefined, c: [1, { d: 2 }] }, { c: [1, { d: 2 }], a: 1 })).toBe(true);
     expect(jsonEqual([1, 2], [2, 1])).toBe(false);
+  });
+});
+
+describe("applyEdit (Bearbeiten-Fenster)", () => {
+  it("übernimmt nur die im Fenster geänderten Felder, fremde Änderungen seit dem Öffnen bleiben", () => {
+    const original = { id: "r1", status: "entwurf", note: "orig", items: [{ id: "a", qty: 1 }, { id: "b", qty: 2 }] };
+    const current = { ...original, status: "gesendet", items: [{ id: "a", qty: 1 }, { id: "b", qty: 5 }] };
+    const edited = { ...original, note: "neu", items: [{ id: "a", qty: 3 }, { id: "b", qty: 2 }] };
+    expect(applyEdit(original, edited, current)).toEqual({ id: "r1", status: "gesendet", note: "neu", items: [{ id: "a", qty: 3 }, { id: "b", qty: 5 }] });
+  });
+});
+
+describe("mergeValue: Listen aus Texten", () => {
+  it("beide fügen hinzu → beides bleibt; Entfernen einer Seite gilt", () => {
+    expect(mergeValue(["a", "b"], ["a", "b", "x"], ["a", "b", "y"])).toEqual(["a", "b", "y", "x"]);
+    expect(mergeValue(["a", "b", "c"], ["a", "c"], ["a", "b", "c", "y"])).toEqual(["a", "c", "y"]);
   });
 });

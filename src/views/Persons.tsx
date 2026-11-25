@@ -10,7 +10,8 @@
 // Gelöschte Firmen lassen Verweise in Projekten und Rechnungen bestehen
 // (dort bleibt dann nur die Id).
 
-import React, { useState, useEffect } from "react";
+import { applyEdit } from "../storage/merge";
+import React, { useState, useEffect, useRef } from "react";
 import { generateId, formatCHF, formatDate, contactCategory, personReferences } from "../utils";
 import { useConfirm } from "../hooks/useConfirm";
 import { isCloudBackend } from "../storage/adapter";
@@ -377,10 +378,12 @@ export default function Persons({ data, update, modal, setModal }: Pick<ViewProp
     setFirmForm({ ...emptyFirm, ...preset, _hauptName: "", _hauptPosition: "", _hauptPhone: "", _hauptEmail: "" });
     setFirmModal({ isNew: true });
   };
+  const firmOpenedAs = useRef<Person | null>(null);
   const openEditFirm = (id: string) => {
     const p = persons.find(x => x.id === id);
     if (!p) return;
     setFirmForm({ ...emptyFirm, ...p, _tags: (p.tags || []).join(", ") });
+    firmOpenedAs.current = p;
     setFirmModal({ id });
   };
   const saveFirm = () => {
@@ -389,7 +392,12 @@ export default function Persons({ data, update, modal, setModal }: Pick<ViewProp
     const tags = (_tags || "").split(",").map(t => t.trim()).filter(Boolean);
     const firmData = { ...rest, tags: tags.length ? tags : undefined };
     if (firmModal?.id) {
-      update("persons", persons.map(p => p.id === firmModal.id ? { ...p, ...firmData } : p));
+      // nur im Fenster Geändertes übernehmen (inzwischen ergänzte Ansprechpartner o.ä. bleiben)
+      update("persons", prev => prev.map(p => {
+        if (p.id !== firmModal.id) return p;
+        const base = firmOpenedAs.current?.id === p.id ? firmOpenedAs.current : p;
+        return applyEdit<Person>(base, { ...base, ...firmData } as Person, p);
+      }));
     } else {
       const hauptkontakt = _hauptName?.trim()
         ? [{ id: generateId(), name: _hauptName.trim(), position: _hauptPosition || "", phone: _hauptPhone || "", email: _hauptEmail || "" }]
@@ -434,11 +442,11 @@ export default function Persons({ data, update, modal, setModal }: Pick<ViewProp
   const savePerson = () => {
     if (!personForm.name?.trim() || !personForm.firmaId) return;
     if (personModal?.personId) {
-      update("persons", persons.map(p => p.id === personModal.firmaId
+      update("persons", prev => prev.map(p => p.id === personModal.firmaId
         ? { ...p, contacts: (p.contacts || []).map(c => c.id === personModal.personId ? { ...c, name: personForm.name as string, position: personForm.position, phone: personForm.phone, email: personForm.email } : c) } : p));
     } else {
       const newContact = { id: generateId(), name: personForm.name.trim(), position: personForm.position || "", phone: personForm.phone || "", email: personForm.email || "" };
-      update("persons", persons.map(p => p.id === personForm.firmaId
+      update("persons", prev => prev.map(p => p.id === personForm.firmaId
         ? { ...p, contacts: [...(p.contacts || []), newContact] } : p));
     }
     setPersonModal(null);
