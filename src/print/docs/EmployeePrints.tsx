@@ -64,7 +64,7 @@ export function TimeReportPrint({ employee, entries, month, data, settings }: { 
 
   const totalMins = monthEntries.reduce((s, e) => s + (e.minutes || 0), 0);
 
-  const byProject: Record<string, { proj: Project | undefined; mins: number }> = {};
+  const byProject: Record<string, { proj: Project | undefined; mins: number }> = Object.create(null);
   monthEntries.forEach(e => {
     const k = e.projectId || "__none__";
     if (!byProject[k]) byProject[k] = { proj: getProj(e.projectId), mins: 0 };

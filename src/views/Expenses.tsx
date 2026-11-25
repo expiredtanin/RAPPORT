@@ -159,7 +159,7 @@ function Expenses({ data, update, standalone, currentUser }: Pick<ViewProps, "da
   const groupedData = (() => {
     if (groupBy === "date") {
       // Nach Monat gruppieren
-      const months: Record<string, Expense[]> = {};
+      const months: Record<string, Expense[]> = Object.create(null);
       sorted.forEach(e => {
         const key = (e.date || "").slice(0, 7);
         if (!months[key]) months[key] = [];
@@ -172,7 +172,7 @@ function Expenses({ data, update, standalone, currentUser }: Pick<ViewProps, "da
       }));
     }
     if (groupBy === "category") {
-      const cats: Record<string, Expense[]> = {};
+      const cats: Record<string, Expense[]> = Object.create(null);
       sorted.forEach(e => {
         const key = e.category || "Sonstiges";
         if (!cats[key]) cats[key] = [];
@@ -181,7 +181,7 @@ function Expenses({ data, update, standalone, currentUser }: Pick<ViewProps, "da
       return Object.entries(cats).sort((a, b) => a[0].localeCompare(b[0])).map(([key, items]) => ({ key, label: key, items }));
     }
     if (groupBy === "project") {
-      const projs: Record<string, { label: string; items: Expense[] }> = {};
+      const projs: Record<string, { label: string; items: Expense[] }> = Object.create(null);
       sorted.forEach(e => {
         const proj = data.projects.find(p => p.id === e.projectId);
         const key = e.projectId || "__none__";

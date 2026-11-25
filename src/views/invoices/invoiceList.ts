@@ -63,7 +63,7 @@ export const summarizeUnbilled = (data: AppData) => {
 /** Gruppiert die gefilterten Rechnungen nach Monat, Kunde oder Status (`none` = eine Gruppe). */
 export const groupInvoices = (filtered: Invoice[], groupBy: string, clients: Person[]): InvoiceGroup[] => {
   if (groupBy === "date") {
-    const months: Record<string, Invoice[]> = {};
+    const months: Record<string, Invoice[]> = Object.create(null);
     filtered.forEach(inv => {
       const key = (inv.date || "").slice(0, 7);
       if (!months[key]) months[key] = [];
@@ -74,7 +74,7 @@ export const groupInvoices = (filtered: Invoice[], groupBy: string, clients: Per
     }));
   }
   if (groupBy === "client") {
-    const groups: Record<string, { label: string; items: Invoice[] }> = {};
+    const groups: Record<string, { label: string; items: Invoice[] }> = Object.create(null);
     filtered.forEach(inv => {
       const cl = clients.find(c => c.id === inv.clientId);
       const key = inv.clientId || "__none__";
@@ -85,7 +85,7 @@ export const groupInvoices = (filtered: Invoice[], groupBy: string, clients: Per
     return Object.entries(groups).sort((a, b) => a[1].label.localeCompare(b[1].label)).map(([key, val]) => ({ key, label: val.label, items: val.items }));
   }
   if (groupBy === "status") {
-    const statuses: Record<string, Invoice[]> = {};
+    const statuses: Record<string, Invoice[]> = Object.create(null);
     filtered.forEach(inv => {
       const key = inv.status || "unbekannt";
       if (!statuses[key]) statuses[key] = [];

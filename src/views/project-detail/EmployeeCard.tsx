@@ -13,7 +13,7 @@ export function EmployeeCard({ project, data, entries, billingType }: {
 }) {
   const employees = data.employees || [];
   // Gruppe nach Mitarbeiter
-  const byEmp: Record<string, { mins: number; entries: TimeEntry[] }> = {};
+  const byEmp: Record<string, { mins: number; entries: TimeEntry[] }> = Object.create(null);
   entries.forEach(e => {
     const empId = e.employeeId || "__none__";
     if (!byEmp[empId]) byEmp[empId] = { mins: 0, entries: [] };
@@ -23,7 +23,7 @@ export function EmployeeCard({ project, data, entries, billingType }: {
   const empRows = Object.entries(byEmp).map(([empId, d]) => {
     const emp = empId === "__none__" ? null : employees.find(e => e.id === empId);
     // Aufschlüsselung nach Phase
-    const byPhase: Record<string, number> = {};
+    const byPhase: Record<string, number> = Object.create(null);
     d.entries.forEach(e => {
       const k = e.phaseId || "__none__";
       byPhase[k] = (byPhase[k] || 0) + (e.minutes || 0);

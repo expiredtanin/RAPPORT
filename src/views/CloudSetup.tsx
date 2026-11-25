@@ -64,7 +64,7 @@ export default function CloudSetup({ cloudInit, cloudUrl }: {
   const clearErr = (k: string) => setErrors(e => { const n = { ...e }; delete n[k]; return n; });
 
   const validate = () => {
-    const errs: Record<string, string> = {};
+    const errs: Record<string, string> = Object.create(null);
     if (step === 1) {
       if (!studio.name.trim()) errs.name = "Pflichtfeld";
     }

@@ -165,7 +165,7 @@ export function calcOfficeBenchmarks(projects: Project[], timeEntries: TimeEntry
     if (e.phaseId) t.phases[e.phaseId] = (t.phases[e.phaseId] || 0) + e.minutes;
     totals.set(e.projectId, t);
   }
-  const byUsage: Partial<Record<ProjectUsage, BenchmarkSample[]>> = {};
+  const byUsage: Partial<Record<ProjectUsage, BenchmarkSample[]>> = Object.create(null);
   for (const [id, t] of totals) {
     const p = candidates.get(id)!;
     const hours = t.minutes / 60;
@@ -173,10 +173,10 @@ export function calcOfficeBenchmarks(projects: Project[], timeEntries: TimeEntry
     const usage = p.usage as ProjectUsage;
     (byUsage[usage] ||= []).push({ projectId: id, name: p.name, floorArea: p.floorArea!, hours, hoursPerM2: hours / p.floorArea!, phaseHours });
   }
-  const result: Partial<Record<ProjectUsage, UsageBenchmark>> = {};
+  const result: Partial<Record<ProjectUsage, UsageBenchmark>> = Object.create(null);
   for (const [usage, samples] of Object.entries(byUsage) as [ProjectUsage, BenchmarkSample[]][]) {
     // Phasenanteile: je Projekt Anteil an seinen phasenbezogenen Stunden, dann über die Projekte gemittelt
-    const shareSum: Record<string, number> = {};
+    const shareSum: Record<string, number> = Object.create(null);
     let withPhases = 0;
     for (const s of samples) {
       const phaseTotal = Object.values(s.phaseHours).reduce((a, b) => a + b, 0);
@@ -262,8 +262,8 @@ export function deriveQuoteBudget(
   const quotes = (linkedQuotes || []).filter(lq => lq.role !== "Referenz").map(lq => allQuotes.find(q => q.id === lq.quoteId)).filter((q): q is Quote => !!q);
   let totalHours = 0;
   let totalAmount = 0;
-  const phaseMap: Record<string, number> = {}; // phaseId -> hours (summed)
-  const phaseAmountMap: Record<string, number> = {}; // phaseId -> offerierter Betrag (summed)
+  const phaseMap: Record<string, number> = Object.create(null); // phaseId -> hours (summed)
+  const phaseAmountMap: Record<string, number> = Object.create(null); // phaseId -> offerierter Betrag (summed)
   const enabledSet = new Set<string>(); // phases enabled in quotes even with 0 hours
 
   quotes.forEach(q => {

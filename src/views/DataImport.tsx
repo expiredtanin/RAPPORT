@@ -564,7 +564,7 @@ function aliasMatch(field: ImportField, header: string, mode: "exact" | "loose")
 /** Ordnet Spalten automatisch Feldern zu (erst exakt, dann locker); Ergebnis: Feld-Key → Spaltenindex. */
 function autoGuessMap(fields: ImportField[], headers: string[]): Record<string, number> {
   const used = new Set<number>();
-  const map: Record<string, number> = {};
+  const map: Record<string, number> = Object.create(null);
   for (const mode of ["exact", "loose"]) {
     for (const f of fields) {
       if (map[f.key] !== undefined) continue;
@@ -725,7 +725,7 @@ export default function DataImport({ data, saveAll, setView }: Pick<ViewProps, "
   }, [cfg, colMap]);
 
   const distinctValuesByField = useMemo(() => {
-    const out: Record<string, string[]> = {};
+    const out: Record<string, string[]> = Object.create(null);
     for (const f of valueMappingFields) {
       const idx = colMap[f.key];
       const set = new Set<string>();
@@ -769,7 +769,7 @@ export default function DataImport({ data, saveAll, setView }: Pick<ViewProps, "
     : [];
 
   const commit = () => {
-    const newStubsByCollection: Record<string, Map<string, ImportRecord>> = {}; // dataKey -> Map<normName, stub>
+    const newStubsByCollection: Record<string, Map<string, ImportRecord>> = Object.create(null); // dataKey -> Map<normName, stub>
     const finalRecords: ImportRecord[] = [];
     mappedRows.forEach((row, i) => {
       if (effectiveSkip(row, i)) return;

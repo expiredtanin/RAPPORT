@@ -121,7 +121,7 @@ function Projects({ data, saveAll, modal, setModal, onSelect, setPrintContent }:
   // Gruppieren
   const groupedProjects: { key: string; label: string; items: Project[] }[] = (() => {
     if (groupBy === "status") {
-      const groups: Record<string, Project[]> = {};
+      const groups: Record<string, Project[]> = Object.create(null);
       sorted.forEach(p => { const key = p.status || "unbekannt"; if (!groups[key]) groups[key] = []; groups[key].push(p); });
       // Unbekannte Status (z.B. aus einem Import) hinten anhängen statt die Projekte auszublenden
       const known = ["aktiv", "pausiert", "abgeschlossen"];
@@ -129,17 +129,17 @@ function Projects({ data, saveAll, modal, setModal, onSelect, setPrintContent }:
       return order.filter(k => groups[k]).map(key => ({ key, label: key.charAt(0).toUpperCase() + key.slice(1), items: groups[key] }));
     }
     if (groupBy === "category") {
-      const groups: Record<string, Project[]> = {};
+      const groups: Record<string, Project[]> = Object.create(null);
       sorted.forEach(p => { const key = p.category || "—"; if (!groups[key]) groups[key] = []; groups[key].push(p); });
       return Object.entries(groups).sort((a, b) => a[0].localeCompare(b[0])).map(([key, items]) => ({ key, label: key, items }));
     }
     if (groupBy === "client") {
-      const groups: Record<string, { label: string; items: Project[] }> = {};
+      const groups: Record<string, { label: string; items: Project[] }> = Object.create(null);
       sorted.forEach(p => { const key = p.clientId || "__none__"; const label = clients.find(c => c.id === p.clientId)?.name || "Kein Auftraggeber"; if (!groups[key]) groups[key] = { label, items: [] }; groups[key].items.push(p); });
       return Object.entries(groups).sort((a, b) => a[1].label.localeCompare(b[1].label)).map(([key, val]) => ({ key, label: val.label, items: val.items }));
     }
     if (groupBy === "year") {
-      const groups: Record<string, Project[]> = {};
+      const groups: Record<string, Project[]> = Object.create(null);
       sorted.forEach(p => { const key = (p.startDate || p.createdAt || "").slice(0, 4) || "—"; if (!groups[key]) groups[key] = []; groups[key].push(p); });
       return Object.entries(groups).sort((a, b) => b[0].localeCompare(a[0])).map(([key, items]) => ({ key, label: key, items }));
     }

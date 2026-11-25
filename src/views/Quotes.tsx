@@ -54,7 +54,7 @@ function Quotes({ data, update, saveAll, modal, setModal, setPrintContent, setVi
   const clients = (data.persons || []);
   const roles = data.settings.roles || [];
   const defaultRolesForPhase = () => {
-    const obj: Record<string, number> = {};
+    const obj: Record<string, number> = Object.create(null);
     roles.forEach(r => { obj[r.id] = 0; });
     return obj;
   };
@@ -306,7 +306,7 @@ function Quotes({ data, update, saveAll, modal, setModal, setPrintContent, setVi
   // Gruppieren
   const groupedQuotes: { key: string; label: string; items: Quote[] }[] = (() => {
     if (groupBy === "date") {
-      const months: Record<string, Quote[]> = {};
+      const months: Record<string, Quote[]> = Object.create(null);
       filtered.forEach(q => {
         const key = (q.date || "").slice(0, 7);
         if (!months[key]) months[key] = [];
@@ -317,7 +317,7 @@ function Quotes({ data, update, saveAll, modal, setModal, setPrintContent, setVi
       }));
     }
     if (groupBy === "client") {
-      const groups: Record<string, { label: string; items: Quote[] }> = {};
+      const groups: Record<string, { label: string; items: Quote[] }> = Object.create(null);
       filtered.forEach(q => {
         const cl = clients.find(c => c.id === q.clientId);
         const key = q.clientId || "__none__";
@@ -328,7 +328,7 @@ function Quotes({ data, update, saveAll, modal, setModal, setPrintContent, setVi
       return Object.entries(groups).sort((a, b) => a[1].label.localeCompare(b[1].label)).map(([key, val]) => ({ key, label: val.label, items: val.items }));
     }
     if (groupBy === "status") {
-      const statuses: Record<string, Quote[]> = {};
+      const statuses: Record<string, Quote[]> = Object.create(null);
       filtered.forEach(q => {
         const key = q.status || "unbekannt";
         if (!statuses[key]) statuses[key] = [];

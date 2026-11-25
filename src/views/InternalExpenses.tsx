@@ -120,7 +120,7 @@ function InternalExpenses({ data, update }: Pick<ViewProps, "data" | "update" | 
 
   const groupedData = (() => {
     if (groupBy === "date") {
-      const months: Record<string, InternalExpense[]> = {};
+      const months: Record<string, InternalExpense[]> = Object.create(null);
       sorted.forEach(e => {
         const key = (e.date || "").slice(0, 7);
         if (!months[key]) months[key] = [];
@@ -131,7 +131,7 @@ function InternalExpenses({ data, update }: Pick<ViewProps, "data" | "update" | 
       }));
     }
     if (groupBy === "category") {
-      const cats: Record<string, InternalExpense[]> = {};
+      const cats: Record<string, InternalExpense[]> = Object.create(null);
       sorted.forEach(e => { const k = e.category || "Sonstiges"; if (!cats[k]) cats[k] = []; cats[k].push(e); });
       return Object.entries(cats).sort((a, b) => a[0].localeCompare(b[0])).map(([key, its]) => ({ key, label: key, items: its }));
     }

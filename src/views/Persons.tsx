@@ -325,12 +325,12 @@ export default function Persons({ data, update, modal, setModal }: Pick<ViewProp
   const groupedFirmen: Group<Person>[] = (() => {
     if (groupBy === "none") return [{ key: "_all", label: null, items: filteredFirmen }];
     if (groupBy === "alpha") {
-      const g: Record<string, Person[]> = {};
+      const g: Record<string, Person[]> = Object.create(null);
       filteredFirmen.forEach(p => { const k = p.name[0]?.toUpperCase() || "#"; (g[k] = g[k] || []).push(p); });
       return Object.entries(g).sort((a, b) => a[0].localeCompare(b[0])).map(([k, items]) => ({ key: k, label: k, items }));
     }
     if (groupBy === "type") {
-      const g: Record<string, Person[]> = {};
+      const g: Record<string, Person[]> = Object.create(null);
       filteredFirmen.forEach(p => {
         const k = CONTACT_CATEGORIES.find(c => c.id === contactCategory(p))?.label || "Ohne Kategorie";
         (g[k] = g[k] || []).push(p);
@@ -353,12 +353,12 @@ export default function Persons({ data, update, modal, setModal }: Pick<ViewProp
   const groupedPersons: Group<FlatContact>[] = (() => {
     if (groupBy === "none") return [{ key: "_all", label: null, items: filteredPersons }];
     if (groupBy === "alpha") {
-      const g: Record<string, FlatContact[]> = {};
+      const g: Record<string, FlatContact[]> = Object.create(null);
       filteredPersons.forEach(c => { const k = c.name[0]?.toUpperCase() || "#"; (g[k] = g[k] || []).push(c); });
       return Object.entries(g).sort((a, b) => a[0].localeCompare(b[0])).map(([k, items]) => ({ key: k, label: k, items }));
     }
     if (groupBy === "firma") {
-      const g: Record<string, FlatContact[]> = {};
+      const g: Record<string, FlatContact[]> = Object.create(null);
       filteredPersons.forEach(c => { (g[c._firmaName] = g[c._firmaName] || []).push(c); });
       return Object.entries(g).sort((a, b) => a[0].localeCompare(b[0])).map(([k, items]) => ({ key: k, label: k, items }));
     }

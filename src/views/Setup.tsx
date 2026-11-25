@@ -223,7 +223,7 @@ export default function Setup({ onComplete }: { onComplete: (data: AppData) => v
   const clearErr = (k: string) => setErrors(e => { const n = { ...e }; delete n[k]; return n; });
 
   const validate = () => {
-    const errs: Record<string, string> = {};
+    const errs: Record<string, string> = Object.create(null);
     if (step === 1 && !studio.name.trim()) errs.name = "Pflichtfeld";
     if (step === 2) {
       if (!account.displayName.trim()) errs.displayName = "Pflichtfeld";
