@@ -22,7 +22,7 @@ import { PROTOKOLL_TYPES } from "../constants";
 import { generateId, formatDate, htmlToText, initialsOf, participantKuerzel, responsibleLabel, protocolApproval, nextProtoNumber, protoScopeKey, protoSeqOf, applyProtoNumberFormat, localISODate } from "../utils";
 import { TableToolbar, Header, Modal, FormField, RichEditor, DateInput, ShareButton, SortTh, RowMenu, EmptyState } from "../components/UI";
 import { useConfirm } from "../hooks/useConfirm";
-import { applyEdit } from "../storage/merge";
+import { applyEdit, jsonEqual } from "../storage/merge";
 import { changeWithUndo, removeWithUndo } from "../undo";
 import { openTasks, type OpenTask } from "../today";
 import { setLinkedStatus, baselineChanges, entryDue, glyphOf, scheduleOf, TRACK_LABELS, trackItems, upcomingItems } from "../schedule";
@@ -395,6 +395,14 @@ function ProtokollDetail({ protokoll, data, onBack, onSave, onDelete, onOpen, se
   const [p, setP] = useState<Protocol>(() => JSON.parse(JSON.stringify(protokoll)));
   // Stand beim Öffnen bzw. letzten Speichern: Basis für applyEdit
   const [base, setBase] = useState<Protocol>(() => JSON.parse(JSON.stringify(protokoll)));
+  // Ändert sich das gespeicherte Protokoll (andere Person, Realtime; oder das eigene Speichern mit zusammengeführtem
+  // Ergebnis), die eigenen Eingaben darauf übertragen — sonst zeigte die Ansicht fremde Punkte nie und die Folgesitzung
+  // entstand aus dem veralteten Stand (Cloud-Test Runde 23)
+  const [seen, setSeen] = useState(protokoll);
+  if (seen !== protokoll) {
+    setSeen(protokoll);
+    if (!jsonEqual(protokoll, base)) { setP(applyEdit(base, p, protokoll)); setBase(protokoll); }
+  }
   const isDirty = JSON.stringify(p) !== JSON.stringify(base);
   useEffect(() => { onDraft?.(p, isDirty, base); });
   const today = localISODate();
