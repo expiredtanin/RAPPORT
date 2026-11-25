@@ -284,6 +284,31 @@ describe("Datenordner: Zeitdatei von iCloud ausgelagert", () => {
     expect(files).toContain("e2_2026-11.json");
   });
 
+  it("blockierter Monat + fremde Änderung in anderem Monat: fremder Eintrag bleibt, eigener blockierter wird später geschrieben", async () => {
+    const te = (id: string, date: string, minutes = 60) => ({ id, employeeId: "e2", date, minutes }) as never;
+    const A = new FileStorageAdapter(dir, nodeFs, "A");
+    await A.save({ ...sampleData(), expenses: [], timeEntries: [te("t1", "2026-10-03"), te("t2", "2026-11-03")] });
+    const a = (await A.load()) as unknown as AppData;
+    const seen: AppData[] = [];
+    A.onExternalChange(d => seen.push(d as unknown as AppData));
+    // Gerät B ergänzt im November
+    const B = new FileStorageAdapter(dir, nodeFs, "B");
+    const b = (await B.load()) as unknown as AppData;
+    await B.save({ ...b, timeEntries: [...b.timeEntries, te("tB", "2026-11-04")] });
+    // Oktober wird bei A ausgelagert; A ändert Oktober und November
+    await rename(join(dir, "time/e2_2026-10.json"), join(dir, "time/.e2_2026-10.json.icloud"));
+    const mine = { ...a, timeEntries: [te("t1", "2026-10-03", 90), te("t2", "2026-11-03", 120)] };
+    await expect(A.save(mine)).rejects.toThrow(/nicht lesbar/);
+    // App bekommt tB, die eigene Oktober-Änderung bleibt im Stand
+    const last = seen[seen.length - 1];
+    expect(last.timeEntries.map(e => e.id).sort()).toEqual(["t1", "t2", "tB"]);
+    // Datei wieder da → nächstes Speichern (wie die Überwachung) schreibt den Oktober, tB bleibt
+    await rename(join(dir, "time/.e2_2026-10.json.icloud"), join(dir, "time/e2_2026-10.json"));
+    await A.checkExternal();
+    const back = (await new FileStorageAdapter(dir, nodeFs, "C").load()) as unknown as AppData;
+    expect(back.timeEntries.map(e => [e.id, e.minutes]).sort()).toEqual([["t1", 90], ["t2", 120], ["tB", 60]]);
+  });
+
   it("Kopien «name (1).json» (Drive/Windows) gelten als Konfliktkopie", async () => {
     const te = (id: string, date: string) => ({ id, employeeId: "e2", date, minutes: 60 }) as never;
     await new FileStorageAdapter(dir, nodeFs, "A").save({ ...sampleData(), expenses: [], timeEntries: [te("t1", "2026-11-03")] });

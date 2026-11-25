@@ -98,6 +98,11 @@ export function joinData(files: Map<string, Json>): RawData | null {
 /** Meldung, wenn der Ordner (noch) nicht lesbar ist — z.B. iCloud hat Dateien nicht heruntergeladen. */
 export class DataFolderError extends Error {}
 
+/** Speichern teilweise blockiert (ausgelagerte Zeitdateien `names`); `pulled` = dabei flossen fremde Änderungen ein. */
+class BlockedSaveError extends DataFolderError {
+  constructor(message: string, readonly names: string[], public pulled = false) { super(message); }
+}
+
 /** Cloud-/Sync-Dienste benennen Konfliktkopien so; solche Dateien werden nie als Daten gelesen. */
 const isConflictName = (n: string) => / \d+\.json$/.test(n) || / \(\d+\)\.json$/.test(n) || /conflict|konflikt/i.test(n);   // «x 2.json», «x (1).json» (Drive/Windows)
 const isDataName = (n: string) => n.endsWith(".json") && !n.includes(".tmp-") && !isConflictName(n);
@@ -219,6 +224,7 @@ export class FileStorageAdapter implements StorageAdapter {
         if (pulled) await this.emitExternal();
       } catch (e) {
         console.error("Datenordner: Speichern fehlgeschlagen:", e);
+        if (e instanceof BlockedSaveError) await this.keepBlocked(data, e).catch(err => console.error("Datenordner:", err));
         waiters.forEach(w => w.reject(e));
       }
     });
@@ -233,7 +239,7 @@ export class FileStorageAdapter implements StorageAdapter {
     // Zeitdateien, die es nicht mehr gibt (alle Einträge gelöscht/verschoben), leeren
     for (const name of this.known.keys()) if (name !== STUDIO && !next.has(name)) next.set(name, { format: FORMAT, entries: [] });
     let pulled = false;
-    let blocked: DataFolderError | null = null;
+    const blockedNames: string[] = [];
     for (const [name, mine] of next) {
       const k = this.known.get(name);
       if (k && jsonEqual(k.content, mine)) continue;
@@ -251,7 +257,7 @@ export class FileStorageAdapter implements StorageAdapter {
         if (listed.includes(base) || listed.includes(`.${base}.icloud`)) {
           // nicht abbrechen: die übrigen Dateien trotzdem schreiben (sonst blieben alle späteren Monate ungespeichert),
           // am Ende melden
-          blocked ??= new DataFolderError(`Die Datei «${name}» ist im Datenordner gerade nicht lesbar (z.B. von iCloud ausgelagert). Die Änderungen in diesem Monat bleiben hier und werden beim nächsten Speichern erneut geschrieben — Rapport nicht beenden, bevor die Datei geladen ist.`);
+          blockedNames.push(name);
           continue;
         }
       }
@@ -276,7 +282,9 @@ export class FileStorageAdapter implements StorageAdapter {
       const after = await this.fs.stat(path);
       this.known.set(name, { content: result, mtime: after?.mtime ?? 0, size: after?.size ?? 0 });
     }
-    if (blocked) throw blocked;
+    if (blockedNames.length) {
+      throw new BlockedSaveError(`Die Datei «${blockedNames[0]}» ist im Datenordner gerade nicht lesbar (z.B. von iCloud ausgelagert). Die Änderungen in diesem Monat bleiben hier und werden erneut geschrieben, sobald die Datei geladen ist — Rapport nicht beenden, bevor sie da ist.`, blockedNames, pulled);
+    }
     await this.backupIfDue();
     return pulled;
   }
@@ -404,6 +412,25 @@ export class FileStorageAdapter implements StorageAdapter {
    * sieht die fremde Änderung, verrechnet sie per Merge und meldet danach den gemeinsamen Stand. Sonst würde das
    * Speichern die fremde Änderung überschreiben und die App die eigene verlieren.
    */
+  /**
+   * Nach teilweise blockiertem Speichern: den Stand der blockierten Monate behalten (als `pending`, damit ein Nachladen
+   * ihn nicht ersetzt; geschrieben wird er beim nächsten Speichern bzw. wenn die Überwachung die geladene Datei meldet).
+   * Sind dabei Änderungen der anderen Person eingeflossen, bekommt die App den neuen Stand plus die eigenen Einträge der
+   * blockierten Monate — sonst überschrieb das nächste Speichern die fremden Einträge (Review Runde 20).
+   */
+  private async keepBlocked(data: AppData, e: BlockedSaveError) {
+    let keep = data;
+    if (e.pulled) {
+      const loaded = (await this.load()) as AppData | null;
+      if (loaded) {
+        const blocked = new Set(e.names);
+        keep = { ...loaded, timeEntries: [...(loaded.timeEntries || []).filter(t => !blocked.has(timeFileName(t))), ...(data.timeEntries || []).filter(t => blocked.has(timeFileName(t)))] };
+        this.listeners.forEach(cb => cb(keep as unknown as RawData));
+      }
+    }
+    if (!this.pending) this.pending = keep;
+  }
+
   private async emitExternal() {
     const before = this.known;
     const data = await this.load();
