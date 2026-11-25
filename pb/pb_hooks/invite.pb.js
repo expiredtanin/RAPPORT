@@ -52,3 +52,37 @@ routerAdd("POST", "/api/rapport/invite-member", (e) => {
 
   return e.json(200, { ok: true });
 }, $apis.requireAuth());
+
+// Rolle eines bestehenden Mitglieds ändern (E2E 25.11.2026: der Rollenwechsel im Mitarbeiter-Dialog ging in der Cloud
+// still verloren, weil studioMembers für Clients schreibgeschützt ist). Nur Admins des Studios; der letzte aktive
+// Admin kann nicht herabgestuft werden. memberperms.pb.js rechnet perms beim Speichern neu.
+routerAdd("POST", "/api/rapport/set-member-role", (e) => {
+  const data = new DynamicModel({ userId: "", studioId: "", appRoleId: "" });
+  e.bindBody(data);
+  if (!data.userId || !data.studioId || !data.appRoleId) throw new BadRequestError("userId, studioId und appRoleId sind erforderlich.");
+  try {
+    e.app.findFirstRecordByFilter("studioMembers", "studio = {:sid} && user = {:uid} && appRoleId = 'r-admin' && active = true", { sid: data.studioId, uid: e.auth.id });
+  } catch {
+    throw new ForbiddenError("Nur Admins des Studios können Rollen ändern.");
+  }
+  if (data.appRoleId !== "r-admin") {
+    try {
+      e.app.findFirstRecordByFilter("appRoles", "studio = {:sid} && roleId = {:rid}", { sid: data.studioId, rid: data.appRoleId });
+    } catch {
+      throw new BadRequestError("Diese Rolle gibt es im Studio nicht.");
+    }
+  }
+  let member;
+  try {
+    member = e.app.findFirstRecordByFilter("studioMembers", "studio = {:sid} && user = {:uid}", { sid: data.studioId, uid: data.userId });
+  } catch {
+    throw new NotFoundError("Mitglied nicht gefunden.");
+  }
+  if (member.get("appRoleId") === "r-admin" && data.appRoleId !== "r-admin") {
+    const admins = e.app.findRecordsByFilter("studioMembers", "studio = {:sid} && appRoleId = 'r-admin' && active = true", "", 0, 0, { sid: data.studioId });
+    if (admins.length <= 1) throw new BadRequestError("Mindestens ein Administrator muss bestehen bleiben.");
+  }
+  member.set("appRoleId", data.appRoleId);
+  e.app.save(member);
+  return e.json(200, { ok: true });
+}, $apis.requireAuth());

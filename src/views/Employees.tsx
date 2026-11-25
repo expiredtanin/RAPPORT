@@ -19,6 +19,7 @@
 
 import React, { useState } from "react";
 import { generateId, getAbsenzTypes, hashPassword, localISODate } from "../utils";
+import { isCloudBackend } from "../storage/adapter";
 import { overtimeHourlyRate } from "../worktime";
 import { showToast } from "../toast";
 import { removeWithUndo } from "../undo";
@@ -37,9 +38,11 @@ import { AbsenceModal, FerienModal } from "./employees/SimpleModals";
 
 
 export default
-function Employees({ data, update, saveAll, setPrintContent, userPermissions }: Pick<ViewProps, "data" | "update" | "saveAll" | "setPrintContent"> & {
+function Employees({ data, update, saveAll, setPrintContent, userPermissions, currentEmployeeId = null }: Pick<ViewProps, "data" | "update" | "saveAll" | "setPrintContent"> & {
   /** Rechte der Rolle (null = Vollzugriff); Lohnfelder nur mit «loehne» */
   userPermissions?: string[] | null;
+  /** Mitarbeiter-Datensatz der angemeldeten Person (eigene Anträge nicht selbst genehmigen) */
+  currentEmployeeId?: string | null;
 }) {
   const employees = data.employees || [];
   const absenzTypes = getAbsenzTypes(data);
@@ -113,6 +116,16 @@ function Employees({ data, update, saveAll, setPrintContent, userPermissions }: 
     if ((empData.lohnVerlauf || []).length !== lohnVerlauf.length) showToast("Lohnänderungen ohne Datum oder Betrag wurden nicht übernommen.");
     const emp = { ...empData, id: empId, pensumVerlauf, lohnVerlauf, ...(empData.saldoStichtag ? {} : { saldoUebertragStunden: null }) } as Employee;
 
+    // Cloud: Konten, Passwörter und Rollen verwaltet der Server (Einladen/Rolle unter Einstellungen → Team);
+    // hier nur die Mitarbeiter-Felder speichern und die Verknüpfung appUserId unverändert lassen. Vorher verlangte
+    // der Dialog ein Passwort für verknüpfte Personen, und ohne Haken trennte er das Konto still ab (E2E 25.11.2026).
+    if (isCloudBackend) {
+      const kept = isNew ? emp : { ...emp, appUserId: employees.find(e => e.id === emp.id)?.appUserId };
+      saveAll({ ...data, employees: isNew ? [...employees, kept] : employees.map(e => e.id === kept.id ? kept : e) });
+      if (isNew) setSelectedEmpId(empId);
+      setModal(null);
+      return;
+    }
     const existingUserId = _appUserId;
     let updatedUsers = data.users || [];
     if (_appAccess) {
@@ -176,7 +189,10 @@ function Employees({ data, update, saveAll, setPrintContent, userPermissions }: 
     // Von/Bis vertauscht → tauschen; vom Büro eingetragene oder bearbeitete Ferien gelten als genehmigt
     const [from, to] = [ferienForm.dateFrom, ferienForm.dateTo || ferienForm.dateFrom].sort();
     const { originalData: _orig, ...rest } = ferienForm;
-    const f = { ...rest, dateFrom: from, dateTo: to, status: "approved", id: ferienForm.id || generateId() } as FerienEntry;
+    // eigene Ferien ohne Vollzugriff nur als Antrag (der Server lehnt «approved» ab, pb_hooks/integrity.pb.js)
+    const ownWithoutFull = !!userPermissions && !!currentEmployeeId && ferienForm.employeeId === currentEmployeeId;
+    const f = { ...rest, dateFrom: from, dateTo: to, status: ownWithoutFull ? "pending" : "approved", id: ferienForm.id || generateId() } as FerienEntry;
+    if (ownWithoutFull) showToast("Eigene Ferien werden als Antrag gespeichert — genehmigt wird von einer anderen Person.");
     update("ferienEntries", isNew ? [...ferienEntries, f] : ferienEntries.map(x => x.id === f.id ? f : x));
     setModal(null);
   };
@@ -217,7 +233,7 @@ function Employees({ data, update, saveAll, setPrintContent, userPermissions }: 
 
       {/* ── FERIEN ── */}
       {tab === "ferien" && (
-        <FerienTab data={data} update={update} askConfirm={askConfirm} employees={employees} absences={absences} ferienEntries={ferienEntries} absenzTypes={absenzTypes} selectedEmpId={selectedEmpId} setSelectedEmpId={setSelectedEmpId} setFerienForm={setFerienForm} setModal={setModal} delFerien={delFerien} delAbs={delAbs} viewYear={viewYear} setViewYear={setViewYear} calc={calc} />
+        <FerienTab ownEmployeeId={userPermissions ? currentEmployeeId : null} data={data} update={update} askConfirm={askConfirm} employees={employees} absences={absences} ferienEntries={ferienEntries} absenzTypes={absenzTypes} selectedEmpId={selectedEmpId} setSelectedEmpId={setSelectedEmpId} setFerienForm={setFerienForm} setModal={setModal} delFerien={delFerien} delAbs={delAbs} viewYear={viewYear} setViewYear={setViewYear} calc={calc} />
       )}
 
       {/* ── MONATSABSCHLUSS ── */}

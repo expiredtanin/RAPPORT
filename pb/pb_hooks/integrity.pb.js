@@ -22,6 +22,10 @@ onRecordCreateRequest((e) => {
   const full = perms.indexOf("|*|") >= 0;
   let own = false;
   try { own = e.app.findRecordById("employees", r.get("employee")).get("appUser") === uid; } catch { own = false; }
+  if (name === "employees") {
+    if (!full && r.getString("appUser")) throw new ForbiddenError("Die Verknüpfung mit einem Konto setzt ein Admin (Einstellungen → Team).");
+    return e.next();
+  }
   // 1. abgeschlossene Monate
   if (!has("mitarbeiter")) {
     let closed = [];
@@ -42,7 +46,7 @@ onRecordCreateRequest((e) => {
     if (name === "overtimeClosings") throw new ForbiddenError("Eigene Überstunden schliesst ein Admin ab.");
   }
   e.next();
-}, "timeEntries", "absences", "vacationEntries", "overtimeClosings");
+}, "timeEntries", "absences", "vacationEntries", "overtimeClosings", "employees");
 
 onRecordUpdateRequest((e) => {
   if (e.hasSuperuserAuth()) return e.next();
@@ -52,6 +56,9 @@ onRecordUpdateRequest((e) => {
   const has = (p) => perms.indexOf("|*|") >= 0 || perms.indexOf("|" + p + "|") >= 0;
   const full = perms.indexOf("|*|") >= 0;
   if (name === "employees") {
+    // Verknüpfung mit einem Konto nur mit Vollzugriff: sonst konnte ein Projektleiter Konten abtrennen oder einem
+    // fremden Mitarbeiter-Datensatz (samt dessen Zeiterfassung und Ferien) zuordnen (E2E 25.11.2026)
+    if (!full && JSON.stringify(r.get("appUser")) !== JSON.stringify(o.get("appUser"))) throw new ForbiddenError("Die Verknüpfung mit einem Konto ändert ein Admin (Einstellungen → Team).");
     // eigener Datensatz: ohne Vollzugriff nur die Adresse («Mein Profil»); Lohnkonto, Lohn, Pensum, Saldo nicht
     if (!full && o.get("appUser") === uid) {
       for (const f of e.record.collection().fields) {
@@ -113,10 +120,13 @@ onRecordDeleteRequest((e) => {
     const refs = name === "persons"
       ? [["invoices", "client"], ["quotes", "client"], ["contracts", "client"]]
       : [["invoices", "project"], ["quotes", "project"], ["contracts", "project"], ["timeEntries", "project"]];
+    // Rechnungen, Offerten, Verträge: auch mit Vollzugriff nicht — PocketBase leert sonst den Verweis in der
+    // (bezahlten) Rechnung, und «Rückgängig» stellt ihn nicht wieder her (E2E 25.11.2026). Nur Stunden: Admin darf.
+    const LABEL = { invoices: "Rechnungen", quotes: "Offerten", contracts: "Verträge", timeEntries: "Zeiteinträge" };
     for (const [coll, field] of refs) {
       let used = false;
       try { e.app.findFirstRecordByFilter(coll, field + " = {:id}", { id: r.id }); used = true; } catch { used = false; }
-      if (used && !full) throw new ForbiddenError("Noch verwendet (" + coll + ") — zuerst die Verweise entfernen.");
+      if (used && (coll !== "timeEntries" || !full)) throw new ForbiddenError("Wird noch verwendet (" + LABEL[coll] + ") und kann darum nicht gelöscht werden.");
     }
     return e.next();
   }

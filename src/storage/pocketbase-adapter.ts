@@ -398,6 +398,11 @@ export class PocketBaseAdapter implements StorageAdapter {
   //      wie bei Supabase — PocketBase-`create()` ändert den eigenen authStore nicht).
   //   2) invite-member-Hook: prüft serverseitig, dass der Caller Admin im Ziel-Studio ist,
   //      und hängt den neuen User als Mitglied an (idempotent, siehe invite.pb.js).
+  /** Rolle eines Mitglieds ändern (Server-Endpunkt, nur Admins; pb_hooks/invite.pb.js «set-member-role»). */
+  async setMemberRole(userId: Id, appRoleId: string): Promise<void> {
+    await this.client.send("/api/rapport/set-member-role", { method: "POST", body: { userId, studioId: this._studioId, appRoleId } });
+  }
+
   async inviteMember(
     email: string,
     tempPassword: string,

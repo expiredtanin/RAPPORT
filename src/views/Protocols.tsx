@@ -120,7 +120,15 @@ function Protokolle({ data, saveAll, setPrintContent, modal, setModal }: Pick<Vi
       key={detail.id}
       protokoll={detail}
       data={data}
-      onBack={() => setDetailId(null)}
+      onBack={() => {
+        // Unberührtes neues Protokoll (kein Titel, keine Teilnehmer, keine Einträge) beim Verlassen wieder entfernen —
+        // sonst blieb nach jedem Klick auf «Protokoll» eine leere Leiche zurück (E2E 25.11.2026)
+        const cur = protokolle.find(x => x.id === detail.id);
+        const untouched = cur && !cur.title?.trim() && !(cur.participants || []).length && !(cur.location || "").trim()
+          && (cur.traktanden || []).every(t => !t.title?.trim() && !(t.items || []).length);
+        if (untouched) saveAll({ ...data, protocols: protokolle.filter(x => x.id !== detail.id) });
+        setDetailId(null);
+      }}
       onSave={p => { saveAll({ ...data, protocols: protokolle.map(x => x.id === p.id ? p : x) }); }}
       onDelete={id => { saveAll({ ...data, protocols: protokolle.filter(x => x.id !== id) }); setDetailId(null); }}
       onOpen={setDetailId}

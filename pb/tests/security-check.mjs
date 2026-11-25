@@ -243,12 +243,25 @@ r = await api("PATCH", `/api/collections/employees/records/${empOther}`, tP, { r
 check("P: andere Angaben anderer ändern (Recht Personal)", r.status === 200, `HTTP ${r.status}`);
 r = await api("POST", "/api/collections/overtimeClosings/records", tP, { id: rid("ocp"), studio: sid, employee: empP, year: 2026, type: "payout", hoursSettled: 10, auszahlungBetrag: 99999 });
 check("P: eigene Überstunden nicht selbst auszahlen", r.status >= 400, `HTTP ${r.status}`);
+r = await api("PATCH", `/api/collections/employees/records/${empOther}`, tP, { appUser: pUser.id });
+check("P: Kontoverknüpfung fremder Mitarbeiter nicht ändern", r.status >= 400, `HTTP ${r.status}`);
+r = await api("POST", "/api/rapport/set-member-role", tP, { userId: mUser.id, studioId: sid, appRoleId: "r-projektleiter" });
+check("P: keine Rollen ändern", r.status >= 400, `HTTP ${r.status}`);
+r = await api("POST", "/api/rapport/set-member-role", tA, { userId: mUser.id, studioId: sid, appRoleId: "r-projektleiter" });
+const mMem = (await api("GET", `/api/collections/studioMembers/records?filter=${enc(`user="${mUser.id}" && studio="${sid}"`)}`, su)).json.items[0];
+check("A: Rolle von M ändern, Rechte sofort neu", r.status === 200 && mMem.appRoleId === "r-projektleiter" && mMem.perms.includes("|quotes|"), `HTTP ${r.status}, perms ${mMem && mMem.perms}`);
+must(await api("POST", "/api/rapport/set-member-role", tA, { userId: mUser.id, studioId: sid, appRoleId: "r-mitarbeiter" }), "M zurück");
+const aId = (await api("GET", "/api/collections/users/records?filter=" + enc(`email="${aEmail}"`), su)).json.items[0].id;
+r = await api("POST", "/api/rapport/set-member-role", tA, { userId: aId, studioId: sid, appRoleId: "r-mitarbeiter" });
+check("A: letzten Admin nicht herabstufen", r.status >= 400, `HTTP ${r.status}`);
 // Stammdaten mit Verweisen
 const cust = rid("cust");
 must(await api("POST", "/api/collections/persons/records", tA, { id: cust, studio: sid, name: "Kunde mit Rechnung" }), "Kunde");
 must(await api("PATCH", `/api/collections/invoices/records/${inv}`, tA, { client: cust }), "Rechnung → Kunde");
 r = await api("DELETE", `/api/collections/persons/records/${cust}`, tM);
 check("M: Kunde mit Rechnung nicht löschbar", r.status >= 400, `HTTP ${r.status}`);
+r = await api("DELETE", `/api/collections/persons/records/${cust}`, tA);
+check("A: Kunde mit Rechnung auch als Admin nicht löschbar", r.status >= 400, `HTTP ${r.status}`);
 // Rechnungsnummern
 r = await api("POST", "/api/collections/invoices/records", tA, { id: rid("d1"), studio: sid, number: "" });
 const r2 = await api("POST", "/api/collections/invoices/records", tA, { id: rid("d2"), studio: sid, number: "" });

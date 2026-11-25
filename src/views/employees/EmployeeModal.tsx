@@ -3,6 +3,7 @@
 import React from "react";
 import { arbeitszeitAm, formatIban, formatCHF, localISODate, monatslohnAm } from "../../utils";
 import { Modal, FormField, DateInput, DatePicker } from "../../components/UI";
+import { isCloudBackend } from "../../storage/adapter";
 import type { LohnWechsel, PensumWechsel, ViewProps } from "../../types";
 import type { EmpForm } from "./types";
 
@@ -226,6 +227,12 @@ export default function EmployeeModal({ data, empForm, setEmpForm, nextPersonalN
 
       {/* APP-ZUGANG */}
       <div style={{ fontSize: 11, letterSpacing: "0.08em", color: "var(--text4)", margin: "18px 0 12px", paddingTop: 14, borderTop: "1px solid var(--border2)" }}>APP-ZUGANG</div>
+      {isCloudBackend ? (
+        <div style={{ fontSize: 12, color: "var(--text3)", lineHeight: 1.6 }}>
+          {empForm.appUserId ? "Mit einem Konto verknüpft." : "Noch kein Konto verknüpft."} Konten, Passwörter und Rollen verwaltet
+          der Server: einladen und Rolle ändern unter Einstellungen → Team.
+        </div>
+      ) : (<>
       <div style={{ marginBottom: 14 }}>
         <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer", fontSize: 13, color: "var(--text)" }}>
           <input type="checkbox" checked={!!empForm._appAccess} onChange={e => setEmpForm({ ...empForm, _appAccess: e.target.checked })} style={{ width: "auto" }} />
@@ -261,6 +268,7 @@ export default function EmployeeModal({ data, empForm, setEmpForm, nextPersonalN
           <div style={{ fontSize: 10, color: "var(--text5)", marginTop: 4 }}>Rollen und Berechtigungen unter Einstellungen → App-Rollen verwalten.</div>
         </>
       )}
+      </>)}
     </Modal>
   );
 }

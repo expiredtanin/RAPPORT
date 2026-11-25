@@ -9,6 +9,8 @@ import type { EmployeeCalc } from "./calc";
 import type { ModalKind } from "./types";
 
 interface FerienTabProps {
+  /** eigener Mitarbeiter-Datensatz ohne Vollzugriff: eigene Anträge nicht selbst genehmigen (der Server lehnt es ab) */
+  ownEmployeeId?: string | null;
   data: ViewProps["data"];
   update: ViewProps["update"];
   askConfirm: ReturnType<typeof useConfirm>["askConfirm"];
@@ -28,7 +30,7 @@ interface FerienTabProps {
 }
 
 /** Reiter «Ferien & Absenzen» der Mitarbeiter-Ansicht. */
-export default function FerienTab({ data, update, askConfirm, employees, absences, ferienEntries, absenzTypes, selectedEmpId, setSelectedEmpId, setFerienForm, setModal, delFerien, delAbs, viewYear, setViewYear, calc }: FerienTabProps) {
+export default function FerienTab({ ownEmployeeId = null, data, update, askConfirm, employees, absences, ferienEntries, absenzTypes, selectedEmpId, setSelectedEmpId, setFerienForm, setModal, delFerien, delAbs, viewYear, setViewYear, calc }: FerienTabProps) {
   const { calcFerienYear } = calc;
   return (
     <div>
@@ -86,10 +88,10 @@ export default function FerienTab({ data, update, askConfirm, employees, absence
                       <td style={{ padding: "7px 8px", color: "var(--text4)" }}>{f.originalData ? `Änderung (bisher ${formatDate(f.originalData.dateFrom)}–${formatDate(f.originalData.dateTo)})${f.note ? " · " + f.note : ""}` : f.note || "—"}</td>
                       <td style={{ padding: "7px 0", textAlign: "right", whiteSpace: "nowrap" }}>
                         {/* Beide Knöpfe gleich gebaut (Symbol + Text, gleiche Höhe), nebeneinander bündig */}
-                        <div style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>
+                        {ownEmployeeId && f.employeeId === ownEmployeeId ? <span style={{ fontSize: 12, color: "var(--text4)" }}>Eigener Antrag — wartet auf Genehmigung</span> : (<div style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>
                           <button className="btn btn-primary btn-sm" style={{ background: "var(--positive)", borderColor: "var(--positive)" }} onClick={() => approveFerien(f.id)}><span className="msr" style={{ fontSize: 16 }}>check</span>Genehmigen</button>
                           <button className="btn btn-danger btn-sm" onClick={() => rejectFerien(f.id)}><span className="msr" style={{ fontSize: 16 }}>close</span>Ablehnen</button>
-                        </div>
+                        </div>)}
                       </td>
                     </tr>
                   );
@@ -106,10 +108,10 @@ export default function FerienTab({ data, update, askConfirm, employees, absence
                       <td style={{ padding: "7px 8px", color: "var(--text4)" }}>{a.note || "—"}</td>
                       <td style={{ padding: "7px 0", textAlign: "right", whiteSpace: "nowrap" }}>
                         {/* Beide Knöpfe gleich gebaut (Symbol + Text, gleiche Höhe), nebeneinander bündig */}
-                        <div style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>
+                        {ownEmployeeId && a.employeeId === ownEmployeeId ? <span style={{ fontSize: 12, color: "var(--text4)" }}>Eigener Antrag — wartet auf Genehmigung</span> : (<div style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>
                           <button className="btn btn-primary btn-sm" style={{ background: "var(--positive)", borderColor: "var(--positive)" }} onClick={() => approveAbs(a.id)}><span className="msr" style={{ fontSize: 16 }}>check</span>Genehmigen</button>
                           <button className="btn btn-danger btn-sm" onClick={() => rejectAbs(a.id)}><span className="msr" style={{ fontSize: 16 }}>close</span>Ablehnen</button>
-                        </div>
+                        </div>)}
                       </td>
                     </tr>
                   );

@@ -81,14 +81,42 @@ export function TeamTab({ s, setField, data, update, isAdmin }: DraftProps & Pic
               <div style={{ fontSize: 11, color: "var(--text5)", marginBottom: 12 }}>
                 Personen mit Cloud-Zugang zu diesem Studio. Beim Einladen vergeben Sie ein temporäres Passwort, das Sie der Person separat mitteilen.
               </div>
-              {(data.users || []).map(u => (
-                <div key={u.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0", borderBottom: "1px solid var(--border2)", fontSize: 13 }}>
-                  <div>
+              {(data.users || []).map(u => {
+                const linkedEmp = (data.employees || []).find(e => e.appUserId === u.id);
+                return (
+                <div key={u.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: "1px solid var(--border2)", fontSize: 13, flexWrap: "wrap" }}>
+                  <div style={{ minWidth: 0 }}>
                     <div style={{ fontWeight: 500 }}>{u.displayName || u.username}</div>
-                    <div style={{ fontSize: 10, color: "var(--text4)", letterSpacing: "0.04em" }}>{u.username} · {u.role === "admin" ? "Admin" : (data.appRoles || []).find(r => r.id === u.appRoleId)?.name || u.appRoleId}</div>
+                    <div style={{ fontSize: 10, color: "var(--text4)", letterSpacing: "0.04em" }}>{u.username}</div>
+                  </div>
+                  <div style={{ display: "flex", gap: 6 }}>
+                    {/* Mitarbeiter verknüpfen: Zeiterfassung, Ferien und «Mein Profil» gehören dann zu diesem Konto */}
+                    <select aria-label="Mitarbeiter verknüpfen" value={linkedEmp?.id || ""} style={{ width: 150, fontSize: 12 }}
+                      onChange={e => {
+                        const target = e.target.value;
+                        update("employees", (data.employees || []).map(emp =>
+                          emp.id === target ? { ...emp, appUserId: u.id } : emp.appUserId === u.id ? { ...emp, appUserId: null } : emp));
+                      }}>
+                      <option value="">— kein Mitarbeiter —</option>
+                      {(data.employees || []).filter(emp => !emp.appUserId || emp.appUserId === u.id).map(emp => <option key={emp.id} value={emp.id}>{emp.name}</option>)}
+                    </select>
+                    <select aria-label="Rolle" value={u.appRoleId || ""} style={{ width: 140, fontSize: 12 }}
+                      onChange={async e => {
+                        const appRoleId = e.target.value;
+                        try {
+                          await cloud.setMemberRole(u.id, appRoleId);
+                          update("users", (data.users || []).map(x => x.id === u.id ? { ...x, appRoleId, role: appRoleId === "r-admin" ? "admin" : "user" } : x));
+                          showToast("Rolle geändert.");
+                        } catch (err) {
+                          showToast("Rolle nicht geändert: " + ((err as { data?: { message?: string }; message?: string })?.data?.message || (err as Error)?.message || "Fehler"));
+                        }
+                      }}>
+                      {(data.appRoles || []).map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
+                    </select>
                   </div>
                 </div>
-              ))}
+                );
+              })}
               {pendingInvites.length > 0 && (
                 <div style={{ marginTop: 14 }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
