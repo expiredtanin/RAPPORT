@@ -4,6 +4,7 @@
 import type React from "react";
 import { generateId, formatCHF, formatDate, projectFee, roundCHF } from "../../utils";
 import { DateInput } from "../../components/UI";
+import { useGuardedClose } from "../../hooks/useGuardedClose";
 import type { AppData, Person } from "../../types";
 import { AKONTO_MAX_RATES, akontoPhasePlan, billedNetForProject } from "./invoiceHelpers";
 import type { AkontoPlan, AkontoPlanRow } from "./invoiceHelpers";
@@ -26,13 +27,16 @@ export function AkontoPlanModal({ ap, setAp, apRows, data, clients, onClose, onC
   const apTotal = apRows.reduce((s, r) => s + (r.amt || 0), 0);
   const canCreate = apRows.length > 0 && apRows.every(r => r.date && r.amt > 0) && (ap.projectId || ap.clientId);
   // Nach SIA-Phasen: nur mit Phasenbudget (Phasen mit Stunden); Anteile und Anrechnung in akontoPhasePlan
+  // Esc / Klick daneben: bei Eingaben nachfragen (vorher waren Honorar und Raten weg)
+  const guard = useGuardedClose(onClose);
   const hasPhases = !!apProj && (apProj.phasesBudget || []).some(p => p.hours > 0);
   const phasePlan = ap.mode === "phase" && apProj ? akontoPhasePlan(apProj, data.quotes || [], data.settings.roles, data.invoices || [], ap) : null;
   const drafts = apProj ? roundCHF((data.invoices || []).filter(i => i.projectId === apProj.id && i.status === "entwurf").reduce((s, i) => s + (i.sub || 0) - (i.globalDisc || 0), 0)) : 0;
   const mwstRate = data.settings.mwstRate || 0;
   return (
-    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className="modal" style={{ maxWidth: 540 }}>
+    <div className="modal-overlay" {...guard.overlayProps}>
+      {guard.ConfirmModalEl}
+      <div className="modal" role="dialog" aria-modal="true" style={{ maxWidth: 540 }} {...guard.watchProps}>
         <h2 style={{ fontFamily: "var(--font-ui)", fontWeight: 400, fontSize: 22, marginBottom: 20 }}>Akonto-Plan erstellen</h2>
 
         {/* Projekt */}

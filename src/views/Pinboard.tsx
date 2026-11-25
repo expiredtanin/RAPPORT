@@ -11,6 +11,7 @@ import { checkLocalBudget, generateId, getFeiertageForYear, imageFileToJpeg, loc
 import { isLocalBackend } from "../storage/adapter";
 import type { BlogPost, CurrentUser, AppData, Poll, ViewProps } from "../types";
 import { EmptyState, Header, PageTabs } from "../components/UI";
+import { useGuardedClose } from "../hooks/useGuardedClose";
 import { showToast } from "../toast";
 
 type PostForm = Partial<BlogPost> & Pick<BlogPost, "title" | "body" | "type" | "pinned"> & { eventDate: string; image: string; poll: Poll | null };
@@ -199,11 +200,14 @@ function PostModal({ initial, onSave, onClose, data }: {
 
   const isDraft = initial?.status === "entwurf";
   const isNew = !initial;
+  // Esc / Klick daneben: bei getipptem Text nachfragen (vorher war ein halb geschriebener Beitrag weg)
+  const guard = useGuardedClose(onClose);
   const primaryLabel = (isNew || isDraft) ? "Veröffentlichen" : "Speichern";
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal" style={{ maxWidth: 580 }} onClick={e => e.stopPropagation()}>
+    <div className="modal-overlay" {...guard.overlayProps}>
+      {guard.ConfirmModalEl}
+      <div className="modal" role="dialog" aria-modal="true" style={{ maxWidth: 580 }} {...guard.watchProps}>
         <div style={{ fontFamily: "var(--font-ui)", fontSize: 20, marginBottom: 20, color: "var(--text)" }}>
           {initial ? "Beitrag bearbeiten" : "Neuer Beitrag"}
         </div>

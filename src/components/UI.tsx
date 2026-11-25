@@ -7,12 +7,12 @@
 // <input> in bestehende Handler passen. Farben von Kalender und Bestätigungs-
 // dialog sind bewusst fest (hell), unabhängig vom Theme.
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import type { CSSProperties, InputHTMLAttributes, ReactNode } from "react";
 import { STATUS_COLORS, STATUS_BG, statusVar } from "../constants";
 import type { Settings } from "../types";
 import { localISODate, sanitizeHtml } from "../utils";
-import { useConfirm } from "../hooks/useConfirm";
+import { useGuardedClose } from "../hooks/useGuardedClose";
 
 /** Rückgabe der Datumsfelder: ein Mini-Event, das wie bei <input> `e.target.value` liefert. */
 export type DateChangeEvent = { target: { value: string } };
@@ -179,23 +179,11 @@ export function Modal({ title, onClose, onSave, saveLabel, hideSave, hideFooter,
   const cls = ["modal", "modal-x", drawer && "drawer", wide && "wide", withPreview && "has-preview", overflow && "allow-overflow"].filter(Boolean).join(" ");
   // Esc / Klick daneben bei getippten Änderungen erst nachfragen — vorher war eine halb erfasste Offerte oder Rechnung
   // durch einen Fehlklick weg (UI-Rundgang Runde 18). «Abbrechen» und ✕ schliessen weiterhin sofort.
-  const dirty = useRef(false);
-  // nur getippter Text zählt (Textfelder, Zahlen, Notizen, Editor) — Auswahl, Häkchen und Wizard-Schritte nicht
-  const markDirty = (e: React.SyntheticEvent) => {
-    if (!confirmClose) return;
-    const t = e.target as HTMLElement;
-    const type = (t as HTMLInputElement).type;
-    if (t.tagName === "TEXTAREA" || t.isContentEditable || (t.tagName === "INPUT" && !["checkbox", "radio", "file", "range", "color", "button", "submit"].includes(type))) dirty.current = true;
-  };
-  const { askConfirm, ConfirmModalEl } = useConfirm();
-  const requestClose = async () => {
-    if (dirty.current && !(await askConfirm("Ungespeicherte Eingaben verwerfen?", "Verwerfen"))) return;
-    onClose();
-  };
+  const { ConfirmModalEl, overlayProps, watchProps } = useGuardedClose(onClose, confirmClose);
   return (
-    <div className={`modal-overlay${drawer ? " drawer-overlay" : ""}`} onClick={e => { if (e.target === e.currentTarget) void requestClose(); }}>
+    <div className={`modal-overlay${drawer ? " drawer-overlay" : ""}`} {...overlayProps}>
       {ConfirmModalEl}
-      <div className={cls} role="dialog" aria-modal="true" onKeyDown={onKeyDown} onChangeCapture={markDirty} onInputCapture={markDirty}>
+      <div className={cls} role="dialog" aria-modal="true" onKeyDown={onKeyDown} {...watchProps}>
         <div className="modal-main">
           <div className="modal-head">
             {title ? <h2>{title}</h2> : <span />}
@@ -585,6 +573,12 @@ export function CalendarPopup({ value, onChange, onClose, align = "left", showCl
   align?: "left" | "right";
   showClear?: boolean;
 }) {
+  // Esc schliesst nur den Kalender (vorher griff der Dialog-Handler in App.tsx: ganzer Dialog zu bzw. Rückfrage)
+  useEffect(() => {
+    const onEsc = (e: KeyboardEvent) => { if (e.key === "Escape") { e.preventDefault(); e.stopImmediatePropagation(); onClose(); } };
+    document.addEventListener("keydown", onEsc, true);
+    return () => document.removeEventListener("keydown", onEsc, true);
+  }, [onClose]);
   const [viewYM, setViewYM] = useState(() => {
     const d = value ? new Date(value + "T00:00:00") : new Date();
     return { year: d.getFullYear(), month: d.getMonth() };
@@ -679,10 +673,12 @@ export function DatePicker({ value, onChange, style, placeholder, align = "left"
 } & Omit<InputHTMLAttributes<HTMLInputElement>, "value" | "onChange" | "style" | "placeholder">) {
   const [open, setOpen] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
   const toDE = (iso?: string) => {
     if (!iso || !/^\d{4}-\d{2}-\d{2}$/.test(iso)) return "";
     return `${iso.slice(8, 10)}.${iso.slice(5, 7)}.${iso.slice(0, 4)}`;
   };
+  const closePopup = useCallback(() => setOpen(false), []);
   useEffect(() => {
     if (!open) return;
     const close = (e: MouseEvent) => { if (!wrapRef.current?.contains(e.target as Node)) setOpen(false); };
@@ -692,6 +688,7 @@ export function DatePicker({ value, onChange, style, placeholder, align = "left"
   return (
     <div ref={wrapRef} style={{ position: "relative", display: "inline-block", width: "100%" }}>
       <input
+        ref={inputRef}
         type="text"
         value={toDE(value)}
         readOnly
@@ -703,8 +700,12 @@ export function DatePicker({ value, onChange, style, placeholder, align = "left"
       {open && (
         <CalendarPopup
           value={value}
-          onChange={ds => onChange({ target: { value: ds } })}
-          onClose={() => setOpen(false)}
+          onChange={ds => {
+            onChange({ target: { value: ds } });
+            // als Eingabe melden: der Dialog (Modal) fragt dann vor dem Verwerfen nach (Kalender löst sonst kein Ereignis aus)
+            inputRef.current?.dispatchEvent(new Event("input", { bubbles: true }));
+          }}
+          onClose={closePopup}
           align={align}
         />
       )}
