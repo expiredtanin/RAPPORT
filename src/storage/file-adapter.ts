@@ -118,6 +118,8 @@ export class FileStorageAdapter implements StorageAdapter {
   private assets: FileAssetStore;
   /** Anhänge, deren Datei beim letzten Laden fehlte (z.B. von iCloud noch nicht geladen); Pfade relativ zum Ordner. */
   missingFiles: string[] = [];
+  /** Zeitdateien, die beim letzten Laden nur als iCloud-Platzhalter da waren (deren Stunden fehlen in der Ansicht). */
+  pendingTimeFiles: string[] = [];
 
   constructor(dir: string, fs: FsApi, deviceId = "geraet") {
     this.dir = dir.replace(/\/+$/, "");
@@ -134,13 +136,17 @@ export class FileStorageAdapter implements StorageAdapter {
   }
 
   /** Namen der vorhandenen Datendateien (studio.json, time/…) und ob iCloud noch Platzhalter statt Dateien hat. */
-  private async dataNames(): Promise<{ names: string[]; icloudPending: boolean }> {
+  private async dataNames(): Promise<{ names: string[]; icloudPending: boolean; pendingTime: string[] }> {
     const [top, time] = await Promise.all([this.fs.list(this.dir), this.fs.list(this.path("time"))]);
+    // iCloud-Platzhalter «.name.json.icloud» echter Datendateien (Konfliktkopien zählen nicht)
+    const placeholder = (n: string) => n.startsWith(".") && n.endsWith(".icloud") && isDataName(n.slice(1, -7));
     return {
       names: [...(top.includes(STUDIO) ? [STUDIO] : []), ...time.filter(isDataName).map(n => `time/${n}`)],
-      // ausgelagerte Datendatei (studio.json oder eine Zeitdatei): sonst lud die App still ohne deren Einträge, und ein
-      // Speichern legte die Datei mit nur den neuen Einträgen neu an (das Original wurde dann zur Konfliktkopie)
-      icloudPending: [...top.filter(n => n === `.${STUDIO}.icloud`), ...time].some(n => n.startsWith(".") && n.endsWith(".json.icloud")),
+      // ohne studio.json und mit Platzhaltern: Ordner noch nicht geladen → Fehlerbildschirm
+      icloudPending: !top.includes(STUDIO) && [...top, ...time].some(placeholder),
+      // einzelne ausgelagerte Zeitdateien (z.B. «Mac-Speicher optimieren»): laden ohne sie, aber melden; Speichern in
+      // diesen Monat scheitert in writeAll, statt die Datei neu anzulegen (das Original würde zur Konfliktkopie)
+      pendingTime: time.filter(placeholder).map(n => `time/${n.slice(1, -7)}`),
     };
   }
 
@@ -152,7 +158,8 @@ export class FileStorageAdapter implements StorageAdapter {
   /** Liest alle Datendateien, aktualisiert `known` und gibt den Gesamtstand zurück (null = noch keine Daten). */
   async load(): Promise<RawData | null> {
     await this.fs.mkdir(this.dir);
-    const { names, icloudPending } = await this.dataNames();
+    const { names, icloudPending, pendingTime } = await this.dataNames();
+    this.pendingTimeFiles = pendingTime;
     if (icloudPending) {
       throw new DataFolderError("Der Datenordner ist noch nicht vollständig von iCloud geladen. Im Finder Rechtsklick auf den Ordner → «Jetzt laden» bzw. «Download behalten» und danach Rapport neu starten.");
     }

@@ -267,14 +267,17 @@ describe("Datenordner: Zeitdatei von iCloud ausgelagert", () => {
     expect(back.timeEntries.map(e => e.id).sort()).toEqual(["t1", "t2"]);
   });
 
-  it("Laden mit ausgelagerter Zeitdatei: Fehler statt still ohne deren Stunden; neuer Eintrag erzeugt keine Datei daneben", async () => {
+  it("ausgelagerte Zeitdatei: Laden ohne sie (gemeldet), Speichern in diesen Monat scheitert statt sie neu anzulegen", async () => {
     const te = (id: string, date: string) => ({ id, employeeId: "e2", date, minutes: 60 }) as never;
     await new FileStorageAdapter(dir, nodeFs, "A").save({ ...sampleData(), expenses: [], timeEntries: [te("t1", "2026-10-03")] });
     await rename(join(dir, "time/e2_2026-10.json"), join(dir, "time/.e2_2026-10.json.icloud"));
+    // Platzhalter einer Konfliktkopie stört nicht
+    await writeFile(join(dir, "time/.e2_2026-09 2.json.icloud"), "");
     const B = new FileStorageAdapter(dir, nodeFs, "B");
-    await expect(B.load()).rejects.toThrow(/iCloud/);
-    // auch ohne vorheriges Laden: Speichern in diesen Monat scheitert, statt die Datei neu (nur mit t3) anzulegen
-    await expect(B.save({ ...sampleData(), expenses: [], timeEntries: [te("t3", "2026-10-05")] })).rejects.toThrow(/nicht lesbar/);
+    const loaded = (await B.load()) as unknown as AppData;
+    expect(loaded.timeEntries).toEqual([]);
+    expect(B.pendingTimeFiles).toEqual(["time/e2_2026-10.json"]);
+    await expect(B.save({ ...loaded, timeEntries: [te("t3", "2026-10-05")] })).rejects.toThrow(/nicht lesbar/);
     expect(await readdir(join(dir, "time"))).not.toContain("e2_2026-10.json");
   });
 

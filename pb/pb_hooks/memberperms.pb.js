@@ -158,10 +158,9 @@ onRecordUpdateRequest((e) => {
   else {
     if (pNew.question !== pOld.question || JSON.stringify(pNew.options) !== JSON.stringify(pOld.options)) bad.push("poll");
     const vN = pNew.votes || {}, vO = pOld.votes || {};
-    const keys = {};
-    for (const k of Object.keys(vN)) keys[k] = 1;
-    for (const k of Object.keys(vO)) keys[k] = 1;
-    for (const k of Object.keys(keys)) if (k !== authId && vN[k] !== vO[k]) bad.push("poll.votes");
+    // Set statt Objekt: «__proto__» fiel sonst aus der Prüfung (fremde Daten in poll.votes)
+    const keys = new Set([...Object.keys(vN), ...Object.keys(vO)]);
+    for (const k of keys) if (k !== authId && JSON.stringify(vN[k]) !== JSON.stringify(vO[k])) bad.push("poll.votes");
   }
   if (bad.length) throw new ForbiddenError("Fremde Beiträge können nur ihre Autorin, ihr Autor oder ein Admin ändern.");
   e.next();

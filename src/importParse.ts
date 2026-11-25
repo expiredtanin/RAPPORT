@@ -80,10 +80,10 @@ export function parseNumber(raw: string): number {
   // Exponentialschreibweise aus Excel/CSV («1e3», «1.5E-2»): vorher wurde daraus 13
   if (/^[-+]?\d+(\.\d+)?[eE][-+]?\d+$/.test(s)) return Number(s);
   // Stunden als «7:30» (H:MM, auch «-2:30», «(1:30)», «7:30:00», «2:30 h») → 7.5; vorher wurde daraus 730
-  const hm = /^(\()?\s*([-+−])?\s*(\d{1,4}):([0-5]\d)(?::([0-5]\d))?\s*(?:h|std\.?|stunden)?\s*(\))?$/i.exec(s);
+  const hm = /^(\()?\s*([-+−–])?\s*(\d{1,4}):([0-5]\d)(?::([0-5]\d))?\s*(?:h|std\.?|stunden)?\s*(\))?$/i.exec(s);
   if (hm && !!hm[1] === !!hm[6]) {
     const v = parseInt(hm[3], 10) + parseInt(hm[4], 10) / 60 + (hm[5] ? parseInt(hm[5], 10) / 3600 : 0);
-    return hm[1] || hm[2] === "-" || hm[2] === "−" ? -v : v;
+    return hm[1] || hm[2] === "-" || hm[2] === "−" || hm[2] === "–" ? -v : v;
   }
   const negative = /^\(.*\)$/.test(s) || /^[^\d]*[-−–]/.test(s) || /\d\s*[-−]$/.test(s);
   s = s.replace(/[.,][-–—]$/, "");          // «1234.–»

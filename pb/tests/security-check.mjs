@@ -101,6 +101,8 @@ r = await api("PATCH", `/api/collections/blogPosts/records/${post}`, tM, { poll:
 check("M: in fremder Umfrage abstimmen", r.status === 200, `HTTP ${r.status} ${r.status !== 200 ? JSON.stringify(r.json) : ""}`);
 r = await api("PATCH", `/api/collections/blogPosts/records/${post}`, tM, { poll: { question: "Wohin?", options: [{ id: "o1", label: "A" }, { id: "o2", label: "B" }], votes: { [mUser.id]: "o2", fremd123: "o1" } } });
 check("M: keine fremden Stimmen setzen", r.status >= 400, `HTTP ${r.status}`);
+r = await api("PATCH", `/api/collections/blogPosts/records/${post}`, tM, { poll: { question: "Wohin?", options: [{ id: "o1", label: "A" }, { id: "o2", label: "B" }], votes: { [mUser.id]: "o2", ["__proto__"]: { x: "y".repeat(40) } } } });
+check("M: kein «__proto__» in poll.votes", r.status >= 400, `HTTP ${r.status}`);
 r = await api("DELETE", `/api/collections/blogPosts/records/${post}`, tM);
 check("M: fremden Pinnwand-Beitrag nicht löschbar", r.status >= 400, `HTTP ${r.status}`);
 // Entwürfe anderer Autoren nicht lesbar (Migration 1787950000)

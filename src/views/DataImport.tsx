@@ -26,7 +26,7 @@ import { closedMonthMsg, generateId, getAbsenzTypes, normalizeTime, roundCHF, wi
 import { PROJECT_TYPES, CONTACT_TYPES, CONTACT_CATEGORIES, EXPENSE_CATEGORIES, INTERNAL_EXPENSE_CATEGORIES } from "../constants";
 import { Header, FormField } from "../components/UI";
 import { isCloudBackend } from "../storage/adapter";
-import type { AppData, Employee, ViewProps } from "../types";
+import type { AppData, ViewProps } from "../types";
 import { decodeText, excelCellText, parseCSV, parseFlexibleDate, parseNumber, type Row } from "../importParse";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -785,6 +785,9 @@ export default function DataImport({ data, saveAll, setView }: Pick<ViewProps, "
       if (cfg.targetKey === "timeEntries" || cfg.targetKey === "ferienEntries" || cfg.targetKey === "absences") {
         const from = values.date || values.dateFrom, to = values.date || values.dateTo || values.dateFrom;
         if (closedMonthMsg(data.settings.closedMonths, [from, to])) invalid.push("Monat abgeschlossen");
+        // vor dem Eintritt zählt nichts (Soll/Saldo) — sichtbar machen statt still verschwinden lassen
+        const emp = (data.employees || []).find(e => e.id === values.employeeId);
+        if (emp?.eintrittsdatum && from && from < emp.eintrittsdatum) invalid.push(`vor Eintritt (${emp.eintrittsdatum.split("-").reverse().join(".")})`);
       }
       const previewRecord = cfg.buildRecord(values, data.settings);
       const key = cfg.dedupKey(previewRecord);
@@ -835,10 +838,9 @@ export default function DataImport({ data, saveAll, setView }: Pick<ViewProps, "
 
     // Neu angelegte Mitarbeitende (unbekannter Name in der Datei): als ehemalig/inaktiv mit Ein- und Austritt aus dem
     // Zeitraum ihrer importierten Einträge — vorher ohne Eintritt mit vollem Soll seit jeher (stark negativer Saldo)
-    // Eintritt = frühestes Datum; kein Austritt, bleibt aktiv —
-    // ein unbekannter Name ist oft jemand Aktuelles, der noch nicht erfasst ist. Ein früher importierter Platzhalter
-    // (ohne Personalnummer und Lohn) wird nach vorne erweitert, wenn ein weiterer Import ältere Einträge bringt.
-    const workTarget = cfg!.targetKey === "timeEntries" || cfg!.targetKey === "ferienEntries" || cfg!.targetKey === "absences";
+    // Eintritt = frühestes Datum; kein Austritt, bleibt aktiv — ein unbekannter Name ist oft jemand Aktuelles, der
+    // noch nicht erfasst ist. (Bestehende Mitarbeitende werden nie still geändert; Zeilen vor ihrem Eintritt sind in der
+    // Vorschau ungültig.)
     const earliest = (id: string) => finalRecords.filter(r => r.employeeId === id)
       .flatMap(r => [r.date, r.dateFrom]).filter((d): d is string => typeof d === "string" && /^\d{4}-\d{2}-\d{2}$/.test(d)).sort()[0];
     for (const stub of newStubsByCollection.employees?.values() || []) {
@@ -846,15 +848,9 @@ export default function DataImport({ data, saveAll, setView }: Pick<ViewProps, "
       const first = earliest(stub.id);
       if (first) stub.eintrittsdatum = first;
     }
-    const placeholderEmps = workTarget ? (data.employees || []).filter(e => !e.personalNr && !e.monatslohn && e.eintrittsdatum) : [];
-    const widened = placeholderEmps.map(e => { const first = earliest(e.id); return first && first < e.eintrittsdatum! ? { ...e, eintrittsdatum: first } : null; }).filter(Boolean);
     const patch: Record<string, unknown[]> = { [cfg!.targetKey]: [...((data[cfg!.targetKey] as unknown[]) || []), ...finalRecords] };
     for (const [dataKey, map] of Object.entries(newStubsByCollection)) {
       patch[dataKey] = [...((data[dataKey as keyof AppData] as unknown[]) || []), ...Array.from(map.values())];
-    }
-    if (widened.length) {
-      const byId = new Map(widened.map(w => [w!.id, w!]));
-      patch.employees = ((patch.employees || data.employees || []) as Employee[]).map(e => byId.get(e.id) || e);
     }
 
     saveAll({ ...data, ...patch } as AppData);
