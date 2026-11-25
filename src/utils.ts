@@ -812,7 +812,9 @@ export function buildReminderLetter(
       + (k.gebuehr > 0 ? `\nMahngebühr${nr > 1 ? "en" : ""}: ${formatCHF(k.gebuehr)}` : "")
       + `\nTotal zu bezahlen: ${formatCHF(k.total)}`
     : "";
-  const body = `Sehr geehrte/r ${client?.name || "[Kunde]"}\n\n${intro}${kostenText}\n\nIBAN: ${formatIban(settings.iban)}\nReferenz: ${ref.display}\n\nFreundliche Grüsse\n${settings.name}`;
+  // Firma (mit Ansprechpartnern): neutrale Anrede statt «Sehr geehrte/r Baugenossenschaft …»
+  const anrede = client && (client.contacts || []).length > 0 ? "Sehr geehrte Damen und Herren" : `Sehr geehrte/r ${client?.name || "[Kunde]"}`;
+  const body = `${anrede}\n\n${intro}${kostenText}\n\nIBAN: ${formatIban(settings.iban)}\nReferenz: ${ref.display}\n\nFreundliche Grüsse\n${settings.name}`;
   const subject = nr === 1 ? `Zahlungserinnerung – Rechnung Nr. ${inv.number}` : `${nr}. Mahnung – Rechnung Nr. ${inv.number}`;
   return { client, subject, body, kosten: k };
 }

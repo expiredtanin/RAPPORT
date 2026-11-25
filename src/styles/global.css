@@ -952,3 +952,6 @@ i.paid { background: var(--positive); } i.open { background: var(--accent); } i.
 
 /* Rich-Text-Editor (UI.tsx RichEditor): Absätze wie im Druck (LetterPrint .letter-body) getrennt */
 .rich-edit p + p { margin-top: 0.7em; }
+
+/* Lange Namen ohne Leerzeichen (z.B. eingefügte Kennungen) umbrechen statt die Tabellenzeile zu sprengen */
+td strong { overflow-wrap: anywhere; }

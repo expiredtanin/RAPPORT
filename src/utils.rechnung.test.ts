@@ -48,6 +48,11 @@ describe("buildReminderLetter", () => {
     expect(body).toContain("Referenz: 00 00000 00000 00000 00202 60147");
     expect(body).toContain("IBAN: CH44 3199 9123 0008 8901 2");
   });
+  it("Anrede: Person namentlich, Firma mit Ansprechpartnern neutral", () => {
+    expect(buildReminderLetter(inv, 1, "2026-10-15", [client], settings).body.startsWith("Sehr geehrte/r Bauherrschaft Muster")).toBe(true);
+    const firma = { ...client, contacts: [{ id: "k", name: "Thomas Bühler" }] } as unknown as Person;
+    expect(buildReminderLetter(inv, 1, "2026-10-15", [firma], settings).body.startsWith("Sehr geehrte Damen und Herren")).toBe(true);
+  });
 
   it("Nachdruck der 3. Mahnung nennt nur die zwei früheren Schreiben", () => {
     const { body } = buildReminderLetter(inv, 3, "2026-11-10", [client], settings);

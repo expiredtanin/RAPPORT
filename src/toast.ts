@@ -18,6 +18,9 @@ const emit = () => listeners.forEach(l => l(toasts));
 
 /** Zeigt eine Meldung; liefert die id (zum vorzeitigen Schliessen). Höchstens drei gleichzeitig. */
 export function showToast(text: string, opts: { action?: Toast["action"]; timeout?: number } = {}): number {
+  // gleiche Meldung ohne Handlung schon sichtbar (z.B. dreimal «Speichern» ohne Namen): nicht stapeln
+  const same = !opts.action && toasts.find(t => t.text === text && !t.action);
+  if (same) return same.id;
   const t: Toast = { id: nextId++, text, action: opts.action, timeout: opts.timeout ?? (opts.action ? 8000 : 4000) };
   toasts = [...toasts, t].slice(-3);
   emit();
