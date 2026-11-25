@@ -3,7 +3,7 @@
 // getestet werden kann; die Darstellung macht QRBillPrint in InvoicePrint.tsx.
 
 import type { Data, Debtor } from "swissqrbill/types";
-import { isQRIban, isValidIban, paymentReference, splitAddress } from "../../utils";
+import { isQRIban, isValidIban, paymentReference, roundCHF, splitAddress } from "../../utils";
 import type { Invoice, Person, Settings } from "../../types";
 
 /** Ergebnis: Daten für swissqrbill oder der Grund, warum kein Zahlteil gedruckt wird. */
@@ -86,7 +86,7 @@ export function buildQrBillData(inv: Pick<Invoice, "number" | "total">, client: 
   if (!creditor.name || !creditor.zip || !creditor.city) {
     return { ok: false, error: true, reason: "Absenderadresse unvollständig: Name, PLZ und Ort in Einstellungen → Studio erfassen." };
   }
-  const data: Data = { currency: "CHF", amount: Math.round(amount * 100) / 100, creditor };
+  const data: Data = { currency: "CHF", amount: roundCHF(amount), creditor };
   const debtor = qrDebtor(client);
   if (debtor) data.debtor = debtor;
   const ref = paymentReference(inv.number, account);

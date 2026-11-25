@@ -153,6 +153,9 @@ function Employees({ data, update, saveAll, setPrintContent, userPermissions, cu
     // Ergänzungen als «eigene Änderung» und überschrieben z.B. eine gleichzeitig erfasste Lohnänderung (Review R23)
     const rawBase = empBaseRef.current?.id === emp.id ? empBaseRef.current : undefined;
     const base = rawBase && ({ ...withDefaultRates(rawBase, data.settings.defaultPkAGSatz), pensumVerlauf: rawBase.pensumVerlauf || [], lohnVerlauf: rawBase.lohnVerlauf || [],
+      // wie beim Speichern festgeschrieben (sonst überschrieb der Standard eine parallele Änderung bzw. wurde am eigenen
+      // Datensatz vom Server abgelehnt — Review R29)
+      wochenstunden: rawBase.wochenstunden || data.settings.defaultWochenstunden || 35, ferienWochen: rawBase.ferienWochen || data.settings.defaultFerienWochen || 5,
       ...(rawBase.saldoStichtag ? {} : { saldoUebertragStunden: 0 }) } as Employee);
     const mergeEmp = (list: Employee[], next: Employee) => isNew ? [...list, next] : list.map(e => e.id === next.id ? (base ? applyEdit(base, next, e) : next) : e);
     if (isCloudBackend) {
