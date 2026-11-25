@@ -47,15 +47,20 @@ const SETTINGS_TABS = new Set(["studio", "dokumente", "erscheinungsbild", "team"
  * Ungespeicherter Entwurf, wenn man die Einstellungen verlässt (Modulebene: überlebt den Seitenwechsel in dieser
  * Sitzung). Vorher waren getippte Änderungen beim Wechsel zu einer anderen Seite still verloren.
  */
-let settingsDraft: { s: StudioSettings; base: StudioSettings } | null = null;
+let settingsDraft: { s: StudioSettings; base: StudioSettings; userId: string | null } | null = null;
 
 export default function Settings({ data, update, currentUser, uiZoom, setUiZoom, setView }: Pick<ViewProps, "data" | "update" | "currentUser" | "setView"> & {
   /** Zoomfaktor der Oberfläche (1 = 100 %) */
   uiZoom?: number;
   setUiZoom?: React.Dispatch<React.SetStateAction<number>>;
 }) {
-  // Entwurf nur übernehmen, wenn er auf demselben Stand beruht (sonst wäre er veraltet)
-  const [draft] = useState(() => { const d = settingsDraft; settingsDraft = null; return d && jsonEqual(d.base, data.settings) ? d : null; });
+  // Entwurf auf den aktuellen Stand übertragen (applyEdit wie beim Speichern): inzwischen geänderte Felder anderer
+  // (Monatsabschluss, Nummernzähler) bleiben, die eigenen Eingaben auch; nur für denselben Benutzer
+  const [draft] = useState(() => {
+    const d = settingsDraft; settingsDraft = null;
+    if (!d || d.userId !== (currentUser?.id ?? null)) return null;
+    return jsonEqual(d.base, data.settings) ? d : { s: applyEdit(d.base, d.s, data.settings), base: data.settings };
+  });
   const [s, setS] = useState<StudioSettings>(draft?.s ?? data.settings);
   // Stand beim Öffnen bzw. letzten Speichern: Basis für applyEdit — gespeichert wird nur, was im Formular geändert
   // wurde. Vorher schrieb «Speichern» die ganze Kopie zurück und setzte fremde Änderungen zurück (Telefon, sogar
@@ -86,13 +91,11 @@ export default function Settings({ data, update, currentUser, uiZoom, setUiZoom,
   };
 
   // Beim Verlassen mit ungespeicherten Änderungen: Entwurf behalten und darauf hinweisen; Fenster schliessen warnt
-  const pending = useRef<{ s: StudioSettings; base: StudioSettings } | null>(null);
-  useEffect(() => { pending.current = isDirty ? { s, base } : null; });
+  // (kein beforeunload: Abmelden lädt die Seite neu, im Tauri-WebView gibt es dazu keine Rückfrage — es hinge still)
+  const pending = useRef<{ s: StudioSettings; base: StudioSettings; userId: string | null } | null>(null);
+  useEffect(() => { pending.current = isDirty ? { s, base, userId: currentUser?.id ?? null } : null; });
   useEffect(() => {
-    const onUnload = (e: BeforeUnloadEvent) => { if (pending.current) e.preventDefault(); };
-    window.addEventListener("beforeunload", onUnload);
     return () => {
-      window.removeEventListener("beforeunload", onUnload);
       if (pending.current) {
         settingsDraft = pending.current;
         showToast("Einstellungen noch nicht gespeichert — der Entwurf wartet unter Einstellungen.", { timeout: 8000 });

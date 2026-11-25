@@ -1,6 +1,6 @@
 // Zeiterfassung: Absenzen des gewählten Tages (Tagesliste, Ist/Soll-Differenz) und ihre Aktionen.
 
-import { generateId, getAbsenzTypes } from "../../utils";
+import { closedMonthMsg, generateId, getAbsenzTypes } from "../../utils";
 import { removeWithUndo } from "../../undo";
 import { showToast } from "../../toast";
 import type { AppData, Absence, Employee, UpdateFn } from "../../types";
@@ -46,7 +46,13 @@ export function buildAbsenceState({ data, update, currentDate, selectedEmpId, se
     showToast("Dieser Monat ist abgeschlossen und kann nicht mehr bearbeitet werden.");
     return true;
   };
-  const absDate = (id: string) => { const a = (data.absences || []).find(x => x.id === id); return a?.date || a?.dateFrom; };
+  const absDate = (id: string) => (data.absences || []).find(x => x.id === id);
+  /** Absenz (auch mehrtägig) berührt einen abgeschlossenen Monat → Meldung, true */
+  const closedAbs = (a: Absence | undefined) => {
+    const msg = a ? closedMonthMsg(data.settings?.closedMonths, [a.date || a.dateFrom, a.date || a.dateTo || a.dateFrom]) : null;
+    if (msg) showToast(msg);
+    return !!msg;
+  };
   const toAbsTime = (m: number) => `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
   const addAbs = () => {
     if (closedMsg(currentDate)) return;
@@ -69,7 +75,7 @@ export function buildAbsenceState({ data, update, currentDate, selectedEmpId, se
   };
   const updateAbs = (id: string, changes: Partial<Absence>) => {
     const abs = (data.absences || []).find(a => a.id === id);
-    if (!abs || closedMsg(abs.date || abs.dateFrom) || lockedMsg(abs)) return;
+    if (!abs || closedAbs(abs) || lockedMsg(abs)) return;
     if (abs.startTime && ("hours" in changes || "minutes" in changes)) {
       const [sh, sm] = abs.startTime.split(":").map(Number);
       const newH = ("hours" in changes ? changes.hours : (abs.hours || 0)) as number;
@@ -79,6 +85,6 @@ export function buildAbsenceState({ data, update, currentDate, selectedEmpId, se
     }
     update("absences", (data.absences || []).map(a => a.id === id ? { ...a, ...changes } : a));
   };
-  const delAbs = (id: string) => !closedMsg(absDate(id)) && !lockedMsg((data.absences || []).find(a => a.id === id)) && removeWithUndo("Absenz gelöscht", "absences", a => a.id === id);
+  const delAbs = (id: string) => !closedAbs(absDate(id)) && !lockedMsg((data.absences || []).find(a => a.id === id)) && removeWithUndo("Absenz gelöscht", "absences", a => a.id === id);
   return { absenzTypes, dayAbs, dayIst, dayDiff, addAbs, updateAbs, delAbs };
 }

@@ -51,8 +51,10 @@ describe("employee (Saldo-Übertrag, Pensumwechsel)", () => {
 
 describe("leere Zahlenfelder (PocketBase speichert 0)", () => {
   it("Lohnsätze: 0 bleibt 0 (ausdrücklich abgewählt, z.B. ohne PK/NBU)", () => {
-    const e = fromDB.employee({ ...rec, id: "e1", name: "A", ahvSatz: 5.3, alvSatz: 0, bvgSatz: 0, nbuSatz: 0, ktgSatz: 0, quellensteuerPflichtig: true, quellensteuerSatz: 0 });
-    expect(e).toMatchObject({ alvSatz: 0, bvgSatz: 0, nbuSatz: 0, ktgSatz: 0, quellensteuerSatz: 0 });
+    const e = fromDB.employee({ ...rec, id: "e1", name: "A", ahvSatz: 0, alvSatz: 0, bvgSatz: 0, nbuSatz: 0, ktgSatz: 0, quellensteuerPflichtig: true, quellensteuerSatz: 0 });
+    expect(e).toMatchObject({ bvgSatz: 0, nbuSatz: 0, ktgSatz: 0, quellensteuerSatz: 0 });
+    // AHV/ALV 0 % gibt es nicht (Befreiung über Alter/Status) → Standard
+    expect(e).toMatchObject({ ahvSatz: null, alvSatz: null });
   });
 
   it("Offerte/Rechnung mit MWST und Satz 0 → Büro-Satz; ohne MWST bleibt der Satz", () => {

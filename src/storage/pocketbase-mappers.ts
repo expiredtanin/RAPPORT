@@ -188,8 +188,10 @@ export const fromDB = {
       // Lohnsätze: 0 bleibt 0 (ausdrücklich abgewählt). PocketBase speichert ein leeres Zahlenfeld als 0 —
       // deshalb setzen alle Wege, die Mitarbeiter anlegen (Dialog, Import, Einrichtung, Umzug in die Cloud),
       // die Standardsätze ausdrücklich (`withDefaultRates`), statt 0 beim Lesen zu raten (Review Runde 13).
-      ahvSatz: row.ahvSatz ?? null,
-      alvSatz: row.alvSatz ?? null,
+      // AHV/ALV 0 % gibt es nicht (Befreiungen rechnet calcLohn über Alter/Status): 0 = leeres Feld eines älteren
+      // Datensatzes → Standardsatz statt Lohn ohne Sozialabzüge
+      ahvSatz: row.ahvSatz || null,
+      alvSatz: row.alvSatz || null,
       bvgSatz: row.bvgSatz ?? null,
       nbuSatz: row.nbuSatz ?? null,
       ktgSatz: row.ktgSatz ?? null,

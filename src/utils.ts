@@ -1122,7 +1122,8 @@ export function letterToTemplate(body: string, names: { client?: string; project
     if (part.startsWith("<")) return part;
     let out = part;
     for (const [name, ph] of pairs) {
-      out = out.replace(new RegExp(`(^|[^\\p{L}\\p{N}])${reEsc(name)}(?![\\p{L}\\p{N}])`, "gu"), (_m, pre: string) => pre + ph);
+      // nicht in HTML-Entities («&nbsp;», «&amp;»: Kunde «nbsp»/«amp»)
+      out = out.replace(new RegExp(`(^|[^\\p{L}\\p{N}&#])${reEsc(name)}(?![\\p{L}\\p{N}])`, "gu"), (_m, pre: string) => pre + ph);
     }
     return out;
   }).join("");
@@ -1355,6 +1356,34 @@ export interface LohnVorperioden {
 }
 
 /**
+ * Abgeschlossener Monat (Monatsabschluss) in einem der Zeiträume `[von, bis]`? Liefert die Meldung für den
+ * Toast oder null. Ferien und Absenzen zählen zum Saldo und werden darin wie Zeiteinträge gesperrt.
+ */
+export function closedMonthMsg(closedMonths: string[] | undefined, ...ranges: [string | undefined, string | undefined][]): string | null {
+  const closed = closedMonths || [];
+  for (const [from, to] of ranges) {
+    if (!from) continue;
+    const a = from.slice(0, 7), b = (to || from).slice(0, 7);
+    const hit = closed.filter(m => m >= (a < b ? a : b) && m <= (a < b ? b : a)).sort()[0];
+    if (hit) return `Der Monat ${hit.slice(5)}.${hit.slice(0, 4)} ist abgeschlossen. Zuerst unter Personal → Monatsabschluss wieder öffnen.`;
+  }
+  return null;
+}
+
+/**
+ * Die im Mitarbeiter-Dialog angezeigten Standard-Lohnsätze ausdrücklich setzen, wo keine stehen. Ein leeres
+ * Satzfeld wird in der Cloud als 0 gespeichert (PocketBase) → Lohn ohne Sozialabzüge; deshalb beim Speichern,
+ * beim Import und beim Umzug in die Cloud ausfüllen.
+ */
+export function withDefaultRates<T extends Partial<Employee>>(emp: T, defaultPkAGSatz?: number | null): T {
+  return {
+    ...emp,
+    ahvSatz: emp.ahvSatz ?? 5.3, alvSatz: emp.alvSatz ?? 1.1, bvgSatz: emp.bvgSatz ?? 8.0, nbuSatz: emp.nbuSatz ?? 1.5,
+    ktgSatz: emp.ktgSatz ?? 0.5, quellensteuerSatz: emp.quellensteuerSatz ?? 10, pkAGSatz: emp.pkAGSatz ?? (defaultPkAGSatz ?? 8.0),
+  };
+}
+
+/**
  * Monatliche Lohnabrechnung eines Mitarbeiters. Abzüge sind Prozente vom Gesamtbrutto
  * (inkl. 13. Lohn und Bonus); fehlen Sätze am Mitarbeiter, gelten die Standardwerte
  * (AHV 5.3, ALV 1.1, BVG 8.0, NBU 1.5, KTG 0.5, PK-AG 8.0, QST 10).
@@ -1371,34 +1400,6 @@ export interface LohnVorperioden {
  * @param bonus einmalige Zulage in CHF; AHV-pflichtig, nicht anteilig
  * @param vorperioden frühere Abrechnungen desselben Jahres (Standard: keine)
  */
-/**
- * Die im Mitarbeiter-Dialog angezeigten Standard-Lohnsätze ausdrücklich setzen, wo keine stehen. Ein leeres
- * Satzfeld wird in der Cloud als 0 gespeichert (PocketBase) → Lohn ohne Sozialabzüge; deshalb beim Speichern,
- * beim Import und beim Umzug in die Cloud ausfüllen.
- */
-/**
- * Abgeschlossener Monat (Monatsabschluss) in einem der Zeiträume `[von, bis]`? Liefert die Meldung für den
- * Toast oder null. Ferien und Absenzen zählen zum Saldo und werden darin wie Zeiteinträge gesperrt.
- */
-export function closedMonthMsg(closedMonths: string[] | undefined, ...ranges: [string | undefined, string | undefined][]): string | null {
-  const closed = closedMonths || [];
-  for (const [from, to] of ranges) {
-    if (!from) continue;
-    const a = from.slice(0, 7), b = (to || from).slice(0, 7);
-    const hit = closed.filter(m => m >= (a < b ? a : b) && m <= (a < b ? b : a)).sort()[0];
-    if (hit) return `Der Monat ${hit.slice(5)}.${hit.slice(0, 4)} ist abgeschlossen. Zuerst unter Personal → Monatsabschluss wieder öffnen.`;
-  }
-  return null;
-}
-
-export function withDefaultRates<T extends Partial<Employee>>(emp: T, defaultPkAGSatz?: number | null): T {
-  return {
-    ...emp,
-    ahvSatz: emp.ahvSatz ?? 5.3, alvSatz: emp.alvSatz ?? 1.1, bvgSatz: emp.bvgSatz ?? 8.0, nbuSatz: emp.nbuSatz ?? 1.5,
-    ktgSatz: emp.ktgSatz ?? 0.5, quellensteuerSatz: emp.quellensteuerSatz ?? 10, pkAGSatz: emp.pkAGSatz ?? (defaultPkAGSatz ?? 8.0),
-  };
-}
-
 export function calcLohn(
   emp: Employee,
   monat: string | undefined,

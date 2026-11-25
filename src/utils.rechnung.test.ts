@@ -124,3 +124,9 @@ describe("isValidIban", () => {
     expect(isValidIban("")).toBe(false);
   });
 });
+
+describe("letterToTemplate und HTML-Entities", () => {
+  it("Kunde «nbsp»/«amp» trifft keine Entities", () => {
+    expect(letterToTemplate("Hallo&nbsp;nbsp &amp; amp", { client: "nbsp", project: "amp" })).toBe("Hallo&nbsp;{{client}} &amp; {{project}}");
+  });
+});

@@ -352,7 +352,7 @@ function Time({ data, update, currentUser, userPermissions, setPrintContent }: P
               <WeekForms
                 data={data} update={update} weekSelectStart={weekSelectStart} setWeekSelectStart={setWeekSelectStart}
                 weekForm={weekForm} setWeekForm={setWeekForm} weekEditForm={weekEditForm} setWeekEditForm={setWeekEditForm}
-                absenzTypes={absenzTypes} saveWeekEntry={saveWeekEntry} updateEntry={updateEntry} delEntry={delEntry} isMonthClosed={isMonthClosed}
+                absenzTypes={absenzTypes} saveWeekEntry={saveWeekEntry} updateEntry={updateEntry} delEntry={delEntry} updateAbs={updateAbs} delAbs={delAbs} isMonthClosed={isMonthClosed}
               />
             </div>
           )}

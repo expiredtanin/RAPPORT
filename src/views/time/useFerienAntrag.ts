@@ -49,11 +49,16 @@ export function useFerienAntrag(data: AppData, update: UpdateFn, employees: Empl
     if (closed) { showToast(closed); return; }
     removeWithUndo("Ferien gelöscht", "ferienEntries", x => x.id === id);
   };
-  const cancelFerienEdit = (id: string) => update("ferienEntries", (data.ferienEntries || []).map(f => {
+  const cancelFerienEdit = (id: string) => {
+    const f0 = (data.ferienEntries || []).find(x => x.id === id);
+    const closed = closedMonthMsg(data.settings?.closedMonths, [f0?.dateFrom, f0?.dateTo], [f0?.originalData?.dateFrom, f0?.originalData?.dateTo]);
+    if (closed) { showToast(closed); return; }
+    update("ferienEntries", (data.ferienEntries || []).map(f => {
     if (f.id !== id || !f.originalData) return f;
     const { originalData, ...rest } = f;
     return { ...rest, dateFrom: originalData.dateFrom, dateTo: originalData.dateTo, note: originalData.note, status: "approved" } as FerienEntry;
-  }));
+    }));
+  };
   const editFerien = (f: FerienEntry) => { setAntragForm({ ...f }); setAntragModal("ferien"); };
 
   const [ferienUebersicht, setFerienUebersicht] = useState(false);

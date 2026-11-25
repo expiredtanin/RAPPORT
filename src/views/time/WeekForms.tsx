@@ -2,10 +2,9 @@
 // Bearbeitungsformular für einen bestehenden Eintrag oder eine Absenz.
 
 import { SIA_PHASES } from "../../constants";
-import type { AppData, TimeEntry, UpdateFn } from "../../types";
+import type { Absence, AppData, TimeEntry, UpdateFn } from "../../types";
 import { slotToTime, getFirstPhaseForProject, type SlotPoint, type WeekForm, type WeekEditForm } from "./timeUtils";
 import { projectColor } from "./projectColor";
-import { removeWithUndo } from "../../undo";
 
 /** Props der Formulare unter dem Wochenraster. */
 interface WeekFormsProps {
@@ -21,11 +20,15 @@ interface WeekFormsProps {
   saveWeekEntry: () => void;
   updateEntry: (id: string, changes: Partial<TimeEntry>) => void;
   delEntry: (id: string) => void;
+  /** Absenz ändern mit Monats- und Genehmigungssperre (timeAbsences.ts) */
+  updateAbs: (id: string, changes: Partial<Absence>) => void;
+  /** Absenz löschen mit denselben Sperren */
+  delAbs: (id: string) => unknown;
   isMonthClosed: (date?: string) => boolean;
 }
 
 /** Auswahl-Hinweis, Erfassungsformular und Bearbeitungsformular der Wochenansicht. */
-export function WeekForms({ data, update, weekSelectStart, setWeekSelectStart, weekForm, setWeekForm, weekEditForm, setWeekEditForm, absenzTypes, saveWeekEntry, updateEntry, delEntry, isMonthClosed }: WeekFormsProps) {
+export function WeekForms({ data, weekSelectStart, setWeekSelectStart, weekForm, setWeekForm, weekEditForm, setWeekEditForm, absenzTypes, saveWeekEntry, updateEntry, delEntry, updateAbs, delAbs, isMonthClosed }: WeekFormsProps) {
   return (
     <>
       {weekSelectStart && !weekForm && (
@@ -125,17 +128,17 @@ export function WeekForms({ data, update, weekSelectStart, setWeekSelectStart, w
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-end" }}>
                 <div style={{ flex: "1 1 180px" }}>
                   <div style={{ fontSize: 10.5, color: "var(--text4)", marginBottom: 3, letterSpacing: "0.06em", fontWeight: 600 }}>TYP</div>
-                  <select value={a.type || ""} onChange={ev => update("absences", (data.absences||[]).map(x => x.id === a.id ? {...x, type: ev.target.value} : x))} style={{ height: 34, fontSize: 12, width: "100%" }} autoFocus>
+                  <select value={a.type || ""} onChange={ev => updateAbs(a.id, { type: ev.target.value })} style={{ height: 34, fontSize: 12, width: "100%" }} autoFocus>
                     <option value="">— wählen —</option>
                     {absenzTypes.map(at => <option key={at.id} value={at.id}>{at.label}</option>)}
                   </select>
                 </div>
                 <div style={{ flex: "2 1 180px" }}>
                   <div style={{ fontSize: 10.5, color: "var(--text4)", marginBottom: 3, letterSpacing: "0.06em", fontWeight: 600 }}>NOTIZ</div>
-                  <input value={a.note || ""} onChange={ev => update("absences", (data.absences||[]).map(x => x.id === a.id ? {...x, note: ev.target.value} : x))} placeholder="Notiz…" style={{ height: 34, fontSize: 12, width: "100%", boxSizing: "border-box" }} />
+                  <input value={a.note || ""} onChange={ev => updateAbs(a.id, { note: ev.target.value })} placeholder="Notiz…" style={{ height: 34, fontSize: 12, width: "100%", boxSizing: "border-box" }} />
                 </div>
                 <div style={{ display: "flex", gap: 6 }}>
-                  <button className="btn btn-danger" disabled={isMonthClosed(a.date)} onClick={() => { removeWithUndo("Absenz gelöscht", "absences", x => x.id === a.id); setWeekEditForm(null); }} style={{ fontSize: 12, height: 34 }}>Löschen</button>
+                  <button className="btn btn-danger" disabled={isMonthClosed(a.date)} onClick={() => { if (delAbs(a.id)) setWeekEditForm(null); }} style={{ fontSize: 12, height: 34 }}>Löschen</button>
                   <button className="btn btn-ghost" onClick={() => setWeekEditForm(null)} style={{ fontSize: 12, height: 34 }}><span className="msr" style={{fontSize:16,verticalAlign:"middle"}}>close</span></button>
                 </div>
               </div>
