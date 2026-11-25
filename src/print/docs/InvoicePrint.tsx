@@ -8,6 +8,7 @@ import type { Data } from "swissqrbill/types";
 import type { Invoice, InvoiceBillingSummary, Settings } from "../../types";
 import { HEADING, type Client } from "./shared";
 import { buildQrBillData } from "./qrBillData";
+import { PrintText } from "./PrintText";
 
 export function InvoicePrint({ inv, client, settings }: { inv: Invoice; client: Client; settings: Settings }) {
   return (
@@ -93,7 +94,7 @@ export function InvoicePrint({ inv, client, settings }: { inv: Invoice; client: 
 
       {inv.billingSummary && <BillingSummaryBlock s={inv.billingSummary} />}
 
-      {inv.notes && <div style={{ marginBottom: 40, fontSize: 10, color: "#555", lineHeight: 1.7 }}>{inv.notes}</div>}
+      {inv.notes && <PrintText text={inv.notes} style={{ marginBottom: 40, fontSize: 10, color: "#555", lineHeight: 1.7 }} />}
 
       <div style={{ marginTop: 60, paddingTop: 20, borderTop: "1px solid #ddd", fontSize: 9, color: "#888", display: "flex", justifyContent: "space-between" }}>
         <div>

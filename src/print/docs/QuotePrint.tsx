@@ -5,6 +5,7 @@ import { calcSIAHours, calcManualHours, formatCHF, formatDate, formatHours, form
 import { StudioLogo } from "../../components/UI";
 import type { Quote, Settings } from "../../types";
 import { HEADING, type Client } from "./shared";
+import { PrintText } from "./PrintText";
 
 /** Stundenansatz wie «140.–» bzw. «142.50» (keine «142.5.–»). */
 const rateLabel = (rate: number) => Number.isInteger(rate) ? `${rate}.–` : rate.toFixed(2);
@@ -52,7 +53,7 @@ export function QuotePrint({ quote, client, settings }: { quote: Quote; client: 
         </div>
       </div>
 
-      {quote.notes && <div style={{ marginBottom: 14, fontSize: 11, lineHeight: 1.5, whiteSpace: "pre-line" }}>{quote.notes}</div>}
+      {quote.notes && <PrintText text={quote.notes} style={{ marginBottom: 14, fontSize: 11, lineHeight: 1.5 }} />}
 
       {/* SIA-Modus */}
       {quote.mode === "sia" && siaCalc && (

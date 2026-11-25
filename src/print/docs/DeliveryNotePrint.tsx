@@ -4,6 +4,7 @@ import { formatDate, formatSenderAddress } from "../../utils";
 import { StudioLogo } from "../../components/UI";
 import type { AppData, DeliveryNote, Settings } from "../../types";
 import { HEADING, type Client } from "./shared";
+import { PrintText } from "./PrintText";
 
 export function LieferscheinPrint({ note, client, data, settings }: { note: DeliveryNote; client: Client; data: AppData; settings: Settings }) {
   const project = note.projectId ? (data?.projects || []).find(p => p.id === note.projectId) : null;
@@ -74,7 +75,7 @@ export function LieferscheinPrint({ note, client, data, settings }: { note: Deli
       {/* Notizen */}
       {note.notes && (
         <div style={{ marginBottom: 40, padding: "12px 16px", background: "#f8f8f6", borderLeft: "3px solid #ddd", fontSize: 10, color: "#555", lineHeight: 1.7 }}>
-          {note.notes}
+          <PrintText text={note.notes} />
         </div>
       )}
 

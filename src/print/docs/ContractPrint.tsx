@@ -4,6 +4,7 @@ import { formatCHF, formatDate, formatSenderAddress } from "../../utils";
 import { StudioLogo } from "../../components/UI";
 import type { Project, Settings, Contract } from "../../types";
 import { HEADING, type Client } from "./shared";
+import { PrintText } from "./PrintText";
 
 export function VertragPrint({ vertrag, amounts, client, project, settings }: { vertrag: Contract; amounts?: { net: number; rate: number; tax: number; gross: number }; client: Client; project?: Project; settings: Settings }) {
   // Honorar exkl. MWST, MWST separat (SIA 1001/1); ohne `amounts` (ältere Aufrufe) Betrag als netto zum Normalsatz
@@ -84,7 +85,7 @@ export function VertragPrint({ vertrag, amounts, client, project, settings }: { 
           <div style={{ fontSize: 10, letterSpacing: "0.12em", color: "#888", marginBottom: 6, paddingBottom: 5, borderBottom: "1.5px solid var(--doc-accent)" }}>
             WEITERE BESTIMMUNGEN
           </div>
-          <div style={{ marginBottom: 24, fontSize: 11, lineHeight: 1.6, whiteSpace: "pre-line" }}>{vertrag.notes}</div>
+          <PrintText text={vertrag.notes} style={{ marginBottom: 24, fontSize: 11, lineHeight: 1.6 }} />
         </>
       )}
 

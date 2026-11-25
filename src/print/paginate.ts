@@ -15,8 +15,8 @@
 // Bildschirm mit dem Druck überein.
 //
 // Kleine Atome direkt vor einer Tabelle (Abschnittstitel), Tabellenköpfe und Elemente
-// mit `break-after: avoid` bleiben mit dem Folgenden zusammen. Ein erzwungener Umbruch
-// (`.qr-bill-newpage`, der QR-Zahlteil) beginnt exakt am Seitenanfang.
+// mit `break-after: avoid` bleiben mit dem Folgenden zusammen. Der QR-Zahlteil steht immer am unteren
+// Blattrand: auf eigener Seite (`.qr-bill-newpage`) oder unten auf der Seite, auf der er noch ganz Platz hat.
 
 /** Geometrie in Millimetern. */
 export interface PageGeometry {
@@ -33,6 +33,8 @@ export interface PageResult {
 }
 
 const MM = 96 / 25.4;
+/** Luft unter dem Zahlteil (2 mm): knapp am Blattende erzeugte der Druck eine leere Zusatzseite. */
+const QR_GAP = 2 * MM;
 export const PAGE_HEIGHT_MM = 297;
 
 interface Atom { el: Element; glueToNext: boolean; forceNewPage: boolean }
@@ -88,7 +90,7 @@ export function clearPagination(content: Element) {
   content.querySelectorAll("[data-doc-spacer]").forEach(n => n.remove());
 }
 
-function makeSpacer(before: Element, heightPx: number) {
+function makeSpacer(before: Element, heightPx: number): HTMLElement {
   if (before.tagName === "TR") {
     const tr = document.createElement("tr");
     tr.setAttribute("data-doc-spacer", "");
@@ -97,11 +99,13 @@ function makeSpacer(before: Element, heightPx: number) {
     td.style.cssText = `height:${heightPx}px;padding:0;border:none;background:none`;
     tr.appendChild(td);
     before.parentElement!.insertBefore(tr, before);
+    return td;
   } else {
     const div = document.createElement("div");
     div.setAttribute("data-doc-spacer", "");
     div.style.cssText = `height:${heightPx}px;margin:0;padding:0;border:none;flex:none`;
     before.parentElement!.insertBefore(div, before);
+    return div;
   }
 }
 
@@ -130,6 +134,18 @@ export function paginate(sheet: HTMLElement, content: HTMLElement, geo: PageGeom
     return { t: (r.top - top) / scale, b: (r.bottom - top) / scale };
   };
 
+  /**
+   * Schiebt `el` mit einem Abstand so, dass seine Oberkante bei `target` liegt. Nachmessen und korrigieren: ein
+   * Abstand hebt das Zusammenfallen der Ränder davor auf (margin-top des Blocks kam sonst noch dazu — Zahlteil
+   * 16 mm zu tief, Folgeseite ohne oberen Rand).
+   */
+  const placeAt = (el: Element, target: number, t: number) => {
+    if (target - t <= 0.5) return;
+    const sp = makeSpacer(el, target - t);
+    const nt = pos(el).t;
+    if (Math.abs(nt - target) > 0.5) sp.style.height = `${Math.max(0, target - t + (target - nt))}px`;
+  };
+
   let qrPage: number | null = null;
   let lastMovedIndex = -1;
   for (let i = 0; i < atoms.length; i++) {
@@ -137,23 +153,29 @@ export function paginate(sheet: HTMLElement, content: HTMLElement, geo: PageGeom
     const { t, b } = pos(a.el);
     const k = Math.floor(t / pageH);
 
+    const h = b - t;
     if (a.forceNewPage) {
-      // Seitenanfang ohne Rand (der QR-Zahlteil bringt seine eigenen Ränder mit)
-      const target = (t <= k * pageH + 0.5) ? k * pageH : (k + 1) * pageH;
-      if (target - t > 0.5) makeSpacer(a.el, target - t);
-      if (a.el.classList.contains("qr-bill-newpage")) qrPage = Math.round(target / pageH);
+      // eigene Seite; der QR-Zahlteil steht dort am unteren Blattrand (Zahlteil 105 mm unten auf A4, Perforation)
+      const page = (t <= k * pageH + 0.5) ? k : k + 1;
+      const isQr = a.el.classList.contains("qr-bill-newpage");
+      placeAt(a.el, isQr && h <= pageH ? (page + 1) * pageH - h - QR_GAP : page * pageH, t);
+      if (isQr) qrPage = page;
       lastMovedIndex = i;
       continue;
     }
     if (a.el.querySelector(".qr-bill-wrapper") || a.el.classList.contains("qr-bill-wrapper")) {
-      // QR-Zahlteil ohne eigene Seite: nicht zerschneiden, sonst unverändert
-      if (b > (k + 1) * pageH && b - t <= pageH) { makeSpacer(a.el, (k + 1) * pageH - t); qrPage = k + 1; }
+      // QR-Zahlteil ohne eigene Seite: an den unteren Rand dieser Seite, passt er nicht mehr, der nächsten
+      if (h <= pageH) {
+        const page = t <= (k + 1) * pageH - h - QR_GAP + 0.5 ? k : k + 1;
+        placeAt(a.el, (page + 1) * pageH - h - QR_GAP, t);
+        qrPage = page;
+      }
       lastMovedIndex = i;
       continue;
     }
 
     if (k >= 1 && t < topLimit(k) - 0.5) {
-      makeSpacer(a.el, topLimit(k) - t);
+      placeAt(a.el, topLimit(k), t);
       lastMovedIndex = i;
       continue;
     }
@@ -167,7 +189,7 @@ export function paginate(sheet: HTMLElement, content: HTMLElement, geo: PageGeom
       }
       const tj = j === i ? t : pos(atoms[j].el).t;
       // Die Atome j..i liegen danach am Anfang der nächsten Seite; weiter mit i+1.
-      makeSpacer(atoms[j].el, topLimit(k + 1) - tj);
+      placeAt(atoms[j].el, topLimit(k + 1), tj);
       lastMovedIndex = i;
     }
   }

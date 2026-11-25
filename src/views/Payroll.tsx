@@ -29,11 +29,17 @@ function Payroll({ data, saveAll, setPrintContent, setView }: Pick<ViewProps, "d
   const [selYear, setSelYear] = useState(now.getFullYear());
   const [selMonth, setSelMonth] = useState(now.getMonth());
   const [selEmpId, setSelEmpId] = useState("");
-  // Overrides gelten nur für den aktuell angezeigten Lauf (Schlüssel = Mitarbeiter-Id).
+  // Overrides gelten nur für den aktuell angezeigten Lauf (Schlüssel = Mitarbeiter-Id) — beim Monatswechsel leeren
+  // (vorher blieben Bonus/Pensum/Lohn eines Monats im nächsten stehen und flossen still in dessen Abrechnung).
   const [bruttoOverride, setBruttoOverride] = useState<Record<string, number>>({});
   const [pensumOverride, setPensumOverride] = useState<Record<string, number>>({});
   // Bonus in CHF unter `empId`, der Beschrieb unter `${empId}_beschrieb` (gleiche Map, daher string | number).
   const [bonusOverride, setBonusOverride] = useState<Record<string, number | string>>({});
+  const [overrideMonth, setOverrideMonth] = useState(`${selYear}-${selMonth}`);
+  if (overrideMonth !== `${selYear}-${selMonth}`) {
+    setOverrideMonth(`${selYear}-${selMonth}`);
+    setBruttoOverride({}); setPensumOverride({}); setBonusOverride({});
+  }
   const { askConfirm, ConfirmModalEl } = useConfirm();
 
   const employees = data.employees || [];
@@ -144,7 +150,11 @@ function Payroll({ data, saveAll, setPrintContent, setView }: Pick<ViewProps, "d
     // Abrechnung führte, von Hand neu eingetippt werden.
     if (entry) {
       if (entry.bruttoWasOverridden) setBruttoOverride(o => ({ ...o, [entry.employeeId]: entry.bruttoBase }));
-      if (entry.saetzeSnapshot?.pensum != null) setPensumOverride(o => ({ ...o, [entry.employeeId]: entry.saetzeSnapshot!.pensum }));
+      // Pensum nur, wenn es vom Monatspensum abwich: sonst leerte der Override den Pensumverlauf und die
+      // tagesgenaue Rechnung lief mit dem gerundeten Pensum (Storno + neu = anderer Betrag)
+      const emp = employees.find(e => e.id === entry.employeeId);
+      const snapP = entry.saetzeSnapshot?.pensum;
+      if (snapP != null && (!emp || Math.abs(snapP - monthPensum(emp)) > 0.001)) setPensumOverride(o => ({ ...o, [entry.employeeId]: snapP }));
       if (entry.bonusBetrag > 0) setBonusOverride(o => ({ ...o, [entry.employeeId]: entry.bonusBetrag, [`${entry.employeeId}_beschrieb`]: entry.bonusBeschrieb || "" }));
     }
   };
