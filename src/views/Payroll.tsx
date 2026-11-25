@@ -301,17 +301,15 @@ function Payroll({ data, saveAll, setPrintContent, setView }: Pick<ViewProps, "d
         </div>
         <div className="acc-grid">
           <div>
-            <div className="card" style={{ padding: 0 }}>
-
+            <div className="card" style={{ padding: 0, overflowX: "auto" }}>
               <table>
                 <thead><tr>
                   <th>Name</th>
                   <th style={{ textAlign: "right" }}>Brutto</th>
                   <th className="hide-mid" style={{ textAlign: "right" }}>Netto</th>
-                  <th className="hide-mid" style={{ textAlign: "right" }}>Spesen</th>
+                  <th className="hide-mid" style={{ textAlign: "right", whiteSpace: "normal", width: 70 }} title="Familienzulagen und Spesen (Auszahlung = Netto + Zulagen + Spesen)">Zulagen/ Spesen</th>
                   <th style={{ textAlign: "right" }}>Auszahlung</th>
                   <th>Status</th>
-                  <th></th>
                 </tr></thead>
                 <tbody>
                   {payrollEmployees.map(emp => {
@@ -319,6 +317,7 @@ function Payroll({ data, saveAll, setPrintContent, setView }: Pick<ViewProps, "d
                     const entry = findEntry(emp.id);
                     const spesen = entry ? (data.expenses || []).filter(e => e.lohnEntryId === entry.id) : offeneSpesen(emp.id);
                     const calc = entry ? entry : calcFor(emp, spesen);
+                    const zuSp = (calc.familienzulagen || 0) + (calc.spesenTotal || 0);
                     return (
                       <tr key={emp.id} className={available ? "row-link" : ""} onClick={() => available && setSelEmpId(emp.id)}
                         style={{ background: effEmpId === emp.id ? "var(--surface2)" : "", opacity: available ? 1 : 0.4 }}>
@@ -329,33 +328,29 @@ function Payroll({ data, saveAll, setPrintContent, setView }: Pick<ViewProps, "d
                         </td>
                         <td style={{ textAlign: "right" }}>{available ? formatCHF(calc.bruttoTotal) : "—"}</td>
                         <td className="hide-mid" style={{ textAlign: "right" }}>{available ? formatCHF(calc.netto) : "—"}</td>
-                        <td className="hide-mid" style={{ textAlign: "right", color: calc.spesenTotal > 0 ? "var(--warning)" : "var(--text5)" }}>{available && calc.spesenTotal > 0 ? formatCHF(calc.spesenTotal) : "—"}</td>
+                        <td className="hide-mid" style={{ textAlign: "right", color: zuSp > 0 ? "var(--warning)" : "var(--text5)" }}>{available && zuSp > 0 ? formatCHF(zuSp) : "—"}</td>
                         <td style={{ textAlign: "right", fontWeight: 600 }}>{available ? formatCHF(calc.auszahlung) : "—"}</td>
-                        <td>{!available ? null : entry
-                          ? <span className="today-pill ok">abgeschlossen</span>
-                          : <span className="today-pill soon">offen</span>}
-                        </td>
-                        <td style={{ textAlign: "right", paddingRight: 14, whiteSpace: "nowrap" }}>
-                          {available && (entry
-                            ? <button className="btn btn-quiet btn-sm" onClick={e => { e.stopPropagation(); stornieren(entry.id); }}>Stornieren</button>
-                            : <button className="btn btn-ghost btn-sm" onClick={e => { e.stopPropagation(); abschliessen(emp); }}>Abschliessen</button>
-                          )}
+                        <td style={{ whiteSpace: "nowrap", paddingRight: 14 }}>{available && (entry
+                          ? <><span className="today-pill ok">abgeschlossen</span>
+                              <button className="btn-icon" title="Abrechnung stornieren" aria-label="Stornieren" style={{ marginLeft: 4, verticalAlign: "middle" }} onClick={e => { e.stopPropagation(); stornieren(entry.id); }}><span className="msr" style={{ fontSize: 16 }}>undo</span></button></>
+                          : <button className="btn btn-ghost btn-sm" onClick={e => { e.stopPropagation(); abschliessen(emp); }}>Abschliessen</button>
+                        )}
                         </td>
                       </tr>
                     );
                   })}
                 </tbody>
                 {monatEntries.length > 0 && (() => {
-                  const t = monatEntries.reduce((s,l) => ({ b:s.b+l.bruttoTotal, n:s.n+l.netto, sp:s.sp+l.spesenTotal, a:s.a+l.auszahlung }), {b:0,n:0,sp:0,a:0});
+                  const t = monatEntries.reduce((s,l) => ({ b:s.b+l.bruttoTotal, n:s.n+l.netto, sp:s.sp+(l.familienzulagen||0)+l.spesenTotal, a:s.a+l.auszahlung }), {b:0,n:0,sp:0,a:0});
                   return (
                     <tfoot>
                       <tr style={{ borderTop: "1.5px solid var(--text)", fontWeight: 600 }}>
-                        <td>Total</td>
+                        <td title={monatEntries.length < monthRows.length ? "Nur abgeschlossene Abrechnungen" : undefined}>{monatEntries.length < monthRows.length ? "Total abgeschlossen" : "Total"}</td>
                         <td style={{ textAlign: "right" }}>{formatCHF(t.b)}</td>
                         <td className="hide-mid" style={{ textAlign: "right" }}>{formatCHF(t.n)}</td>
                         <td className="hide-mid" style={{ textAlign: "right" }}>{formatCHF(t.sp)}</td>
                         <td style={{ textAlign: "right" }}>{formatCHF(t.a)}</td>
-                        <td colSpan={2}></td>
+                        <td></td>
                       </tr>
                     </tfoot>
                   );

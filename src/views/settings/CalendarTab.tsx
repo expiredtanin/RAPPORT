@@ -37,11 +37,12 @@ export function CalendarTab({ data, update, onSettingsSaved }: Pick<ViewProps, "
 
   /** Kanton wählen; bestehende Vorlagen-Feiertage auf Wunsch durch die des neuen Kantons ersetzen (eigene bleiben). */
   const changeKanton = async (k: Kanton) => {
-    update("settings", prev => ({ ...prev, kanton: k }));
-    onSettingsSaved?.({ kanton: k });
-    if (feiertage.length === 0) return;
+    const setKanton = () => { update("settings", prev => ({ ...prev, kanton: k })); onSettingsSaved?.({ kanton: k }); };
+    if (feiertage.length === 0) { setKanton(); return; }
+    // erst nach der Rückfrage umstellen: «Abbrechen» liess sonst den neuen Kanton mit den alten Feiertagen stehen
     const ok = await askConfirm(`Feiertage auf die Vorlage Kanton ${KANTON_FEIERTAGE[k].name} umstellen? Feiertage der bisherigen Vorlage ab ${new Date().getFullYear()} werden ersetzt; selbst erfasste (andere Bezeichnung) und frühere Jahre bleiben.`, "Umstellen");
     if (!ok) return;
+    setKanton();
     const yr = new Date().getFullYear();
     update("feiertage", prev => replaceHolidayTemplate(prev, yr, yr + 3, k).map(f => f.id ? f : { ...f, id: generateId() }));
     showToast(`Feiertage Kanton ${KANTON_FEIERTAGE[k].name} geladen`);

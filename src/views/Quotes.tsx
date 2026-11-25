@@ -23,7 +23,7 @@
 
 import React, { useState, useEffect } from "react";
 import { SIA_PHASES, SIA_PHASE_WEIGHTS } from "../constants";
-import { calcSIAHours, calcManualHours, generateId, formatCHF, formatDate, formatHours, roundCHF, lineAmount, applyProjectNumberFormat, migrateLinkedQuotes, localISODate, invoiceNet, quoteBudgetFields } from "../utils";
+import { calcSIAHours, calcManualHours, generateId, formatCHF, formatDate, formatHours, roundCHF, lineAmount, applyProjectNumberFormat, nextProjectSeq, migrateLinkedQuotes, localISODate, invoiceNet, quoteBudgetFields } from "../utils";
 import { invoicesForQuote } from "./invoices/invoiceHelpers";
 import { Header, Modal, FormField, StatusSelect, DateInput, SortTh, RowMenu, TableToolbar } from "../components/UI";
 import { removeWithUndo } from "../undo";
@@ -142,10 +142,8 @@ function Quotes({ data, update, saveAll, modal, setModal, setPrintContent, setVi
     // Projektnummer generieren
     const fmt = data.settings.projectNumberFormat || "YYYY/NN";
     const currentYear = new Date().getFullYear();
-    const lastSeq = data.settings.lastProjectYear === currentYear ? (data.settings.lastProjectSeq || 0) : 0;
-    // Kein Wrap auf 1 nach 99 (siehe Projects.jsx nextProjectNumber) — verhindert
-    // eine Kollision mit dem ersten Projekt des Jahres.
-    const nextSeq = lastSeq + 1;
+    // Bestehende Nummern zählen mit (wie «Neues Projekt»), sonst gab es nach Import oder Handnummerierung Duplikate
+    const nextSeq = nextProjectSeq(data.settings, data.projects);
     const projNumber = applyProjectNumberFormat(fmt, nextSeq);
 
     const existingProj = data.projects.find(p => p.id === q.projectId);

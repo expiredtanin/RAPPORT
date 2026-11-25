@@ -9,6 +9,9 @@ import type { AppData, Absence, Employee, Expense, TimeEntry } from "../../types
 import { getFirstPhaseForProject } from "./timeUtils";
 import { projectColor } from "./projectColor";
 
+/** Stundenfeld → ganze Stunden 0…24 (Minuten kommen aus der Auswahl daneben; «8.333» ergab sonst 499.98 Minuten und Endzeiten wie «16:19.98»). */
+const wholeHours = (v: string) => Math.max(0, Math.min(24, Math.floor(Number(v) || 0)));
+
 /** Props der Tagesansicht: Daten des Tages und die Aktionen aus Time.tsx. */
 interface DayViewProps {
   data: AppData;
@@ -105,7 +108,7 @@ export function DayView({ data, selectedEmp, dayEntries, dayTotalMins, daySoll, 
                   {positions.length > 0 && (<>{enabledPhases.length > 0 && (<optgroup label="Hauptauftrag">{enabledPhases.map(ph => <option key={ph.id} value={ph.id}>{ph.id} · {ph.label.split(" ").slice(1).join(" ")}</option>)}</optgroup>)}{positions.map(pos => { const pp = (pos.enabledPhases||[]).map(id=>SIA_PHASES.find(ph=>ph.id===id)).filter((ph): ph is (typeof SIA_PHASES)[number] => !!ph); if(!pp.length) return null; return <optgroup key={pos.code} label={pos.code+(pos.label?" · "+pos.label:"")}>{pp.map(ph=><option key={ph.id} value={ph.id+"|"+pos.code}>{ph.id} · {ph.label.split(" ").slice(1).join(" ")}</option>)}</optgroup>; })}</>)}
                 </select>
                 <input className="d" aria-label="Tätigkeit" disabled={disabled} value={e.description || ""} onChange={ev => updateEntry(e.id, { description: ev.target.value })} placeholder="Was wurde gemacht?" />
-                <input className="h" aria-label="Stunden" title="Stunden" disabled={disabled} type="number" min={0} max={24} value={Math.floor((e.minutes || 0) / 60)} onChange={ev => updateEntry(e.id, { minutes: (+ev.target.value * 60) + ((e.minutes || 0) % 60) })} />
+                <input className="h" aria-label="Stunden" title="Stunden" disabled={disabled} type="number" min={0} max={24} value={Math.floor((e.minutes || 0) / 60)} onChange={ev => updateEntry(e.id, { minutes: wholeHours(ev.target.value) * 60 + ((e.minutes || 0) % 60) })} />
                 <select className="m" aria-label="Minuten" title="Minuten" disabled={disabled} value={(e.minutes || 0) % 60} onChange={ev => updateEntry(e.id, { minutes: Math.floor((e.minutes || 0) / 60) * 60 + +ev.target.value })}>
                   {minuteOptions((e.minutes || 0) % 60).map(m => <option key={m} value={m}>{String(m).padStart(2, "0")}′</option>)}
                 </select>
@@ -162,7 +165,7 @@ export function DayView({ data, selectedEmp, dayEntries, dayTotalMins, daySoll, 
                     {absenzTypes.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
                   </select>
                   <input className="d" aria-label="Bemerkung" value={a.note || ""} onChange={ev => updateAbs(a.id, { note: ev.target.value })} placeholder="Bemerkung …" />
-                  <input className="h" aria-label="Stunden" title="Stunden" type="number" min={0} max={24} value={absH} onChange={ev => updateAbs(a.id, { hours: +ev.target.value, minutes: absM })} />
+                  <input className="h" aria-label="Stunden" title="Stunden" type="number" min={0} max={24} value={absH} onChange={ev => updateAbs(a.id, { hours: wholeHours(ev.target.value), minutes: absM })} />
                   <select className="m" aria-label="Minuten" title="Minuten" value={absM} onChange={ev => updateAbs(a.id, { hours: absH, minutes: +ev.target.value })}>
                     {minuteOptions(absM).map(m => <option key={m} value={m}>{String(m).padStart(2, "0")}′</option>)}
                   </select>

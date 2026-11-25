@@ -71,7 +71,7 @@ function StudioBudget({ data, update, setPrintContent }: Pick<ViewProps, "data" 
     const nettoWochen = 52 - ferienWochen - 1.5;
     // Bei Ein-/Austritt im Jahr nur die Monate mit Lohn
     const jahresStunden = Math.round(wochenstunden * nettoWochen * (lk.monate / 12));
-    return { brutto13: lk.brutto, agAnteil: lk.ag, totalKosten: lk.total, jahresStunden };
+    return { brutto13: lk.brutto, agAnteil: lk.ag, totalKosten: lk.total, jahresStunden, pensumPct: Math.round(pensum * 100) };
   };
 
   const calcFixAuto = () => budgetFixkosten(internalExpenses, currentYear);
@@ -424,7 +424,7 @@ function StudioBudget({ data, update, setPrintContent }: Pick<ViewProps, "data" 
                           <input type="checkbox" checked={aktiv} onChange={e => setEmpRow(emp.id, { aktiv: e.target.checked })} style={{ width: "auto" }} />
                           <div>
                             <div style={{ fontWeight: 500 }}>{emp.name}</div>
-                            <div style={{ fontSize: 10, color: "var(--text4)" }}>{emp.pensum || 100}% · {emp.dreizehnterLohn ? "13. Monatslohn" : "12 Monatslöhne"}{(() => {
+                            <div style={{ fontSize: 10, color: "var(--text4)" }}><span title="Pensum zur Jahresmitte (damit rechnen die Stunden)">{auto.pensumPct}%</span> · {emp.dreizehnterLohn ? "13. Monatslohn" : "12 Monatslöhne"}{(() => {
                               // Ein-/Austritt in diesem Jahr anzeigen (Kosten und Stunden sind dann anteilig)
                               const y = String(currentYear);
                               const fmt = (d: string) => `${d.slice(8, 10)}.${d.slice(5, 7)}.`;

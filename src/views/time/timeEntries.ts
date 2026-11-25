@@ -44,7 +44,7 @@ export function createEntryActions({ data, update, currentDate, selectedEmpId, i
     if ("minutes" in changes && merged.startTime) {
       const [h, m] = merged.startTime.split(":").map(Number);
       // Ein Eintrag endet spätestens um Mitternacht (sonst entstand «25:00»); Rest am Folgetag erfassen
-      const minutes = Math.max(0, Math.min(merged.minutes || 0, 24 * 60 - (h * 60 + m)));
+      const minutes = Math.max(0, Math.min(Math.round(merged.minutes || 0), 24 * 60 - (h * 60 + m)));
       const endMins = h * 60 + m + minutes;
       changes = { ...changes, minutes, endTime: `${String(Math.floor(endMins / 60)).padStart(2, "0")}:${String(endMins % 60).padStart(2, "0")}` };
     }
