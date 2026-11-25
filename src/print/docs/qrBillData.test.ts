@@ -37,6 +37,12 @@ describe("qrText", () => {
 });
 
 describe("buildQrBillData", () => {
+  it("Absender nur mit Freitext-Adresse (Ersteinrichtung): Strasse/PLZ/Ort daraus", () => {
+    const res = buildQrBillData({ number: "2026-014", total: 100 }, client, { ...settings, street: "", zip: "", city: "", address: "Teststr 1\n8000 Zürich" });
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    expect(res.data.creditor).toMatchObject({ address: "Teststr 1", zip: "8000", city: "Zürich" });
+  });
   it("QR-IBAN: Betrag = Total, QRR aus der Nummer, Schuldner Typ S", () => {
     const res = buildQrBillData({ number: "2026-014", total: 12_345.6 }, client, settings);
     expect(res.ok).toBe(true);

@@ -3,7 +3,7 @@
 // getestet werden kann; die Darstellung macht QRBillPrint in InvoicePrint.tsx.
 
 import type { Data, Debtor } from "swissqrbill/types";
-import { isQRIban, isValidIban, paymentReference } from "../../utils";
+import { isQRIban, isValidIban, paymentReference, splitAddress } from "../../utils";
 import type { Invoice, Person, Settings } from "../../types";
 
 /** Ergebnis: Daten für swissqrbill oder der Grund, warum kein Zahlteil gedruckt wird. */
@@ -47,14 +47,8 @@ export function qrDebtor(client: Person | null | undefined): Debtor | undefined 
   let zip = client.zip || "";
   let city = client.city || "";
   if ((!zip || !city) && client.address) {
-    const lines = client.address.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
-    const zipLine = lines.findIndex(l => /^(?:[A-Z]{1,2}-)?\d{4,5}\s+\S/.test(l));
-    if (zipLine >= 0) {
-      const m = lines[zipLine].match(/^(?:[A-Z]{1,2}-)?(\d{4,5})\s+(.+)$/)!;
-      zip = zip || m[1];
-      city = city || m[2];
-      if (!street && zipLine > 0) street = lines[zipLine - 1];
-    }
+    const a = splitAddress(client.address);
+    if (a.zip) { zip = zip || a.zip; city = city || a.city; street = street || a.street; }
   }
   const name = qrText(client.company || client.name, 70);
   zip = qrText(zip, 16);
@@ -68,7 +62,7 @@ export function qrDebtor(client: Person | null | undefined): Debtor | undefined 
  * (QR-IBAN → QRR, sonst SCOR aus der Rechnungsnummer). Kein Zahlteil bei Gutschriften/Betrag 0 und ohne
  * vollständige Absenderadresse.
  */
-export function buildQrBillData(inv: Pick<Invoice, "number" | "total">, client: Person | null | undefined, settings: Pick<Settings, "iban" | "name" | "street" | "zip" | "city" | "country">): QrBillResult {
+export function buildQrBillData(inv: Pick<Invoice, "number" | "total">, client: Person | null | undefined, settings: Pick<Settings, "iban" | "name" | "street" | "zip" | "city" | "country" | "address">): QrBillResult {
   const account = (settings.iban || "").replace(/\s/g, "").toUpperCase();
   if (!account) return { ok: false, error: true, reason: "Keine IBAN erfasst (Einstellungen → Studio)." };
   if (!isValidIban(account)) return { ok: false, error: true, reason: "Die IBAN in Einstellungen → Studio ist ungültig (Prüfziffer stimmt nicht) — bitte prüfen." };
@@ -77,11 +71,13 @@ export function buildQrBillData(inv: Pick<Invoice, "number" | "total">, client: 
   const amount = inv.total || 0;
   if (amount < 0.01) return { ok: false, reason: "Gutschrift bzw. Betrag 0 — kein Einzahlungsschein." };
   if (amount > 999_999_999.99) return { ok: false, error: true, reason: "Betrag zu gross für eine QR-Rechnung (höchstens 999'999'999.99)." };
+  // Altbestand/Ersteinrichtung nur mit Freitext-Adresse: daraus Strasse/PLZ/Ort (Runde 27)
+  const own = settings.zip && settings.city ? { street: settings.street || "", zip: settings.zip, city: settings.city } : splitAddress(settings.address);
   const creditor = {
     name: qrText(settings.name, 70),
-    address: qrText(settings.street, 70),
-    zip: qrText(settings.zip, 16),
-    city: qrText(settings.city, 35),
+    address: qrText(settings.street || own.street, 70),
+    zip: qrText(own.zip, 16),
+    city: qrText(own.city, 35),
     country: countryCode(settings.country),
     account,
   };

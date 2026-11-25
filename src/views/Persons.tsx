@@ -65,13 +65,16 @@ function InfoRow({ label, value }: { label: string; value?: string }) {
   );
 }
 
-function FirmaDetail({ firma, data, update, onBack, onEdit, onAddPerson, onEditPerson, onDeletePerson }: {
-  firma: Person; data: AppData; update: UpdateFn; onBack: () => void; onEdit: () => void; onAddPerson: () => void;
+function FirmaDetail({ firma, data, update, onBack, onEdit, onAddPerson, onEditPerson, onDeletePerson, userPermissions }: {
+  firma: Person; data: AppData; update: UpdateFn; userPermissions?: string[] | null; onBack: () => void; onEdit: () => void; onAddPerson: () => void;
   onEditPerson: (firmaId: string, personId: string) => void; onDeletePerson: (firmaId: string, personId: string) => void;
   onDeleteFirm?: (id: string) => void;
 }) {
-  const invoices  = (data.invoices  || []).filter(i => i.clientId  === firma.id);
-  const quotes    = (data.quotes    || []).filter(q => q.clientId  === firma.id);
+  // Beträge, Rechnungen und Offerten nur mit dem jeweiligen Recht (lokal liegen alle Daten im Browser; Runde 27)
+  const canInv = !userPermissions || userPermissions.includes("invoices");
+  const canQuo = !userPermissions || userPermissions.includes("quotes");
+  const invoices  = canInv ? (data.invoices || []).filter(i => i.clientId === firma.id) : [];
+  const quotes    = canQuo ? (data.quotes   || []).filter(q => q.clientId === firma.id) : [];
   const asClient  = (data.projects  || []).filter(p => p.clientId  === firma.id);
   const asPartner = (data.projects  || []).filter(p => (p.projectContacts || []).some(pc => pc.contactId === firma.id));
   const allProjects = [...new Map([...asClient, ...asPartner].map(p => [p.id, p])).values()]
@@ -111,13 +114,13 @@ function FirmaDetail({ firma, data, update, onBack, onEdit, onAddPerson, onEditP
         const last = lastContact(data, firma.id);
         const figs: { label: string; value: string; sub?: string; tone?: string }[] = [
           { label: "Projekte", value: String(allProjects.length), sub: isClientLike ? (asPartner.length ? `${asPartner.length} als Beteiligte` : undefined) : `${protocols.length} Protokolle` },
-          ...(isClientLike ? [
+          ...(isClientLike && canInv ? [
             { label: "Umsatz (netto)", value: formatCHF(clientRevenue(data, firma.id)).replace(/^(−?)CHF\s*/u, "$1"), sub: `${invoices.length} Rechnungen · ${quotes.length} Offerten` },
             { label: "Offen", value: formatCHF(open).replace(/^(−?)CHF\s*/u, "$1"), sub: open > 0 ? "CHF ausstehend" : "nichts ausstehend", tone: open > 0 ? "warn" : undefined },
-          ] : [
+          ] : isClientLike ? [] : [
             { label: "Ansprechpartner", value: String((firma.contacts || []).length) },
           ]),
-          ...(referredLeadCount(data, firma.id) > 0 ? [{ label: "Vermittelt", value: String(referredLeadCount(data, firma.id)), sub: formatCHF(referredRevenue(data, firma.id)) }] : []),
+          ...(referredLeadCount(data, firma.id) > 0 ? [{ label: "Vermittelt", value: String(referredLeadCount(data, firma.id)), sub: canInv ? formatCHF(referredRevenue(data, firma.id)) : undefined }] : []),
           { label: "Letzter Kontakt", value: last ? formatDate(last) : "—", sub: last ? undefined : "noch nichts erfasst" },
         ];
         return (
@@ -157,7 +160,7 @@ function FirmaDetail({ firma, data, update, onBack, onEdit, onAddPerson, onEditP
           )}
 
           {/* Rechnungen — wenn der Kontakt als Kunde vorkommt */}
-          {isClientLike && (
+          {isClientLike && canInv && (
             <div className="card" style={{ padding: 0, marginBottom: 20 }}>
               <div style={{ padding: "14px 16px 10px", borderBottom: "1px solid var(--border2)", fontSize: 11, fontWeight: 600, letterSpacing: "0.08em", color: "var(--text4)" }}>RECHNUNGEN</div>
               {invoices.length === 0 ? (
@@ -180,7 +183,7 @@ function FirmaDetail({ firma, data, update, onBack, onEdit, onAddPerson, onEditP
           )}
 
           {/* Offerten — wenn der Kontakt als Kunde vorkommt */}
-          {isClientLike && (
+          {isClientLike && canQuo && (
             <div className="card" style={{ padding: 0, marginBottom: 20 }}>
               <div style={{ padding: "14px 16px 10px", borderBottom: "1px solid var(--border2)", fontSize: 11, fontWeight: 600, letterSpacing: "0.08em", color: "var(--text4)" }}>OFFERTEN</div>
               {quotes.length === 0 ? (
@@ -274,7 +277,7 @@ declare global {
   }
 }
 
-export default function Persons({ data, update, modal, setModal }: Pick<ViewProps, "data" | "update" | "saveAll" | "setView" | "modal" | "setModal">) {
+export default function Persons({ data, update, modal, setModal, userPermissions }: Pick<ViewProps, "data" | "update" | "saveAll" | "setView" | "modal" | "setModal"> & { userPermissions?: string[] | null }) {
   const persons  = data.persons  || [];
   const projects = data.projects || [];
 
@@ -459,6 +462,7 @@ export default function Persons({ data, update, modal, setModal }: Pick<ViewProp
     return (
       <div>
         <FirmaDetail
+          userPermissions={userPermissions}
           firma={selectedFirma}
           data={data}
           update={update}

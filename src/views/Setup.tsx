@@ -12,7 +12,7 @@
 import React, { useState, useRef } from "react";
 import type { CSSProperties } from "react";
 import { defaultData } from "../constants";
-import { generateId, hashPassword, localISODate, withDefaultRates } from "../utils";
+import { generateId, hashPassword, localISODate, splitAddress, withDefaultRates } from "../utils";
 import type { AppData, Employee } from "../types";
 import { checkBackup } from "../storage/validate";
 import { applyMigrations } from "../storage/migrations";
@@ -255,6 +255,8 @@ export default function Setup({ onComplete }: { onComplete: (data: AppData) => v
           setupCompleted: true,
           name:    studio.name.trim(),
           address: studio.address.trim() || defaultData.settings.address,
+          // Einstellungen → Studio und QR-Rechnung lesen Strasse/PLZ/Ort (Runde 27)
+          ...splitAddress(studio.address),
           email:   studio.email.trim()   || defaultData.settings.email,
           phone:   studio.phone.trim()   || defaultData.settings.phone,
         },

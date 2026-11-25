@@ -58,7 +58,7 @@ export function StatusSelect({ value, options, onChange }: { value: string; opti
       aria-label="Status"
       style={{
         fontSize: 11.5, height: 26, padding: "0 24px 0 10px", width: "auto", minWidth: `calc(${longest}ch + 36px)`, flexShrink: 0,
-        background: bg, color, border: `1px solid ${border}`, backgroundImage: "none",
+        backgroundColor: bg, color, border: `1px solid ${border}`, backgroundImage: "none",
         fontWeight: 550, borderRadius: 999, cursor: "pointer", boxShadow: "none",
         fontFamily: "inherit", appearance: "auto",
       }}

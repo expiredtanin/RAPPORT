@@ -28,6 +28,7 @@ import { calcSIAHours, calcManualHours, generateId, formatCHF, formatDate, forma
 import { invoicesForQuote } from "./invoices/invoiceHelpers";
 import { Header, Modal, FormField, StatusSelect, DateInput, SortTh, RowMenu, TableToolbar } from "../components/UI";
 import { removeWithUndo } from "../undo";
+import { useConfirm } from "../hooks/useConfirm";
 import LivePreview from "../components/LivePreview";
 import { showToast } from "../toast";
 import { EffortEstimatePanel } from "./quotes/EffortEstimatePanel";
@@ -54,6 +55,7 @@ function Quotes({ data, update, saveAll, modal, setModal, setPrintContent, setVi
   /** Öffnet ein Projekt in der Projektansicht (nach «Projekt anlegen») */
   onSelectProject?: (projectId: string) => void;
 }) {
+  const { askConfirm, ConfirmModalEl } = useConfirm();
   const clients = (data.persons || []);
   const roles = data.settings.roles || [];
   const defaultRolesForPhase = () => {
@@ -123,12 +125,20 @@ function Quotes({ data, update, saveAll, modal, setModal, setPrintContent, setVi
   // eslint-disable-next-line react-hooks/exhaustive-deps -- nur auf neue Aufträge reagieren
   }, [modal?.type, modal?.id]);
   /* eslint-enable react-hooks/set-state-in-effect */
-  const del = (id: string) => {
+  const del = async (id: string) => {
     const q = (data.quotes || []).find(x => x.id === id);
     // Cloud: Offerten mit Rechnungen oder Verträgen löscht der Server nicht (pb_hooks/integrity.pb.js) — gleich sagen
     if (isCloudBackend && [...(data.invoices || []), ...(data.contracts || [])].some(x => x.quoteId === id)) {
       showToast(`Offerte ${q?.number || ""} steckt in Rechnungen oder Verträgen und kann darum nicht gelöscht werden.`); return;
     }
+    // lokal: wie bei Kontakten/Projekten vorher nachfragen, wenn die Offerte verknüpft ist (Runde 27)
+    const n = (k: number, one: string, many: string) => k ? [`${k} ${k === 1 ? one : many}`] : [];
+    const refs = [
+      ...n((data.invoices || []).filter(x => x.quoteId === id).length, "Rechnung", "Rechnungen"),
+      ...n((data.contracts || []).filter(x => x.quoteId === id).length, "Vertrag", "Verträge"),
+      ...n((data.projects || []).filter(p => (p.linkedQuotes || []).some(l => l.quoteId === id)).length, "Projekt", "Projekte"),
+    ];
+    if (refs.length && !await askConfirm(<>Offerte {q?.number || ""} wird noch verwendet: {refs.join(", ")}. Dort fehlt nach dem Löschen der Verweis auf die Offerte.</>, "Trotzdem löschen")) return;
     removeWithUndo(`Offerte ${q?.number || ""} gelöscht`, "quotes", x => x.id === id);
   };
   const setStatus = (id: string, st: string) => update("quotes", (data.quotes||[]).map(q => q.id === id ? { ...q, status: st } : q));
@@ -367,6 +377,7 @@ function Quotes({ data, update, saveAll, modal, setModal, setPrintContent, setVi
 
   return (
     <div>
+      {ConfirmModalEl}
       <Header title="Offerten" action={<button className="btn btn-primary" onClick={openNew}>+ Neue Offerte</button>} />
       <div className="filter-bar">
         <input className="pill" placeholder="Suche…" value={filter.search} onChange={e => setFilter({...filter, search: e.target.value})} />

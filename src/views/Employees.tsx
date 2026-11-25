@@ -183,11 +183,17 @@ function Employees({ data, update, saveAll, setPrintContent, userPermissions, cu
         credFields = { password: existing!.password };
       }
 
+      // Rolle aus der gewählten App-Rolle ableiten (wie Einstellungen → Team): sonst zeigte der Dialog «Mitarbeiter»,
+      // das Konto behielt aber Vollzugriff — bzw. «Administrator» ohne Team/Studio-Einstellungen (Runde 27)
+      const role: User["role"] = _appRoleId === "r-admin" ? "admin" : existing?.role && existing.role !== "admin" ? existing.role : "mitarbeiter";
+      if (existing?.role === "admin" && role !== "admin" && !updatedUsers.some(u => u.id !== userId && u.role === "admin")) {
+        showToast("Mindestens ein Administrator muss bestehen bleiben."); return;
+      }
       const userEntry: User = {
         id: userId,
         username: (_appUsername as string).trim(),
         ...credFields,
-        role: existing?.role || "mitarbeiter",
+        role,
         displayName: emp.name,
         employeeId: empId,
         appRoleId: _appRoleId || "",
@@ -214,11 +220,11 @@ function Employees({ data, update, saveAll, setPrintContent, userPermissions, cu
     const emp = employees.find(e => e.id === id);
     const linked = isCloudBackend ? [] : (data.users || []).filter(u => u.employeeId === id || (!!emp?.appUserId && u.id === emp.appUserId));
     if (id === currentEmployeeId) { showToast("Den eigenen Mitarbeiter-Eintrag kannst du nicht löschen."); return; }
-    // Lohnabrechnungen und Überstunden-Abschlüsse sind aufzubewahren (der Server löscht sie sonst mit) → auf inaktiv setzen
+    // Lohnabrechnungen und Überstunden-Abschlüsse sind aufzubewahren (der Server löscht sie sonst mit) → Austrittsdatum setzen
     if ((data.lohnEntries || []).some(l => l.employeeId === id) || (data.uberstundenAbschluss || []).some(a => a.empId === id)
       || (data.ferienEntries || []).some(f => f.employeeId === id) || (data.absences || []).some(a => a.employeeId === id)
       || (data.timeEntries || []).some(t => t.employeeId === id) || (data.expenses || []).some(x => x.employeeId === id)) {
-      showToast("Für diese Person gibt es Stunden, Spesen, Lohnabrechnungen, Überstunden, Ferien oder Absenzen — bitte auf «inaktiv» setzen statt löschen."); return;
+      showToast("Für diese Person gibt es Stunden, Spesen, Lohnabrechnungen, Überstunden, Ferien oder Absenzen — bitte ein Austrittsdatum setzen statt löschen."); return;
     }
     if (isCloudBackend && userPermissions !== null) { showToast("Mitarbeitende löscht ein Admin."); return; }
     const admins = (data.users || []).filter(u => u.role === "admin");

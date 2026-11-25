@@ -597,6 +597,15 @@ export function lineAmount(qty?: number | null, price?: number | null, discountP
   return roundCHF(line - disc);
 }
 
+/** Freitext-Adresse («Strasse⏎PLZ Ort») in Strasse/PLZ/Ort zerlegen; ohne Zeile «PLZ Ort» leere Felder. */
+export function splitAddress(text: string | undefined): { street: string; zip: string; city: string } {
+  const lines = (text || "").split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  const i = lines.findIndex(l => /^(?:[A-Z]{1,2}-)?\d{4,5}\s+\S/.test(l));
+  if (i < 0) return { street: "", zip: "", city: "" };
+  const m = lines[i].match(/^(?:[A-Z]{1,2}-)?(\d{4,5})\s+(.+)$/)!;
+  return { street: i > 0 ? lines[i - 1] : "", zip: m[1], city: m[2] };
+}
+
 /** Absenderadresse (mehrzeilig) aus Strasse/PLZ/Ort; Fallback auf das alte Freitext-Feld `address`. */
 export function formatSenderAddress(settings: Pick<Settings, "street" | "zip" | "city" | "address">): string {
   const parts: string[] = [];
