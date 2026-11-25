@@ -39,6 +39,7 @@ declare global {
     __navClientId?: string | null;
     /** Einmaliger Hinweis aus der CRM-Pipeline: öffnet beim Betreten ein neues Offerten-Formular mit diesem Kunden. */
     __newQuoteClientId?: string | null;
+    __newQuoteProjectName?: string | null;
   }
 }
 
@@ -98,10 +99,12 @@ function Quotes({ data, update, saveAll, modal, setModal, setPrintContent, setVi
   useEffect(() => {
     const cid = window.__newQuoteClientId;
     if (!cid) return;
+    const pname = window.__newQuoteProjectName || "";
     window.__newQuoteClientId = null;
+    window.__newQuoteProjectName = null;
     // eslint-disable-next-line react-hooks/set-state-in-effect -- einmalige Übergabe aus der CRM-Pipeline beim Öffnen der Ansicht
     openNew();
-    setForm(f => ({ ...f, clientId: cid }));
+    setForm(f => ({ ...f, clientId: cid, ...(pname ? { projectName: pname } : {}) }));
   // eslint-disable-next-line react-hooks/exhaustive-deps -- nur beim Öffnen der Ansicht
   }, []);
   const openEdit = (q: Quote) => {

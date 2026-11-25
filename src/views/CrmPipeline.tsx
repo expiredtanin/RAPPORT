@@ -75,7 +75,10 @@ export default function CrmPipeline({ data, update, setView, newRequest = 0 }: P
   };
   const newQuote = () => {
     if (!form?.clientId) return;
+    // Lead zuerst speichern (ungespeicherte Änderungen gingen sonst verloren), Titel als Projektname mitgeben
+    if (form.title.trim()) save();
     window.__newQuoteClientId = form.clientId;
+    window.__newQuoteProjectName = form.title.trim() || null;
     setForm(null);
     setView("quotes");
   };

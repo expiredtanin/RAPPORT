@@ -439,7 +439,11 @@ export function GanttChart({
       // Beschriftung nach Platz: «Mär 2027», «Mär 27», «M» (Januar mit Jahr), sonst keine
       const w = xe - xs;
       // Schwellen ≈ Textbreite bei 10 px (6 px je Zeichen) plus Rand, damit Nachbarn nicht zusammenstossen
-      const label = w > 60 ? `${MONTHS[m - 1]} ${y}` : w > 46 ? `${MONTHS[m - 1]} ${String(y).slice(2)}`
+      // Format nach der durchschnittlichen Monatsbreite (sonst stand bei kurzem Februar «F» zwischen «Jan 27» und
+      // «Mär 27»), nur wenn es im Monat wirklich keinen Platz hat, die kürzere Form
+      const fw = 30.44 * dw;
+      const fmt = fw > 60 ? `${MONTHS[m - 1]} ${y}` : fw > 46 ? `${MONTHS[m - 1]} ${String(y).slice(2)}` : "";
+      const label = fmt && w >= fmt.length * 6 + 4 ? fmt
         : w > 12 ? (m === 1 && w > 26 ? `’${String(y).slice(2)}` : MONTHS[m - 1][0]) : "";
       // angeschnittener erster Monat: lieber ohne Beschriftung als ein einzelner Buchstabe am Rand
       months.push({ x: xs, w, label: n === range.s && !date.endsWith("-01") && w <= 46 ? "" : label });
