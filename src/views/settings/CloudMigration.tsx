@@ -240,7 +240,7 @@ export function CloudMigration({ mode, data, currentUser, resolveFiles, onBackup
     <button className={`btn ${kind}`} disabled={!!busy || disabled} onClick={onClick}>{text}</button>;
 
   return (
-    <Modal title={mode === "backup" ? "Backup in dieses Büro übertragen" : "Daten in die Cloud übertragen"} onClose={close} hideFooter>
+    <Modal title={mode === "backup" ? "Backup in dieses Büro übertragen" : "Daten in die Cloud übertragen"} onClose={close} hideFooter confirmClose={false}>
       <div style={{ maxWidth: 560 }}>
         {error && <div style={box("error")}>{error}</div>}
         {busy && <div style={box("info")}>{busy}</div>}

@@ -233,6 +233,7 @@ export class FileStorageAdapter implements StorageAdapter {
     // Zeitdateien, die es nicht mehr gibt (alle Einträge gelöscht/verschoben), leeren
     for (const name of this.known.keys()) if (name !== STUDIO && !next.has(name)) next.set(name, { format: FORMAT, entries: [] });
     let pulled = false;
+    let blocked: DataFolderError | null = null;
     for (const [name, mine] of next) {
       const k = this.known.get(name);
       if (k && jsonEqual(k.content, mine)) continue;
@@ -248,7 +249,10 @@ export class FileStorageAdapter implements StorageAdapter {
         const dirName = slash >= 0 ? name.slice(0, slash) : "", base = name.slice(slash + 1);
         const listed = await this.fs.list(dirName ? this.path(dirName) : this.dir);
         if (listed.includes(base) || listed.includes(`.${base}.icloud`)) {
-          throw new DataFolderError(`Die Datei «${name}» ist im Datenordner gerade nicht lesbar (z.B. von iCloud ausgelagert). Die Änderung bleibt hier und wird beim nächsten Speichern erneut geschrieben.`);
+          // nicht abbrechen: die übrigen Dateien trotzdem schreiben (sonst blieben alle späteren Monate ungespeichert),
+          // am Ende melden
+          blocked ??= new DataFolderError(`Die Datei «${name}» ist im Datenordner gerade nicht lesbar (z.B. von iCloud ausgelagert). Die Änderungen in diesem Monat bleiben hier und werden beim nächsten Speichern erneut geschrieben — Rapport nicht beenden, bevor die Datei geladen ist.`);
+          continue;
         }
       }
       if (!st && k && name !== STUDIO) {
@@ -272,6 +276,7 @@ export class FileStorageAdapter implements StorageAdapter {
       const after = await this.fs.stat(path);
       this.known.set(name, { content: result, mtime: after?.mtime ?? 0, size: after?.size ?? 0 });
     }
+    if (blocked) throw blocked;
     await this.backupIfDue();
     return pulled;
   }
@@ -286,6 +291,8 @@ export class FileStorageAdapter implements StorageAdapter {
   private async backupIfDue() {
     const day = localISODate();
     if (this.backupDay === day) return;
+    // mit ausgelagerten Zeitdateien wäre das Backup unvollständig (und verdrängte vollständigere)
+    if (this.pendingTimeFiles.length) return;
     const data = this.snapshot();
     if (!data) return;
     await this.fs.mkdir(this.path("backups"));

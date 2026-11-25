@@ -2,7 +2,7 @@
 // Absenzliste und Ferienanspruch-Übersicht pro Mitarbeiter.
 
 import React from "react";
-import { arbeitszeitAm, closedMonthMsg, formatDate, formatDays, localISODate } from "../../utils";
+import { arbeitszeitAm, closedMonthMsg, ferienOverlap, formatDate, formatDays, localISODate } from "../../utils";
 import { showToast } from "../../toast";
 import type { Absence, AbsenzType, Employee, FerienEntry, ViewProps } from "../../types";
 import type { useConfirm } from "../../hooks/useConfirm";
@@ -64,6 +64,10 @@ export default function FerienTab({ ownEmployeeId = null, data, update, askConfi
         const rejectFerien = async (id: string) => {
           if (closedF(id)) return;
           const f0 = (data.ferienEntries || []).find(f => f.id === id);
+          // die bisher genehmigten Daten kommen zurück — nicht, wenn sie sich inzwischen mit anderen Ferien überschneiden
+          if (f0?.originalData && ferienOverlap(data.ferienEntries, { id, employeeId: f0.employeeId, dateFrom: f0.originalData.dateFrom, dateTo: f0.originalData.dateTo })) {
+            showToast("Die bisher genehmigten Daten überschneiden sich inzwischen mit anderen Ferien — bitte zuerst diese anpassen."); return;
+          }
           const isChange = !!f0?.originalData;
           if (!(await askConfirm(isChange ? "Änderung ablehnen? Die bisher genehmigten Ferien bleiben bestehen." : "Ferienantrag ablehnen?", "Ablehnen"))) return;
           update("ferienEntries", (data.ferienEntries || []).map(f => {

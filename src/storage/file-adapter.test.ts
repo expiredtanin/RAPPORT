@@ -277,8 +277,11 @@ describe("Datenordner: Zeitdatei von iCloud ausgelagert", () => {
     const loaded = (await B.load()) as unknown as AppData;
     expect(loaded.timeEntries).toEqual([]);
     expect(B.pendingTimeFiles).toEqual(["time/e2_2026-10.json"]);
-    await expect(B.save({ ...loaded, timeEntries: [te("t3", "2026-10-05")] })).rejects.toThrow(/nicht lesbar/);
-    expect(await readdir(join(dir, "time"))).not.toContain("e2_2026-10.json");
+    // ein Eintrag im ausgelagerten Monat blockiert nicht die anderen Monate
+    await expect(B.save({ ...loaded, timeEntries: [te("t3", "2026-10-05"), te("t4", "2026-11-05")] })).rejects.toThrow(/nicht lesbar/);
+    const files = await readdir(join(dir, "time"));
+    expect(files).not.toContain("e2_2026-10.json");
+    expect(files).toContain("e2_2026-11.json");
   });
 
   it("Kopien «name (1).json» (Drive/Windows) gelten als Konfliktkopie", async () => {

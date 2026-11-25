@@ -157,6 +157,8 @@ export interface ModalProps {
   saveDisabled?: boolean;
   /** Fensterbreite in px, ab der die Vorschau beim Öffnen sichtbar ist (Standard 1200) */
   previewFrom?: number;
+  /** false: Esc/Klick daneben schliessen ohne Rückfrage (Auswahl-/Assistenten-Dialoge ohne Eingaben, die verloren gehen) */
+  confirmClose?: boolean;
 }
 
 /**
@@ -165,7 +167,7 @@ export interface ModalProps {
  * immer nur der oberste). Enter in einem einzeiligen Feld oder ⌘↩ speichert. Mit `preview` wird der Dialog
  * zum Editor mit Vorschau rechts (ab 1200 px Fensterbreite sichtbar, sonst per Knopf «Vorschau»).
  */
-export function Modal({ title, onClose, onSave, saveLabel, hideSave, hideFooter, children, wide, overflow, drawer, preview, footerStart, saveDisabled, previewFrom = 1200 }: ModalProps) {
+export function Modal({ title, onClose, onSave, saveLabel, hideSave, hideFooter, children, wide, overflow, drawer, preview, footerStart, saveDisabled, previewFrom = 1200, confirmClose = true }: ModalProps) {
   const [showPreview, setShowPreview] = useState(() => typeof window === "undefined" || window.innerWidth >= previewFrom);
   const onKeyDown = (e: React.KeyboardEvent) => {
     if (e.key !== "Enter" || !onSave || hideSave || hideFooter || saveDisabled || e.nativeEvent.isComposing) return;
@@ -178,6 +180,13 @@ export function Modal({ title, onClose, onSave, saveLabel, hideSave, hideFooter,
   // Esc / Klick daneben bei getippten Änderungen erst nachfragen — vorher war eine halb erfasste Offerte oder Rechnung
   // durch einen Fehlklick weg (UI-Rundgang Runde 18). «Abbrechen» und ✕ schliessen weiterhin sofort.
   const dirty = useRef(false);
+  // nur getippter Text zählt (Textfelder, Zahlen, Notizen, Editor) — Auswahl, Häkchen und Wizard-Schritte nicht
+  const markDirty = (e: React.SyntheticEvent) => {
+    if (!confirmClose) return;
+    const t = e.target as HTMLElement;
+    const type = (t as HTMLInputElement).type;
+    if (t.tagName === "TEXTAREA" || t.isContentEditable || (t.tagName === "INPUT" && !["checkbox", "radio", "file", "range", "color", "button", "submit"].includes(type))) dirty.current = true;
+  };
   const { askConfirm, ConfirmModalEl } = useConfirm();
   const requestClose = async () => {
     if (dirty.current && !(await askConfirm("Ungespeicherte Eingaben verwerfen?", "Verwerfen"))) return;
@@ -186,7 +195,7 @@ export function Modal({ title, onClose, onSave, saveLabel, hideSave, hideFooter,
   return (
     <div className={`modal-overlay${drawer ? " drawer-overlay" : ""}`} onClick={e => { if (e.target === e.currentTarget) void requestClose(); }}>
       {ConfirmModalEl}
-      <div className={cls} role="dialog" aria-modal="true" onKeyDown={onKeyDown} onChangeCapture={() => { dirty.current = true; }} onInputCapture={() => { dirty.current = true; }}>
+      <div className={cls} role="dialog" aria-modal="true" onKeyDown={onKeyDown} onChangeCapture={markDirty} onInputCapture={markDirty}>
         <div className="modal-main">
           <div className="modal-head">
             {title ? <h2>{title}</h2> : <span />}

@@ -119,7 +119,7 @@ export function useStudioData(currentUser: CurrentUser | null) {
     const notices: DataNotice[] = [];
     const next = applyMigrations(raw, defaultData, problems => notices.push(...problems.map(text => ({ kind: "repaired" as const, text }))));
     if (isFileBackend && fileStorage.missingFiles.length) notices.push({ kind: "missing", text: missingFilesNotice(fileStorage.missingFiles) });
-    if (isFileBackend && fileStorage.pendingTimeFiles.length) notices.push({ kind: "missing", text: `${fileStorage.pendingTimeFiles.length === 1 ? "Eine Zeitdatei ist" : `${fileStorage.pendingTimeFiles.length} Zeitdateien sind`} noch nicht von iCloud geladen (${fileStorage.pendingTimeFiles.slice(0, 3).map(p => p.slice(5, -5)).join(", ")}${fileStorage.pendingTimeFiles.length > 3 ? " …" : ""}) — deren Stunden fehlen in Saldo und Auswertungen. Im Finder den Ordner «Rapport» → «Download behalten», dann Rapport neu starten.` });
+    if (isFileBackend && fileStorage.pendingTimeFiles.length) notices.push({ kind: "missing", text: `${fileStorage.pendingTimeFiles.length === 1 ? "Eine Zeitdatei ist" : `${fileStorage.pendingTimeFiles.length} Zeitdateien sind`} noch nicht von iCloud geladen (${fileStorage.pendingTimeFiles.slice(0, 3).map(p => { const m = /(\d{4})-(\d{2})\.json$/.exec(p); return m ? `${m[2]}.${m[1]}` : p; }).join(", ")}${fileStorage.pendingTimeFiles.length > 3 ? " …" : ""}) — deren Stunden fehlen in Saldo und Auswertungen. Im Finder den Ordner «Rapport» → «Download behalten», dann Rapport neu starten.` });
     const fresh = notices.filter(n => !dismissedNotices.current.has(n.text));
     if (fresh.length) setDataNotices(fresh);
     return next;

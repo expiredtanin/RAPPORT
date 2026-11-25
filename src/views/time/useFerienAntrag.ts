@@ -54,6 +54,9 @@ export function useFerienAntrag(data: AppData, update: UpdateFn, employees: Empl
     const f0 = (data.ferienEntries || []).find(x => x.id === id);
     const closed = closedMonthMsg(data.settings?.closedMonths, [f0?.dateFrom, f0?.dateTo], [f0?.originalData?.dateFrom, f0?.originalData?.dateTo]);
     if (closed) { showToast(closed); return; }
+    if (f0?.originalData && ferienOverlap(data.ferienEntries, { id, employeeId: f0.employeeId, dateFrom: f0.originalData.dateFrom, dateTo: f0.originalData.dateTo })) {
+      showToast("Die bisher genehmigten Daten überschneiden sich inzwischen mit anderen Ferien — bitte zuerst diese anpassen."); return;
+    }
     update("ferienEntries", (data.ferienEntries || []).map(f => {
     if (f.id !== id || !f.originalData) return f;
     const { originalData, ...rest } = f;

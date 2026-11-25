@@ -61,7 +61,7 @@ export function NewInvoiceModal({ ni, setNi, data, invoices, openEntriesForProje
   ) : null;
 
   return (
-    <Modal title="Neue Rechnung" wide onClose={onClose} onSave={onConfirm} saveDisabled={!canConfirm}
+    <Modal title="Neue Rechnung" wide confirmClose={false} onClose={onClose} onSave={onConfirm} saveDisabled={!canConfirm}
       saveLabel={ni.tab === "frei" ? "Leere Rechnung erstellen" : "Weiter →"} preview={previewPane} footerStart={footerStart}>
       {/* Reiter */}
       <div role="tablist" style={{ display: "flex", gap: 0, marginBottom: 18, borderBottom: "1.5px solid var(--border)" }}>

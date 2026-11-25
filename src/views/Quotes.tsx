@@ -529,7 +529,7 @@ function Quotes({ data, update, saveAll, modal, setModal, setPrintContent, setVi
         }
 
         return (
-          <Modal title="Projekt aus Offerte" onClose={() => setProjectModal(null)} onSave={doCreate} saveLabel={pmMode === "new" ? "Neues Projekt erstellen" : "Zu Projekt hinzufügen"}>
+          <Modal title="Projekt aus Offerte" confirmClose={false} onClose={() => setProjectModal(null)} onSave={doCreate} saveLabel={pmMode === "new" ? "Neues Projekt erstellen" : "Zu Projekt hinzufügen"}>
             <div style={{ marginBottom: 16, padding: 12, background: "var(--surface2)", borderRadius: 6, border: "1px solid var(--border2)", fontSize: 12 }}>
               <div style={{ display: "flex", gap: 16, marginBottom: 4 }}>
                 <span><strong>{q.number}</strong> · {q.mode === "sia" ? "SIA 102" : q.mode === "manual" ? "Aufwand" : "Pauschal"}</span>
