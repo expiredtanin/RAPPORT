@@ -230,9 +230,10 @@ if ((isFileBackend || storage instanceof LocalStorageAdapter) && typeof window !
   document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") flushNow(); });
 }
 
-/** Schreibt entprellte Änderungen sofort (Datenordner, localStorage); bei PocketBase nichts zu tun. */
+/** Schreibt entprellte Änderungen sofort (Datenordner, localStorage) bzw. wartet, bis die Cloud alles geschrieben hat. */
 export function flushStorage(): Promise<void> {
   if (storage instanceof FileStorageAdapter || storage instanceof LocalStorageAdapter) return storage.flush();
+  if (isCloudBackend) return cloudStorage.whenIdle?.() ?? Promise.resolve();
   return Promise.resolve();
 }
 

@@ -26,7 +26,13 @@ export function StudioTab({ s, setField, data }: DraftProps & { data: AppData })
                   const file = e.target.files?.[0];
                   e.target.value = "";
                   if (!file) return;
-                  const logo = await readAsDataUrl(file);
+                  // nur ein Bild, das sich wirklich laden lässt (eine leere oder falsche Datei ersetzte sonst das Logo in allen Dokumenten)
+                  let logo = "";
+                  try {
+                    logo = await readAsDataUrl(file);
+                    if (!/^data:image\/(svg\+xml|png|jpeg);/.test(logo)) throw new Error("typ");
+                    await new Promise<void>((ok, fail) => { const img = new Image(); img.onload = () => ok(); img.onerror = () => fail(new Error("bild")); img.src = logo; });
+                  } catch { showToast("Das Logo konnte nicht gelesen werden (SVG, PNG oder JPG)."); return; }
                   const problem = isLocalBackend ? checkLocalBudget(data, logo.length, s.logo?.length || 0) : null;
                   if (problem) { showToast(problem); return; }
                   setField({ logo });

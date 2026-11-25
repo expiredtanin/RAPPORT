@@ -15,10 +15,17 @@ interface AbsenceArgs {
   employees: Employee[];
   daySoll: number;
   dayTotalMins: number;
+  /** eigene genehmigte Absenzen gesperrt (ohne Vollzugriff ändert sie nur, wer genehmigt; der Server lehnt sonst ab) */
+  lockApproved?: boolean;
 }
 
 /** Absenz-Typen, Absenzen des Tages, Tages-Differenz und die Aktionen addAbs / updateAbs / delAbs. */
-export function buildAbsenceState({ data, update, currentDate, selectedEmpId, selectedEmp, employees, daySoll, dayTotalMins }: AbsenceArgs) {
+export function buildAbsenceState({ data, update, currentDate, selectedEmpId, selectedEmp, employees, daySoll, dayTotalMins, lockApproved = false }: AbsenceArgs) {
+  const lockedMsg = (a: Absence | undefined) => {
+    if (!lockApproved || a?.status !== "approved") return false;
+    showToast("Genehmigte Absenzen ändert, wer sie genehmigt hat (Admin oder Personal).");
+    return true;
+  };
   // Intern / Absenz — inline editing
   const absenzTypes = getAbsenzTypes(data);
   const dayAbs = (data.absences || []).filter(a => {
@@ -62,7 +69,7 @@ export function buildAbsenceState({ data, update, currentDate, selectedEmpId, se
   };
   const updateAbs = (id: string, changes: Partial<Absence>) => {
     const abs = (data.absences || []).find(a => a.id === id);
-    if (!abs || closedMsg(abs.date || abs.dateFrom)) return;
+    if (!abs || closedMsg(abs.date || abs.dateFrom) || lockedMsg(abs)) return;
     if (abs.startTime && ("hours" in changes || "minutes" in changes)) {
       const [sh, sm] = abs.startTime.split(":").map(Number);
       const newH = ("hours" in changes ? changes.hours : (abs.hours || 0)) as number;
@@ -72,6 +79,6 @@ export function buildAbsenceState({ data, update, currentDate, selectedEmpId, se
     }
     update("absences", (data.absences || []).map(a => a.id === id ? { ...a, ...changes } : a));
   };
-  const delAbs = (id: string) => !closedMsg(absDate(id)) && removeWithUndo("Absenz gelöscht", "absences", a => a.id === id);
+  const delAbs = (id: string) => !closedMsg(absDate(id)) && !lockedMsg((data.absences || []).find(a => a.id === id)) && removeWithUndo("Absenz gelöscht", "absences", a => a.id === id);
   return { absenzTypes, dayAbs, dayIst, dayDiff, addAbs, updateAbs, delAbs };
 }

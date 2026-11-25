@@ -7,7 +7,8 @@
 // ein Feiertag liegt.
 
 import React, { useState, useRef } from "react";
-import { generateId, getFeiertageForYear, imageFileToJpeg, localISODate } from "../utils";
+import { checkLocalBudget, generateId, getFeiertageForYear, imageFileToJpeg, localISODate } from "../utils";
+import { isLocalBackend } from "../storage/adapter";
 import type { BlogPost, CurrentUser, AppData, Poll, ViewProps } from "../types";
 import { EmptyState, Header, PageTabs } from "../components/UI";
 import { showToast } from "../toast";
@@ -153,8 +154,10 @@ function PostCard({ post, currentUser, canWrite, onEdit, onDelete, onPin, onVote
 }
 
 // ─── Post modal ───────────────────────────────────────────────────────────────
-function PostModal({ initial, onSave, onClose }: {
+function PostModal({ initial, onSave, onClose, data }: {
   initial: BlogPost | null; onSave: (form: PostForm, draft: boolean) => void; onClose: () => void;
+  /** für die Speicherprüfung im lokalen Modus */
+  data: AppData;
 }) {
   const [form, setForm] = useState<PostForm>((initial as PostForm | null) || { title: "", body: "", type: "beitrag", eventDate: "", pinned: false, poll: null, image: "" });
   const [pollEnabled, setPollEnabled] = useState(!!initial?.poll);
@@ -170,7 +173,11 @@ function PostModal({ initial, onSave, onClose }: {
     e.target.value = "";
     if (!file) return;
     try {
-      setF({ image: await imageFileToJpeg(file, 1200, 0.8) });
+      const image = await imageFileToJpeg(file, 1200, 0.8);
+      // lokal: Speicher vorher prüfen (sonst fehlte der Beitrag nach dem Neuladen, «Speicher voll»)
+      const problem = isLocalBackend ? checkLocalBudget(data, image.length, form.image?.length || 0) : null;
+      if (problem) { showToast(problem); return; }
+      setF({ image });
     } catch (err) {
       showToast((err as Error).message);
     }
@@ -407,7 +414,7 @@ export default function Pinboard({ data, update, currentUser }: Pick<ViewProps, 
       )}
 
       {modal && (
-        <PostModal
+        <PostModal data={data}
           initial={modal.mode === "edit" ? modal.post : null}
           onSave={savePost}
           onClose={() => setModal(null)}

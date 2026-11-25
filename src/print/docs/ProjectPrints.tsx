@@ -186,11 +186,12 @@ export function ProjectsOverviewPrint({ projects, data, settings }: { projects: 
           <div style={{ fontSize: 10, letterSpacing: "0.12em", color: "#888", marginBottom: 10, paddingBottom: 6, borderBottom: "1px solid var(--doc-ink)" }}>{g.category.toUpperCase()} — {g.projects.length}</div>
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 10, tableLayout: "fixed" }}>
             <colgroup>
-              <col style={{ width: "40%" }} />
-              <col style={{ width: "25%" }} />
-              <col style={{ width: "12%" }} />
-              <col style={{ width: "11%" }} />
-              <col style={{ width: "12%" }} />
+              {/* Stunden «1216h 30m / 2650h» und Beträge «CHF 356'000.00» brauchen Platz (liefen ineinander) */}
+              <col style={{ width: "32%" }} />
+              <col style={{ width: "21%" }} />
+              <col style={{ width: "10%" }} />
+              <col style={{ width: "19%" }} />
+              <col style={{ width: "18%" }} />
             </colgroup>
             <thead>
               <tr style={{ borderBottom: "1px solid #ddd" }}>
@@ -213,7 +214,7 @@ export function ProjectsOverviewPrint({ projects, data, settings }: { projects: 
                       {formatHours(projectMinutes(p.id))}
                       {(p.budgetHours || 0) > 0 && <span style={{ color: "#aaa" }}> / {p.budgetHours}h</span>}
                     </td>
-                    <td style={{ textAlign: "right", padding: "6px 0" }}>{formatCHF(projectAmount(p))}</td>
+                    <td style={{ textAlign: "right", padding: "6px 0 6px 8px", whiteSpace: "nowrap" }}>{formatCHF(projectAmount(p))}</td>
                   </tr>
                 );
               })}

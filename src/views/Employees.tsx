@@ -205,7 +205,13 @@ function Employees({ data, update, saveAll, setPrintContent, userPermissions, cu
     const { originalData: _orig, ...rest } = ferienForm;
     // eigene Ferien ohne Vollzugriff nur als Antrag (der Server lehnt «approved» ab, pb_hooks/integrity.pb.js)
     const ownWithoutFull = !!userPermissions && !!currentEmployeeId && ferienForm.employeeId === currentEmployeeId;
-    const f = { ...rest, dateFrom: from, dateTo: to, status: ownWithoutFull ? "pending" : "approved", id: ferienForm.id || generateId() } as FerienEntry;
+    // eigener bestehender Eintrag: genehmigter wird zum Änderungsantrag (bisherige Daten = gespeicherter Stand), ein
+    // laufender Antrag behält seine bisherigen Daten — sonst lehnte der Server ab (Cloud-Test 25.11.2026)
+    const stored = ferienForm.id ? ferienEntries.find(x => x.id === ferienForm.id) : undefined;
+    const originalData = !ownWithoutFull || !stored ? undefined
+      : stored.status === "approved" || !stored.status ? { dateFrom: stored.dateFrom, dateTo: stored.dateTo, note: stored.note || "" }
+      : stored.status === "pending" ? stored.originalData : undefined;
+    const f = { ...rest, ...(originalData ? { originalData } : {}), dateFrom: from, dateTo: to, status: ownWithoutFull ? "pending" : "approved", id: ferienForm.id || generateId() } as FerienEntry;
     if (ownWithoutFull) showToast("Eigene Ferien werden als Antrag gespeichert — genehmigt wird von einer anderen Person.");
     update("ferienEntries", isNew ? [...ferienEntries, f] : ferienEntries.map(x => x.id === f.id ? f : x));
     setModal(null);

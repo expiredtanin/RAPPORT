@@ -133,7 +133,9 @@ function Protokolle({ data, saveAll, setPrintContent, modal, setModal }: Pick<Vi
     const draft = draftRef.current?.p.id === id ? draftRef.current : null;
     draftRef.current = null;
     const cur = draft ? draft.p : list.find(x => x.id === id);
-    if (isUntouchedProtocol(cur)) save({ ...d, protocols: list.filter(x => x.id !== id) });
+    // entfernen nur, wenn auch der gespeicherte Stand unberührt ist (ein bestehendes Protokoll mit geleertem Titel
+    // verschwand sonst ohne Rückfrage)
+    if (isUntouchedProtocol(cur) && isUntouchedProtocol(list.find(x => x.id === id))) save({ ...d, protocols: list.filter(x => x.id !== id) });
     else if (draft?.dirty) save({ ...d, protocols: list.map(x => x.id === id ? draft.p : x) });
   };
   const leaveDetailRef = useRef(leaveDetail);

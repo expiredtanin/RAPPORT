@@ -130,7 +130,7 @@ function Time({ data, update, currentUser, userPermissions, setPrintContent }: P
 
   const { dayExpenses, addExp, updateExp, delExp, receiptView, setReceiptView, setUploadingExpId, expReceiptInputRef, handleExpReceiptUpload } = useExpenses(data, update, currentDate, selectedEmpId);
 
-  const { absenzTypes, dayAbs, dayIst, dayDiff, addAbs, updateAbs, delAbs } = buildAbsenceState({ data, update, currentDate, selectedEmpId, selectedEmp, employees, daySoll, dayTotalMins });
+  const { absenzTypes, dayAbs, dayIst, dayDiff, addAbs, updateAbs, delAbs } = buildAbsenceState({ data, update, currentDate, selectedEmpId, selectedEmp, employees, daySoll, dayTotalMins, lockApproved: !isAdmin && !!myEmployeeId && selectedEmpId === myEmployeeId });
 
   const { antragModal, setAntragModal, antragForm, setAntragForm, openFerienAntrag, saveAntrag, deleteFerien, cancelFerienEdit, editFerien, ferienUebersicht, setFerienUebersicht } = useFerienAntrag(data, update, employees, selectedEmpId, currentDate);
   const { ref: navCalRef, open: navCalOpen, setOpen: setNavCalOpen } = useCalendarNav();

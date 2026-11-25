@@ -22,7 +22,7 @@ import React, { useState, useEffect, useMemo, Suspense, lazy } from "react";
 import { createPortal } from "react-dom";
 import { defaultData, statusCssVars } from "./constants";
 import { hashPassword, verifyPassword, withHashedPassword, stripCredentials, needsPasswordUpgrade } from "./utils";
-import { storage, cloudStorage, isCloudBackend, isServerMode } from "./storage/adapter";
+import { storage, cloudStorage, flushStorage, isCloudBackend, isServerMode } from "./storage/adapter";
 import { pickAndActivateDataFolder } from "./storage/data-folder";
 import { applyMigrations } from "./storage/migrations";
 import type { AppData, CurrentUser, ModalState, PrintContent, User } from "./types";
@@ -236,9 +236,15 @@ export default function App() {
     sessionStorage.removeItem("rapport_studio_id");
     setCurrentUser(null);
     // Ansicht, Verlauf, offene Dialoge und Auswahl der vorigen Person nicht stehen lassen (sonst landete die nächste
-    // Anmeldung am selben Fenster per «Zurück» z.B. im Datenimport des Admins): sauber neu laden
-    if (isCloudBackend) cloudStorage.signOut?.().catch(() => {}).finally(() => window.location.reload());
-    else window.location.reload();
+    // Anmeldung am selben Fenster per «Zurück» z.B. im Datenimport des Admins): sauber neu laden — aber erst, wenn die
+    // Ansichten ausgehängt (offenes Protokoll speichert dabei) und alle Änderungen geschrieben sind (vorher ging ein
+    // eben angelegter Beitrag beim sofortigen Abmelden verloren)
+    void (async () => {
+      await new Promise(r => setTimeout(r, 0));
+      await flushStorage().catch(() => {});
+      if (isCloudBackend) await cloudStorage.signOut?.().catch(() => {});
+      window.location.reload();
+    })();
   };
   const handleSetupComplete = (newData: AppData) => {
     localStorage.setItem("rapport_v0_5_migrated", "1");

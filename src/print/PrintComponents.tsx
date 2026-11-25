@@ -221,6 +221,9 @@ export function PrintView({ content, onClose, settings, assets }: { content: Con
           .print-wrapper { overflow: visible !important; }
           .print-page { box-shadow: none !important; margin: 0 !important; padding-top: ${mTop}mm !important; padding-bottom: ${mBottom}mm !important; padding-left: ${mLeft}mm !important; padding-right: ${mRight}mm !important; max-width: none !important; width: ${pageW}mm !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
           .print-page.paged { padding-bottom: 0 !important; }
+          /* paginate.ts verteilt die Zeilen selbst auf Seiten: der Browser soll den Tabellenkopf nicht zusätzlich am
+             Papierrand wiederholen (stand sonst oben auf dem Briefpapier-Balken, darunter eine Lücke) */
+          .print-page.paged thead { display: table-row-group !important; }
           .print-page, .print-page * { text-align: left !important; }
           .print-page .align-right, .print-page .align-right * { text-align: right !important; }
           .qr-bill-wrapper { margin: 0 -${mLeft}mm 0 -${mLeft}mm !important; width: 210mm !important; }
