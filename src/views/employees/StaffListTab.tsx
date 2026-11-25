@@ -21,7 +21,7 @@ export default function StaffListTab({ data, employees, nextPersonalNr, setEmpFo
   /** Öffnet den Bearbeiten-Dialog samt Daten des verknüpften App-Zugangs. */
   const openEmp = (emp: Employee) => {
     const linked = (data.users || []).find(u => u.id === emp.appUserId);
-    setEmpForm({ ...emp, _appAccess: !!linked, _appUsername: linked?.username || "", _appPassword: "", _appRoleId: linked?.appRoleId || defaultAppRoleId(data.appRoles), _appUserId: linked?.id });
+    setEmpForm({ ...emp, _appAccess: !!linked, _appUsername: linked?.username || "", _appPassword: "", _appRoleId: linked?.appRoleId || (linked?.role === "admin" ? "r-admin" : defaultAppRoleId(data.appRoles)), _appUserId: linked?.id });
     setModal("emp");
   };
   return (

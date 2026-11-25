@@ -85,7 +85,8 @@ function FirmaDetail({ firma, data, update, onBack, onEdit, onAddPerson, onEditP
   ).sort((a, b) => (b.date || "").localeCompare(a.date || ""));
 
   // Ohne feste Rolle: KPIs und Abschnitte richten sich danach, was der Kontakt tatsächlich hat.
-  const isClientLike = asClient.length > 0 || invoices.length > 0 || quotes.length > 0 || asPartner.length === 0;
+  // aus den ungefilterten Listen (sonst wechselte ein Kunde ohne Recht auf «Beteiligter»)
+  const isClientLike = asClient.length > 0 || (data.invoices || []).some(i => i.clientId === firma.id) || (data.quotes || []).some(q => q.clientId === firma.id) || asPartner.length === 0;
   const addr = [firma.street, [firma.zip, firma.city].filter(Boolean).join(" ")].filter(Boolean).join(", ");
 
   return (
@@ -115,7 +116,7 @@ function FirmaDetail({ firma, data, update, onBack, onEdit, onAddPerson, onEditP
         const figs: { label: string; value: string; sub?: string; tone?: string }[] = [
           { label: "Projekte", value: String(allProjects.length), sub: isClientLike ? (asPartner.length ? `${asPartner.length} als Beteiligte` : undefined) : `${protocols.length} Protokolle` },
           ...(isClientLike && canInv ? [
-            { label: "Umsatz (netto)", value: formatCHF(clientRevenue(data, firma.id)).replace(/^(−?)CHF\s*/u, "$1"), sub: `${invoices.length} Rechnungen · ${quotes.length} Offerten` },
+            { label: "Umsatz (netto)", value: formatCHF(clientRevenue(data, firma.id)).replace(/^(−?)CHF\s*/u, "$1"), sub: canQuo ? `${invoices.length} Rechnungen · ${quotes.length} Offerten` : `${invoices.length} Rechnungen` },
             { label: "Offen", value: formatCHF(open).replace(/^(−?)CHF\s*/u, "$1"), sub: open > 0 ? "CHF ausstehend" : "nichts ausstehend", tone: open > 0 ? "warn" : undefined },
           ] : isClientLike ? [] : [
             { label: "Ansprechpartner", value: String((firma.contacts || []).length) },

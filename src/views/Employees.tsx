@@ -185,7 +185,10 @@ function Employees({ data, update, saveAll, setPrintContent, userPermissions, cu
 
       // Rolle aus der gewählten App-Rolle ableiten (wie Einstellungen → Team): sonst zeigte der Dialog «Mitarbeiter»,
       // das Konto behielt aber Vollzugriff — bzw. «Administrator» ohne Team/Studio-Einstellungen (Runde 27)
-      const role: User["role"] = _appRoleId === "r-admin" ? "admin" : existing?.role && existing.role !== "admin" ? existing.role : "mitarbeiter";
+      // Nur wenn die Rolle im Dialog wirklich geändert wurde (Altbestand: Admin ohne appRoleId bleibt Admin — Review R28)
+      const roleChanged = !existing || (_appRoleId || "") !== (existing.appRoleId || (existing.role === "admin" ? "r-admin" : ""));
+      const role: User["role"] = !roleChanged ? existing!.role
+        : _appRoleId === "r-admin" ? "admin" : existing?.role && existing.role !== "admin" ? existing.role : "mitarbeiter";
       if (existing?.role === "admin" && role !== "admin" && !updatedUsers.some(u => u.id !== userId && u.role === "admin")) {
         showToast("Mindestens ein Administrator muss bestehen bleiben."); return;
       }

@@ -73,6 +73,8 @@ export function buildQrBillData(inv: Pick<Invoice, "number" | "total">, client: 
   if (amount > 999_999_999.99) return { ok: false, error: true, reason: "Betrag zu gross für eine QR-Rechnung (höchstens 999'999'999.99)." };
   // Altbestand/Ersteinrichtung nur mit Freitext-Adresse: daraus Strasse/PLZ/Ort (Runde 27)
   const own = settings.zip && settings.city ? { street: settings.street || "", zip: settings.zip, city: settings.city } : splitAddress(settings.address);
+  // nur PLZ/Ort aus dem Freitext, wenn beide fehlen — strukturierte Felder haben Vorrang
+  if (!(settings.zip && settings.city) && (settings.zip || settings.city)) { own.zip = settings.zip || own.zip; own.city = settings.city || own.city; }
   const creditor = {
     name: qrText(settings.name, 70),
     address: qrText(settings.street || own.street, 70),
