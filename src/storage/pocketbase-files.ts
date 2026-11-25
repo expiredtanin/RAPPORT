@@ -16,7 +16,9 @@
 // - Neu hochgeladene Dateien sind in der App bis zum nächsten Laden `data:`-URLs. Beim Speichern macht
 //   `prepareBody` daraus ein `File` (multipart, einzeln statt im Batch); `remember` ordnet danach die
 //   `data:`-URL dem neuen Verweis zu. Leerer Wert = Datei entfernen. Ein Verweis auf eine Datei eines
-//   anderen Datensatzes (kopierte Zeile) wird heruntergeladen und neu hochgeladen.
+//   anderen Datensatzes (kopierte Zeile) wird heruntergeladen und neu hochgeladen. Vor dem Löschen eines
+//   Datensatzes mit Datei merkt sich der Adapter den Inhalt (`keepBeforeDelete`), damit «Rückgängig» ihn
+//   wieder hochladen kann.
 //
 // Im Abgleich (pocketbase-sync.ts) stehen dadurch in `base` und in den neuen Zeilen dieselben kurzen
 // Verweise; Server-Zeilen bringt `fromRecord` auf dieselbe Form (Dateiname → Verweis).
@@ -163,8 +165,25 @@ export class PbFileStore {
   private refByUrl = new Map<string, string>();
   private urlByRef = new Map<string, string>();
 
+  /** Dateien gelöschter Datensätze (Verweis → Inhalt), damit «Rückgängig» sie wieder hochladen kann. */
+  private deleted = new Map<string, Blob>();
+  private static DELETED_MAX = 20;
+
   constructor(download: (ref: PbFileRef) => Promise<Blob>) {
     this.download = download;
+  }
+
+  /**
+   * Vor dem Löschen eines Datensatzes mit Datei: Inhalt merken (die Datei verschwindet auf dem Server mit
+   * dem Datensatz). Legt «Rückgängig» ihn danach mit demselben Verweis neu an, lädt `prepareBody` sie wieder hoch.
+   */
+  async keepBeforeDelete(ref: string): Promise<void> {
+    const parsed = parsePbRef(ref);
+    if (!parsed || this.deleted.has(ref)) return;
+    const blob = await this.download(parsed).catch(() => null);
+    if (!blob) return;
+    this.deleted.set(ref, blob);
+    while (this.deleted.size > PbFileStore.DELETED_MAX) this.deleted.delete(this.deleted.keys().next().value as string);
   }
 
   /** Ersetzt in einer Zeile (Datenbankform) eine bekannte `data:`-URL durch ihren Verweis. Eingabe bleibt unverändert. */
@@ -188,7 +207,7 @@ export class PbFileStore {
    * (bleibt), fremder Verweis → herunterladen und neu hochladen, leer → Datei entfernen. Unbekannte Werte
    * (z.B. ein Verweis in einen Datenordner) werden nicht gesendet, damit die Datei auf dem Server bleibt.
    */
-  async prepareBody(table: string, recordId: string, body: SyncRow): Promise<PreparedBody> {
+  async prepareBody(table: string, recordId: string, body: SyncRow, isCreate = false): Promise<PreparedBody> {
     const def = PB_FILE_FIELDS[table];
     if (!def || !(def.field in body)) return { body, upload: null, multipart: false };
     const v = body[def.field];
@@ -199,6 +218,15 @@ export class PbFileStore {
       return { body: out, upload: null, multipart: false };
     }
     const ref = parsePbRef(v);
+    if (ref && ref.collection === table && ref.recordId === recordId && isCreate) {
+      // Neu anlegen mit eigenem Verweis = «Rückgängig» nach dem Löschen: die Datei ist auf dem Server weg.
+      // Gemerkten Inhalt wieder hochladen; ohne ihn den Datensatz ohne Datei anlegen (ein Dateiname allein
+      // würde die ganze Anlage scheitern lassen: «Invalid new files»).
+      const blob = this.deleted.get(v as string);
+      if (!blob) { delete out[def.field]; return { body: out, upload: null, multipart: false }; }
+      out[def.field] = new File([blob], original || ref.filename, { type: blob.type });
+      return { body: out, upload: null, multipart: true };
+    }
     if (ref && ref.collection === table && ref.recordId === recordId) {
       out[def.field] = ref.filename;
       return { body: out, upload: null, multipart: false };

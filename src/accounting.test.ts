@@ -297,6 +297,10 @@ describe("accountingSummary — Jahresergebnis und MWST-Abrechnung", () => {
     expect(s.mwstEntgeltBrutto).toBe(108100);          // Auslandrechnung nicht steuerbar
     expect(s.umsatzsteuer).toBe(6702.2);
     expect(s.ergebnis).toBe(roundCHF(158100 - 6702.2 - 10810)); // 140'587.80
+    // angezeigte Zeilen gehen aufs Ergebnis auf (Ertrag − Ausgaben brutto − Personal)
+    expect(s.ertrag).toBe(roundCHF(158100 - 6702.2));
+    expect(s.expImErgebnis).toBe(10810);
+    expect(roundCHF(s.ertrag - s.expImErgebnis - s.intImErgebnis - s.personalaufwand)).toBe(s.ergebnis);
   });
 
   it("Vereinnahmte Entgelte: nur bezahlte Rechnungen nach Zahlungsdatum", () => {

@@ -20,12 +20,10 @@ export function BuchhaltungPrint({ data, filterYear, settings }: { data: AppData
   const tableExpBrutto = sum.expGross;
   const tableExpNet = sum.expNet;
   const tableExpTax = sum.expTax;
-  const totalExpNet = sum.expNet;
   const totalIntExpBrutto = sum.intGross;
   const totalIntExpNet = sum.intNet;
   const totalIntExpTax = sum.intTax;
   const totalAuszahlung = loehne.reduce((s, l) => s + (l.auszahlung || 0), 0);
-  const totalAusgaben = sum.ausgabenTotal;
 
   // Zellabstand rechts bzw. links (vorher 0: «11.11.2026Sihltal», «NettoVorsteuer»); Zahlen und Daten ohne Umbruch
   const thStyle: React.CSSProperties = { textAlign: "left", padding: "6px 8px 6px 0", fontSize: 8, letterSpacing: "0.1em", color: "#888", fontWeight: 500, borderBottom: "1px solid var(--doc-ink)" };
@@ -67,11 +65,12 @@ export function BuchhaltungPrint({ data, filterYear, settings }: { data: AppData
         <div>
           <div style={{ fontSize: 8, letterSpacing: "0.12em", color: "#888", marginBottom: 8 }}>AUSGABEN &amp; ERGEBNIS</div>
           {[
-            { label: "Spesen (Netto)", value: totalExpNet },
-            { label: "Interne Ausgaben (Netto)", value: totalIntExpNet },
+            ...(saldo ? [{ label: "Ertrag (Entgelt inkl. MWST − Saldosteuer)", value: sum.ertrag }] : []),
+            { label: saldo ? "Spesen (Brutto)" : "Spesen (Netto)", value: sum.expImErgebnis },
+            { label: saldo ? "Interne Ausgaben (Brutto)" : "Interne Ausgaben (Netto)", value: sum.intImErgebnis },
             ...(saldo ? [] : [{ label: "Vorsteuer", value: sum.vorsteuer, small: true }]),
             { label: `Personalaufwand (${loehne.length} Löhne, Brutto + AG-Beiträge)`, value: sum.personalaufwand },
-            { label: "Ergebnis (Netto)", value: totalInvoicedNet - totalAusgaben, bold: true },
+            { label: "Ergebnis vor MWST", value: sum.ergebnis, bold: true }, // Saldosteuersatz: Ertrag brutto − Saldosteuer, Ausgaben brutto
             { label: saldo ? `MWST-Schuld (Saldosteuersatz ${settings.mwstSaldoSatz ?? 0} %${sum.mwstArt === "vereinnahmt" ? ", vereinnahmt" : ""})` : `MWST-Schuld (effektiv${sum.mwstArt === "vereinnahmt" ? ", vereinnahmt" : ""})`, value: sum.mwstSchuld, bold: true, small: true },
           ].map((r, i) => (
             <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "2px 0", borderTop: r.bold && !r.small ? "1px solid #ccc" : "none", marginTop: r.bold && !r.small ? 4 : 0 }}>

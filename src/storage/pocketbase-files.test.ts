@@ -74,6 +74,17 @@ describe("PbFileStore.prepareBody", () => {
     expect(download).not.toHaveBeenCalled();
   });
 
+  it("Rückgängig nach Löschen: eigener Verweis beim Anlegen lädt den gemerkten Inhalt wieder hoch", async () => {
+    const { s } = store();
+    await s.keepBeforeDelete("rapport-pb:expenses/e1/a_x.pdf");
+    const p = await s.prepareBody("expenses", "e1", { id: "e1", receiptFile: "rapport-pb:expenses/e1/a_x.pdf", receiptName: "Taxi.pdf" }, true);
+    expect(p.multipart).toBe(true);
+    expect((p.body.receiptFile as File).name).toBe("Taxi.pdf");
+    // ohne gemerkten Inhalt: Datensatz ohne Datei statt «Invalid new files»
+    const none = await new PbFileStore(async () => new Blob()).prepareBody("expenses", "e9", { id: "e9", receiptFile: "rapport-pb:expenses/e9/b.pdf" }, true);
+    expect(none).toEqual({ body: { id: "e9" }, upload: null, multipart: false });
+  });
+
   it("Verweis auf einen anderen Datensatz wird heruntergeladen und neu hochgeladen", async () => {
     const { s, download } = store();
     const p = await s.prepareBody("expenses", "e2", { receiptFile: "rapport-pb:expenses/e1/a_x.pdf", receiptName: "Kopie.pdf" });

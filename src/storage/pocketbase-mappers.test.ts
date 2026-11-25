@@ -65,6 +65,16 @@ describe("leere Zahlenfelder (PocketBase speichert 0)", () => {
   });
 
   it("PK-Satz Arbeitgeber leer → 8 %", () => {
-    expect(fromDB.studioSettings({ ...rec, defaultPkAGSatz: 0 }).defaultPkAGSatz).toBe(8);
+    expect(fromDB.studioSettings({ ...rec, id: "s1", defaultPkAGSatz: 0 }).defaultPkAGSatz).toBe(8);
+  });
+});
+
+describe("Feiertage und Rollen (Cloud)", () => {
+  it("Feiertag bekommt das Datum als id (Löschen trifft nur ihn)", () => {
+    expect(fromDB.holiday({ ...rec, id: "x", date: "2026-04-06 00:00:00.000Z", label: "Ostermontag" }).id).toBe("2026-04-06");
+  });
+  it("Rollen-Reihenfolge = Position in der Liste", () => {
+    const rows = toDB.studioRoles([{ id: "PL", label: "A", rate: 1, sort: 0 }, { id: "ZZ", label: "B", rate: 2 }] as never, "s1");
+    expect(rows.map(r => r.sort)).toEqual([0, 1]);
   });
 });

@@ -102,7 +102,7 @@ export const fromDB = {
       // Dateifeld (logoFile); hier wird daraus ein Verweis «rapport-pb:…», den der Adapter
       // beim Laden zur data:-URL macht (pocketbase-files.ts).
       logo: pbFileRef("studioSettings", row.id, row.logoFile),
-      roles: (roles || []).map(r => ({ id: r.roleId, label: r.label, rate: r.rate, sort: r.sort })),
+      roles: (roles || []).map((r, i) => ({ id: r.roleId, label: r.label, rate: r.rate, sort: r.sort ?? i })),
     };
   },
 
@@ -508,7 +508,8 @@ export const fromDB = {
   // stundenDelta/repeatsYearly sind die Felder, die getFeiertageForYear()
   // tatsächlich braucht — halfDay wird von keiner UI-Stelle gelesen/
   // geschrieben (Altlast, bleibt bestehen, aber ungenutzt).
-  holiday(row: Row) { return { date: row.date?.slice(0, 10), label: row.label, halfDay: !!row.halfDay, stundenDelta: row.stundenDelta ?? null, repeatsYearly: !!row.repeatsYearly }; },
+  // id = Datum (Schlüssel in der Cloud): ohne id löschte «Entfernen» alle Feiertage (f.id === undefined)
+  holiday(row: Row) { return { id: row.date?.slice(0, 10), date: row.date?.slice(0, 10), label: row.label, halfDay: !!row.halfDay, stundenDelta: row.stundenDelta ?? null, repeatsYearly: !!row.repeatsYearly }; },
   appRole(row: Row) { return { id: row.roleId, name: row.name, permissions: row.permissions ?? null, dashboardTemplateId: row.dashboardTemplateId || "" }; },
   dashboardTemplate(row: Row) { return { id: row.templateId, name: row.name, isPublic: row.isPublic !== false, layout: row.layout, createdBy: row.createdBy || null }; },
 };
@@ -568,7 +569,8 @@ export const toDB = {
   },
 
   studioRoles(roles: Role[] | undefined, studioId: Id) {
-    return (roles || []).map(r => ({ studio: studioId, roleId: r.id, label: r.label, rate: r.rate, sort: r.sort ?? 0 }));
+    // Reihenfolge = Position in der Liste (eine neue Rolle ohne `sort` sprang mit 0 nach dem Laden nach vorne)
+    return (roles || []).map((r, i) => ({ studio: studioId, roleId: r.id, label: r.label, rate: r.rate, sort: i }));
   },
 
   // Bewusst OHNE studio-Feld: das Setzen/Beibehalten von studio ist Sache des

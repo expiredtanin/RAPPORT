@@ -50,7 +50,7 @@ import type { RawData } from "./migrations";
 import type { StorageAdapter } from "./adapter";
 import { fromDB, toDB } from "./pocketbase-mappers";
 import { baseFrom, changedFields, planSync, type SyncOp, type SyncRow } from "./pocketbase-sync";
-import { PB_FILE_FIELDS, PbFileStore, replacePbRefs, type PbFileRef, type PreparedBody } from "./pocketbase-files";
+import { PB_FILE_FIELDS, PbFileStore, pbFileRef, replacePbRefs, type PbFileRef, type PreparedBody } from "./pocketbase-files";
 
 /** Fehlerform von PocketBase (ClientResponseError), soweit hier benutzt. */
 type PbError = { status?: number; message?: string; data?: { message?: string; data?: Record<string, { code?: string; message?: string }> } };
@@ -927,8 +927,9 @@ export class PocketBaseAdapter implements StorageAdapter {
     const ops: Op[] = [];
     const uploads: { op: Op; prepared: PreparedBody }[] = [];
     for (const op of allOps) {
+      if (op.type === "delete" && PB_FILE_FIELDS[table]) await this._keepFileBeforeDelete(table, op.id);
       if (op.type === "delete" || !PB_FILE_FIELDS[table]) { ops.push(op); continue; }
-      const prepared = await this._files.prepareBody(table, op.type === "update" ? op.id : String(op.body.id ?? ""), op.body);
+      const prepared = await this._files.prepareBody(table, op.type === "update" ? op.id : String(op.body.id ?? ""), op.body, op.type === "create");
       if (prepared.multipart) uploads.push({ op, prepared });
       else ops.push({ ...op, body: prepared.body });
     }
@@ -951,6 +952,16 @@ export class PocketBaseAdapter implements StorageAdapter {
       }
     }
     for (const { op, prepared } of uploads) await this._applyUpload(table, op, prepared);
+  }
+
+  /** Datei eines Datensatzes vor dem Löschen merken (für «Rückgängig»); Fehler sind egal, gelöscht wird trotzdem. */
+  async _keepFileBeforeDelete(table: string, id: string): Promise<void> {
+    const def = PB_FILE_FIELDS[table];
+    try {
+      const rec = await this.client.collection(table).getOne(id, { fields: `id,${def.field}` });
+      const ref = pbFileRef(table, id, rec[def.field]);
+      if (ref) await this._files.keepBeforeDelete(ref);
+    } catch { /* nicht vorhanden oder nicht ladbar: ohne Datei */ }
   }
 
   /** Wartezeiten (ms) bei 429 für einzelne Uploads (Rate-Limit «*:create» 20 pro 5 s, z.B. beim Import vieler Belege). */

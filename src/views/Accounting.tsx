@@ -49,10 +49,8 @@ function Accounting({ data, update, setView, setModal, setPrintContent }: Pick<V
 
   // Spesen: alle (auch die über den Lohn ausbezahlten) mit Netto und Vorsteuer
   const totalExpBrutto = sum.expGross;
-  const totalExpNet = sum.expNet;
 
   // Interne Ausgaben
-  const totalIntExpNet = sum.intNet;
 
   // Personalaufwand: Bruttolöhne + Arbeitgeberbeiträge (AHV/ALV paritätisch, PK-AG)
   const totalLoehne = sum.lohnBrutto;
@@ -142,10 +140,13 @@ function Accounting({ data, update, setView, setModal, setPrintContent }: Pick<V
           <section className="card">
             <div className="today-k">Ergebnis {periodLabel(period)}</div>
             <div className="acc-lines">
-              <div><span>Einnahmen <i>gestellte Rechnungen, netto</i></span><b className="num">{formatCHF(totalInvoiced)}</b></div>
+              {saldo
+                ? <div><span>Einnahmen <i>Entgelt inkl. MWST − Saldosteuer</i></span><b className="num">{formatCHF(sum.ertrag)}</b></div>
+                : <div><span>Einnahmen <i>gestellte Rechnungen, netto</i></span><b className="num">{formatCHF(totalInvoiced)}</b></div>}
               {totalDraftSub > 0 && <div className="sub"><span>dazu in Entwürfen <i>nicht im Ergebnis</i></span><b className="num">{formatCHF(totalDraftSub)}</b></div>}
-              <div><span>Spesen <i>netto</i></span><b className="num">{minus(totalExpNet)}</b></div>
-              <div><span>Büroausgaben <i>netto</i></span><b className="num">{minus(totalIntExpNet)}</b></div>
+              {/* Saldosteuersatz: ohne Vorsteuerabzug gehen die Ausgaben brutto ins Ergebnis */}
+              <div><span>Spesen <i>{saldo ? "brutto" : "netto"}</i></span><b className="num">{minus(sum.expImErgebnis)}</b></div>
+              <div><span>Büroausgaben <i>{saldo ? "brutto" : "netto"}</i></span><b className="num">{minus(sum.intImErgebnis)}</b></div>
               <div><span>Personalaufwand <i>{totalLoehneAnzahl} {totalLoehneAnzahl === 1 ? "Lohnabrechnung" : "Lohnabrechnungen"}</i></span><b className="num">{minus(totalLoehne + totalLoehneAGAbgaben)}</b></div>
               {totalLoehneAGAbgaben > 0 && <div className="sub"><span>davon AG-Beiträge <i>AHV/IV/EO, ALV, PK</i></span><b className="num">{formatCHF(totalLoehneAGAbgaben)}</b></div>}
               <div className="total"><span>Ergebnis vor MWST</span><b className={`num${result < 0 ? " neg" : ""}`}>{formatCHF(result)}</b></div>

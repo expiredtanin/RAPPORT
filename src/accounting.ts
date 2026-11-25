@@ -243,6 +243,11 @@ export interface AccountingSummary {
   /** MWST-Schuld der Periode (negativ = Guthaben) */
   mwstSchuld: number;
   ausgabenTotal: number;
+  /** Ertrag im Ergebnis: effektiv = Umsatz netto; Saldosteuersatz = Entgelt inkl. MWST − Saldosteuer */
+  ertrag: number;
+  /** Spesen und Büroausgaben, wie sie ins Ergebnis eingehen (effektiv netto, Saldosteuersatz brutto) */
+  expImErgebnis: number;
+  intImErgebnis: number;
   ergebnis: number;
 }
 
@@ -333,6 +338,7 @@ export function accountingSummary(data: SummaryData, period: string, today = tod
     vorsteuer,
     mwstSchuld: roundCHF(umsatzsteuer - vorsteuer),
     ausgabenTotal,
+    ertrag, expImErgebnis: saldo ? expGross : expNet, intImErgebnis: saldo ? intGross : intNet,
     ergebnis: roundCHF(ertrag - ausgabenTotal),
   };
 }
@@ -396,11 +402,13 @@ export function buildBuchhaltungCSV(data: AppData, period = ""): string {
   }
 
   rows.push(line(["ZUSAMMENFASSUNG", "", "", "", "", "", "", ""]));
-  rows.push(line(["", "", "", "Einnahmen (Netto)", f(s.revenueNet), "", "", ""]));
-  rows.push(line(["", "", "", "Spesen (Netto, inkl. über Lohn ausbezahlte)", f(s.expNet), "", "", ""]));
-  rows.push(line(["", "", "", "Interne Ausgaben (Netto)", f(s.intNet), "", "", ""]));
+  // Saldosteuersatz: Ertrag = Entgelt inkl. MWST − Saldosteuer, Ausgaben brutto (Zeilen gehen aufs Ergebnis auf)
+  const sal = s.mwstMethode === "saldo";
+  rows.push(line(["", "", "", sal ? "Ertrag (Entgelt inkl. MWST − Saldosteuer)" : "Einnahmen (Netto)", f(s.ertrag), "", "", ""]));
+  rows.push(line(["", "", "", `Spesen (${sal ? "Brutto" : "Netto"}, inkl. über Lohn ausbezahlte)`, f(s.expImErgebnis), "", "", ""]));
+  rows.push(line(["", "", "", `Interne Ausgaben (${sal ? "Brutto" : "Netto"})`, f(s.intImErgebnis), "", "", ""]));
   rows.push(line(["", "", "", "Personalaufwand (Bruttolohn + AG-Beiträge)", f(s.personalaufwand), "", "", ""]));
-  rows.push(line(["", "", "", "Ergebnis (Netto)", f(s.ergebnis), "", "", ""]));
+  rows.push(line(["", "", "", "Ergebnis vor MWST", f(s.ergebnis), "", "", ""]));
   const methode = s.mwstMethode === "saldo" ? `Saldosteuersatz ${data.settings?.mwstSaldoSatz ?? 0} %` : "effektive Methode";
   rows.push(line(["", "", "", `MWST (${methode}, ${s.mwstArt === "vereinnahmt" ? "vereinnahmte" : "vereinbarte"} Entgelte)`, "", "", "", ""]));
   if (s.mwstMethode === "saldo") rows.push(line(["", "", "", "Steuerbares Entgelt inkl. MWST", "", "", f(s.mwstEntgeltBrutto), ""]));

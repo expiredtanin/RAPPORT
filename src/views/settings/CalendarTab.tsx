@@ -29,6 +29,8 @@ export function CalendarTab({ data, update, onSettingsSaved }: Pick<ViewProps, "
 
   const saveFt = () => {
     if (!ftForm.date) { showToast("Bitte ein Datum angeben."); return; }
+    // ein Feiertag je Datum (in der Cloud ist das Datum der Schlüssel: ein zweiter würde den ersten überschreiben)
+    if (feiertage.some(f => f.date === ftForm.date && f.id !== ftForm.id)) { showToast("Für dieses Datum gibt es schon einen Feiertag."); return; }
     const isNew = !ftForm.id;
     const ft = { ...ftForm, id: ftForm.id || generateId() } as Feiertag;
     update("feiertage", isNew ? [...feiertage, ft] : feiertage.map(f => f.id === ft.id ? ft : f));
