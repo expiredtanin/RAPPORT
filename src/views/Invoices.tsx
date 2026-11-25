@@ -138,7 +138,10 @@ function Invoices({ data, update, saveAll, modal, setModal, setPrintContent }: P
     const noDisc = !((form.discountValue || 0) > 0) ? { discountType: "none", discountValue: 0 } : {};
     const inv = { ...formFields, ...noDisc, number: (form.number || "").trim(), id: invoiceId, sub, globalDisc, subAfterDisc, tax, total, mwstRate: form.mwstRate ?? data.settings.mwstRate, status,
       entrySelections: selectedEntrySelections(form.entrySelections),
-      paidDate: status === "bezahlt" ? (form.paidDate || localISODate()) : undefined } as Invoice;
+      // heute nur beim Wechsel auf «bezahlt»; eine schon bezahlte Rechnung ohne Datum bleibt ohne (sonst rutschte sie
+      // beim Korrigieren eines Tippfehlers in die aktuelle MWST-Periode)
+      paidDate: status !== "bezahlt" ? undefined
+        : form.paidDate || (invoices.find(i => i.id === editingId)?.status === "bezahlt" ? undefined : localISODate()) } as Invoice;
     // Abrechnungsblock (Akonto/Teilrechnung) mit jedem Speichern festhalten — ein Nachdruck zeigt dieselben Zahlen
     inv.billingSummary = invoiceBillingSummary(inv, data);
 

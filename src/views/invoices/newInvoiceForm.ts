@@ -103,7 +103,8 @@ export const buildNewInvoiceForm = (
   } else if (ni.tab === "offerte") {
     const q = (data.quotes || []).find(x => x.id === ni.quoteId);
     if (!q) return null;
-    const qBase = { ...base, mwst: q.mwst !== false, mwstRate: q.mwstRate ?? data.settings.mwstRate };
+    // MWST-Pflicht aus der Offerte, Satz von heute (eine Offerte von 2023 mit 7.7 % ergab sonst 2024 falsche MWST)
+    const qBase = { ...base, mwst: q.mwst !== false, mwstRate: data.settings.mwstRate };
     const pctAmt = Math.round((q.sub || 0) * (ni.pct / 100) * 100) / 100;
     let items: InvoiceItem[], invoiceKind = "akonto";
     let notes = `Gemäss Offerte ${q.number}. Zahlbar innert 30 Tagen netto.`;

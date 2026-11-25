@@ -32,8 +32,9 @@ export type EntrySelections = NonNullable<Invoice["entrySelections"]>;
 export const calcTotal = (items: InvoiceItem[] | undefined, mwst: boolean | undefined, rate: number, discountType?: string, discountValue?: number) => {
   // Jede Position auf Rappen (wie gedruckt), das Zwischentotal ist ihre Summe
   const sub = roundCHF((items || []).reduce((s, i) => s + lineAmount(i.qty, i.price, i.discount), 0));
+  // Betragsrabatt auf einer Gutschrift (negatives Zwischentotal) verkleinert sie, statt sie zu vergrössern
   const globalDisc = roundCHF(discountType === "percent" ? sub * ((discountValue || 0) / 100)
-    : discountType === "amount" ? (discountValue || 0) : 0);
+    : discountType === "amount" ? (discountValue || 0) * (sub < 0 ? -1 : 1) : 0);
   const subAfterDisc = roundCHF(sub - globalDisc);
   const tax = mwst ? roundCHF(subAfterDisc * (rate / 100)) : 0;
   const total = roundCHF(subAfterDisc + tax);
@@ -159,6 +160,9 @@ export const projectBillingStatus = (invoices: Invoice[], projectId: string, fee
 /** Baut aus den Raten des Akonto-Plans die Entwurfs-Rechnungen (Akonto, 30 Tage Zahlungsfrist). */
 export const buildAkontoInvoices = (rows: AkontoPlanRow[], ap: AkontoPlan, data: AppData, invoices: Invoice[]) => {
   const proj = data.projects.find(p => p.id === ap.projectId);
+  // MWST wie die verknüpften Offerten: sind sie alle ohne MWST (z.B. Ausland), auch die Raten ohne
+  const linkedQ = proj ? migrateLinkedQuotes(proj).map(lq => (data.quotes || []).find(q => q.id === lq.quoteId)).filter(Boolean) : [];
+  const mwst = !(linkedQ.length > 0 && linkedQ.every(q => q!.mwst === false));
   const numbers = generateSequentialNumbers(invoices, data.settings.invoiceNumberFormat, rows.map(r => r.date));
   return rows.map((row, i) => {
     const due = new Date(`${row.date}T00:00:00Z`); due.setUTCDate(due.getUTCDate() + 30);
@@ -166,7 +170,7 @@ export const buildAkontoInvoices = (rows: AkontoPlanRow[], ap: AkontoPlan, data:
     const desc = row.desc || `Akontorechnung${rows.length > 1 ? ` ${i + 1}/${rows.length}` : ""} – ${proj?.name || ""}`;
     const { sub, tax, total, subAfterDisc, globalDisc } = calcTotal(
       [{ id: generateId(), desc, qty: 1, price: row.amt, discount: 0 }],
-      true, data.settings.mwstRate, "none", 0
+      mwst, data.settings.mwstRate, "none", 0
     );
     return {
       id: generateId(), number: numbers[i], date: row.date,
@@ -174,7 +178,7 @@ export const buildAkontoInvoices = (rows: AkontoPlanRow[], ap: AkontoPlan, data:
       clientId: ap.clientId || proj?.clientId || "",
       projectId: ap.projectId, invoiceKind: "akonto",
       items: [{ id: generateId(), desc, qty: 1, price: row.amt, discount: 0 }],
-      mwst: true, mwstRate: data.settings.mwstRate,
+      mwst, mwstRate: data.settings.mwstRate,
       notes: "Zahlbar innert 30 Tagen netto.",
       status: "entwurf", discountType: "none", discountValue: 0,
       sub, tax, total, subAfterDisc, globalDisc,

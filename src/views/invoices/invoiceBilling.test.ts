@@ -3,7 +3,7 @@
 // Erwartete Werte von Hand nachgerechnet (Rechenweg jeweils im Kommentar).
 
 import { describe, expect, it } from "vitest";
-import { akontoPhasePlan, akontoPlanRows, buildAkontoInvoices, invoiceBillingSummary, invoiceForPrint, nextInvoiceNumber } from "./invoiceHelpers";
+import { akontoPhasePlan, akontoPlanRows, buildAkontoInvoices, invoiceBillingSummary, invoiceForPrint, nextInvoiceNumber, calcTotal } from "./invoiceHelpers";
 import type { AkontoPlan } from "./invoiceHelpers";
 import type { AppData, Invoice, Project, Quote } from "../../types";
 
@@ -160,5 +160,13 @@ describe("nextInvoiceNumber: Zähler ist der letzte N-Block", () => {
   it("«RN-NNN» zählt NNN, das N im Präfix bleibt", () => {
     expect(nextInvoiceNumber([], "RN-NNN", "2026-11-25")).toBe("RN-001");
     expect(nextInvoiceNumber([{ number: "RN-001" }], "RN-NNN", "2026-11-25")).toBe("RN-002");
+  });
+});
+
+describe("calcTotal: Gutschrift mit Betragsrabatt", () => {
+  it("Rabatt verkleinert die Gutschrift", () => {
+    const t = calcTotal([{ id: "a", desc: "", qty: 1, price: -1000, discount: 0 }], true, 8.1, "amount", 100);
+    expect(t.subAfterDisc).toBe(-900);
+    expect(t.total).toBe(-972.9);
   });
 });
