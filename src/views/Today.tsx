@@ -11,6 +11,7 @@ import type { PaletteTarget } from "../commandPalette";
 import { NON_BILLING_CATEGORIES, SIA_PHASES } from "../constants";
 import { formatCHF, formatHours, generateId, getKW, localISODate, yearRevenue } from "../utils";
 import { addDays, setLinkedStatus } from "../schedule";
+import { getFirstPhaseForProject } from "./time/timeUtils";
 import { formatElapsed, openTasks, readTimer, timerElapsedMs, timerToEntry, weekAgenda, writeTimer, type RunningTimer } from "../today";
 import { getSollForDay } from "./time/timeUtils";
 import { changeWithUndo } from "../undo";
@@ -61,9 +62,12 @@ export default function Today({ data, currentUser, userPermissions, run, onOpenP
 
   /** Stoppt die Stoppuhr und schreibt den Eintrag (mit Rückgängig). */
   const stop = (t: RunningTimer) => {
-    const entry = timerToEntry(t, new Date(), generateId());
+    const raw = timerToEntry(t, new Date(), generateId());
     setTimer(null);
-    if (!entry) { showToast("Weniger als eine Minute — nichts erfasst"); return; }
+    if (!raw) { showToast("Weniger als eine Minute — nichts erfasst"); return; }
+    // Ohne gewählte Phase die erste des Projekts (wie «+ Eintrag» in der Zeiterfassung) — sonst fehlte der Eintrag
+    // in der Phasenauswertung und im Wochenraster war die Phase leer
+    const entry = raw.phaseId ? raw : { ...raw, ...getFirstPhaseForProject(data.projects.find(p => p.id === raw.projectId)) };
     if (closed.includes(entry.date.slice(0, 7))) { showToast("Monat ist abgeschlossen — Eintrag nicht gespeichert"); return; }
     changeWithUndo(`${formatHours(entry.minutes)} auf ${projectName(entry.projectId)} erfasst`, prev => ({ ...prev, timeEntries: [...(prev.timeEntries || []), entry] }));
   };
