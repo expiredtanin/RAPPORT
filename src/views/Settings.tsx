@@ -63,6 +63,10 @@ export default function Settings({ data, update, currentUser, uiZoom, setUiZoom,
   const setField = (changes: Partial<StudioSettings>) => { setS(prev => ({ ...prev, ...changes })); setSaved(false); };
 
   const save = () => {
+    // Nummernformate brauchen einen Zähler (N…), sonst entsteht immer dieselbe Nummer
+    const noCounter = ([["Rechnungen", s.invoiceNumberFormat], ["Projekte", s.projectNumberFormat], ["Verträge", s.vertragNumberFormat]] as [string, string | undefined][])
+      .filter(([, f]) => f && !/N/.test(f)).map(([l]) => l);
+    if (noCounter.length) { showToast(`Nummernformat ${noCounter.join(", ")}: es fehlt der Zähler (z.B. NNN).`); return; }
     const roleIds = (s.roles || []).map(r => (r.id || "").trim());
     if ((s.roles || []).some(r => !r.id?.trim() || !r.label?.trim())) { showToast("Offerten-Rollen brauchen Kürzel und Bezeichnung."); return; }
     if (new Set(roleIds).size !== roleIds.length) { showToast("Jedes Kürzel der Offerten-Rollen nur einmal."); return; }

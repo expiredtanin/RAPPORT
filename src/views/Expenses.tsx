@@ -15,7 +15,7 @@
 
 import React, { useState, useRef } from "react";
 import { EXPENSE_CATEGORIES } from "../constants";
-import { generateId, formatCHF, formatDate, receiptToDataUrl, checkLocalBudget, localISODate } from "../utils";
+import { generateId, formatCHF, formatDate, receiptToDataUrl, checkLocalBudget, localISODate, roundCHF } from "../utils";
 import { isLocalBackend } from "../storage/adapter";
 import { expenseNet, expenseTax } from "../accounting";
 import { ExpenseFigures } from "../components/ExpenseFigures";
@@ -101,8 +101,8 @@ function Expenses({ data, update, standalone, currentUser }: Pick<ViewProps, "da
     const isNew = modal === "new";
     const newId = isNew ? generateId() : (modal as string);
     const expenses = isNew
-      ? [...(data.expenses || []), { ...form, id: newId } as Expense]
-      : (data.expenses || []).map(e => e.id === modal ? { ...form, id: modal as string } : e);
+      ? [...(data.expenses || []), { ...form, amount: roundCHF(Number(form.amount)), id: newId } as Expense]
+      : (data.expenses || []).map(e => e.id === modal ? { ...form, amount: roundCHF(Number(form.amount)), id: modal as string } : e);
     update("expenses", expenses as Expense[]);
     closeModal();
   };
@@ -233,9 +233,13 @@ function Expenses({ data, update, standalone, currentUser }: Pick<ViewProps, "da
                         {expCatEditIdx === idx ? (
                           <input autoFocus value={expCatEdit} onChange={e => setExpCatEdit(e.target.value)}
                             onBlur={() => {
-                              if (expCatEdit.trim()) {
-                                const updated = expCats.map((c, i) => i === idx ? expCatEdit.trim() : c);
-                                update("settings", { ...data.settings, expenseCategories: updated });
+                              const nu = expCatEdit.trim();
+                              if (nu && nu !== cat && expCats.includes(nu)) showToast(`Die Kategorie «${nu}» gibt es schon.`);
+                              else if (nu && nu !== cat) {
+                                // umbenennen: auch die vorhandenen Spesen (sonst blieben sie unter dem alten Namen)
+                                const updated = expCats.map((c, i) => i === idx ? nu : c);
+                                update("settings", prev => ({ ...prev, expenseCategories: updated }));
+                                update("expenses", prev => (prev || []).map(e => e.category === cat ? { ...e, category: nu } : e));
                               }
                               setExpCatEditIdx(null);
                             }}

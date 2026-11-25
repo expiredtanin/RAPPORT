@@ -137,7 +137,8 @@ function Invoices({ data, update, saveAll, modal, setModal, setPrintContent }: P
     // Rabatt 0 = kein Rabatt (die Zeile im Editor bleibt dann beim nächsten Öffnen zu)
     const noDisc = !((form.discountValue || 0) > 0) ? { discountType: "none", discountValue: 0 } : {};
     const inv = { ...formFields, ...noDisc, number: (form.number || "").trim(), id: invoiceId, sub, globalDisc, subAfterDisc, tax, total, mwstRate: form.mwstRate ?? data.settings.mwstRate, status,
-      entrySelections: selectedEntrySelections(form.entrySelections) } as Invoice;
+      entrySelections: selectedEntrySelections(form.entrySelections),
+      paidDate: status === "bezahlt" ? (form.paidDate || localISODate()) : undefined } as Invoice;
     // Abrechnungsblock (Akonto/Teilrechnung) mit jedem Speichern festhalten — ein Nachdruck zeigt dieselben Zahlen
     inv.billingSummary = invoiceBillingSummary(inv, data);
 

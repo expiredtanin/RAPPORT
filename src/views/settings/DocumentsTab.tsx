@@ -23,11 +23,11 @@ export function DocumentsTab({ s, setField }: DraftProps) {
   // Number format previews
   const invFmt = s.invoiceNumberFormat || "YYYY-NNN";
   const _now = new Date(); const _yyyy = String(_now.getFullYear()); const _yy = _yyyy.slice(2); const _mm = String(_now.getMonth() + 1).padStart(2, "0");
-  const _invPadLen = (invFmt.match(/N+/) || ["NNN"])[0].length;
-  const invFmtPreview = invFmt.replace(/YYYY/g, _yyyy).replace(/YY/g, _yy).replace(/MM/g, _mm).replace(/N+/, String(1).padStart(_invPadLen, "0"));
+  const _invPadLen = (invFmt.match(/N+(?!.*N)/) || ["NNN"])[0].length;
+  const invFmtPreview = invFmt.replace(/YYYY/g, _yyyy).replace(/YY/g, _yy).replace(/MM/g, _mm).replace(/N+(?!.*N)/, String(1).padStart(_invPadLen, "0"));
   const vertragFmt = s.vertragNumberFormat || "V-YYYY-NNN";
-  const _vertragPadLen = (vertragFmt.match(/N+/) || ["NNN"])[0].length;
-  const vertragFmtPreview = vertragFmt.replace(/YYYY/g, _yyyy).replace(/YY/g, _yy).replace(/MM/g, _mm).replace(/N+/, String(1).padStart(_vertragPadLen, "0"));
+  const _vertragPadLen = (vertragFmt.match(/N+(?!.*N)/) || ["NNN"])[0].length;
+  const vertragFmtPreview = vertragFmt.replace(/YYYY/g, _yyyy).replace(/YY/g, _yy).replace(/MM/g, _mm).replace(/N+(?!.*N)/, String(1).padStart(_vertragPadLen, "0"));
   const protoFmt = s.protokollNumberFormat || "PP-TT-NN";
   const protoAbbr = s.protokollTypeAbbreviations || {};
   const protoFmtPreview = applyProtoNumberFormat(protoFmt, {

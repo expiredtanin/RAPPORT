@@ -715,9 +715,9 @@ export function applyProjectNumberFormat(fmt: string | undefined, seq: number | 
   const yy = yyyy.slice(2);
   const mm = String(now.getMonth() + 1).padStart(2, "0");
   const f = fmt || "YYYY/NN";
-  const padLen = (f.match(/N+/) || ["NN"])[0].length;
+  const padLen = (f.match(/N+(?!.*N)/) || ["NN"])[0].length;
   const nn = String(seq).padStart(padLen, "0");
-  return f.replace(/YYYY/g, yyyy).replace(/YY/g, yy).replace(/MM/g, mm).replace(/N+/, nn);
+  return f.replace(/YYYY/g, yyyy).replace(/YY/g, yy).replace(/MM/g, mm).replace(/N+(?!.*N)/, nn);
 }
 
 /**
@@ -736,7 +736,7 @@ export function parseSeqFromNumber(num: string | null | undefined, fmt: string |
     .replace(/YYYY/g, yyyy)
     .replace(/YY/g, yy)
     .replace(/MM/g, "\\d{2}")
-    .replace(/N+/, "(\\d+)");
+    .replace(/N+(?!.*N)/, "(\\d+)");
   const match = num.match(new RegExp("^" + pattern + "$"));
   return match ? parseInt(match[1]) : null;
 }

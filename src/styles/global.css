@@ -72,7 +72,7 @@
   --text2: #bdb9b1;
   --text3: #a19d95;
   --text4: #827e77;
-  --text5: #5f5c56;
+  --text5: #7a766e;   /* Dark Mode: 3.6:1 auf --surface (vorher #5f5c56 ≈ 2.5:1, Hilfetexte kaum lesbar) */
   --input-bg: #1b1b18;
   --input-border: #3c3c34;
   --scrollbar-track: transparent;

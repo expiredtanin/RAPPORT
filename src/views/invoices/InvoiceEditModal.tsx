@@ -82,6 +82,8 @@ export function InvoiceEditModal({ modal, setModal, form, setForm, data, clients
           setForm({ ...form, date: e.target.value, ...(auto && e.target.value ? { number: nextInvoiceNumber(data.invoices || [], fmt, e.target.value) } : {}) });
         }} /></FormField>
         <FormField label="Fällig am"><DateInput value={form.dueDate} onChange={e => setForm({ ...form, dueDate: e.target.value })} /></FormField>
+        {/* Zahlungseingang (MWST nach vereinnahmten Entgelten, Zahlungsmoral) — beim Statuswechsel heute, hier korrigierbar */}
+        {form.status === "bezahlt" && <FormField label="Bezahlt am"><DateInput value={form.paidDate || ""} onChange={e => setForm({ ...form, paidDate: e.target.value || undefined })} /></FormField>}
       </div>
       <div className="form-row">
         <FormField label="Kunde *">

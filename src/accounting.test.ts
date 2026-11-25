@@ -268,6 +268,9 @@ describe("accountingSummary — Jahresergebnis und MWST-Abrechnung", () => {
     expect(accountingSummary(mitEnde, "2026", END).intNet).toBe(7500);
     const ex = expandInternalExpenses(data.internalExpenses, "2026-04-30").filter(e => e.occurrenceOf === "x1").map(e => e.date);
     expect(ex).toEqual(["2026-02-28", "2026-03-31", "2026-04-30"]); // Monatsende bleibt Monatsende
+    // Serie, die erst in Zukunft beginnt: die erste Buchung erscheint (Liste), weitere erst, wenn fällig
+    const fut = expandInternalExpenses([{ id: "f", date: "2026-12-05", amount: 100, recurring: true } as never], "2026-11-25");
+    expect(fut.map(e => e.date)).toEqual(["2026-12-05"]);
   });
 
   it("Saldosteuersatz: Bruttoentgelt × Satz, keine Vorsteuer, halbjährlich", () => {

@@ -3,7 +3,7 @@
 // Erwartete Werte von Hand nachgerechnet (Rechenweg jeweils im Kommentar).
 
 import { describe, expect, it } from "vitest";
-import { akontoPhasePlan, akontoPlanRows, buildAkontoInvoices, invoiceBillingSummary, invoiceForPrint } from "./invoiceHelpers";
+import { akontoPhasePlan, akontoPlanRows, buildAkontoInvoices, invoiceBillingSummary, invoiceForPrint, nextInvoiceNumber } from "./invoiceHelpers";
 import type { AkontoPlan } from "./invoiceHelpers";
 import type { AppData, Invoice, Project, Quote } from "../../types";
 
@@ -153,5 +153,12 @@ describe("akontoPhasePlan", () => {
     const created = buildAkontoInvoices(rows, plan, data, []);
     expect(created.map(i => i.items[0].desc)).toEqual(["Akontorechnung 32 Bauprojekt – Limmatfeld", "Akontorechnung 33 Bewilligungsverfahren – Limmatfeld"]);
     expect(created.map(i => i.number)).toEqual(["2027-001", "2027-002"]);
+  });
+});
+
+describe("nextInvoiceNumber: Zähler ist der letzte N-Block", () => {
+  it("«RN-NNN» zählt NNN, das N im Präfix bleibt", () => {
+    expect(nextInvoiceNumber([], "RN-NNN", "2026-11-25")).toBe("RN-001");
+    expect(nextInvoiceNumber([{ number: "RN-001" }], "RN-NNN", "2026-11-25")).toBe("RN-002");
   });
 });

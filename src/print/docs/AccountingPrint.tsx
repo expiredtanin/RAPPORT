@@ -3,7 +3,7 @@
 import React from "react";
 import { STATUS_COLORS } from "../../constants";
 import { formatCHF, formatDate, formatSenderAddress, invoiceNet } from "../../utils";
-import { accountingRows, accountingSummary, expenseNet, lohnAGBeitraege } from "../../accounting";
+import { accountingRows, accountingSummary, expenseNet, lohnAGBeitraege, periodLabel } from "../../accounting";
 import { StudioLogo } from "../../components/UI";
 import type { AppData, Settings } from "../../types";
 import { HEADING } from "./shared";
@@ -27,10 +27,11 @@ export function BuchhaltungPrint({ data, filterYear, settings }: { data: AppData
   const totalAuszahlung = loehne.reduce((s, l) => s + (l.auszahlung || 0), 0);
   const totalAusgaben = sum.ausgabenTotal;
 
-  const thStyle: React.CSSProperties = { textAlign: "left", padding: "6px 0", fontSize: 8, letterSpacing: "0.1em", color: "#888", fontWeight: 500, borderBottom: "1px solid var(--doc-ink)" };
-  const thR: React.CSSProperties = { ...thStyle, textAlign: "right" };
-  const tdStyle: React.CSSProperties = { padding: "5px 0", fontSize: 9, borderBottom: "1px solid #f0f0f0" };
-  const tdR: React.CSSProperties = { ...tdStyle, textAlign: "right" };
+  // Zellabstand rechts bzw. links (vorher 0: «11.11.2026Sihltal», «NettoVorsteuer»); Zahlen und Daten ohne Umbruch
+  const thStyle: React.CSSProperties = { textAlign: "left", padding: "6px 8px 6px 0", fontSize: 8, letterSpacing: "0.1em", color: "#888", fontWeight: 500, borderBottom: "1px solid var(--doc-ink)" };
+  const thR: React.CSSProperties = { ...thStyle, textAlign: "right", padding: "6px 0 6px 8px" };
+  const tdStyle: React.CSSProperties = { padding: "5px 8px 5px 0", fontSize: 9, borderBottom: "1px solid #f0f0f0" };
+  const tdR: React.CSSProperties = { ...tdStyle, textAlign: "right", padding: "5px 0 5px 8px", whiteSpace: "nowrap" };
 
   return (
     <>
@@ -42,7 +43,7 @@ export function BuchhaltungPrint({ data, filterYear, settings }: { data: AppData
         </div>
         <div style={{ textAlign: "right" }}>
           <div style={{ fontSize: 10, letterSpacing: "0.15em", color: "#888" }}>BUCHHALTUNGSÜBERSICHT</div>
-          <div className="doc-heading" style={{ ...HEADING, fontSize: 20, marginTop: 4 }}>{filterYear || "Alle Jahre"}</div>
+          <div className="doc-heading" style={{ ...HEADING, fontSize: 20, marginTop: 4 }}>{periodLabel(filterYear || "")}</div>
           <div style={{ fontSize: 9, color: "#888", marginTop: 4 }}>{new Date().toLocaleDateString("de-CH")}</div>
         </div>
       </div>
@@ -105,8 +106,8 @@ export function BuchhaltungPrint({ data, filterYear, settings }: { data: AppData
               const desc = (inv.items || []).map(it => it.desc).filter(Boolean).join(", ");
               return (
                 <tr key={inv.id}>
-                  <td style={tdStyle}><strong>{inv.number}</strong></td>
-                  <td style={tdStyle}>{formatDate(inv.date)}</td>
+                  <td style={{ ...tdStyle, whiteSpace: "nowrap" }}><strong>{inv.number}</strong></td>
+                  <td style={{ ...tdStyle, whiteSpace: "nowrap" }}>{formatDate(inv.date)}</td>
                   <td style={tdStyle}>{client?.name || "—"}</td>
                   <td style={{ ...tdStyle, color: "#666", maxWidth: 140, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{desc || "—"}</td>
                   <td style={tdR}>{formatCHF(invoiceNet(inv))}</td>
@@ -153,7 +154,7 @@ export function BuchhaltungPrint({ data, filterYear, settings }: { data: AppData
               const tax = e.amount - net;
               return (
                 <tr key={e.id}>
-                  <td style={tdStyle}>{formatDate(e.date)}</td>
+                  <td style={{ ...tdStyle, whiteSpace: "nowrap" }}>{formatDate(e.date)}</td>
                   <td style={tdStyle}>{e.category}</td>
                   <td style={{ ...tdStyle, color: "#666" }}>{proj?.name || "—"}</td>
                   <td style={{ ...tdStyle, color: "#666" }}>{e.description || "—"}</td>
@@ -198,7 +199,7 @@ export function BuchhaltungPrint({ data, filterYear, settings }: { data: AppData
                 const tax = e.amount - net;
                 return (
                   <tr key={e.id}>
-                    <td style={tdStyle}>{formatDate(e.date)}</td>
+                    <td style={{ ...tdStyle, whiteSpace: "nowrap" }}>{formatDate(e.date)}</td>
                     <td style={tdStyle}>{e.category}</td>
                     <td style={{ ...tdStyle, color: "#666" }}>{e.description || "—"}</td>
                     <td style={tdR}>{formatCHF(net)}</td>

@@ -56,17 +56,17 @@ export const nextInvoiceNumber = (invoices: Pick<Invoice, "number">[], format: s
   const pattern = fmt
     .replace(/[-/^$*+?.()|[\]{}]/g, "\\$&")
     .replace(/YYYY/g, yyyy).replace(/YY/g, yy).replace(/MM/g, "\\d{2}")
-    .replace(/N+/, "(\\d+)");
+    .replace(/N+(?!.*N)/, "(\\d+)");
   const rx = new RegExp("^" + pattern + "$");
   const nums = invoices.map(i => {
     const m = (i.number || "").match(rx);
     return m ? parseInt(m[1]) : null;
   }).filter(n => n !== null);
   const nextSeq = nums.length ? Math.max(...nums) + 1 : 1;
-  const padLen = (fmt.match(/N+/) || ["NNN"])[0].length;
+  const padLen = (fmt.match(/N+(?!.*N)/) || ["NNN"])[0].length;
   return fmt
     .replace(/YYYY/g, yyyy).replace(/YY/g, yy).replace(/MM/g, mm)
-    .replace(/N+/, String(nextSeq).padStart(padLen, "0"));
+    .replace(/N+(?!.*N)/, String(nextSeq).padStart(padLen, "0"));
 };
 
 /** true, wenn eine andere Rechnung (Id ≠ `ownId`) schon die Nummer `number` trägt (ohne Leerzeichen am Rand). */

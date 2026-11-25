@@ -106,7 +106,9 @@ export function expandInternalExpenses(list: InternalExpense[], today: string): 
       const first = new Date(Date.UTC(y0, m0 + k * step, 1));
       const last = new Date(Date.UTC(first.getUTCFullYear(), first.getUTCMonth() + 1, 0)).getUTCDate();
       const d = new Date(Date.UTC(first.getUTCFullYear(), first.getUTCMonth(), Math.min(d0, last))).toISOString().slice(0, 10);
-      if (d > today || (untilMonth && d.slice(0, 7) > untilMonth)) break;
+      // erste Buchung immer (wie eine einmalige Ausgabe mit Datum in der Zukunft) — sonst war eine Serie mit
+      // Startdatum nach heute in der Liste unsichtbar und liess sich weder bearbeiten noch löschen
+      if (k > 0 && (d > today || (untilMonth && d.slice(0, 7) > untilMonth))) break;
       out.push(k === 0 ? e : { ...e, id: `${e.id}@${d}`, date: d, occurrenceOf: e.id, receiptData: null, receiptName: null });
     }
   }
