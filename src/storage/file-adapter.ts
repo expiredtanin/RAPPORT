@@ -98,11 +98,6 @@ export function joinData(files: Map<string, Json>): RawData | null {
 /** Meldung, wenn der Ordner (noch) nicht lesbar ist — z.B. iCloud hat Dateien nicht heruntergeladen. */
 export class DataFolderError extends Error {}
 
-/** Speichern teilweise blockiert (ausgelagerte Zeitdateien `names`); `pulled` = dabei flossen fremde Änderungen ein. */
-class BlockedSaveError extends DataFolderError {
-  constructor(message: string, readonly names: string[], public pulled = false) { super(message); }
-}
-
 /** Cloud-/Sync-Dienste benennen Konfliktkopien so; solche Dateien werden nie als Daten gelesen. */
 const isConflictName = (n: string) => / \d+\.json$/.test(n) || / \(\d+\)\.json$/.test(n) || /conflict|konflikt/i.test(n);   // «x 2.json», «x (1).json» (Drive/Windows)
 const isDataName = (n: string) => n.endsWith(".json") && !n.includes(".tmp-") && !isConflictName(n);
@@ -123,8 +118,6 @@ export class FileStorageAdapter implements StorageAdapter {
   private assets: FileAssetStore;
   /** Anhänge, deren Datei beim letzten Laden fehlte (z.B. von iCloud noch nicht geladen); Pfade relativ zum Ordner. */
   missingFiles: string[] = [];
-  /** Zeitdateien, die beim letzten Laden nur als iCloud-Platzhalter da waren (deren Stunden fehlen in der Ansicht). */
-  pendingTimeFiles: string[] = [];
 
   constructor(dir: string, fs: FsApi, deviceId = "geraet") {
     this.dir = dir.replace(/\/+$/, "");
@@ -141,17 +134,15 @@ export class FileStorageAdapter implements StorageAdapter {
   }
 
   /** Namen der vorhandenen Datendateien (studio.json, time/…) und ob iCloud noch Platzhalter statt Dateien hat. */
-  private async dataNames(): Promise<{ names: string[]; icloudPending: boolean; pendingTime: string[] }> {
+  private async dataNames(): Promise<{ names: string[]; icloudPending: boolean }> {
     const [top, time] = await Promise.all([this.fs.list(this.dir), this.fs.list(this.path("time"))]);
-    // iCloud-Platzhalter «.name.json.icloud» echter Datendateien (Konfliktkopien zählen nicht)
+    // iCloud-Platzhalter «.name.json.icloud» echter Datendateien (Konfliktkopien zählen nicht). Fehlt auch nur eine
+    // Datei, nicht laden: sonst fehlten deren Einträge still, und Teilzustände beim Speichern führten zu Verlusten
+    // (Reviews Runde 17–21). Abhilfe einmalig: Ordner im Finder auf «Download behalten» stellen.
     const placeholder = (n: string) => n.startsWith(".") && n.endsWith(".icloud") && isDataName(n.slice(1, -7));
     return {
       names: [...(top.includes(STUDIO) ? [STUDIO] : []), ...time.filter(isDataName).map(n => `time/${n}`)],
-      // ohne studio.json und mit Platzhaltern: Ordner noch nicht geladen → Fehlerbildschirm
-      icloudPending: !top.includes(STUDIO) && [...top, ...time].some(placeholder),
-      // einzelne ausgelagerte Zeitdateien (z.B. «Mac-Speicher optimieren»): laden ohne sie, aber melden; Speichern in
-      // diesen Monat scheitert in writeAll, statt die Datei neu anzulegen (das Original würde zur Konfliktkopie)
-      pendingTime: time.filter(placeholder).map(n => `time/${n.slice(1, -7)}`),
+      icloudPending: top.some(placeholder) || time.some(placeholder),
     };
   }
 
@@ -163,10 +154,9 @@ export class FileStorageAdapter implements StorageAdapter {
   /** Liest alle Datendateien, aktualisiert `known` und gibt den Gesamtstand zurück (null = noch keine Daten). */
   async load(): Promise<RawData | null> {
     await this.fs.mkdir(this.dir);
-    const { names, icloudPending, pendingTime } = await this.dataNames();
-    this.pendingTimeFiles = pendingTime;
+    const { names, icloudPending } = await this.dataNames();
     if (icloudPending) {
-      throw new DataFolderError("Der Datenordner ist noch nicht vollständig von iCloud geladen. Im Finder Rechtsklick auf den Ordner → «Jetzt laden» bzw. «Download behalten» und danach Rapport neu starten.");
+      throw new DataFolderError("Der Datenordner ist noch nicht vollständig von iCloud geladen. Im Finder Rechtsklick auf den Ordner «Rapport» → «Download behalten» (verhindert auch künftiges Auslagern) und danach Rapport neu starten.");
     }
     const read = await Promise.all(names.map(async name => {
       const st = await this.fs.stat(this.path(name));
@@ -224,7 +214,6 @@ export class FileStorageAdapter implements StorageAdapter {
         if (pulled) await this.emitExternal();
       } catch (e) {
         console.error("Datenordner: Speichern fehlgeschlagen:", e);
-        if (e instanceof BlockedSaveError) await this.keepBlocked(data, e).catch(err => console.error("Datenordner:", err));
         waiters.forEach(w => w.reject(e));
       }
     });
@@ -239,7 +228,16 @@ export class FileStorageAdapter implements StorageAdapter {
     // Zeitdateien, die es nicht mehr gibt (alle Einträge gelöscht/verschoben), leeren
     for (const name of this.known.keys()) if (name !== STUDIO && !next.has(name)) next.set(name, { format: FORMAT, entries: [] });
     let pulled = false;
-    const blockedNames: string[] = [];
+    // Ausgelagerte Datei (iCloud-Platzhalter) unter den zu schreibenden: gar nichts schreiben (keine Teilzustände) —
+    // die Änderungen bleiben in der App und werden beim nächsten Speichern erneut versucht
+    const timeListing = await this.fs.list(this.path("time"));
+    for (const [name, mine] of next) {
+      const k = this.known.get(name);
+      if (name === STUDIO || (k && jsonEqual(k.content, mine))) continue;
+      if (timeListing.includes(`.${name.slice(5)}.icloud`)) {
+        throw new DataFolderError(`Die Datei «${name}» ist im Datenordner gerade nicht geladen (von iCloud ausgelagert). Nichts wurde gespeichert; die Änderungen bleiben hier und werden erneut versucht. Im Finder den Ordner «Rapport» auf «Download behalten» stellen — und Rapport erst danach beenden.`);
+      }
+    }
     for (const [name, mine] of next) {
       const k = this.known.get(name);
       if (k && jsonEqual(k.content, mine)) continue;
@@ -255,10 +253,7 @@ export class FileStorageAdapter implements StorageAdapter {
         const dirName = slash >= 0 ? name.slice(0, slash) : "", base = name.slice(slash + 1);
         const listed = await this.fs.list(dirName ? this.path(dirName) : this.dir);
         if (listed.includes(base) || listed.includes(`.${base}.icloud`)) {
-          // nicht abbrechen: die übrigen Dateien trotzdem schreiben (sonst blieben alle späteren Monate ungespeichert),
-          // am Ende melden
-          blockedNames.push(name);
-          continue;
+          throw new DataFolderError(`Die Datei «${name}» ist im Datenordner gerade nicht lesbar. Die Änderung bleibt hier und wird beim nächsten Speichern erneut geschrieben.`);
         }
       }
       if (!st && k && name !== STUDIO) {
@@ -282,9 +277,6 @@ export class FileStorageAdapter implements StorageAdapter {
       const after = await this.fs.stat(path);
       this.known.set(name, { content: result, mtime: after?.mtime ?? 0, size: after?.size ?? 0 });
     }
-    if (blockedNames.length) {
-      throw new BlockedSaveError(`Die Datei «${blockedNames[0]}» ist im Datenordner gerade nicht lesbar (z.B. von iCloud ausgelagert). Die Änderungen in diesem Monat bleiben hier und werden erneut geschrieben, sobald die Datei geladen ist — Rapport nicht beenden, bevor sie da ist.`, blockedNames, pulled);
-    }
     await this.backupIfDue();
     return pulled;
   }
@@ -299,8 +291,6 @@ export class FileStorageAdapter implements StorageAdapter {
   private async backupIfDue() {
     const day = localISODate();
     if (this.backupDay === day) return;
-    // mit ausgelagerten Zeitdateien wäre das Backup unvollständig (und verdrängte vollständigere)
-    if (this.pendingTimeFiles.length) return;
     const data = this.snapshot();
     if (!data) return;
     await this.fs.mkdir(this.path("backups"));
@@ -412,25 +402,6 @@ export class FileStorageAdapter implements StorageAdapter {
    * sieht die fremde Änderung, verrechnet sie per Merge und meldet danach den gemeinsamen Stand. Sonst würde das
    * Speichern die fremde Änderung überschreiben und die App die eigene verlieren.
    */
-  /**
-   * Nach teilweise blockiertem Speichern: den Stand der blockierten Monate behalten (als `pending`, damit ein Nachladen
-   * ihn nicht ersetzt; geschrieben wird er beim nächsten Speichern bzw. wenn die Überwachung die geladene Datei meldet).
-   * Sind dabei Änderungen der anderen Person eingeflossen, bekommt die App den neuen Stand plus die eigenen Einträge der
-   * blockierten Monate — sonst überschrieb das nächste Speichern die fremden Einträge (Review Runde 20).
-   */
-  private async keepBlocked(data: AppData, e: BlockedSaveError) {
-    let keep = data;
-    if (e.pulled) {
-      const loaded = (await this.load()) as AppData | null;
-      if (loaded) {
-        const blocked = new Set(e.names);
-        keep = { ...loaded, timeEntries: [...(loaded.timeEntries || []).filter(t => !blocked.has(timeFileName(t))), ...(data.timeEntries || []).filter(t => blocked.has(timeFileName(t)))] };
-        this.listeners.forEach(cb => cb(keep as unknown as RawData));
-      }
-    }
-    if (!this.pending) this.pending = keep;
-  }
-
   private async emitExternal() {
     const before = this.known;
     const data = await this.load();

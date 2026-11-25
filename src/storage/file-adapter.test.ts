@@ -261,51 +261,34 @@ describe("Datenordner: Zeitdatei von iCloud ausgelagert", () => {
     const a = (await A.load()) as unknown as AppData;
     // iCloud lagert die Datei aus: nur noch der Platzhalter liegt im Ordner
     await rename(join(dir, "time/e2_2026-11.json"), join(dir, "time/.e2_2026-11.json.icloud"));
-    await expect(A.save({ ...a, timeEntries: a.timeEntries.map(e => e.id === "t1" ? { ...e, minutes: 90 } : e) })).rejects.toThrow(/nicht lesbar/);
+    await expect(A.save({ ...a, timeEntries: a.timeEntries.map(e => e.id === "t1" ? { ...e, minutes: 90 } : e) })).rejects.toThrow(/nicht (lesbar|geladen)/);
     await rename(join(dir, "time/.e2_2026-11.json.icloud"), join(dir, "time/e2_2026-11.json"));
     const back = (await new FileStorageAdapter(dir, nodeFs, "C").load()) as unknown as AppData;
     expect(back.timeEntries.map(e => e.id).sort()).toEqual(["t1", "t2"]);
   });
 
-  it("ausgelagerte Zeitdatei: Laden ohne sie (gemeldet), Speichern in diesen Monat scheitert statt sie neu anzulegen", async () => {
-    const te = (id: string, date: string) => ({ id, employeeId: "e2", date, minutes: 60 }) as never;
-    await new FileStorageAdapter(dir, nodeFs, "A").save({ ...sampleData(), expenses: [], timeEntries: [te("t1", "2026-10-03")] });
-    await rename(join(dir, "time/e2_2026-10.json"), join(dir, "time/.e2_2026-10.json.icloud"));
-    // Platzhalter einer Konfliktkopie stört nicht
-    await writeFile(join(dir, "time/.e2_2026-09 2.json.icloud"), "");
-    const B = new FileStorageAdapter(dir, nodeFs, "B");
-    const loaded = (await B.load()) as unknown as AppData;
-    expect(loaded.timeEntries).toEqual([]);
-    expect(B.pendingTimeFiles).toEqual(["time/e2_2026-10.json"]);
-    // ein Eintrag im ausgelagerten Monat blockiert nicht die anderen Monate
-    await expect(B.save({ ...loaded, timeEntries: [te("t3", "2026-10-05"), te("t4", "2026-11-05")] })).rejects.toThrow(/nicht lesbar/);
-    const files = await readdir(join(dir, "time"));
-    expect(files).not.toContain("e2_2026-10.json");
-    expect(files).toContain("e2_2026-11.json");
-  });
-
-  it("blockierter Monat + fremde Änderung in anderem Monat: fremder Eintrag bleibt, eigener blockierter wird später geschrieben", async () => {
+  it("ausgelagerte Zeitdatei: Laden zeigt den Fehler (Konfliktkopien zählen nicht), Speichern schreibt nichts halb", async () => {
     const te = (id: string, date: string, minutes = 60) => ({ id, employeeId: "e2", date, minutes }) as never;
     const A = new FileStorageAdapter(dir, nodeFs, "A");
     await A.save({ ...sampleData(), expenses: [], timeEntries: [te("t1", "2026-10-03"), te("t2", "2026-11-03")] });
     const a = (await A.load()) as unknown as AppData;
-    const seen: AppData[] = [];
-    A.onExternalChange(d => seen.push(d as unknown as AppData));
-    // Gerät B ergänzt im November
+    // Platzhalter einer Konfliktkopie stört nicht
+    await writeFile(join(dir, "time/.e2_2026-09 2.json.icloud"), "");
+    await new FileStorageAdapter(dir, nodeFs, "C").load();
+    // Gerät B ergänzt im November, danach wird der Oktober ausgelagert
     const B = new FileStorageAdapter(dir, nodeFs, "B");
     const b = (await B.load()) as unknown as AppData;
     await B.save({ ...b, timeEntries: [...b.timeEntries, te("tB", "2026-11-04")] });
-    // Oktober wird bei A ausgelagert; A ändert Oktober und November
     await rename(join(dir, "time/e2_2026-10.json"), join(dir, "time/.e2_2026-10.json.icloud"));
+    await expect(new FileStorageAdapter(dir, nodeFs, "D").load()).rejects.toThrow(/iCloud/);
+    // A (schon geladen) ändert Oktober und November: nichts wird geschrieben, auch nicht der November
     const mine = { ...a, timeEntries: [te("t1", "2026-10-03", 90), te("t2", "2026-11-03", 120)] };
-    await expect(A.save(mine)).rejects.toThrow(/nicht lesbar/);
-    // App bekommt tB, die eigene Oktober-Änderung bleibt im Stand
-    const last = seen[seen.length - 1];
-    expect(last.timeEntries.map(e => e.id).sort()).toEqual(["t1", "t2", "tB"]);
-    // Datei wieder da → nächstes Speichern (wie die Überwachung) schreibt den Oktober, tB bleibt
+    await expect(A.save(mine)).rejects.toThrow(/nicht geladen/);
+    expect(await readdir(join(dir, "time"))).not.toContain("e2_2026-10.json");
+    // Datei wieder da → erneutes Speichern verrechnet, tB bleibt
     await rename(join(dir, "time/.e2_2026-10.json.icloud"), join(dir, "time/e2_2026-10.json"));
-    await A.checkExternal();
-    const back = (await new FileStorageAdapter(dir, nodeFs, "C").load()) as unknown as AppData;
+    await A.save(mine);
+    const back = (await new FileStorageAdapter(dir, nodeFs, "E").load()) as unknown as AppData;
     expect(back.timeEntries.map(e => [e.id, e.minutes]).sort()).toEqual([["t1", 90], ["t2", 120], ["tB", 60]]);
   });
 
