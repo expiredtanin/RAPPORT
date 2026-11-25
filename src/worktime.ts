@@ -440,7 +440,8 @@ export function createWorktime(data: WorkData, today: DateStr) {
     const soll = sollBruttoForDay(emp, ds);
     if (soll <= 0) return 0;
     if (vacationDays(emp.id).has(ds) && !absenceIndex(emp.id).full.has(ds)) return 0;
-    return list.reduce((s, a) => (type && a.type !== type ? s : s + (a.mins === null ? soll : a.mins / 60)), 0);
+    // höchstens das Tagessoll (10 h Krankheit an einem 8.4-h-Tag ergaben sonst +1.6 h Saldo, später als Überstunden auszahlbar)
+    return Math.min(soll, list.reduce((s, a) => (type && a.type !== type ? s : s + (a.mins === null ? soll : a.mins / 60)), 0));
   };
 
   /** Saldo einer Periode [from, to]; Soll, Ferien und Absenzen nur bis `upTo` (Standard heute). */
@@ -475,7 +476,8 @@ export function createWorktime(data: WorkData, today: DateStr) {
     const beforeStichtag = (a: { date?: string | null; year?: number | null }) =>
       !!stichtag && (a.date ? a.date < stichtag : Number(a.year) < Number(stichtag.slice(0, 4)));
     const paidOut = (data.uberstundenAbschluss || [])
-      .filter(a => a.empId === emp.id && a.type === "payout" && (!a.date || a.date <= upTo) && !beforeStichtag(a))
+      // bis `upTo` ausbezahlt — oder für ein Jahr, das bis `upTo` abgeschlossen ist (Abschluss 2025 im Februar 2026)
+      .filter(a => a.empId === emp.id && a.type === "payout" && (!a.date || a.date <= upTo || (a.year != null && `${a.year}-12-31` <= upTo)) && !beforeStichtag(a))
       .reduce((s, a) => s + (Number(a.hoursSettled) || 0), 0);
     const uebertrag = stichtag ? Number(emp.saldoUebertragStunden) || 0 : 0;
     return { ...p, uebertrag, paidOut, balance: uebertrag + p.saldo - paidOut };

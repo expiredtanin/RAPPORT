@@ -4,7 +4,7 @@
 import { DEFAULT_LEAD_SOURCES } from "../../constants";
 import { showToast } from "../../toast";
 import { isLocalBackend } from "../../storage/adapter";
-import { formatIban, isQRIban, readAsDataUrl, checkLocalBudget, DEFAULT_MAHNGEBUEHREN } from "../../utils";
+import { formatIban, isQRIban, isValidIban, readAsDataUrl, checkLocalBudget, DEFAULT_MAHNGEBUEHREN } from "../../utils";
 import { FormField } from "../../components/UI";
 import { Section, type DraftProps } from "./shared";
 import type { AppData } from "../../types";
@@ -65,7 +65,8 @@ export function StudioTab({ s, setField, data }: DraftProps & { data: AppData })
           <FormField label="IBAN">
             <input value={s.iban} onChange={e => { const f = formatIban(e.target.value); setField({ iban: f, ibanType: isQRIban(f) ? "qr" : "normal" }); }} placeholder="CH00 0000 0000 0000 0000 0" />
             <div style={{ fontSize: 11, color: isQRIban(s.iban) ? "var(--positive)" : "var(--warning)", marginTop: 4 }}>
-              {isQRIban(s.iban) ? "✓ QR-IBAN — strukturierte Referenz verfügbar" : "Normale IBAN — ohne strukturierte Referenz"}
+              {s.iban && !isValidIban(s.iban) ? <span style={{ color: "var(--negative)" }}>IBAN ungültig (Prüfziffer stimmt nicht) — QR-Rechnungen lassen sich so nicht erstellen</span>
+                : isQRIban(s.iban) ? "✓ QR-IBAN — strukturierte Referenz verfügbar" : "Normale IBAN — ohne strukturierte Referenz"}
             </div>
           </FormField>
           <FormField label="MWST-Nr."><input value={s.mwst} onChange={e => setField({ mwst: e.target.value })} /></FormField>

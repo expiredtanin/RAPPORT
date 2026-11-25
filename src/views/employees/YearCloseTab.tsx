@@ -39,12 +39,15 @@ export default function YearCloseTab({ data, employees, abschlussYear, setAbschl
 
       {employees.filter(emp => emp.eintrittsdatum && emp.eintrittsdatum <= `${abschlussYear}-12-31`).map(emp => {
         const fs = calcFerienYear(emp, abschlussYear);
-        const ubSaldo = calcEffectiveUbSaldo(emp);
+        // Stichtag = Ende des Abschlussjahrs (bzw. heute, solange es läuft): vorher zählte ein Abschluss 2025 im
+        // Februar 2026 die Stunden aus Januar/Februar 2026 mit, und der Stundenlohn war der von heute
+        const stichtag = [`${abschlussYear}-12-31`, localISODate()].sort()[0];
+        const ubSaldo = calcEffectiveUbSaldo(emp, stichtag);
         const currentUebertrag = (emp.ferienUebertragVorjahr || {})[abschlussYear + 1];
         const formDef = { ferienUebertrag: fs.restH > 0 ? fs.restH : 0, ubHours: ubSaldo > 0 ? ubSaldo : 0, ubZuschlag: 25 };
         const form = { ...formDef, ...(abschlussForm[emp.id] || {}) };
         const setForm = (val: Partial<AbschlussForm>) => setAbschlussForm(prev => ({ ...prev, [emp.id]: { ...form, ...val } }));
-        const stundenlohn = overtimeHourlyRate(emp, localISODate());
+        const stundenlohn = overtimeHourlyRate(emp, stichtag);
         const az = arbeitszeitAm(emp, `${abschlussYear}-12-31`);
         const auszahlungBetrag = Math.round(form.ubHours * stundenlohn * (1 + form.ubZuschlag / 100) * 100) / 100;
         const existingPayouts = (data.uberstundenAbschluss || []).filter(a => a.empId === emp.id && a.year === abschlussYear);
@@ -118,7 +121,10 @@ export default function YearCloseTab({ data, employees, abschlussYear, setAbschl
                   <div style={{ marginBottom: 12 }}>
                     {existingPayouts.map(p => (
                       <div key={p.id} style={{ fontSize: 11, color: "var(--st-c-bezahlt)", background: "var(--st-bg-bezahlt)", border: `1px solid color-mix(in srgb, var(--st-c-bezahlt) 30%, transparent)`, borderRadius: 20, padding: "4px 12px", marginBottom: 4 }}>
-                        ✓ {p.hoursSettled}h ausbezahlt — {formatCHF(p.auszahlungBetrag)} ({p.zuschlagPercent}% Zuschlag)
+                        ✓ {p.hoursSettled}h ausbezahlt — {formatCHF(p.auszahlungBetrag)} ({p.zuschlagPercent}% Zuschlag){(() => {
+                          const l = (data.lohnEntries || []).find(x => (x.ueberstundenIds || []).includes(p.id));
+                          return l ? ` · mit Lohn ${l.monat.slice(5)}.${l.monat.slice(0, 4)} abgerechnet` : " · kommt in den nächsten Lohnlauf";
+                        })()}
                       </div>
                     ))}
                   </div>

@@ -769,7 +769,9 @@ export interface LohnResult {
   /** 1/12 des Bruttos pro Monat, wenn 13. Monatslohn vereinbart */
   dreizehnter: number;
   bonusBetrag: number;
-  /** Brutto + 13. + Bonus — Basis aller Abzüge */
+  /** Ausbezahlte Überstunden (Jahresabschluss), mit diesem Lohn abgerechnet; AHV-/ALV-/UVG-/QST-pflichtig, nicht PK */
+  ueberstundenBetrag?: number;
+  /** Brutto + 13. + Bonus + Überstunden — Basis aller Abzüge */
   bruttoTotal: number;
   /** ALV-/UVG-pflichtiger Teil (Höchstlohn kumuliert); fehlt bei Abrechnungen vor 26.11 (dort = bruttoTotal) */
   alvBasis?: number;
@@ -825,6 +827,8 @@ export interface LohnEntry extends LohnResult {
   bonusBeschrieb?: string;
   /** Spesen, die mit diesem Lohn ausbezahlt wurden */
   spesenIds?: Id[];
+  /** Überstunden-Auszahlungen (uberstundenAbschluss), die mit diesem Lohn abgerechnet wurden */
+  ueberstundenIds?: Id[];
   createdAt?: Timestamp;
 }
 

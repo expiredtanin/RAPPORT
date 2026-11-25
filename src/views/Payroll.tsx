@@ -74,10 +74,18 @@ function Payroll({ data, saveAll, setPrintContent, setView }: Pick<ViewProps, "d
   const getEffPensum = (emp: Employee) => pensumOverride[emp.id] != null ? pensumOverride[emp.id] : monthPensum(emp);
 
   const offeneSpesen = (empId: string) => spesenFuerLohn(data.expenses || [], empId, monatStr);
+  // Überstunden-Auszahlungen (Personal → Jahresabschluss) dieses oder des Vormonats, noch in keiner Lohnabrechnung:
+  // gehören als massgebender Lohn in den Lohnlauf (AHV/ALV/UVG/QST), vorher liefen sie daran vorbei
+  const prevMonat = (() => { const [y, m] = monatStr.split("-").map(Number); return m === 1 ? `${y - 1}-12` : `${y}-${String(m - 1).padStart(2, "0")}`; })();
+  const ueberstundenVerrechnet = new Set(lohnEntries.flatMap(l => l.ueberstundenIds || []));
+  const offeneUeberstunden = (empId: string) => (data.uberstundenAbschluss || []).filter(a =>
+    a.empId === empId && a.type === "payout" && (a.auszahlungBetrag || 0) > 0 && !ueberstundenVerrechnet.has(a.id)
+    && (a.date || "").slice(0, 7) <= monatStr && (a.date || "").slice(0, 7) >= prevMonat);
+  const ueberstundenSumme = (empId: string) => offeneUeberstunden(empId).reduce((t, a) => t + (a.auszahlungBetrag || 0), 0);
   const findEntry = (empId: string) => lohnEntries.find(l => l.monat === monatStr && l.employeeId === empId);
   /** Vorschau/Abschluss mit den Overrides dieses Laufs und den früheren Abrechnungen des Jahres. */
   const calcFor = (emp: Employee, spesen: { amount?: number }[]) =>
-    calcLohn({ ...emp, ...(bruttoOverride[emp.id] != null ? { monatslohn: bruttoOverride[emp.id], lohnVerlauf: undefined } : {}), ...(pensumOverride[emp.id] != null ? { pensum: pensumOverride[emp.id], pensumVerlauf: undefined } : {}) }, monatStr, spesen, (bonusOverride[emp.id] as number) || 0, lohnVorperioden(lohnEntries, emp.id, monatStr), lohnAGSaetze(data.settings));
+    calcLohn({ ...emp, ...(bruttoOverride[emp.id] != null ? { monatslohn: bruttoOverride[emp.id], lohnVerlauf: undefined } : {}), ...(pensumOverride[emp.id] != null ? { pensum: pensumOverride[emp.id], pensumVerlauf: undefined } : {}) }, monatStr, spesen, (bonusOverride[emp.id] as number) || 0, lohnVorperioden(lohnEntries, emp.id, monatStr), lohnAGSaetze(data.settings), ueberstundenSumme(emp.id));
 
   const abschliessen = (emp: Employee) => {
     if (findEntry(emp.id)) return;
@@ -109,7 +117,7 @@ function Payroll({ data, saveAll, setPrintContent, setView }: Pick<ViewProps, "d
       saetzeSnapshot,
       bruttoWasOverridden: bruttoOverride[emp.id] != null,
       bonusBeschrieb: (bonusOverride[`${emp.id}_beschrieb`] as string) || "",
-      ...calc, spesenIds: spesen.map(s => s.id),
+      ...calc, spesenIds: spesen.map(s => s.id), ueberstundenIds: offeneUeberstunden(emp.id).map(a => a.id),
       createdAt: new Date().toISOString(),
     };
     const updatedExp = (data.expenses || []).map(e =>
@@ -155,7 +163,7 @@ function Payroll({ data, saveAll, setPrintContent, setView }: Pick<ViewProps, "d
     return { entry, calc: entry ? entry : calcFor(emp, offeneSpesen(emp.id)) };
   });
   const monthSum = monthRows.reduce((t, r) => ({ brutto: t.brutto + r.calc.bruttoTotal, aus: t.aus + r.calc.auszahlung, aufwand: t.aufwand + lohnPersonalaufwand(r.calc), done: t.done + (r.entry ? 1 : 0) }), { brutto: 0, aus: 0, aufwand: 0, done: 0 });
-  const cardPensum = existingEntry ? (existingEntry.saetzeSnapshot?.pensum || 100) : (selectedEmp ? getEffPensum(selectedEmp) : 100);
+  const cardPensum = existingEntry ? (existingEntry.saetzeSnapshot?.pensum ?? 100) : (selectedEmp ? getEffPensum(selectedEmp) : 100);
 
   const LohnRow = ({ label, value, bold, color, indent }: { label: string; value: number; bold?: boolean; color?: string; indent?: boolean }) => (
     <div style={{ display: "flex", justifyContent: "space-between", padding: "3px 0", fontSize: indent ? 11 : 12, color: color || (indent ? "var(--text4)" : "var(--text2)"), paddingLeft: indent ? 12 : 0 }}>
@@ -232,6 +240,7 @@ function Payroll({ data, saveAll, setPrintContent, setView }: Pick<ViewProps, "d
         </div>
       )}
       {calc.dreizehnter > 0 && <LohnRow label="13. Monatslohn (1/12)" value={calc.dreizehnter} indent />}
+      {(calc.ueberstundenBetrag || 0) > 0 && <LohnRow label="Überstunden-Auszahlung (Jahresabschluss)" value={calc.ueberstundenBetrag || 0} indent />}
       {calc.bonusBetrag > 0 && <LohnRow label={emp.saetzeSnapshot ? (calc.bonusBeschrieb || "Einmalzahlung / Bonus") : ((bonusOverride[`${emp.id}_beschrieb`] as string) || "Einmalzahlung / Bonus")} value={calc.bonusBetrag} indent />}
       <LohnRow label="Bruttolohn Total" value={calc.bruttoTotal} bold />
       <div style={{ marginTop: 10, marginBottom: 4, fontSize: 10, letterSpacing: "0.08em", color: "var(--text4)" }}>ABZÜGE ARBEITNEHMER</div>
@@ -366,7 +375,7 @@ function Payroll({ data, saveAll, setPrintContent, setView }: Pick<ViewProps, "d
                 <div style={{ fontSize: 17, fontWeight: 600, marginBottom: 2 }}>{selectedEmp.name}</div>
                 <div style={{ fontSize: 11, color: "var(--text4)", marginBottom: 16 }}>{[selectedEmp.role, `${months[selMonth]} ${selYear}`, cardPensum < 100 ? `${cardPensum}%` : null].filter(Boolean).join(" · ")}</div>
                 {existingEntry
-                  ? renderCalc(existingEntry, { ...selectedEmp, ...existingEntry.empSnapshot, saetzeSnapshot: existingEntry.saetzeSnapshot } as Employee & { saetzeSnapshot?: SaetzeSnapshot }, false, existingEntry.saetzeSnapshot?.pensum || 100)
+                  ? renderCalc(existingEntry, { ...selectedEmp, ...existingEntry.empSnapshot, saetzeSnapshot: existingEntry.saetzeSnapshot } as Employee & { saetzeSnapshot?: SaetzeSnapshot }, false, existingEntry.saetzeSnapshot?.pensum ?? 100)
                   : renderCalc(previewCalc as LohnResult, selectedEmp, true, getEffPensum(selectedEmp))
                 }
                 {(() => {

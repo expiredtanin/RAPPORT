@@ -35,3 +35,29 @@ describe("Lohn bei Pensumwechsel", () => {
     expect(calcLohn({ ...emp, pensum: 50, pensumVerlauf: undefined }, "2026-06").brutto).toBe(4500);
   });
 });
+
+describe("Rechenprüfung 25.11.2026", () => {
+  const base: Employee = { id: "q", name: "Q", role: "", pensum: 100, wochenstunden: 42, ferienWochen: 5, monatslohn: 10000, eintrittsdatum: "2020-01-01", geburtsdatum: "1985-05-05" };
+  it("Pensum 0 % im Verlauf (unbezahlter Urlaub) gilt als 0, nicht als 100", () => {
+    const e = { ...base, pensumVerlauf: [{ ab: "2026-03-01", pensum: 0 }] };
+    expect(arbeitszeitAm(e, "2026-03-15").pensum).toBe(0);
+    expect(calcLohn(e, "2026-03").brutto).toBe(0);
+    expect(calcLohn(e, "2026-02").brutto).toBe(10000);
+  });
+  it("Quellensteuer auf Lohn samt Familienzulagen", () => {
+    const e = { ...base, quellensteuerPflichtig: true, quellensteuerSatz: 10, familienzulagen: 430 };
+    expect(calcLohn(e, "2026-03").qst).toBe(1043);
+  });
+  it("Unter 8 Stunden pro Woche keine NBU", () => {
+    expect(calcLohn({ ...base, pensum: 15 }, "2026-03").nbu).toBe(0);
+    expect(calcLohn({ ...base, pensum: 20 }, "2026-03").nbu).toBeGreaterThan(0);
+  });
+  it("Überstunden-Auszahlung: AHV-/ALV-pflichtig, nicht in der PK-Basis", () => {
+    const ohne = calcLohn(base, "2026-03"), mit = calcLohn(base, "2026-03", [], 0, undefined, undefined, 3500);
+    expect(mit.ueberstundenBetrag).toBe(3500);
+    expect(mit.bruttoTotal).toBe(ohne.bruttoTotal + 3500);
+    expect(Math.round((mit.ahv - ohne.ahv) * 100) / 100).toBe(185.5);
+    expect(Math.round((mit.alv - ohne.alv) * 100) / 100).toBe(38.5);
+    expect(mit.bvg).toBe(ohne.bvg);
+  });
+});

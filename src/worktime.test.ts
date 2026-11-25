@@ -254,3 +254,17 @@ describe("Pensumwechsel", () => {
     expect(overtimeHourlyRate(e, "2026-05-01")).toBe(46.15);
   });
 });
+
+describe("Rechenprüfung 25.11.2026", () => {
+  const emp = { id: "x", pensum: 100, wochenstunden: 42, eintrittsdatum: "2020-01-01" };
+  it("Teilabsenz höchstens bis zum Tagessoll", () => {
+    const abs = [{ id: "a", employeeId: "x", date: "2026-11-17", type: "krankheit", status: "approved", hours: 10, minutes: 0, startTime: "", endTime: "" }] as unknown as Absence[];
+    const wt = createWorktime(data({ absences: abs }), "2026-12-31");
+    expect(wt.absenceHoursForDay(emp, "2026-11-17")).toBeCloseTo(8.4, 6);
+  });
+  it("Überstunden-Auszahlung für ein abgeschlossenes Jahr zählt zum Saldo per 31.12., auch wenn später gebucht", () => {
+    const pay = [{ id: "p", empId: "x", year: 2025, date: "2026-02-10", type: "payout", hoursSettled: 10, zuschlagPercent: 25, stundenlohn: 50, auszahlungBetrag: 625 }] as OvertimeClosing[];
+    const wt0 = createWorktime(data(), "2026-12-31"), wt1 = createWorktime(data({ uberstundenAbschluss: pay }), "2026-12-31");
+    expect(wt0.overtime(emp, "2025-12-31").balance - wt1.overtime(emp, "2025-12-31").balance).toBeCloseTo(10, 6);
+  });
+});

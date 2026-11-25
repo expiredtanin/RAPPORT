@@ -2,7 +2,7 @@
 // Erwartete Werte unabhängig mit Python (decimal, ROUND_HALF_UP) nachgerechnet.
 
 import { describe, expect, it, vi, afterEach } from "vitest";
-import { buildReminderLetter, contractAmounts, fillLetterTemplate, letterToTemplate, lineAmount, mahnKosten, roundCHF } from "./utils";
+import { buildReminderLetter, contractAmounts, isValidIban, fillLetterTemplate, letterToTemplate, lineAmount, mahnKosten, roundCHF } from "./utils";
 import type { Invoice, Person } from "./types";
 
 describe("roundCHF kaufmännisch", () => {
@@ -108,5 +108,15 @@ describe("Briefvorlagen: Platzhalter bleiben beim Speichern", () => {
   it("nur ganze Wörter: «Bau» im Wort «Bauherr» bleibt", () => {
     expect(letterToTemplate("Bau AG, Bauherr", { client: "Bau AG" })).toBe("{{client}}, Bauherr");
     expect(letterToTemplate("Neubau, Bau", { project: "Bau" })).toBe("Neubau, {{project}}");
+  });
+});
+
+describe("isValidIban", () => {
+  it("prüft die Modulo-97-Prüfziffer und die Schweizer Länge", () => {
+    expect(isValidIban("CH93 0076 2011 6238 5295 7")).toBe(true);
+    expect(isValidIban("CH44 3199 9123 0008 8901 2")).toBe(true);   // QR-IBAN (SIX-Beispiel)
+    expect(isValidIban("CH93 0076 2011 6238 5295 8")).toBe(false);  // Tippfehler
+    expect(isValidIban("CH93 0076 2011 6238 529")).toBe(false);
+    expect(isValidIban("")).toBe(false);
   });
 });

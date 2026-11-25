@@ -615,6 +615,17 @@ export function isQRIban(iban?: string | null): boolean {
   return iid >= 30000 && iid <= 31999;
 }
 
+/** IBAN-Prüfziffer (ISO 13616, Modulo 97); Leerzeichen egal. Leer → false. */
+export function isValidIban(iban?: string | null): boolean {
+  const s = (iban || "").replace(/\s/g, "").toUpperCase();
+  if (!/^[A-Z]{2}\d{2}[A-Z0-9]{10,30}$/.test(s)) return false;
+  if ((s.startsWith("CH") || s.startsWith("LI")) && s.length !== 21) return false;
+  const num = (s.slice(4) + s.slice(0, 4)).replace(/[A-Z]/g, ch => String(ch.charCodeAt(0) - 55));
+  let rest = 0;
+  for (const d of num) rest = (rest * 10 + Number(d)) % 97;
+  return rest === 1;
+}
+
 /** IBAN in 4er-Gruppen («CH00 0000 …»), Grossbuchstaben. */
 export function formatIban(iban?: string | null): string {
   const clean = (iban || "").replace(/\s/g, "").toUpperCase();
@@ -1292,18 +1303,29 @@ export function lohnAGSaetze(settings: Partial<Pick<Settings, "lohnFakSatz" | "l
 
 /**
  * Kumulierter ALV-/UVG-Höchstlohn vom Jahresbeginn (bzw. Eintrittsmonat) bis und mit `monat`:
- * 12'350 pro Beschäftigungsmonat; der Eintrittsmonat zählt als ganzer Monat.
+ * 12'350 pro Beschäftigungsmonat, im Ein- und Austrittsmonat nach Tagen (360-Tage-Regel, Monat = 30 Tage).
  * Ohne Monat: ein Monat.
  */
-export function hoechstlohnKumuliert(eintrittsdatum: string | undefined, monat: string | undefined): number {
+export function hoechstlohnKumuliert(eintrittsdatum: string | undefined, monat: string | undefined, austrittsdatum?: string): number {
   const proMonat = HOECHSTLOHN_ALV_UVG / 12;
   if (!monat || !/^\d{4}-\d{2}$/.test(monat)) return proMonat;
   const year = monat.slice(0, 4);
   const m = parseInt(monat.slice(5, 7), 10);
-  let ab = 1;
-  if (eintrittsdatum && eintrittsdatum.slice(0, 4) === year) ab = parseInt(eintrittsdatum.slice(5, 7), 10) || 1;
-  else if (eintrittsdatum && eintrittsdatum.slice(0, 4) > year) return 0;
-  return Math.max(0, m - ab + 1) * proMonat;
+  if (eintrittsdatum && eintrittsdatum.slice(0, 4) > year) return 0;
+  // Ein-/Austritt im Jahr: Beschäftigungstage nach der 360-Tage-Regel (Monat = 30 Tage), vorher zählte der
+  // Eintrittsmonat voll und ein Austritt gar nicht (Rechenprüfung 25.11.2026: Grenze ~6'000 zu hoch)
+  const ein = eintrittsdatum && eintrittsdatum.slice(0, 4) === year ? eintrittsdatum : "";
+  const aus = austrittsdatum && austrittsdatum.slice(0, 4) === year ? austrittsdatum : "";
+  if (austrittsdatum && austrittsdatum.slice(0, 4) < year) return 0;
+  let tage = 0;
+  for (let k = 1; k <= m; k++) {
+    const mm = String(k).padStart(2, "0");
+    let von = 1, bis = 30;
+    if (ein) { const em = ein.slice(5, 7); if (mm < em) continue; if (mm === em) von = Math.min(30, parseInt(ein.slice(8, 10), 10) || 1); }
+    if (aus) { const am = aus.slice(5, 7); if (mm > am) continue; if (mm === am) bis = Math.min(30, parseInt(aus.slice(8, 10), 10) || 30); }
+    tage += Math.max(0, bis - von + 1);
+  }
+  return Math.round(tage * HOECHSTLOHN_ALV_UVG / 360 * 100) / 100;
 }
 
 /** Bereits abgerechnete Lohnsummen eines Mitarbeiters im selben Jahr vor `monat` (für den kumulierten Höchstlohn). */
@@ -1342,6 +1364,7 @@ export function calcLohn(
   bonus?: number,
   vorperioden?: LohnVorperioden,
   agSaetze?: LohnAGSaetze,
+  ueberstunden?: number,
 ): LohnResult {
   const r2 = (n: number) => Math.round(n * 100) / 100;
   const hinweise: string[] = [];
@@ -1361,27 +1384,43 @@ export function calcLohn(
     : dzBasis !== undefined && dzBisher !== undefined ? r2(r2((dzBasis + brutto) / 12) - dzBisher)
     : r2(brutto - 11 * r2(brutto / 12));
   const bonusBetrag = r2(bonus || 0);
-  const bruttoTotal = r2(brutto + dreizehnter + bonusBetrag); // Bonus ist AHV-pflichtig
+  // Ausbezahlte Überstunden (Jahresabschluss): massgebender Lohn wie der Bonus (AHV, ALV, UVG, QST), aber nicht
+  // in der PK-Basis und nicht im 13. (vorher liefen sie an der Lohnabrechnung vorbei — Rechenprüfung 25.11.2026)
+  const ueberstundenBetrag = r2(ueberstunden || 0);
+  const bruttoTotal = r2(brutto + dreizehnter + bonusBetrag + ueberstundenBetrag); // Bonus ist AHV-pflichtig
 
   const status = ahvStatus(emp.geburtsdatum, monat, emp.ahvRentner);
   // AHV-pflichtiger Lohn: Jugendliche bis 17 beitragsfrei, Rentner mit Freibetrag 1'400/Monat
   const ahvBasis = status === "jung" ? 0 : status === "rentner" ? r2(Math.max(0, bruttoTotal - AHV_RENTNER_FREIBETRAG)) : bruttoTotal;
   if (status === "rentner") hinweise.push(`AHV-Rentner:in: Freibetrag CHF ${AHV_RENTNER_FREIBETRAG.toLocaleString("de-CH")}, keine ALV`);
   if (status === "jung") hinweise.push("Unter 18: keine AHV/IV/EO- und ALV-Beiträge");
+  // AHV 21: Frauen der Jahrgänge 1961–1963 erreichen das Referenzalter mit 64 + 3/6/9 Monaten (die App kennt kein
+  // Geschlecht und rechnet mit 65) → Hinweis, damit «AHV-Rentner:in» rechtzeitig gesetzt wird
+  const gj = Number((emp.geburtsdatum || "").slice(0, 4));
+  if (status === "aktiv" && monat && gj >= 1961 && gj <= 1963 && Number(monat.slice(0, 4)) - gj === 64) {
+    hinweise.push(`Falls Frau (Jahrgang ${gj}): AHV-Referenzalter 64 + ${(gj - 1960) * 3} Monate (AHV 21) — ab dann «AHV-Rentner:in» setzen`);
+  }
 
   // ALV/UVG: kumulierte Methode — Lohnsumme bis und mit diesem Monat, gedeckelt auf den Höchstlohn
   // der Beschäftigungsmonate, minus bereits abgerechnete Basis (holt Überschüsse früherer Monate nach)
   const bisher = vorperioden || { bruttoBisher: 0, alvBasisBisher: 0 };
-  const cap = hoechstlohnKumuliert(emp.eintrittsdatum, monat);
+  const cap = hoechstlohnKumuliert(emp.eintrittsdatum, monat, emp.austrittsdatum);
   // alvBasis = UVG-/ALV-pflichtiger Teil bis Höchstlohn (bleibt für die Kumulation auch bei Rentnern erhalten)
   const uvgBasis = r2(Math.max(0, Math.min(bisher.bruttoBisher + bruttoTotal, cap) - bisher.alvBasisBisher));
   const alvBasis = uvgBasis;
 
   const ahv    = r2(ahvBasis    * ((emp.ahvSatz  ?? 5.3)  / 100));
   const alv    = status === "aktiv" ? r2(alvBasis * ((emp.alvSatz ?? 1.1) / 100)) : 0;
-  const nbu    = r2(uvgBasis    * ((emp.nbuSatz  ?? 1.5)  / 100));
+  // NBU nur ab 8 Stunden pro Woche (Art. 13 UVV); darunter ist die Person nicht gegen Nichtberufsunfall versichert
+  const azMonat = arbeitszeitAm(emp, `${monat || localISODate().slice(0, 7)}-15`);
+  const unter8h = azMonat.wochenstunden * azMonat.pensum / 100 < 8;
+  if (unter8h && (emp.nbuSatz ?? 1.5) > 0) hinweise.push("Unter 8 Stunden pro Woche: keine NBU-Prämie (Art. 13 UVV)");
+  const nbu    = unter8h ? 0 : r2(uvgBasis * ((emp.nbuSatz ?? 1.5) / 100));
   const ktg    = r2(bruttoTotal * ((emp.ktgSatz  ?? 0.5)  / 100));
-  const qst    = emp.quellensteuerPflichtig ? r2(bruttoTotal * ((emp.quellensteuerSatz ?? 10) / 100)) : 0;
+  // Familienzulagen: im Ein-/Austrittsmonat voll oder anteilig nach Kalendertagen, je nach Praxis der Kasse
+  const familienzulagen = anteil > 0 ? r2((emp.familienzulagen || 0) * (agSaetze?.fzAnteilig ? anteil : 1)) : 0;
+  // Quellensteuer auf dem Bruttolohn samt Familienzulagen (ESTV-Kreisschreiben 45)
+  const qst    = emp.quellensteuerPflichtig ? r2((bruttoTotal + familienzulagen) * ((emp.quellensteuerSatz ?? 10) / 100)) : 0;
 
   // Pensionskasse: Beträge laut PK-Ausweis haben Vorrang; sonst % vom Bruttolohn. Unter der
   // BVG-Eintrittsschwelle und für Rentner keine Pflicht (dann 0, ausser PK-Ausweis-Beträge).
@@ -1396,8 +1435,9 @@ export function calcLohn(
   } else if (jahreslohn > 0 && jahreslohn < BVG_EINTRITTSSCHWELLE) {
     hinweise.push(`Jahreslohn unter der BVG-Eintrittsschwelle (CHF ${BVG_EINTRITTSSCHWELLE.toLocaleString("de-CH")}): keine PK-Beiträge`);
   } else {
-    bvg = r2(bruttoTotal * ((emp.bvgSatz ?? 8.0) / 100));
-    bvgAG = r2(bruttoTotal * ((emp.pkAGSatz ?? 8.0) / 100));
+    const pkBasis = r2(bruttoTotal - ueberstundenBetrag);
+    bvg = r2(pkBasis * ((emp.bvgSatz ?? 8.0) / 100));
+    bvgAG = r2(pkBasis * ((emp.pkAGSatz ?? 8.0) / 100));
   }
   if (bvgAG < bvg) hinweise.push("PK: Der Arbeitgeber muss mindestens gleich viel zahlen wie der Arbeitnehmer (Art. 66 BVG)");
   // Prüfung gegen das BVG-Minimum (Altersgutschriften), wenn das Geburtsdatum bekannt ist
@@ -1409,8 +1449,6 @@ export function calcLohn(
 
   const totalAbzuege = r2(ahv + alv + bvg + nbu + ktg + qst);
   const netto = r2(bruttoTotal - totalAbzuege);
-  // Familienzulagen: im Ein-/Austrittsmonat voll oder anteilig nach Kalendertagen, je nach Praxis der Kasse
-  const familienzulagen = anteil > 0 ? r2((emp.familienzulagen || 0) * (agSaetze?.fzAnteilig ? anteil : 1)) : 0;
   const spesenTotal = r2((spesen || []).reduce((s, e) => s + (e.amount || 0), 0));
   const auszahlung = r2(netto + familienzulagen + spesenTotal);
 
@@ -1422,7 +1460,7 @@ export function calcLohn(
   const agKtg = ag ? r2(bruttoTotal * (ag.ktgAG ?? (emp.ktgSatz ?? 0.5)) / 100) : 0;
 
   return {
-    brutto, bruttoBase, dreizehnter, bonusBetrag, bruttoTotal, alvBasis, ahvBasis,
+    brutto, bruttoBase, dreizehnter, bonusBetrag, ...(ueberstundenBetrag ? { ueberstundenBetrag } : {}), bruttoTotal, alvBasis, ahvBasis,
     ahv, alv, bvg, nbu, ktg, qst, totalAbzuege, netto, familienzulagen, spesenTotal, auszahlung, bvgAG,
     agFak, agVk, agBu, agKtg, ...(hinweise.length ? { hinweise } : {}),
   };
@@ -1676,7 +1714,8 @@ export function arbeitszeitAm(emp: ArbeitszeitFelder, ds: string): { pensum: num
   const verlauf = emp.pensumVerlauf;
   if (!verlauf || verlauf.length === 0) return { pensum, wochenstunden };
   const day = ds.slice(0, 10);
-  const sorted = verlauf.filter(v => v && /^\d{4}-\d{2}-\d{2}/.test(v.ab || "") && Number(v.pensum) > 0)
+  // 0 % ist ein gültiger Wechsel (unbezahlter Urlaub ab …); nur ein leeres Pensum zählt nicht (vorher galt 0 % als 100 %)
+  const sorted = verlauf.filter(v => v && /^\d{4}-\d{2}-\d{2}/.test(v.ab || "") && v.pensum != null && String(v.pensum) !== "" && Number(v.pensum) >= 0)
     .slice().sort((a, b) => a.ab.localeCompare(b.ab));
   for (const v of sorted) {
     if (v.ab.slice(0, 10) > day) break;

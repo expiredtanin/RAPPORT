@@ -67,7 +67,7 @@ export function LohnPrint({ entry, emp, data, monatLabel, settings }: { entry: L
         )}
         <div>
           <div style={{ fontSize: 10, letterSpacing: "0.1em", color: "#888" }}>PENSUM</div>
-          <div style={{ fontSize: 14, marginTop: 2 }}>{s.pensum || 100}%</div>
+          <div style={{ fontSize: 14, marginTop: 2 }}>{s.pensum ?? 100}%</div>
         </div>
       </div>
 
@@ -81,14 +81,15 @@ export function LohnPrint({ entry, emp, data, monatLabel, settings }: { entry: L
           </tr>
         </thead>
         <tbody>
-          <LRow label={`Monatslohn ${monatLabel}${(s.pensum || 100) < 100 ? ` (${s.pensum}%)` : ""}`} betrag={entry.brutto} />
-          {(s.pensum || 100) < 100 && entry.bruttoBase != null && entry.bruttoBase !== entry.brutto && (
+          <LRow label={`Monatslohn ${monatLabel}${(s.pensum ?? 100) < 100 ? ` (${s.pensum}%)` : ""}`} betrag={entry.brutto} />
+          {(s.pensum ?? 100) < 100 && entry.bruttoBase != null && entry.bruttoBase !== entry.brutto && (
             <LRow label="Basis 100%" betrag={entry.bruttoBase} sub />
           )}
           {monatsAnteilNachEintritt(s.eintrittsdatum, entry.monat, s.austrittsdatum) < 1 && (
             <LRow label={s.austrittsdatum && s.austrittsdatum.slice(0, 7) === entry.monat ? `Anteilig bis Austritt ${formatDate(s.austrittsdatum)}` : `Anteilig ab Eintritt ${formatDate(s.eintrittsdatum)}`} betrag={entry.brutto} sub />
           )}
           {entry.dreizehnter > 0 && <LRow label="13. Monatslohn (1/12)" betrag={entry.dreizehnter} sub />}
+          {(entry.ueberstundenBetrag || 0) > 0 && <LRow label="Überstunden-Auszahlung" betrag={entry.ueberstundenBetrag || 0} sub />}
           {entry.bonusBetrag > 0 && <LRow label={entry.bonusBeschrieb || "Einmalzahlung / Bonus"} betrag={entry.bonusBetrag} sub />}
           <LRow label="Bruttolohn" betrag={entry.bruttoTotal} bold topBorder />
 

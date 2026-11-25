@@ -73,7 +73,8 @@ function Employees({ data, update, saveAll, setPrintContent, userPermissions, cu
   };
 
   const saveUbAbschluss = (emp: Employee, form: AbschlussForm) => {
-    const stundenlohn = overtimeHourlyRate(emp, localISODate());
+    // Stundenlohn per Ende des Abschlussjahrs (bzw. heute, solange es läuft), wie im Formular angezeigt
+    const stundenlohn = overtimeHourlyRate(emp, [`${abschlussYear}-12-31`, localISODate()].sort()[0]);
     if (!stundenlohn || !(form.ubHours > 0)) return;
     const auszahlungBetrag = Math.round(form.ubHours * stundenlohn * (1 + form.ubZuschlag / 100) * 100) / 100;
     const entry: OvertimeClosing = {
@@ -114,7 +115,7 @@ function Employees({ data, update, saveAll, setPrintContent, userPermissions, cu
     const { _appAccess, _appUsername, _appPassword, _appRoleId, _appUserId, ...empData } = empForm;
     const empId = empData.id || generateId();
     // Pensumwechsel ohne Datum/Pensum verwerfen und nach Datum ordnen; Übertrag nur mit Stichtag
-    const pensumVerlauf = (empData.pensumVerlauf || []).filter(v => v.ab && Number(v.pensum) > 0).sort((a, b) => a.ab.localeCompare(b.ab));
+    const pensumVerlauf = (empData.pensumVerlauf || []).filter(v => v.ab && v.pensum != null && String(v.pensum) !== "" && Number(v.pensum) >= 0).sort((a, b) => a.ab.localeCompare(b.ab));
     if ((empData.pensumVerlauf || []).length !== pensumVerlauf.length) showToast("Pensumwechsel ohne Datum oder Pensum wurden nicht übernommen.");
     if (empData.saldoStichtag && empData.eintrittsdatum && empData.saldoStichtag < empData.eintrittsdatum) { showToast("Der Saldo-Stichtag liegt vor dem Eintritt."); return; }
     const lohnVerlauf = (empData.lohnVerlauf || []).filter(v => v.ab && Number(v.monatslohn) > 0).sort((a, b) => a.ab.localeCompare(b.ab));

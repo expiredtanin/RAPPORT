@@ -84,7 +84,7 @@ export default function EmployeeModal({ data, empForm, setEmpForm, nextPersonalN
       {verlauf.map((v, i) => (
         <div key={i} className="form-row" style={{ alignItems: "flex-end" }}>
           <FormField label="Ab"><DatePicker value={v.ab || ""} onChange={e => setVerlauf(verlauf.map((x, j) => j === i ? { ...x, ab: e.target.value } : x))} style={!v.ab ? { borderColor: "var(--warning)" } : {}} /></FormField>
-          <FormField label="Pensum %"><input type="number" min={5} max={100} step={5} value={v.pensum || ""} onChange={e => setVerlauf(verlauf.map((x, j) => j === i ? { ...x, pensum: +e.target.value } : x))} /></FormField>
+          <FormField label="Pensum %"><input type="number" min={0} max={100} step={5} value={v.pensum ?? ""} title="0 % = unbezahlter Urlaub ab diesem Datum" onChange={e => setVerlauf(verlauf.map((x, j) => j === i ? { ...x, pensum: (e.target.value === "" ? null : +e.target.value) as number } : x))} /></FormField>
           <FormField label="Wochenstunden (100%)"><input type="number" min={1} max={50} step={0.5} value={v.wochenstunden ?? ""} placeholder="wie bisher" onChange={e => setVerlauf(verlauf.map((x, j) => j === i ? { ...x, wochenstunden: e.target.value === "" ? null : +e.target.value } : x))} /></FormField>
           <div style={{ flex: "0 0 auto", paddingBottom: 6 }}>
             <button type="button" className="btn-icon danger" title="Wechsel entfernen" aria-label="Wechsel entfernen" onClick={() => setVerlauf(verlauf.filter((_, j) => j !== i))}><span className="msr" style={{ fontSize: 16 }}>close</span></button>

@@ -36,8 +36,8 @@ export function createEmployeeCalc(data: ViewProps["data"]) {
     return { anspruchH: v.anspruch, ubertragH: v.ubertrag, bezogenH: v.bezogen, zukunftH: v.geplant, restH: v.rest, wochen: v.wochen };
   };
 
-  /** Überstundensaldo seit Eintritt bis heute (bzw. Austritt), abzüglich ausbezahlter Stunden. */
-  const calcEffectiveUbSaldo = (emp: Employee) => r(wt.overtime(emp).balance);
+  /** Überstundensaldo seit Eintritt bis heute bzw. `upTo` (bzw. Austritt), abzüglich ausbezahlter Stunden. */
+  const calcEffectiveUbSaldo = (emp: Employee, upTo?: string) => r(wt.overtime(emp, upTo).balance);
 
   return { calcEmpMonth, getFTYear, calcFerienYear, calcEffectiveUbSaldo, wt };
 }
