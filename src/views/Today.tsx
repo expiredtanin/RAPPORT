@@ -63,6 +63,8 @@ export default function Today({ data, currentUser, userPermissions, run, onOpenP
   /** Stoppt die Stoppuhr und schreibt den Eintrag (mit Rückgängig). */
   const stop = (t: RunningTimer) => {
     const raw = timerToEntry(t, new Date(), generateId());
+    // abgeschlossener Monat: Stoppuhr weiterlaufen lassen statt die Zeit zu verwerfen
+    if (raw && closed.includes(raw.date.slice(0, 7))) { showToast("Monat ist abgeschlossen — Eintrag nicht gespeichert, Stoppuhr läuft weiter (oben «Verwerfen»)"); return; }
     setTimer(null);
     if (!raw) { showToast("Weniger als eine Minute — nichts erfasst"); return; }
     // Ohne gewählte Phase die erste des Projekts (wie «+ Eintrag» in der Zeiterfassung) — sonst fehlte der Eintrag

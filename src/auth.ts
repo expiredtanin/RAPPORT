@@ -17,7 +17,9 @@ export function getUserPermissions(currentUser: CurrentUser | null, data: AppDat
     // (sonst würde eine gelöschte Rolle den Nutzer versehentlich zum Vollzugriff-Admin machen)
     return role ? role.permissions : [];
   }
-  return currentUser.permissions || null; // Fallback für alte Einträge ohne Rolle
+  // ohne Rolle: nur ausdrücklich gesetzte Rechte (Altbestand), sonst keine — vorher galt «keine Rolle» als
+  // Vollzugriff (Konto mit «— Rolle wählen —» sah Buchhaltung, Löhne, Einstellungen; Test 25.11.2026)
+  return Array.isArray(currentUser.permissions) ? currentUser.permissions : [];
 }
 
 /** Initialen für den Avatar: erster + letzter Wortanfang, sonst erster Buchstabe, sonst «?». */

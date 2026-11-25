@@ -390,7 +390,7 @@ export default function Persons({ data, update, modal, setModal }: Pick<ViewProp
     if (!firmForm.name?.trim()) return;
     const { _hauptName, _hauptPosition, _hauptPhone, _hauptEmail, _tags, ...rest } = firmForm;
     const tags = (_tags || "").split(",").map(t => t.trim()).filter(Boolean);
-    const firmData = { ...rest, tags: tags.length ? tags : undefined };
+    const firmData = { ...rest, name: (rest.name || "").trim(), tags: tags.length ? tags : undefined };
     if (firmModal?.id) {
       // nur im Fenster Geändertes übernehmen (inzwischen ergänzte Ansprechpartner o.ä. bleiben)
       update("persons", prev => prev.map(p => {
@@ -443,7 +443,7 @@ export default function Persons({ data, update, modal, setModal }: Pick<ViewProp
     if (!personForm.name?.trim() || !personForm.firmaId) return;
     if (personModal?.personId) {
       update("persons", prev => prev.map(p => p.id === personModal.firmaId
-        ? { ...p, contacts: (p.contacts || []).map(c => c.id === personModal.personId ? { ...c, name: personForm.name as string, position: personForm.position, phone: personForm.phone, email: personForm.email } : c) } : p));
+        ? { ...p, contacts: (p.contacts || []).map(c => c.id === personModal.personId ? { ...c, name: (personForm.name as string).trim(), position: personForm.position, phone: personForm.phone, email: personForm.email } : c) } : p));
     } else {
       const newContact = { id: generateId(), name: personForm.name.trim(), position: personForm.position || "", phone: personForm.phone || "", email: personForm.email || "" };
       update("persons", prev => prev.map(p => p.id === personForm.firmaId

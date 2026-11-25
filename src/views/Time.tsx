@@ -25,8 +25,9 @@ import { readTimer, TIMER_KEY, type RunningTimer } from "../today";
 import { useCalendarNav } from "../hooks/useCalendarNav";
 import { ReceiptViewer } from "../components/ReceiptViewer";
 import type { Absence, TimeEntry, ViewProps } from "../types";
+import { showToast } from "../toast";
 import {
-  SLOT_START_H, SLOT_H, slotToTime, resolveFTs, getSollForDay, calcMonthSaldo, calcTotalSaldo, calcFerienSaldo, buildMonthCells,
+  SLOT_START_H, SLOT_H, slotToTime, resolveFTs, getSollForDay, calcMonthSaldo, calcTotalSaldo, calcFerienSaldo, buildMonthCells, overlapsEntry,
   type SlotPoint, type WeekForm, type WeekEditForm, type ContextMenuState, type MonthCell,
 } from "./time/timeUtils";
 import { createEntryActions } from "./time/timeEntries";
@@ -205,6 +206,9 @@ function Time({ data, update, currentUser, userPermissions, setPrintContent }: P
       return;
     }
     if (!weekForm?.projectId) return;
+    if (overlapsEntry(data.timeEntries, selectedEmpId || "", weekForm.dayStr, slotToTime(weekForm.startSlot), mins)) {
+      showToast("Der Zeitraum überschneidet sich mit einem bestehenden Eintrag."); return;
+    }
     update("timeEntries", [...data.timeEntries, {
       id: generateId(), date: weekForm.dayStr,
       projectId: weekForm.projectId, phaseId: weekForm.phaseId || "", positionId: weekForm.positionId || "",

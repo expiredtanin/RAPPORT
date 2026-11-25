@@ -7,7 +7,7 @@ import { showToast } from "../../toast";
 import { removeWithUndo } from "../../undo";
 import { shiftDate } from "../../worktime";
 import type { TimeEntry, UpdateFn, AppData } from "../../types";
-import { getFirstPhaseForProject } from "./timeUtils";
+import { getFirstPhaseForProject, overlapsEntry } from "./timeUtils";
 
 /** Parameter der Eintrags-Aktionen (Daten, Update-Funktion, gewählter Tag/Mitarbeiter, Monatssperre). */
 interface EntryActionsArgs {
@@ -64,6 +64,9 @@ export function createEntryActions({ data, update, currentDate, selectedEmpId, i
     // Die Kopie ist ein neuer, unverrechneter Eintrag (vorher wurde `invoiceId` mitkopiert → gesperrt und
     // fälschlich als verrechnet gezählt)
     const { invoiceId: _inv, ...rest } = entry;
+    if (entry.startTime && overlapsEntry(data.timeEntries, entry.employeeId || "", nextDay, entry.startTime, entry.minutes || 0)) {
+      showToast("Am Folgetag ist diese Zeit schon belegt."); return;
+    }
     update("timeEntries", [...data.timeEntries, { ...rest, id: generateId(), date: nextDay, createdAt: new Date().toISOString() }]);
   };
   return { addEntry, updateEntry, delEntry, duplicateToNextDay };

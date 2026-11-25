@@ -52,12 +52,15 @@ function Projects({ data, saveAll, modal, setModal, onSelect, setPrintContent }:
   const openedAs = useRef<Project | null>(null);
   const saveProject = () => {
     if (!form.name?.trim()) { showToast("Bitte einen Projektnamen eingeben."); return; }
-    if ([form.hourlyRate, form.budgetHours].some(v => v != null && String(v) !== "" && !(Number(v) >= 0))) { showToast("Stundensatz und Budgetstunden dürfen nicht negativ sein."); return; }
+    if ([form.hourlyRate, form.budgetHours, form.budget].some(v => v != null && String(v) !== "" && !(Number(v) >= 0))) { showToast("Stundensatz, Budget und Budgetstunden dürfen nicht negativ sein."); return; }
+    const num = (form.number || "").trim();
+    if (num && data.projects.some(p => p.id !== modal?.id && (p.number || "").trim() === num)) { showToast(`Die Projektnummer ${num} ist schon vergeben.`); return; }
+
     const isNew = !modal?.id;
     const projects = isNew
-      ? [...data.projects, { ...form, id: generateId(), createdAt: new Date().toISOString() }]
+      ? [...data.projects, { ...form, name: form.name.trim(), number: num, id: generateId(), createdAt: new Date().toISOString() }]
       // nur im Fenster Geändertes übernehmen (fremde Änderungen seit dem Öffnen bleiben)
-      : data.projects.map(p => p.id === modal.id ? applyEdit<Project>(openedAs.current?.id === p.id ? openedAs.current : p, { ...(openedAs.current?.id === p.id ? openedAs.current : p), ...form } as Project, p) : p);
+      : data.projects.map(p => p.id === modal.id ? applyEdit<Project>(openedAs.current?.id === p.id ? openedAs.current : p, { ...(openedAs.current?.id === p.id ? openedAs.current : p), ...form, name: form.name.trim(), number: num } as Project, p) : p);
     let settings = data.settings;
     if (isNew) {
       const seq = parseSeqFromNumber(form.number, data.settings.projectNumberFormat || "YYYY/NN");

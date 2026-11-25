@@ -118,3 +118,15 @@ export const buildMonthCells = (data: AppData, currentDate: string, selectedEmpI
   }
   return monthCells;
 };
+
+/**
+ * Überschneidet sich ein Zeitraum (`startTime` «HH:MM», Dauer in Minuten) mit einem anderen Eintrag derselben
+ * Person am selben Tag? Einträge ohne Uhrzeit zählen nicht. Vorher entstanden im Wochenraster und beim Kopieren
+ * auf den Folgetag deckungsgleiche Einträge (doppelt gezählte Stunden, der verdeckte war kaum erreichbar).
+ */
+export const overlapsEntry = (entries: TimeEntry[], employeeId: string, date: string, startTime: string, minutes: number, excludeId?: string): boolean => {
+  const toMin = (t: string) => { const [h, m] = t.split(":").map(Number); return h * 60 + (m || 0); };
+  const s = toMin(startTime), e = s + minutes;
+  return entries.some(x => x.id !== excludeId && x.date === date && !!x.startTime && (x.employeeId || "") === (employeeId || "")
+    && s < toMin(x.startTime) + (x.minutes || 0) && e > toMin(x.startTime));
+};

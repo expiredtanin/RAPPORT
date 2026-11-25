@@ -121,7 +121,9 @@ export default function App() {
   const verifyLogin = async (usernameOrEmail: string, password: string, opts: { studioId?: string | null } = {}) => {
     if (isCloudBackend) return cloudSignIn(usernameOrEmail, password, opts.studioId ?? null);
 
-    const u = (data.users || []).find(x => x.username === usernameOrEmail);
+    // Benutzername ohne Rücksicht auf Gross-/Kleinschreibung und Leerzeichen am Rand
+    const uname = usernameOrEmail.trim().toLowerCase();
+    const u = (data.users || []).find(x => (x.username || "").trim().toLowerCase() === uname);
     if (!u) return null;
     const ok = await verifyPassword(password, u);
     if (!ok) return null;

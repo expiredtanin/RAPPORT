@@ -107,6 +107,12 @@ function Employees({ data, update, saveAll, setPrintContent, userPermissions, cu
     if (!empForm.name?.trim()) { showToast("Bitte einen Namen eingeben."); return; }
     if (!empForm.eintrittsdatum) { showToast("Bitte ein Eintrittsdatum angeben."); return; }
     if (empForm._appAccess && !empForm._appUsername?.trim()) { showToast("Bitte einen Benutzernamen eingeben."); return; }
+    if (empForm._appAccess && !isCloudBackend) {
+      const uname = (empForm._appUsername || "").trim().toLowerCase();
+      if ((data.users || []).some(u => u.id !== empForm._appUserId && (u.username || "").trim().toLowerCase() === uname)) { showToast(`Den Benutzernamen «${empForm._appUsername?.trim()}» gibt es schon.`); return; }
+      const ownUser = (data.users || []).find(u => u.id === empForm._appUserId);
+      if (!empForm._appRoleId && ownUser?.role !== "admin") { showToast("Bitte eine Rolle für den App-Zugang wählen."); return; }
+    }
     // Bereiche (sonst rechnete der Saldo mit «-25 h/Woche» oder 500 % Pensum weiter)
     const pens = [empForm.pensum, ...(empForm.pensumVerlauf || []).map(v => v.pensum)].filter(v => v !== undefined && v !== null && String(v) !== "");
     if (pens.some(v => !(Number(v) >= 0 && Number(v) <= 100))) { showToast("Das Pensum liegt zwischen 0 und 100 %."); return; }

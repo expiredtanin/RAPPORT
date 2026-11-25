@@ -2,7 +2,7 @@
 // Einstellungsseite, für Admins ein Reiter. Speichert direkt (eigener «Speichern»-Knopf).
 
 import React, { useState } from "react";
-import { formatIban, imageFileToJpeg } from "../../utils";
+import { formatIban, hashPassword, imageFileToJpeg, verifyPassword } from "../../utils";
 import { Header, FormField } from "../../components/UI";
 import { Section } from "./shared";
 import { showToast } from "../../toast";
@@ -36,6 +36,22 @@ export function PersonalSettings({ data, update, currentUser, uiZoom, setUiZoom,
   const [lohnIban, setLohnIban] = useState(emp?.lohnIban || "");
   const [saved, setSaved] = useState(false);
   const zoomStep = 0.05;
+
+  const [pw, setPw] = useState({ old: "", neu: "", rep: "" });
+  const changePassword = async () => {
+    if (!userRec) return;
+    if (pw.neu.length < 8) { showToast("Das neue Passwort braucht mindestens 8 Zeichen."); return; }
+    if (pw.neu !== pw.rep) { showToast("Die beiden neuen Passwörter stimmen nicht überein."); return; }
+    if (!await verifyPassword(pw.old, userRec)) { showToast("Das bisherige Passwort stimmt nicht."); return; }
+    const { hash, salt } = await hashPassword(pw.neu);
+    update("users", prev => (prev || []).map(u => {
+      if (u.id !== userRec.id) return u;
+      const { password: _plain, ...rest } = u;
+      return { ...rest, passwordHash: hash, passwordSalt: salt };
+    }));
+    setPw({ old: "", neu: "", rep: "" });
+    showToast("Passwort geändert.");
+  };
 
   const saveProfile = () => {
     if (emp) {
@@ -95,6 +111,19 @@ export function PersonalSettings({ data, update, currentUser, uiZoom, setUiZoom,
                 </div>
               </div>
             </Section>
+
+            {/* Lokal/Datenordner: eigenes Passwort ändern (vorher ging das nur über den Admin im Mitarbeiter-Dialog,
+                das Konto «admin» selbst gar nicht). Cloud: über «Passwort vergessen» bzw. den Server. */}
+            {!isCloudBackend && userRec && (
+              <Section title="PASSWORT">
+                <div className="form-row">
+                  <FormField label="Bisheriges Passwort"><input type="password" autoComplete="current-password" value={pw.old} onChange={e => setPw(p => ({ ...p, old: e.target.value }))} /></FormField>
+                  <FormField label="Neues Passwort (mind. 8 Zeichen)"><input type="password" autoComplete="new-password" value={pw.neu} onChange={e => setPw(p => ({ ...p, neu: e.target.value }))} /></FormField>
+                  <FormField label="Wiederholen"><input type="password" autoComplete="new-password" value={pw.rep} onChange={e => setPw(p => ({ ...p, rep: e.target.value }))} /></FormField>
+                </div>
+                <button className="btn btn-ghost" disabled={!pw.old || !pw.neu} onClick={changePassword}>Passwort ändern</button>
+              </Section>
+            )}
 
             <Section title="MEINE ADRESSE">
               <FormField label="Strasse + Nr.">
