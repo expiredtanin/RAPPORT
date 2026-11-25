@@ -735,17 +735,28 @@ export function RowMenu({ items, label = "Aktionen" }: { items: RowMenuItem[]; l
     document.addEventListener("keydown", onEsc, true);
     return () => { document.removeEventListener("mousedown", onDoc); document.removeEventListener("keydown", onEsc, true); };
   }, [open]);
-  // Menü öffnet nach links (rechtsbündig); reicht der Platz in der umgebenden Karte bzw. im Fenster nicht
-  // (z.B. Knopf am linken Rand einer umbrochenen Werkzeugleiste), öffnet es nach rechts — beim Klick gemessen
-  const [alignLeft, setAlignLeft] = useState(false);
+  // Menü fest am Fenster ausgerichtet (position: fixed): die Karte (overflow) schnitt es sonst ab, z.B. bei der
+  // letzten Zeile einer kurzen Tabelle. Rechtsbündig unter dem Knopf; fehlt links Platz → linksbündig, fehlt unten
+  // Platz → über dem Knopf. Beim Scrollen schliesst es (Position wäre veraltet).
+  const [pos, setPos] = useState<CSSProperties>({});
   const toggle = (btn: HTMLElement) => {
     if (!open) {
-      const clip = btn.closest(".card, .modal, .sched-full");
-      const minLeft = (clip ? clip.getBoundingClientRect().left : 0) + 4;
-      setAlignLeft(btn.getBoundingClientRect().right - MENU_EST_W < minLeft);
+      const br = btn.getBoundingClientRect();
+      const need = items.filter(i => !i.hidden).length * 36 + 16;
+      const horiz: CSSProperties = br.right - MENU_EST_W < 4 ? { left: br.left } : { right: window.innerWidth - br.right };
+      const vert: CSSProperties = br.bottom + 4 + need > window.innerHeight && br.top - 4 - need >= 0
+        ? { top: "auto", bottom: window.innerHeight - br.top + 4 } : { top: br.bottom + 4 };
+      setPos({ position: "fixed", ...horiz, ...vert });
     }
     setOpen(o => !o);
   };
+  useEffect(() => {
+    if (!open) return;
+    const close = () => setOpen(false);
+    window.addEventListener("scroll", close, true);
+    window.addEventListener("resize", close);
+    return () => { window.removeEventListener("scroll", close, true); window.removeEventListener("resize", close); };
+  }, [open]);
   const visible = items.filter(i => !i.hidden);
   if (visible.length === 0) return null;
   return (
@@ -754,7 +765,7 @@ export function RowMenu({ items, label = "Aktionen" }: { items: RowMenuItem[]; l
         <span className="msr" style={{ fontSize: 20 }}>more_horiz</span>
       </button>
       {open && (
-        <div className="menu-pop" role="menu" style={alignLeft ? { left: 0 } : { right: 0 }}>
+        <div className="menu-pop" role="menu" style={pos}>
           {visible.map((it, i) => (
             <button key={i} role="menuitem" className={`menu-item${it.danger ? " danger" : ""}`} onClick={() => { setOpen(false); it.onClick(); }}>
               {it.icon && <span className="msr" style={{ fontSize: 17 }}>{it.icon}</span>}{it.label}
