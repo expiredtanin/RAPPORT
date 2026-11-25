@@ -32,6 +32,21 @@ routerAdd("POST", "/api/rapport/invite-member", (e) => {
     throw new ForbiddenError("Nur Admins des Studios können Mitglieder einladen.");
   }
 
+  // Rolle muss es geben (sonst Mitglied ohne Rechte); den letzten Admin nicht herabstufen (wie set-member-role)
+  if (data.appRoleId !== "r-admin") {
+    try {
+      e.app.findFirstRecordByFilter("appRoles", "studio = {:sid} && roleId = {:rid}", { sid: data.studioId, rid: data.appRoleId || "" });
+    } catch {
+      throw new BadRequestError("Diese Rolle gibt es im Studio nicht.");
+    }
+    let wasAdmin = false;
+    try { e.app.findFirstRecordByFilter("studioMembers", "studio = {:sid} && user = {:uid} && appRoleId = 'r-admin' && active = true", { sid: data.studioId, uid: data.userId }); wasAdmin = true; } catch { wasAdmin = false; }
+    if (wasAdmin) {
+      const admins = e.app.findRecordsByFilter("studioMembers", "studio = {:sid} && appRoleId = 'r-admin' && active = true", "", 0, 0, { sid: data.studioId });
+      if (admins.length <= 1) throw new BadRequestError("Mindestens ein Administrator muss bestehen bleiben.");
+    }
+  }
+
   e.app.runInTransaction((txApp) => {
     let member;
     try {

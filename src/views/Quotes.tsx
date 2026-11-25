@@ -31,6 +31,7 @@ import { removeWithUndo } from "../undo";
 import LivePreview from "../components/LivePreview";
 import { showToast } from "../toast";
 import { EffortEstimatePanel } from "./quotes/EffortEstimatePanel";
+import { isCloudBackend } from "../storage/adapter";
 import type { ManualPhase, Project, Quote, SiaItem, ViewProps } from "../types";
 
 declare global {
@@ -122,7 +123,14 @@ function Quotes({ data, update, saveAll, modal, setModal, setPrintContent, setVi
   // eslint-disable-next-line react-hooks/exhaustive-deps -- nur auf neue Aufträge reagieren
   }, [modal?.type, modal?.id]);
   /* eslint-enable react-hooks/set-state-in-effect */
-  const del = (id: string) => { const q = (data.quotes || []).find(x => x.id === id); removeWithUndo(`Offerte ${q?.number || ""} gelöscht`, "quotes", x => x.id === id); };
+  const del = (id: string) => {
+    const q = (data.quotes || []).find(x => x.id === id);
+    // Cloud: Offerten mit Rechnungen oder Verträgen löscht der Server nicht (pb_hooks/integrity.pb.js) — gleich sagen
+    if (isCloudBackend && [...(data.invoices || []), ...(data.contracts || [])].some(x => x.quoteId === id)) {
+      showToast(`Offerte ${q?.number || ""} steckt in Rechnungen oder Verträgen und kann darum nicht gelöscht werden.`); return;
+    }
+    removeWithUndo(`Offerte ${q?.number || ""} gelöscht`, "quotes", x => x.id === id);
+  };
   const setStatus = (id: string, st: string) => update("quotes", (data.quotes||[]).map(q => q.id === id ? { ...q, status: st } : q));
 
   const createProjectFromQuote = (q: Quote) => {

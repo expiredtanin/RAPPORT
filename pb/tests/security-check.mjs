@@ -334,11 +334,47 @@ check("A: zwei Entwürfe ohne Nummer", r.status === 200 && r2.status === 200, `H
 r = await api("POST", "/api/collections/invoices/records", tA, { id: rid("d3"), studio: sid, number: "GEHEIM-001 " });
 check("Rechnungsnummer mit Leerzeichen am Rand abgelehnt", r.status >= 400, `HTTP ${r.status}`);
 
+// ── Sicherheits-Test Runde 25 ───────────────────────────────────────────────────────────────────────────────────
+{
+  const st = (await api("GET", `/api/collections/studioSettings/records?filter=${enc(`studio="${sid}"`)}`, tA)).json.items[0];
+  r = await api("DELETE", `/api/collections/studioSettings/records/${st.id}`, tM);
+  check("M: Büro-Einstellungen nicht löschbar (danach mit eigener IBAN neu anlegen)", r.status >= 400, `HTTP ${r.status}`);
+  r = await api("PATCH", `/api/collections/studioSettings/records/${st.id}`, tP, { ui: { ...(st.ui || {}), closedMonths: 5 } });
+  check("P: Monatsabschluss nur als Liste JJJJ-MM", r.status >= 400, `HTTP ${r.status}`);
+  r = await api("DELETE", `/api/collections/employees/records/${empOther}`, tP);
+  check("P (ohne Vollzugriff): Mitarbeiter nicht löschbar", r.status >= 400, `HTTP ${r.status}`);
+  r = await api("DELETE", `/api/collections/employees/records/${empOther}`, tA);
+  check("A: Mitarbeiter mit Lohnabrechnungen nicht löschbar", r.status >= 400, `HTTP ${r.status}`);
+  r = await api("POST", "/api/collections/employees/records", tP, { id: rid("empx"), studio: sid, name: "Neu mit Lohn", monatslohn: 99999, lohnIban: "CH9300762011623852957" });
+  check("P (ohne Löhne): neuer Mitarbeiter ohne Lohnangaben", r.status >= 400, `HTTP ${r.status}`);
+  r = await api("POST", "/api/collections/employees/records", tP, { id: rid("empy"), studio: sid, name: "Neu ohne Lohn", ahvSatz: 5.3 });
+  check("P (ohne Löhne): neuer Mitarbeiter mit Standardsätzen erlaubt", r.status === 200, `HTTP ${r.status} ${r.status !== 200 ? JSON.stringify(r.json) : ""}`);
+  r = await api("POST", "/api/collections/overtimeClosings/records", tP, { id: rid("otx"), studio: sid, employee: empOther, year: 2026, auszahlungBetrag: 99999, imLohn: true });
+  check("P (ohne Löhne): keine Überstunden-Auszahlung", r.status >= 400, `HTTP ${r.status}`);
+  const q = rid("quo");
+  must(await api("POST", "/api/collections/quotes/records", tA, { id: q, studio: sid, number: "Q-REF" }), "Offerte");
+  must(await api("PATCH", `/api/collections/invoices/records/${inv}`, tA, { quote: q }), "Rechnung → Offerte");
+  r = await api("DELETE", `/api/collections/quotes/records/${q}`, tA);
+  check("A: Offerte mit Rechnung nicht löschbar", r.status >= 400, `HTTP ${r.status}`);
+  r = await api("POST", "/api/collections/absences/records", tM, { id: rid("absx"), studio: sid, employee: empM, date: "2026-10-05", dateFrom: "2026-12-02", dateTo: "2026-12-02", status: "pending" });
+  const ab2 = await api("POST", "/api/collections/absences/records", tM, { id: rid("absy"), studio: sid, employee: empM, dateFrom: "2026-12-05", dateTo: "2026-12-01", status: "pending" });
+  check("M: Absenz mit date im abgeschlossenen Monat bzw. Bis vor Von abgelehnt", r.status >= 400 && ab2.status >= 400, `HTTP ${r.status}/${ab2.status}`);
+  r = await api("POST", "/api/rapport/invite-member", tA, { userId: mUser.id, studioId: sid, appRoleId: "gibtsnicht" });
+  const r3 = await api("POST", "/api/rapport/invite-member", tA, { userId: aId, studioId: sid, appRoleId: "r-mitarbeiter" });
+  check("Einladen: unbekannte Rolle bzw. letzten Admin herabstufen abgelehnt", r.status >= 400 && r3.status >= 400, `HTTP ${r.status}/${r3.status}`);
+  const myPost = rid("mpost");
+  must(await api("POST", "/api/collections/blogPosts/records", tP, { id: myPost, studio: sid, author: pUser.id, title: "Meins", type: "beitrag", status: "published" }), "Beitrag P");
+  r = await api("PATCH", `/api/collections/blogPosts/records/${myPost}`, tP, { author: aId });
+  check("P: Autor des eigenen Beitrags nicht änderbar", r.status >= 400, `HTTP ${r.status}`);
+  r = await api("PATCH", `/api/collections/blogPosts/records/${post}`, tM, { poll: { question: "Wohin?", options: [{ id: "o1", label: "A" }, { id: "o2", label: "B" }], votes: { [mUser.id]: "o1" }, closed: true } });
+  check("M: in fremder Umfrage keine Zusatzfelder", r.status >= 400, `HTTP ${r.status}`);
+}
+
 // ── Änderungsprotokoll (audit.pb.js) ───────────────────────────────────────────────────────────────────────────
 must(await api("PATCH", `/api/collections/invoices/records/${inv}`, tA, { number: "GEHEIM-002" }), "Rechnung umnummerieren");
 r = await api("GET", `/api/collections/auditLog/records?filter=${enc(`studio="${sid}" && coll="invoices" && recordId="${inv}"`)}&sort=-created`, tA);
 const lastLog = r.json && r.json.items && r.json.items[0];
-check("Protokoll: Rechnungsänderung mit alt → neu und Person", !!lastLog && lastLog.action === "update" && JSON.stringify(lastLog.changes).includes("GEHEIM-002") && lastLog.userName === "Admin A", `HTTP ${r.status}`);
+check("Protokoll: Rechnungsänderung mit alt → neu und Person", !!lastLog && lastLog.action === "update" && JSON.stringify(lastLog.changes).includes("GEHEIM-002") && lastLog.userName === aEmail, `HTTP ${r.status} ${lastLog && lastLog.userName}`);
 r = await api("GET", `/api/collections/auditLog/records?filter=${enc(`studio="${sid}"`)}`, tM);
 check("Protokoll: Mitarbeiter liest es nicht", r.status >= 400 || (r.json && r.json.items && r.json.items.length === 0), `HTTP ${r.status}`);
 r = await api("POST", "/api/collections/auditLog/records", tA, { studio: sid, coll: "invoices", action: "update", changes: {} });

@@ -24,15 +24,32 @@ onRecordCreateRequest((e) => {
   try { own = e.app.findRecordById("employees", r.get("employee")).get("appUser") === uid; } catch { own = false; }
   if (name === "employees") {
     if (!full && r.getString("appUser")) throw new ForbiddenError("Die Verknüpfung mit einem Konto setzt ein Admin (Einstellungen → Team).");
+    // neu angelegt ohne Recht «Löhne»: keine Lohnangaben (Standard-Sozialsätze sind erlaubt) — vorher kam ein neuer
+    // Mitarbeiter mit selbst gesetztem Lohn und Lohnkonto ins System (Sicherheits-Test Runde 25)
+    if (!has("loehne")) {
+      const empty = (f) => { const v = r.get(f); return v === null || v === undefined || v === "" || v === 0 || v === false || (Array.isArray(v) && v.length === 0) || JSON.stringify(v) === "[]" || JSON.stringify(v) === "null"; };
+      for (const f of ["monatslohn", "lohnVerlauf", "lohnIban", "pkBeitragAN", "pkBeitragAG", "familienzulagen"]) {
+        if (!empty(f)) throw new ForbiddenError("Lohnangaben erfasst, wer das Recht Löhne hat (" + f + ").");
+      }
+    }
     return e.next();
   }
   // 1. abgeschlossene Monate
   if (!has("mitarbeiter")) {
     let closed = [];
-    try { closed = (JSON.parse(e.app.findFirstRecordByFilter("studioSettings", "studio = {:s}", { s: sid }).getString("ui") || "{}").closedMonths) || []; } catch { closed = []; }
-    const from = (r.getString("dateFrom") || r.getString("date")).slice(0, 7);
-    const to = (r.getString("dateTo") || r.getString("date") || from).slice(0, 7);
-    for (const m of closed) if (from && m >= from && m <= (to || from)) throw new ForbiddenError("Der Monat " + m + " ist abgeschlossen.");
+    try { closed = JSON.parse(e.app.findFirstRecordByFilter("studioSettings", "studio = {:s}", { s: sid }).getString("ui") || "{}").closedMonths; } catch { closed = []; }
+    closed = Array.isArray(closed) ? closed.filter((m) => typeof m === "string") : [];   // falscher Typ sperrte sonst alles bzw. nichts
+    // alle drei Datumsfelder (date, dateFrom, dateTo) und ihr ganzer Bereich — vorher zählte date nicht, sobald
+    // dateFrom gesetzt war, und ein umgekehrter Bereich war leer (Sicherheits-Test Runde 25)
+    const ds = [r.getString("date"), r.getString("dateFrom"), r.getString("dateTo")].map((v) => String(v || "").slice(0, 7)).filter((v) => v).sort();
+    for (const m of closed) if (ds.length && m >= ds[0] && m <= ds[ds.length - 1]) throw new ForbiddenError("Der Monat " + m + " ist abgeschlossen.");
+  }
+  if ((name === "absences" || name === "vacationEntries") && r.getString("dateFrom") && r.getString("dateTo") && r.getString("dateTo").slice(0, 10) < r.getString("dateFrom").slice(0, 10)) {
+    throw new BadRequestError("Bis liegt vor Von.");
+  }
+  // Überstunden-Auszahlung (Betrag, im Lohn) nur mit Recht «Löhne» — floss sonst ohne Lohnrecht in die Abrechnung
+  if (name === "overtimeClosings" && !has("loehne") && (r.getFloat("auszahlungBetrag") > 0 || r.getBool("imLohn"))) {
+    throw new ForbiddenError("Überstunden auszahlen braucht das Recht Löhne.");
   }
   // Zeiteinträge höchstens ein Jahr im Voraus (sonst Saldo/Auszahlung per Eintrag im Jahr 2099 aufblähbar)
   if (name === "timeEntries" && r.getString("date") && new Date(r.getString("date").slice(0, 10) + "T00:00:00Z").getTime() > Date.now() + 366 * 86400000) {
@@ -84,11 +101,19 @@ onRecordUpdateRequest((e) => {
   // 1. abgeschlossene Monate — alter und neuer Stand
   if (!has("mitarbeiter")) {
     let closed = [];
-    try { closed = (JSON.parse(e.app.findFirstRecordByFilter("studioSettings", "studio = {:s}", { s: sid }).getString("ui") || "{}").closedMonths) || []; } catch { closed = []; }
+    try { closed = JSON.parse(e.app.findFirstRecordByFilter("studioSettings", "studio = {:s}", { s: sid }).getString("ui") || "{}").closedMonths; } catch { closed = []; }
+    closed = Array.isArray(closed) ? closed.filter((m) => typeof m === "string") : [];   // falscher Typ sperrte sonst alles bzw. nichts
     for (const x of [o, r]) {
-      const from = (x.getString("dateFrom") || x.getString("date")).slice(0, 7);
-      const to = (x.getString("dateTo") || x.getString("date") || from).slice(0, 7);
-      for (const m of closed) if (from && m >= from && m <= (to || from)) throw new ForbiddenError("Der Monat " + m + " ist abgeschlossen.");
+      const ds = [x.getString("date"), x.getString("dateFrom"), x.getString("dateTo")].map((v) => String(v || "").slice(0, 7)).filter((v) => v).sort();
+      for (const m of closed) if (ds.length && m >= ds[0] && m <= ds[ds.length - 1]) throw new ForbiddenError("Der Monat " + m + " ist abgeschlossen.");
+    }
+  }
+  if ((name === "absences" || name === "vacationEntries") && r.getString("dateFrom") && r.getString("dateTo") && r.getString("dateTo").slice(0, 10) < r.getString("dateFrom").slice(0, 10)) {
+    throw new BadRequestError("Bis liegt vor Von.");
+  }
+  if (name === "overtimeClosings" && !has("loehne")) {
+    for (const f of ["auszahlungBetrag", "stundenlohn", "zuschlagPercent", "imLohn", "hoursSettled"]) {
+      if (JSON.stringify(r.get(f)) !== JSON.stringify(o.get(f))) throw new ForbiddenError("Überstunden-Auszahlungen ändert, wer das Recht Löhne hat (" + f + ").");
     }
   }
   if (name === "timeEntries" && r.getString("date") && r.getString("date") !== o.getString("date") && new Date(r.getString("date").slice(0, 10) + "T00:00:00Z").getTime() > Date.now() + 366 * 86400000) {
@@ -151,14 +176,20 @@ onRecordDeleteRequest((e) => {
   try { perms = e.app.findFirstRecordByFilter("studioMembers", "studio = {:s} && user = {:u} && active = true", { s: sid, u: uid }).getString("perms"); } catch { perms = ""; }
   const has = (p) => perms.indexOf("|*|") >= 0 || perms.indexOf("|" + p + "|") >= 0;
   const full = perms.indexOf("|*|") >= 0;
-  // 5. Stammdaten mit Verweisen
-  if (name === "persons" || name === "projects") {
+  // 5. Stammdaten mit Verweisen (Runde 25: auch Offerten, Spesen, Protokolle, Lieferscheine — PocketBase leerte sonst
+  // still die Verweise) und Mitarbeitende (Kaskade löschte sonst Lohnabrechnungen und Abschlüsse ohne Protokoll)
+  if (name === "persons" || name === "projects" || name === "quotes" || name === "employees") {
+    if (name === "employees" && !full) throw new ForbiddenError("Mitarbeitende löscht ein Admin.");
     const refs = name === "persons"
-      ? [["invoices", "client"], ["quotes", "client"], ["contracts", "client"]]
-      : [["invoices", "project"], ["quotes", "project"], ["contracts", "project"], ["timeEntries", "project"]];
-    // Rechnungen, Offerten, Verträge: auch mit Vollzugriff nicht — PocketBase leert sonst den Verweis in der
-    // (bezahlten) Rechnung, und «Rückgängig» stellt ihn nicht wieder her (E2E 25.11.2026). Nur Stunden: Admin darf.
-    const LABEL = { invoices: "Rechnungen", quotes: "Offerten", contracts: "Verträge", timeEntries: "Zeiteinträge" };
+      ? [["invoices", "client"], ["quotes", "client"], ["contracts", "client"], ["deliveryNotes", "client"]]
+      : name === "projects"
+        ? [["invoices", "project"], ["quotes", "project"], ["contracts", "project"], ["expenses", "project"], ["protocols", "project"], ["deliveryNotes", "project"], ["timeEntries", "project"]]
+        : name === "quotes"
+          ? [["invoices", "quote"], ["contracts", "quote"]]
+          : [["payrollEntries", "employee"], ["overtimeClosings", "employee"]];
+    // auch mit Vollzugriff nicht — «Rückgängig» stellt geleerte Verweise nicht wieder her. Nur Stunden: Admin darf.
+    const LABEL = { invoices: "Rechnungen", quotes: "Offerten", contracts: "Verträge", timeEntries: "Zeiteinträge", expenses: "Spesen",
+      protocols: "Protokolle", deliveryNotes: "Lieferscheine", payrollEntries: "Lohnabrechnungen", overtimeClosings: "Überstunden-Abschlüsse" };
     for (const [coll, field] of refs) {
       let used = false;
       try { e.app.findFirstRecordByFilter(coll, field + " = {:id}", { id: r.id }); used = true; } catch { used = false; }
@@ -170,10 +201,12 @@ onRecordDeleteRequest((e) => {
   try { own = e.app.findRecordById("employees", r.get("employee")).get("appUser") === uid; } catch { own = false; }
   if (!has("mitarbeiter")) {
     let closed = [];
-    try { closed = (JSON.parse(e.app.findFirstRecordByFilter("studioSettings", "studio = {:s}", { s: sid }).getString("ui") || "{}").closedMonths) || []; } catch { closed = []; }
-    const from = (r.getString("dateFrom") || r.getString("date")).slice(0, 7);
-    const to = (r.getString("dateTo") || r.getString("date") || from).slice(0, 7);
-    for (const m of closed) if (from && m >= from && m <= (to || from)) throw new ForbiddenError("Der Monat " + m + " ist abgeschlossen.");
+    try { closed = JSON.parse(e.app.findFirstRecordByFilter("studioSettings", "studio = {:s}", { s: sid }).getString("ui") || "{}").closedMonths; } catch { closed = []; }
+    closed = Array.isArray(closed) ? closed.filter((m) => typeof m === "string") : [];   // falscher Typ sperrte sonst alles bzw. nichts
+    // alle drei Datumsfelder (date, dateFrom, dateTo) und ihr ganzer Bereich — vorher zählte date nicht, sobald
+    // dateFrom gesetzt war, und ein umgekehrter Bereich war leer (Sicherheits-Test Runde 25)
+    const ds = [r.getString("date"), r.getString("dateFrom"), r.getString("dateTo")].map((v) => String(v || "").slice(0, 7)).filter((v) => v).sort();
+    for (const m of closed) if (ds.length && m >= ds[0] && m <= ds[ds.length - 1]) throw new ForbiddenError("Der Monat " + m + " ist abgeschlossen.");
   }
   if (name === "timeEntries" && r.getString("invoice") && !has("invoices")) throw new ForbiddenError("Verrechnete Zeiteinträge löscht nur, wer das Recht Rechnungen hat.");
   if (own && !full) {
@@ -181,4 +214,4 @@ onRecordDeleteRequest((e) => {
     if (name === "overtimeClosings") throw new ForbiddenError("Eigene Überstunden schliesst ein Admin ab.");
   }
   e.next();
-}, "timeEntries", "absences", "vacationEntries", "overtimeClosings", "persons", "projects");
+}, "timeEntries", "absences", "vacationEntries", "overtimeClosings", "persons", "projects", "quotes", "employees");

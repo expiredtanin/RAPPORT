@@ -105,7 +105,8 @@ onRecordUpdateRequest((e) => {
       const ny = e.record.getInt("lastProjectYear"), oy = old.getInt("lastProjectYear");
       const ns = e.record.getInt("lastProjectSeq"), os = old.getInt("lastProjectSeq");
       const maxYear = new Date().getFullYear() + 1;
-      const ok = ny <= maxYear && ns >= 0 && ns < 100000 && (ny > oy || (ny === oy && ns >= os));
+      // höchstens +50 auf einmal (sonst liess sich der Zähler auf 99999 setzen und blieb dort stehen)
+      const ok = ny <= maxYear && ns >= 0 && (ny > oy ? ns <= 50 : ny === oy && ns >= os && ns <= os + 50);
       if (!ok) { e.record.set("lastProjectYear", old.get("lastProjectYear")); e.record.set("lastProjectSeq", old.get("lastProjectSeq")); }
     }
     // ohne «settings» (Zugang nur über «projects»/«quotes», Migration 1787960000) ausschliesslich der Zähler
@@ -120,6 +121,10 @@ onRecordUpdateRequest((e) => {
     }
     let uiNew = {}, uiOld = {};
     try { uiNew = JSON.parse(e.record.getString("ui") || "{}") || {}; } catch { uiNew = {}; }
+    // Monatsabschluss: nur eine Liste «JJJJ-MM» (eine Zahl brachte die Prüfung zum Absturz und sperrte die Zeiterfassung)
+    if (uiNew.closedMonths !== undefined && !(Array.isArray(uiNew.closedMonths) && uiNew.closedMonths.every((m) => typeof m === "string" && /^\d{4}-\d{2}$/.test(m)))) {
+      throw new BadRequestError("Monatsabschluss: ungültige Monate.");
+    }
     try { uiOld = JSON.parse(old.getString("ui") || "{}") || {}; } catch { uiOld = {}; }
     // Schlüssel als Set (ein Objekt verschluckte «__proto__»: damit liessen sich beliebige Daten in ui ablegen)
     const keys = new Set([...Object.keys(uiNew), ...Object.keys(uiOld)]);
@@ -138,13 +143,15 @@ onRecordUpdateRequest((e) => {
   if (e.hasSuperuserAuth()) return e.next();
   const authId = e.auth ? e.auth.id : "";
   const old = e.record.original();
-  if (old.get("author") === authId) return e.next();
   let full = false;
   try {
     e.app.findFirstRecordByFilter("studioMembers", "studio = {:s} && user = {:u} && active = true && perms ~ '|*|'", { s: old.get("studio"), u: authId });
     full = true;
   } catch { full = false; }
   if (full) return e.next();
+  // Autor bleibt Autor (sonst wirkte ein Beitrag wie von jemand anderem verfasst)
+  if (JSON.stringify(e.record.get("author")) !== JSON.stringify(old.get("author"))) throw new ForbiddenError("Den Autor eines Beitrags ändert nur ein Admin.");
+  if (old.get("author") === authId) return e.next();
   const bad = [];
   for (const f of e.record.collection().fields) {
     const n = f.name;
@@ -156,8 +163,13 @@ onRecordUpdateRequest((e) => {
   try { pOld = JSON.parse(old.getString("poll") || "null"); } catch { pOld = null; }
   if (!pOld || !pNew) { if (JSON.stringify(pNew) !== JSON.stringify(pOld)) bad.push("poll"); }
   else {
-    if (pNew.question !== pOld.question || JSON.stringify(pNew.options) !== JSON.stringify(pOld.options)) bad.push("poll");
+    // ausser den Stimmen bleibt die Umfrage unverändert (auch keine Zusatzfelder)
+    const rest = (p) => { const c = {}; for (const k of Object.keys(p)) if (k !== "votes") c[k] = p[k]; return JSON.stringify(c); };
+    if (rest(pNew) !== rest(pOld)) bad.push("poll");
     const vN = pNew.votes || {}, vO = pOld.votes || {};
+    // eigene Stimme: nur die Id einer Option (oder keine)
+    const mine = vN[authId];
+    if (mine !== undefined && !(typeof mine === "string" && (pOld.options || []).some((o) => o && o.id === mine))) bad.push("poll.votes");
     // Set statt Objekt: «__proto__» fiel sonst aus der Prüfung (fremde Daten in poll.votes)
     const keys = new Set([...Object.keys(vN), ...Object.keys(vO)]);
     for (const k of keys) if (k !== authId && JSON.stringify(vN[k]) !== JSON.stringify(vO[k])) bad.push("poll.votes");
@@ -165,3 +177,25 @@ onRecordUpdateRequest((e) => {
   if (bad.length) throw new ForbiddenError("Fremde Beiträge können nur ihre Autorin, ihr Autor oder ein Admin ändern.");
   e.next();
 }, "blogPosts");
+
+// Büro-Einstellungen anlegen/löschen nur mit Vollzugriff: vorher löschte ein Mitglied mit Recht «settings» den
+// Datensatz und legte ihn mit eigener IBAN neu an — die Feldprüfung oben greift nur beim Ändern (Sicherheits-Test R25)
+onRecordCreateRequest((e) => {
+  if (e.hasSuperuserAuth()) return e.next();
+  try {
+    e.app.findFirstRecordByFilter("studioMembers", "studio = {:s} && user = {:u} && active = true && perms ~ '|*|'", { s: e.record.get("studio"), u: e.auth ? e.auth.id : "" });
+  } catch {
+    throw new ForbiddenError("Büro-Einstellungen legt ein Admin an.");
+  }
+  e.next();
+}, "studioSettings");
+
+onRecordDeleteRequest((e) => {
+  if (e.hasSuperuserAuth()) return e.next();
+  try {
+    e.app.findFirstRecordByFilter("studioMembers", "studio = {:s} && user = {:u} && active = true && perms ~ '|*|'", { s: e.record.get("studio"), u: e.auth ? e.auth.id : "" });
+  } catch {
+    throw new ForbiddenError("Büro-Einstellungen löscht ein Admin.");
+  }
+  e.next();
+}, "studioSettings");

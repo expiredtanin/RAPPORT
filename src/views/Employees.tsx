@@ -212,6 +212,11 @@ function Employees({ data, update, saveAll, setPrintContent, userPermissions, cu
     const emp = employees.find(e => e.id === id);
     const linked = isCloudBackend ? [] : (data.users || []).filter(u => u.employeeId === id || (!!emp?.appUserId && u.id === emp.appUserId));
     if (id === currentEmployeeId) { showToast("Den eigenen Mitarbeiter-Eintrag kannst du nicht löschen."); return; }
+    // Lohnabrechnungen und Überstunden-Abschlüsse sind aufzubewahren (der Server löscht sie sonst mit) → auf inaktiv setzen
+    if ((data.lohnEntries || []).some(l => l.employeeId === id) || (data.uberstundenAbschluss || []).some(a => a.empId === id)) {
+      showToast("Für diese Person gibt es Lohnabrechnungen oder Überstunden-Abschlüsse — bitte auf «inaktiv» setzen statt löschen."); return;
+    }
+    if (isCloudBackend && userPermissions !== null) { showToast("Mitarbeitende löscht ein Admin."); return; }
     const admins = (data.users || []).filter(u => u.role === "admin");
     if (linked.some(u => u.role === "admin") && admins.every(a => linked.some(u => u.id === a.id))) { showToast("Mindestens ein Administrator muss bestehen bleiben."); return; }
     const msg = linked.length

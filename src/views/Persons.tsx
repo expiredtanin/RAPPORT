@@ -413,7 +413,7 @@ export default function Persons({ data, update, modal, setModal }: Pick<ViewProp
     const f = persons.find(p => p.id === id);
     const refs = personReferences(data, id);
     // Cloud: Kontakte mit Rechnungen/Offerten/Verträgen löscht der Server nicht (pb_hooks/integrity.pb.js) — gleich sagen
-    if (isCloudBackend && [...(data.invoices || []), ...(data.quotes || []), ...(data.contracts || [])].some(x => x.clientId === id)) {
+    if (isCloudBackend && [...(data.invoices || []), ...(data.quotes || []), ...(data.contracts || []), ...(data.deliveryNotes || [])].some(x => x.clientId === id)) {
       showToast(`«${f?.name || ""}» steckt in Rechnungen, Offerten oder Verträgen und kann darum nicht gelöscht werden.`);
       return;
     }
