@@ -251,6 +251,8 @@ export function ScheduleEditor({ project, data, update, setPrintContent, canEdit
   const keyRef = useRef<(e: KeyboardEvent) => void>(() => {});
   const onKey = (e: KeyboardEvent) => {
     if (editing || editLabelId || document.querySelector(".modal-overlay") || e.defaultPrevented) return;
+    // Druckansicht offen (App darunter ausgeblendet): keine unsichtbaren Änderungen per Tastatur
+    if (cardRef.current && cardRef.current.getClientRects().length === 0) return;
     if (!full && !cardRef.current?.contains(document.activeElement)) return;
     const tag = (document.activeElement as HTMLElement | null)?.tagName;
     if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;

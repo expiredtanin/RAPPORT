@@ -112,8 +112,8 @@ function FirmaDetail({ firma, data, update, onBack, onEdit, onAddPerson, onEditP
         const figs: { label: string; value: string; sub?: string; tone?: string }[] = [
           { label: "Projekte", value: String(allProjects.length), sub: isClientLike ? (asPartner.length ? `${asPartner.length} als Beteiligte` : undefined) : `${protocols.length} Protokolle` },
           ...(isClientLike ? [
-            { label: "Umsatz (netto)", value: formatCHF(clientRevenue(data, firma.id)).replace(/^CHF\s*/u, ""), sub: `${invoices.length} Rechnungen · ${quotes.length} Offerten` },
-            { label: "Offen", value: formatCHF(open).replace(/^CHF\s*/u, ""), sub: open > 0 ? "CHF ausstehend" : "nichts ausstehend", tone: open > 0 ? "warn" : undefined },
+            { label: "Umsatz (netto)", value: formatCHF(clientRevenue(data, firma.id)).replace(/^(−?)CHF\s*/u, "$1"), sub: `${invoices.length} Rechnungen · ${quotes.length} Offerten` },
+            { label: "Offen", value: formatCHF(open).replace(/^(−?)CHF\s*/u, "$1"), sub: open > 0 ? "CHF ausstehend" : "nichts ausstehend", tone: open > 0 ? "warn" : undefined },
           ] : [
             { label: "Ansprechpartner", value: String((firma.contacts || []).length) },
           ]),

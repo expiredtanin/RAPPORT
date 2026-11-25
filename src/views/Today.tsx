@@ -19,7 +19,7 @@ import { showToast } from "../toast";
 import { EmptyState } from "../components/UI";
 
 /** Betrag ohne Rappen und ohne «CHF» (kompakt für Kennzahlen). */
-const chf0 = (n: number) => formatCHF(Math.round(n)).replace(/^CHF\s*/u, "").replace(/\.00$/, "");
+const chf0 = (n: number) => formatCHF(Math.round(n)).replace(/^(−?)CHF\s*/u, "$1").replace(/\.00$/, "");
 
 /** Phasen eines Projekts zur Auswahl (SIA + eigene). */
 function projectPhases(data: AppData, projectId: string) {

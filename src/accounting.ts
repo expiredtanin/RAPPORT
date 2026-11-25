@@ -284,7 +284,8 @@ export function accountingSummary(data: SummaryData, period: string, today = tod
   const taxInvoices = mwstArt === "vereinnahmt"
     ? (data.invoices || []).filter(i => i.status === "bezahlt" && inPeriod(i.paidDate || i.date, period))
     : issued;
-  const mwstEntgeltBrutto = roundCHF(sum(taxInvoices, i => i.total || 0));
+  // Saldosteuersatz nur auf steuerbare Entgelte (Rechnungen ohne MWST, z.B. ins Ausland, zählen nicht)
+  const mwstEntgeltBrutto = roundCHF(sum(taxInvoices.filter(i => i.mwst !== false), i => i.total || 0));
   const umsatzsteuer = mwstMethode === "saldo"
     ? roundCHF(mwstEntgeltBrutto * (data.settings?.mwstSaldoSatz || 0) / 100)
     : roundCHF(sum(taxInvoices, i => i.tax || 0));
@@ -309,7 +310,13 @@ export function accountingSummary(data: SummaryData, period: string, today = tod
 
   // Saldosteuersatz: kein Vorsteuerabzug (Art. 37 Abs. 1 MWSTG)
   const vorsteuer = mwstMethode === "saldo" ? 0 : roundCHF(expTax + intTax);
-  const ausgabenTotal = roundCHF(expNet + intNet + personalaufwand);
+  // Ergebnis: effektiv netto/netto; mit Saldosteuersatz ist die Vorsteuer Aufwand (Ausgaben brutto) und der Ertrag
+  // = Entgelt inkl. MWST − Saldosteuer (vorher netto wie effektiv: Ergebnis um Vorsteuer und Satzdifferenz falsch)
+  const saldo = mwstMethode === "saldo";
+  const ausgabenTotal = roundCHF((saldo ? expGross + intGross : expNet + intNet) + personalaufwand);
+  const ertrag = saldo
+    ? roundCHF(sum(issued, i => i.total || 0) - roundCHF(sum(issued.filter(i => i.mwst !== false), i => i.total || 0) * (data.settings?.mwstSaldoSatz || 0) / 100))
+    : revenueNet;
   return {
     revenueNet,
     draftNet: roundCHF(sum(invoices.filter(i => i.status === "entwurf"), invoiceNet)),
@@ -324,7 +331,7 @@ export function accountingSummary(data: SummaryData, period: string, today = tod
     vorsteuer,
     mwstSchuld: roundCHF(umsatzsteuer - vorsteuer),
     ausgabenTotal,
-    ergebnis: roundCHF(revenueNet - ausgabenTotal),
+    ergebnis: roundCHF(ertrag - ausgabenTotal),
   };
 }
 

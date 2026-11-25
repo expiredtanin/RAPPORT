@@ -227,7 +227,7 @@ export function KpiCard({ label, value, sub, color, go, setView }: {
     >
       <div className="kpi-label">{color && <span className="kpi-dot" style={{ background: color }} />}{label}</div>
       {/* «CHF 120'569.34»: nach «CHF» darf umbrechen (formatCHF setzt ein geschütztes Leerzeichen) */}
-      <div className="kpi-value">{typeof value === "string" ? value.replace(/^CHF\u00a0/, "CHF ") : value}</div>
+      <div className="kpi-value">{typeof value === "string" ? value.replace(/^(−?CHF)\u00a0/, "$1 ") : value}</div>
       {sub && <div className="kpi-sub">{sub}</div>}
     </div>
   );

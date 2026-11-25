@@ -1,6 +1,7 @@
 // Tests für Lohnabrechnung (calcLohn mit Eintritt/Höchstlohn), Spesen-Auszahlung und die
 // Buchhaltungssummen (Jahresergebnis, MWST-Abrechnung, CSV) mit realistischen Schweizer Zahlen.
 
+import { roundCHF } from "./utils";
 import { describe, expect, it } from "vitest";
 import { ahvStatus, bvgAltersgutschriftSatz, bvgKoordinierterLohn, calcLohn, contractAmounts, hoechstlohnKumuliert, monatsAnteilNachEintritt } from "./utils";
 import { periodLabel, mwstDueDate, mwstPerioden, expandInternalExpenses, spesenWartend,
@@ -277,6 +278,22 @@ describe("accountingSummary — Jahresergebnis und MWST-Abrechnung", () => {
     expect(s.vorsteuer).toBe(0);
     expect(s.mwstSchuld).toBe(1139.37);
     expect(mwstPerioden(2026, "saldo").map(p => [p.period, p.due])).toEqual([["2026-H1", "2026-08-29"], ["2026-H2", "2027-03-01"]]);
+  });
+
+  it("Saldosteuersatz: Rechnungen ohne MWST nicht in der Basis; Ergebnis mit Vorsteuer als Aufwand", () => {
+    const d = {
+      settings: { mwstRate: 8.1, mwstMethode: "saldo", mwstSaldoSatz: 6.2 },
+      invoices: [
+        { id: "i1", date: "2026-03-01", status: "gesendet", mwst: true, sub: 100000, tax: 8100, total: 108100, items: [] },
+        { id: "i2", date: "2026-03-02", status: "gesendet", mwst: false, sub: 50000, tax: 0, total: 50000, items: [] },
+      ],
+      expenses: [{ id: "e1", date: "2026-03-03", amount: 10810, inclMwst: true, mwstRate: 8.1, status: "genehmigt" }],
+      internalExpenses: [], lohnEntries: [],
+    } as unknown as AppData;
+    const s = accountingSummary(d, "2026-H1", END);
+    expect(s.mwstEntgeltBrutto).toBe(108100);          // Auslandrechnung nicht steuerbar
+    expect(s.umsatzsteuer).toBe(6702.2);
+    expect(s.ergebnis).toBe(roundCHF(158100 - 6702.2 - 10810)); // 140'587.80
   });
 
   it("Vereinnahmte Entgelte: nur bezahlte Rechnungen nach Zahlungsdatum", () => {

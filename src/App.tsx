@@ -302,6 +302,8 @@ export default function App() {
   const [paletteOpen, setPaletteOpen] = useState(false);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      // nicht unter der Druckansicht (App ausgeblendet)
+      if ((document.querySelector(".app-wrapper") as HTMLElement | null)?.style.display === "none") return;
       if ((e.metaKey || e.ctrlKey) && !e.altKey && e.key.toLowerCase() === "k") { e.preventDefault(); setPaletteOpen(o => !o); }
     };
     window.addEventListener("keydown", onKey);
