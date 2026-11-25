@@ -100,6 +100,12 @@ onRecordUpdateRequest((e) => {
       const n = f.name;
       if (n === "ui" || n === "updated") continue;
       if (OPEN_FIELDS[n] && has(OPEN_FIELDS[n])) continue;
+      // Projektnummern-Zähler: wer Projekte anlegt (auch aus einer Offerte), zählt ihn hoch — vorher meldete
+      // «Neues Projekt» ohne Admin «Speichern fehlgeschlagen» (Cloud-Test Runde 15); nur vorwärts
+      if ((n === "lastProjectSeq" || n === "lastProjectYear") && (has("projects") || has("quotes"))) {
+        const ny = e.record.getInt("lastProjectYear"), oy = old.getInt("lastProjectYear");
+        if (ny > oy || (ny === oy && e.record.getInt("lastProjectSeq") >= old.getInt("lastProjectSeq"))) continue;
+      }
       if (JSON.stringify(e.record.get(n)) !== JSON.stringify(old.get(n))) changed.push(n);
     }
     let uiNew = {}, uiOld = {};

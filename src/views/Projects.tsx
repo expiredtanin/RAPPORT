@@ -31,7 +31,7 @@ import type { Project, ViewProps } from "../types";
 import { ProjectEditForm, type ProjectForm } from "./ProjectEditForm";
 
 export default
-function Projects({ data, saveAll, modal, setModal, onSelect, setPrintContent }: Pick<ViewProps, "data" | "update" | "saveAll" | "modal" | "setModal" | "setPrintContent" | "currentUser" | "userPermissions"> & {
+function Projects({ data, saveAll, modal, setModal, onSelect, setPrintContent, userPermissions }: Pick<ViewProps, "data" | "update" | "saveAll" | "modal" | "setModal" | "setPrintContent" | "currentUser" | "userPermissions"> & {
   /** Öffnet die Detailansicht eines Projekts */
   onSelect: (projectId: string) => void;
 }) {
@@ -86,6 +86,12 @@ function Projects({ data, saveAll, modal, setModal, onSelect, setPrintContent }:
     // Cloud: Projekte mit Rechnungen/Offerten/Verträgen löscht der Server nicht (pb_hooks/integrity.pb.js) — gleich sagen
     if (isCloudBackend && [...(data.invoices || []), ...(data.quotes || []), ...(data.contracts || [])].some(x => x.projectId === id)) {
       showToast(`«${p?.name || ""}» hat Rechnungen, Offerten oder Verträge und kann darum nicht gelöscht werden — besser auf «abgeschlossen» setzen.`);
+      return;
+    }
+    // Cloud ohne Vollzugriff: Projekte mit Zeiteinträgen löscht der Server ebenfalls nicht (Dialog versprach sonst
+    // «bleiben erhalten», danach Fehlerbanner; Cloud-Test Runde 15)
+    if (isCloudBackend && userPermissions !== null && (data.timeEntries || []).some(t => t.projectId === id)) {
+      showToast(`An «${p?.name || ""}» hängen Zeiteinträge — löschen kann es nur ein Admin. Besser auf «abgeschlossen» setzen.`);
       return;
     }
     if (refs.length && !await askConfirm(<>Am Projekt «{p?.name}» hängen {refs.join(", ")}. Sie bleiben erhalten, verlieren aber die Zuordnung zum Projekt. Abgeschlossene Projekte besser auf «abgeschlossen» setzen.</>, "Trotzdem löschen")) return;

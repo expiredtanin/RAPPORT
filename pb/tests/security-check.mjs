@@ -103,6 +103,23 @@ r = await api("PATCH", `/api/collections/blogPosts/records/${post}`, tM, { poll:
 check("M: keine fremden Stimmen setzen", r.status >= 400, `HTTP ${r.status}`);
 r = await api("DELETE", `/api/collections/blogPosts/records/${post}`, tM);
 check("M: fremden Pinnwand-Beitrag nicht löschbar", r.status >= 400, `HTTP ${r.status}`);
+// Entwürfe anderer Autoren nicht lesbar (Migration 1787950000)
+const draft = rid("drf");
+must(await api("POST", "/api/collections/blogPosts/records", tA, { id: draft, studio: sid, author: (await api("GET", "/api/collections/users/records?filter=" + encodeURIComponent(`email="${aEmail}"`), su)).json.items[0].id, title: "Admin-Entwurf", type: "beitrag", status: "entwurf" }), "Entwurf");
+r = await api("GET", `/api/collections/blogPosts/records?filter=${enc(`studio="${sid}"`)}`, tM);
+check("M: fremde Pinnwand-Entwürfe nicht in der Liste", r.status === 200 && !r.json.items.some(x => x.id === draft) && r.json.items.some(x => x.id === post), `HTTP ${r.status}`);
+r = await api("GET", `/api/collections/blogPosts/records/${draft}`, tM);
+check("M: fremden Entwurf nicht direkt lesbar", r.status === 404, `HTTP ${r.status}`);
+r = await api("GET", `/api/collections/blogPosts/records/${draft}`, tA);
+check("A: eigenen Entwurf lesbar", r.status === 200, `HTTP ${r.status}`);
+// Projektnummern-Zähler: mit Recht «projects» nur vorwärts (memberperms.pb.js)
+{
+  const st0 = (await api("GET", `/api/collections/studioSettings/records?filter=${enc(`studio="${sid}"`)}`, tA)).json.items[0];
+  r = await api("PATCH", `/api/collections/studioSettings/records/${st0.id}`, tM, { lastProjectSeq: (st0.lastProjectSeq || 0) + 1, lastProjectYear: st0.lastProjectYear || 2026 });
+  check("M: Projektzähler hochzählen (Projekt anlegen)", r.status === 200, `HTTP ${r.status} ${r.status !== 200 ? JSON.stringify(r.json) : ""}`);
+  r = await api("PATCH", `/api/collections/studioSettings/records/${st0.id}`, tM, { lastProjectSeq: 0 });
+  check("M: Projektzähler nicht zurücksetzen", r.status >= 400, `HTTP ${r.status}`);
+}
 
 const o4 = await orc(`payrollEntries_via_studio.monat = "2026-11"`);
 check("M: Filter-Orakel über Lohnabrechnungen verrät nichts", o4 !== 1, `Treffer: ${o4}`);

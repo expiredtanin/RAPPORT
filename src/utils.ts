@@ -1365,7 +1365,7 @@ export function closedMonthMsg(closedMonths: string[] | undefined, ...ranges: [s
     if (!from) continue;
     const a = from.slice(0, 7), b = (to || from).slice(0, 7);
     const hit = closed.filter(m => m >= (a < b ? a : b) && m <= (a < b ? b : a)).sort()[0];
-    if (hit) return `Der Monat ${hit.slice(5)}.${hit.slice(0, 4)} ist abgeschlossen. Zuerst unter Personal → Monatsabschluss wieder öffnen.`;
+    if (hit) return `Der Monat ${hit.slice(5)}.${hit.slice(0, 4)} ist abgeschlossen (wieder öffnen unter Personal → Monatsabschluss, mit Recht «Personal»).`;
   }
   return null;
 }
