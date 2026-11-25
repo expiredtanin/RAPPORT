@@ -9,8 +9,10 @@
 //     (Standardrolle Projektleiter genehmigte sich sonst selbst); eigene Überstunden-Abschlüsse/Auszahlungen
 //     ohne Vollzugriff gar nicht.
 //  4. Mitarbeiter-Datensätze: den eigenen ändert nur ein Admin; Lohnfelder anderer nur mit Recht «loehne».
-//  5. Kunden (persons) und Projekte nicht löschen, solange Rechnungen, Offerten, Verträge oder Zeiteinträge
-//     darauf verweisen (PocketBase leerte sonst still die Verweise in bezahlten Rechnungen).
+//  5. Kunden, Projekte, Offerten und Mitarbeitende nicht löschen, solange etwas darauf verweist (Rechnungen, Offerten,
+//     Verträge, Spesen, Protokolle, Lieferscheine, Projekte, Zeiteinträge; Lohnabrechnungen, Überstunden, Ferien,
+//     Absenzen) — PocketBase leerte sonst still die Verweise bzw. löschte per Kaskade mit.
+//  6. Lohnangaben beim Anlegen von Mitarbeitenden und Überstunden-Abschlüsse nur mit Recht «Löhne».
 // Superuser sind ausgenommen. Wie in permissions.pb.js: jeder Callback ist in sich geschlossen.
 
 onRecordCreateRequest((e) => {
@@ -27,10 +29,19 @@ onRecordCreateRequest((e) => {
     // neu angelegt ohne Recht «Löhne»: keine Lohnangaben (Standard-Sozialsätze sind erlaubt) — vorher kam ein neuer
     // Mitarbeiter mit selbst gesetztem Lohn und Lohnkonto ins System (Sicherheits-Test Runde 25)
     if (!has("loehne")) {
-      const empty = (f) => { const v = r.get(f); return v === null || v === undefined || v === "" || v === 0 || v === false || (Array.isArray(v) && v.length === 0) || JSON.stringify(v) === "[]" || JSON.stringify(v) === "null"; };
-      for (const f of ["monatslohn", "lohnVerlauf", "lohnIban", "pkBeitragAN", "pkBeitragAG", "familienzulagen"]) {
+      // über getString vergleichen: JSON-Felder (lohnVerlauf) liefert get() nicht als Array — ein leerer Verlauf «[]»
+      // galt sonst als Lohnangabe und kein Projektleiter konnte jemanden anlegen (Review Runde 26)
+      const empty = (f) => { const v = r.getString(f).trim(); return v === "" || v === "0" || v === "false" || v === "[]" || v === "null" || v === "{}"; };
+      for (const f of ["monatslohn", "lohnVerlauf", "lohnIban", "pkBeitragAN", "pkBeitragAG", "familienzulagen", "dreizehnterLohn", "ahvRentner", "quellensteuerPflichtig"]) {
         if (!empty(f)) throw new ForbiddenError("Lohnangaben erfasst, wer das Recht Löhne hat (" + f + ").");
       }
+      // Sätze nur leer oder Standard (wie der Dialog sie setzt)
+      const DEF = { ahvSatz: 5.3, alvSatz: 1.1, bvgSatz: 8, nbuSatz: 1.5, ktgSatz: 0.5, quellensteuerSatz: 10 };
+      for (const f of Object.keys(DEF)) { const v = r.getFloat(f); if (v !== 0 && Math.abs(v - DEF[f]) > 1e-9) throw new ForbiddenError("Lohnangaben erfasst, wer das Recht Löhne hat (" + f + ")."); }
+      let defPk = 8;
+      try { defPk = e.app.findFirstRecordByFilter("studioSettings", "studio = {:s}", { s: sid }).getFloat("defaultPkAGSatz") || 8; } catch { defPk = 8; }
+      const pk = r.getFloat("pkAgSatz");
+      if (pk !== 0 && Math.abs(pk - defPk) > 1e-9 && Math.abs(pk - 8) > 1e-9) throw new ForbiddenError("Lohnangaben erfasst, wer das Recht Löhne hat (pkAgSatz).");
     }
     return e.next();
   }
@@ -48,9 +59,8 @@ onRecordCreateRequest((e) => {
     throw new BadRequestError("Bis liegt vor Von.");
   }
   // Überstunden-Auszahlung (Betrag, im Lohn) nur mit Recht «Löhne» — floss sonst ohne Lohnrecht in die Abrechnung
-  if (name === "overtimeClosings" && !has("loehne") && (r.getFloat("auszahlungBetrag") > 0 || r.getBool("imLohn"))) {
-    throw new ForbiddenError("Überstunden auszahlen braucht das Recht Löhne.");
-  }
+  // Überstunden-Abschlüsse (Auszahlung oder abgerechnete Stunden) nur mit Recht «Löhne» (senken den Saldo bzw. fliessen in den Lohn)
+  if (name === "overtimeClosings" && !has("loehne")) throw new ForbiddenError("Überstunden abschliessen braucht das Recht Löhne.");
   // Zeiteinträge höchstens ein Jahr im Voraus (sonst Saldo/Auszahlung per Eintrag im Jahr 2099 aufblähbar)
   if (name === "timeEntries" && r.getString("date") && new Date(r.getString("date").slice(0, 10) + "T00:00:00Z").getTime() > Date.now() + 366 * 86400000) {
     throw new ForbiddenError("Zeiteinträge höchstens ein Jahr im Voraus.");
@@ -181,15 +191,16 @@ onRecordDeleteRequest((e) => {
   if (name === "persons" || name === "projects" || name === "quotes" || name === "employees") {
     if (name === "employees" && !full) throw new ForbiddenError("Mitarbeitende löscht ein Admin.");
     const refs = name === "persons"
-      ? [["invoices", "client"], ["quotes", "client"], ["contracts", "client"], ["deliveryNotes", "client"]]
+      ? [["invoices", "client"], ["quotes", "client"], ["contracts", "client"], ["deliveryNotes", "client"], ["projects", "client"]]
       : name === "projects"
         ? [["invoices", "project"], ["quotes", "project"], ["contracts", "project"], ["expenses", "project"], ["protocols", "project"], ["deliveryNotes", "project"], ["timeEntries", "project"]]
         : name === "quotes"
           ? [["invoices", "quote"], ["contracts", "quote"]]
-          : [["payrollEntries", "employee"], ["overtimeClosings", "employee"]];
+          : [["payrollEntries", "employee"], ["overtimeClosings", "employee"], ["vacationEntries", "employee"], ["absences", "employee"]];
     // auch mit Vollzugriff nicht — «Rückgängig» stellt geleerte Verweise nicht wieder her. Nur Stunden: Admin darf.
     const LABEL = { invoices: "Rechnungen", quotes: "Offerten", contracts: "Verträge", timeEntries: "Zeiteinträge", expenses: "Spesen",
-      protocols: "Protokolle", deliveryNotes: "Lieferscheine", payrollEntries: "Lohnabrechnungen", overtimeClosings: "Überstunden-Abschlüsse" };
+      protocols: "Protokolle", deliveryNotes: "Lieferscheine", payrollEntries: "Lohnabrechnungen", overtimeClosings: "Überstunden-Abschlüsse",
+      vacationEntries: "Ferien", absences: "Absenzen", projects: "Projekte" };
     for (const [coll, field] of refs) {
       let used = false;
       try { e.app.findFirstRecordByFilter(coll, field + " = {:id}", { id: r.id }); used = true; } catch { used = false; }
@@ -209,6 +220,7 @@ onRecordDeleteRequest((e) => {
     for (const m of closed) if (ds.length && m >= ds[0] && m <= ds[ds.length - 1]) throw new ForbiddenError("Der Monat " + m + " ist abgeschlossen.");
   }
   if (name === "timeEntries" && r.getString("invoice") && !has("invoices")) throw new ForbiddenError("Verrechnete Zeiteinträge löscht nur, wer das Recht Rechnungen hat.");
+  if (name === "overtimeClosings" && !has("loehne")) throw new ForbiddenError("Überstunden-Abschlüsse löscht, wer das Recht Löhne hat.");
   if (own && !full) {
     if ((name === "vacationEntries" || name === "absences") && r.getString("status") !== "pending") throw new ForbiddenError("Genehmigte eigene Einträge ändert ein Admin.");
     if (name === "overtimeClosings") throw new ForbiddenError("Eigene Überstunden schliesst ein Admin ab.");

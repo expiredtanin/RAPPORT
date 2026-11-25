@@ -85,7 +85,7 @@ function Projects({ data, saveAll, modal, setModal, onSelect, setPrintContent, u
     const refs = projectReferences(data, id);
     // Cloud: Projekte mit Rechnungen/Offerten/Verträgen löscht der Server nicht (pb_hooks/integrity.pb.js) — gleich sagen
     if (isCloudBackend && [...(data.invoices || []), ...(data.quotes || []), ...(data.contracts || []), ...(data.expenses || []), ...(data.protocols || []), ...(data.deliveryNotes || [])].some(x => x.projectId === id)) {
-      showToast(`«${p?.name || ""}» hat Rechnungen, Offerten oder Verträge und kann darum nicht gelöscht werden — besser auf «abgeschlossen» setzen.`);
+      showToast(`An «${p?.name || ""}» hängen Rechnungen, Offerten, Verträge, Spesen, Protokolle oder Lieferscheine — darum nicht löschbar, besser auf «abgeschlossen» setzen.`);
       return;
     }
     // Cloud ohne Vollzugriff: Projekte mit Zeiteinträgen löscht der Server ebenfalls nicht (Dialog versprach sonst

@@ -347,10 +347,22 @@ check("Rechnungsnummer mit Leerzeichen am Rand abgelehnt", r.status >= 400, `HTT
   check("A: Mitarbeiter mit Lohnabrechnungen nicht löschbar", r.status >= 400, `HTTP ${r.status}`);
   r = await api("POST", "/api/collections/employees/records", tP, { id: rid("empx"), studio: sid, name: "Neu mit Lohn", monatslohn: 99999, lohnIban: "CH9300762011623852957" });
   check("P (ohne Löhne): neuer Mitarbeiter ohne Lohnangaben", r.status >= 400, `HTTP ${r.status}`);
-  r = await api("POST", "/api/collections/employees/records", tP, { id: rid("empy"), studio: sid, name: "Neu ohne Lohn", ahvSatz: 5.3 });
-  check("P (ohne Löhne): neuer Mitarbeiter mit Standardsätzen erlaubt", r.status === 200, `HTTP ${r.status} ${r.status !== 200 ? JSON.stringify(r.json) : ""}`);
+  // wie die App ihn sendet (toDB.employee: leere Verläufe, Standardsätze, null-Felder) — Review Runde 26
+  r = await api("POST", "/api/collections/employees/records", tP, { id: rid("empy"), studio: sid, name: "Neu ohne Lohn", monatslohn: 0, lohnIban: "", lohnVerlauf: [], pensumVerlauf: [],
+    ahvSatz: 5.3, alvSatz: 1.1, bvgSatz: 8, nbuSatz: 1.5, ktgSatz: 0.5, quellensteuerSatz: 10, pkAgSatz: 8, pkBeitragAN: null, pkBeitragAG: null, familienzulagen: null, dreizehnterLohn: false });
+  check("P (ohne Löhne): neuer Mitarbeiter wie aus der App (leere Verläufe, Standardsätze) erlaubt", r.status === 200, `HTTP ${r.status} ${r.status !== 200 ? JSON.stringify(r.json) : ""}`);
+  r = await api("POST", "/api/collections/employees/records", tP, { id: rid("empz"), studio: sid, name: "Neu mit Satz", ahvSatz: 0, dreizehnterLohn: true });
+  check("P (ohne Löhne): neuer Mitarbeiter ohne abweichende Sätze/13. Lohn", r.status >= 400, `HTTP ${r.status}`);
   r = await api("POST", "/api/collections/overtimeClosings/records", tP, { id: rid("otx"), studio: sid, employee: empOther, year: 2026, auszahlungBetrag: 99999, imLohn: true });
   check("P (ohne Löhne): keine Überstunden-Auszahlung", r.status >= 400, `HTTP ${r.status}`);
+  r = await api("POST", "/api/collections/overtimeClosings/records", tP, { id: rid("oty"), studio: sid, employee: empOther, year: 2026, hoursSettled: 100 });
+  check("P (ohne Löhne): kein Überstunden-Abschluss ohne Betrag", r.status >= 400, `HTTP ${r.status}`);
+  const otA = rid("ota");
+  must(await api("POST", "/api/collections/overtimeClosings/records", tA, { id: otA, studio: sid, employee: empOther, year: 2026, date: "2026-11-20", type: "payout", hoursSettled: 5, auszahlungBetrag: 300, imLohn: true }), "Auszahlung A");
+  r = await api("DELETE", `/api/collections/overtimeClosings/records/${otA}`, tP);
+  check("P (ohne Löhne): Überstunden-Auszahlung nicht löschbar", r.status >= 400, `HTTP ${r.status}`);
+  r = await api("DELETE", `/api/collections/employees/records/${empM}`, tA);
+  check("A: Mitarbeiter mit Ferien/Absenzen nicht löschbar (Kaskade)", r.status >= 400, `HTTP ${r.status}`);
   const q = rid("quo");
   must(await api("POST", "/api/collections/quotes/records", tA, { id: q, studio: sid, number: "Q-REF" }), "Offerte");
   must(await api("PATCH", `/api/collections/invoices/records/${inv}`, tA, { quote: q }), "Rechnung → Offerte");

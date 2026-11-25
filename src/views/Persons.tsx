@@ -413,8 +413,8 @@ export default function Persons({ data, update, modal, setModal }: Pick<ViewProp
     const f = persons.find(p => p.id === id);
     const refs = personReferences(data, id);
     // Cloud: Kontakte mit Rechnungen/Offerten/Verträgen löscht der Server nicht (pb_hooks/integrity.pb.js) — gleich sagen
-    if (isCloudBackend && [...(data.invoices || []), ...(data.quotes || []), ...(data.contracts || []), ...(data.deliveryNotes || [])].some(x => x.clientId === id)) {
-      showToast(`«${f?.name || ""}» steckt in Rechnungen, Offerten oder Verträgen und kann darum nicht gelöscht werden.`);
+    if (isCloudBackend && [...(data.invoices || []), ...(data.quotes || []), ...(data.contracts || []), ...(data.deliveryNotes || []), ...(data.projects || [])].some(x => x.clientId === id)) {
+      showToast(`«${f?.name || ""}» steckt in Projekten, Rechnungen, Offerten, Verträgen oder Lieferscheinen und kann darum nicht gelöscht werden.`);
       return;
     }
     if (refs.length && !await askConfirm(<>«{f?.name}» wird noch verwendet: {refs.join(", ")}. Dort fehlen nach dem Löschen Name und Adresse (auch im PDF).</>, "Trotzdem löschen")) return;

@@ -75,6 +75,8 @@ function Employees({ data, update, saveAll, setPrintContent, userPermissions, cu
   };
 
   const saveUbAbschluss = (emp: Employee, form: AbschlussForm) => {
+    // Überstunden-Abschlüsse nur mit Recht «Löhne» (wie der Server)
+    if (userPermissions && !userPermissions.includes("loehne")) { showToast("Überstunden abschliessen braucht das Recht Löhne."); return; }
     // Stundenlohn per Ende des Abschlussjahrs (bzw. heute, solange es läuft), wie im Formular angezeigt
     const stundenlohn = overtimeHourlyRate(emp, [`${abschlussYear}-12-31`, localISODate()].sort()[0]);
     if (!stundenlohn || !(form.ubHours > 0)) return;
@@ -213,8 +215,9 @@ function Employees({ data, update, saveAll, setPrintContent, userPermissions, cu
     const linked = isCloudBackend ? [] : (data.users || []).filter(u => u.employeeId === id || (!!emp?.appUserId && u.id === emp.appUserId));
     if (id === currentEmployeeId) { showToast("Den eigenen Mitarbeiter-Eintrag kannst du nicht löschen."); return; }
     // Lohnabrechnungen und Überstunden-Abschlüsse sind aufzubewahren (der Server löscht sie sonst mit) → auf inaktiv setzen
-    if ((data.lohnEntries || []).some(l => l.employeeId === id) || (data.uberstundenAbschluss || []).some(a => a.empId === id)) {
-      showToast("Für diese Person gibt es Lohnabrechnungen oder Überstunden-Abschlüsse — bitte auf «inaktiv» setzen statt löschen."); return;
+    if ((data.lohnEntries || []).some(l => l.employeeId === id) || (data.uberstundenAbschluss || []).some(a => a.empId === id)
+      || (data.ferienEntries || []).some(f => f.employeeId === id) || (data.absences || []).some(a => a.employeeId === id)) {
+      showToast("Für diese Person gibt es Lohnabrechnungen, Überstunden, Ferien oder Absenzen — bitte auf «inaktiv» setzen statt löschen."); return;
     }
     if (isCloudBackend && userPermissions !== null) { showToast("Mitarbeitende löscht ein Admin."); return; }
     const admins = (data.users || []).filter(u => u.role === "admin");
