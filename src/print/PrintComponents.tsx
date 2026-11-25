@@ -132,6 +132,21 @@ export function PrintView({ content, onClose, settings, assets }: { content: Con
   }, [paged, mBottom, design.followTop, design.followBottom]);
 
   useLayoutEffect(() => { runPagination(); }, [runPagination, content, settings, assets]);
+  // Terminprogramm auf festem Blatt: passt der Inhalt (viele Zeilen, lange Termine-Liste) trotz kleinster Zeilenhöhe
+  // nicht, wird er auf das Blatt verkleinert — vorher war der Fuss mit Terminen und Legende unten abgeschnitten.
+  // Gemessen wird die natürliche Höhe (transform ändert offsetHeight nicht).
+  const schedFitRef = useRef<HTMLDivElement>(null);
+  const [schedFit, setSchedFit] = useState(1);
+  /* eslint-disable react-hooks/set-state-in-effect -- Messung nach dem Layout; offsetHeight ist von der Skalierung unabhängig, keine Schleife */
+  useLayoutEffect(() => {
+    const el = schedFitRef.current;
+    if (!el || !sched?.pageH) { if (schedFit !== 1) setSchedFit(1); return; }
+    const avail = (sched.pageH - mTop - mBottom) * PX_PER_MM;
+    const h = el.offsetHeight;
+    const next = h > avail + 1 ? Math.max(0.5, avail / h) : 1;
+    if (Math.abs(next - schedFit) > 0.005) setSchedFit(next);
+  }, [sched, content, mTop, mBottom, schedFit]);
+  /* eslint-enable react-hooks/set-state-in-effect */
   // Terminprogramm «nach Bedarf»: Blatthöhe = Inhalt (gemessen), damit @page genau passt
   useLayoutEffect(() => {
     const el = sheetRef.current;
@@ -305,7 +320,11 @@ export function PrintView({ content, onClose, settings, assets }: { content: Con
           {content.type === "studioBudget" && <StudioBudgetPrint snapshot={content.snapshot} settings={settings} />}
           {content.type === "protokoll" && <ProtokollPrint protokoll={content.protokoll} data={content.data} settings={settings} />}
           {content.type === "mitarbeiterOverview" && <MitarbeiterOverviewPrint employees={content.employees} settings={settings} />}
-          {content.type === "schedule" && <SchedulePrint content={content} settings={settings} layout={sched!} pan={schedPan} viewScale={viewScale} />}
+          {content.type === "schedule" && (
+            <div ref={schedFitRef} style={schedFit < 1 ? { transform: `scale(${schedFit})`, transformOrigin: "0 0", width: `${100 / schedFit}%` } : undefined}>
+              <SchedulePrint content={content} settings={settings} layout={sched!} pan={schedPan} viewScale={viewScale} />
+            </div>
+          )}
           {content.type === "timeReport" && <TimeReportPrint employee={content.employee} entries={content.entries} month={content.month} data={content.data} settings={settings} />}
         </div>
       </div>
