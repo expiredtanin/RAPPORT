@@ -1367,6 +1367,19 @@ export interface LohnVorperioden {
  * @param bonus einmalige Zulage in CHF; AHV-pflichtig, nicht anteilig
  * @param vorperioden frühere Abrechnungen desselben Jahres (Standard: keine)
  */
+/**
+ * Die im Mitarbeiter-Dialog angezeigten Standard-Lohnsätze ausdrücklich setzen, wo keine stehen. Ein leeres
+ * Satzfeld wird in der Cloud als 0 gespeichert (PocketBase) → Lohn ohne Sozialabzüge; deshalb beim Speichern,
+ * beim Import und beim Umzug in die Cloud ausfüllen.
+ */
+export function withDefaultRates<T extends Partial<Employee>>(emp: T, defaultPkAGSatz?: number | null): T {
+  return {
+    ...emp,
+    ahvSatz: emp.ahvSatz ?? 5.3, alvSatz: emp.alvSatz ?? 1.1, bvgSatz: emp.bvgSatz ?? 8.0, nbuSatz: emp.nbuSatz ?? 1.5,
+    ktgSatz: emp.ktgSatz ?? 0.5, quellensteuerSatz: emp.quellensteuerSatz ?? 10, pkAGSatz: emp.pkAGSatz ?? (defaultPkAGSatz ?? 8.0),
+  };
+}
+
 export function calcLohn(
   emp: Employee,
   monat: string | undefined,

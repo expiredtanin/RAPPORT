@@ -48,3 +48,23 @@ describe("employee (Saldo-Übertrag, Pensumwechsel)", () => {
     expect(missing).toMatchObject({ saldoStichtag: "", saldoUebertragStunden: null, pensumVerlauf: [], lohnVerlauf: [] });
   });
 });
+
+describe("leere Zahlenfelder (PocketBase speichert 0)", () => {
+  it("Lohnsätze: BVG/NBU/KTG alle 0 → Standard; einzeln 0 bleibt; QST-pflichtig mit 0 → Standard", () => {
+    const leer = fromDB.employee({ ...rec, id: "e1", name: "A", bvgSatz: 0, nbuSatz: 0, ktgSatz: 0, quellensteuerPflichtig: true, quellensteuerSatz: 0 });
+    expect(leer).toMatchObject({ bvgSatz: null, nbuSatz: null, ktgSatz: null, quellensteuerSatz: null });
+    const ohnePk = fromDB.employee({ ...rec, id: "e2", name: "B", bvgSatz: 0, nbuSatz: 1.5, ktgSatz: 0.5, quellensteuerPflichtig: false, quellensteuerSatz: 0 });
+    expect(ohnePk).toMatchObject({ bvgSatz: 0, nbuSatz: 1.5, ktgSatz: 0.5, quellensteuerSatz: 0 });
+  });
+
+  it("Offerte/Rechnung mit MWST und Satz 0 → Büro-Satz; ohne MWST bleibt der Satz", () => {
+    expect(fromDB.invoice({ ...rec, id: "i1", mwst: true, mwstRate: 0 }).mwstRate).toBeNull();
+    expect(fromDB.quote({ ...rec, id: "q1", mwst: true, mwstRate: 0 }).mwstRate).toBeNull();
+    expect(fromDB.invoice({ ...rec, id: "i2", mwst: true, mwstRate: 7.7 }).mwstRate).toBe(7.7);
+    expect(fromDB.invoice({ ...rec, id: "i3", mwst: false, mwstRate: 0 }).mwstRate).toBe(0);
+  });
+
+  it("PK-Satz Arbeitgeber leer → 8 %", () => {
+    expect(fromDB.studioSettings({ ...rec, defaultPkAGSatz: 0 }).defaultPkAGSatz).toBe(8);
+  });
+});

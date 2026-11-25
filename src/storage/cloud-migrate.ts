@@ -25,6 +25,7 @@
 
 import type { AppData, Id } from "../types";
 import { collectFileRefs } from "./file-assets";
+import { withDefaultRates } from "../utils";
 
 /** Ein Bereich = ein Top-Level-Schlüssel von `AppData`. */
 export type AreaKey = keyof AppData;
@@ -167,7 +168,8 @@ export function prepareForCloud(data: AppData, userMap: Record<Id, Id>, cloudUse
   const employees = (data.employees || []).map(e => {
     const localUser = e.appUserId || linkedBy.get(e.id) || null;
     const cloudUser = localUser ? (userMap[localUser] ?? (keep.has(localUser) ? localUser : null)) : null;
-    return { ...e, appUserId: cloudUser };
+    // Standardsätze ausdrücklich setzen: leere Satzfelder würden in der Cloud zu 0 % (Lohn ohne Abzüge)
+    return { ...withDefaultRates(e, data.settings?.defaultPkAGSatz), appUserId: cloudUser };
   });
   return { ...data, employees, users: [] };
 }

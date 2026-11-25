@@ -161,3 +161,11 @@ describe("describeError", () => {
     expect(describeError(e)).toBe("Batch transaction failed. (HTTP 400) — requests.2.note: Too long.");
   });
 });
+
+describe("prepareForCloud: Lohnsätze", () => {
+  it("setzt leere Sätze auf die Standards, gesetzte (auch 0) bleiben", () => {
+    const data = { employees: [{ id: "e1", name: "A", bvgSatz: 0 }], users: [], settings: { defaultPkAGSatz: 6 } } as unknown as AppData;
+    const [e] = prepareForCloud(data, {}).employees;
+    expect(e).toMatchObject({ ahvSatz: 5.3, alvSatz: 1.1, bvgSatz: 0, nbuSatz: 1.5, ktgSatz: 0.5, quellensteuerSatz: 10, pkAGSatz: 6 });
+  });
+});

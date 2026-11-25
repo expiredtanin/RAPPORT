@@ -22,7 +22,7 @@
 // Datenmodell steht in types.ts; die `buildRecord`-Funktionen müssen dazu passen.
 
 import { useMemo, useState } from "react";
-import { generateId, getAbsenzTypes, normalizeTime, roundCHF } from "../utils";
+import { generateId, getAbsenzTypes, normalizeTime, roundCHF, withDefaultRates } from "../utils";
 import { PROJECT_TYPES, CONTACT_TYPES, CONTACT_CATEGORIES, EXPENSE_CATEGORIES, INTERNAL_EXPENSE_CATEGORIES } from "../constants";
 import { Header, FormField } from "../components/UI";
 import { isCloudBackend } from "../storage/adapter";
@@ -374,7 +374,9 @@ const ENTITY_CONFIGS: Record<string, EntityConfig> = {
     buildRecord: (m) => ({
       id: generateId(), name: "", role: "", personalNr: "", eintrittsdatum: "", geburtsdatum: "",
       email: "", adresse: "", ort: "", ahvNr: "", pensum: 100, wochenstunden: 35, ferienWochen: 5,
-      monatslohn: 0, lohnIban: "", dreizehnterLohn: false, ferienUebertragVorjahr: {}, active: true, ...m,
+      monatslohn: 0, lohnIban: "", dreizehnterLohn: false, ferienUebertragVorjahr: {}, active: true,
+      // Standard-Lohnsätze wie im Mitarbeiter-Dialog (leer → in der Cloud 0 %); importierte Werte gehen vor
+      ...withDefaultRates(m),
     }),
     dedupKey: (rec) => (rec.personalNr || "").trim() ? `pnr:${rec.personalNr.trim()}` : `name:${normalizeHeader(rec.name)}`,
     dedupAgainst: (data) => (data.employees || []).map(e => ({

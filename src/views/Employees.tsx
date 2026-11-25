@@ -18,7 +18,7 @@
 // Passwörter werden beim Speichern gehasht (`hashPassword`), nie im Klartext abgelegt.
 
 import React, { useState } from "react";
-import { generateId, getAbsenzTypes, hashPassword, localISODate } from "../utils";
+import { generateId, getAbsenzTypes, hashPassword, localISODate, withDefaultRates } from "../utils";
 import { isCloudBackend } from "../storage/adapter";
 import { overtimeHourlyRate } from "../worktime";
 import { showToast } from "../toast";
@@ -129,11 +129,7 @@ function Employees({ data, update, saveAll, setPrintContent, userPermissions, cu
     const lohnVerlauf = (empData.lohnVerlauf || []).filter(v => v.ab && Number(v.monatslohn) > 0).sort((a, b) => a.ab.localeCompare(b.ab));
     if ((empData.lohnVerlauf || []).length !== lohnVerlauf.length) showToast("Lohnänderungen ohne Datum oder Betrag wurden nicht übernommen.");
     // angezeigte Standardsätze ausdrücklich speichern (sonst «leer» → in der Cloud 0 % → Lohn ohne Sozialabzüge)
-    const rates = {
-      ahvSatz: empData.ahvSatz ?? 5.3, alvSatz: empData.alvSatz ?? 1.1, bvgSatz: empData.bvgSatz ?? 8.0, nbuSatz: empData.nbuSatz ?? 1.5,
-      ktgSatz: empData.ktgSatz ?? 0.5, quellensteuerSatz: empData.quellensteuerSatz ?? 10, pkAGSatz: empData.pkAGSatz ?? (data.settings.defaultPkAGSatz ?? 8.0),
-    };
-    const emp = { ...empData, ...rates, id: empId, pensumVerlauf, lohnVerlauf, ...(empData.saldoStichtag ? {} : { saldoUebertragStunden: 0 })   /* 0 wie der Server speichert: sonst bei jedem Speichern eine «Änderung» */ } as Employee;
+    const emp = { ...withDefaultRates(empData, data.settings.defaultPkAGSatz), id: empId, pensumVerlauf, lohnVerlauf, ...(empData.saldoStichtag ? {} : { saldoUebertragStunden: 0 })   /* 0 wie der Server speichert: sonst bei jedem Speichern eine «Änderung» */ } as Employee;
 
     // Cloud: Konten, Passwörter und Rollen verwaltet der Server (Einladen/Rolle unter Einstellungen → Team);
     // hier nur die Mitarbeiter-Felder speichern und die Verknüpfung appUserId unverändert lassen. Vorher verlangte

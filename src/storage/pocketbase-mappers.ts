@@ -72,7 +72,7 @@ export const fromDB = {
       defaultHourlyRate: row.defaultHourlyRate ?? 120,
       defaultWochenstunden: row.defaultWochenstunden ?? 35,
       defaultFerienWochen: row.defaultFerienWochen ?? 5,
-      defaultPkAGSatz: row.defaultPkAGSatz ?? 8.0,
+      defaultPkAGSatz: row.defaultPkAGSatz || 8.0, // leer = 0 in PocketBase
       vertragNumberFormat: row.vertragNumberFormat || "V-YYYY-NNN",
       // Projektnummern-Zähler (Projects.jsx/Quotes.jsx) — ohne diese beiden
       // startet die Sequenz nach jedem Cloud-Reload bei 0 (doppelte Nummern).
@@ -189,11 +189,13 @@ export const fromDB = {
       // über den Status): 0 → Standardsatz statt Lohn ohne Abzüge (Cloud-Test Runde 10)
       ahvSatz: row.ahvSatz || null,
       alvSatz: row.alvSatz || null,
-      bvgSatz: row.bvgSatz ?? null,
-      nbuSatz: row.nbuSatz ?? null,
-      ktgSatz: row.ktgSatz ?? null,
+      // BVG/NBU/KTG alle 0 = nie gesetzt (leere Felder) → Standardsätze; einzeln 0 bleibt 0 (z. B. ohne Pensionskasse)
+      ...(!row.bvgSatz && !row.nbuSatz && !row.ktgSatz
+        ? { bvgSatz: null, nbuSatz: null, ktgSatz: null }
+        : { bvgSatz: row.bvgSatz ?? null, nbuSatz: row.nbuSatz ?? null, ktgSatz: row.ktgSatz ?? null }),
       quellensteuerPflichtig: !!row.quellensteuerPflichtig,
-      quellensteuerSatz: row.quellensteuerSatz ?? null,
+      // quellensteuerpflichtig mit 0 % ist ein leeres Feld → Standardsatz statt keine Quellensteuer
+      quellensteuerSatz: row.quellensteuerPflichtig && !row.quellensteuerSatz ? null : (row.quellensteuerSatz ?? null),
       // JS-Property heisst "pkAGSatz" (nicht "pkAgSatz") — Employees.jsx/
       // utils.js lesen/schreiben ausschliesslich "emp.pkAGSatz". "pkAgSatz"
       // bleibt der PocketBase-Feldname.
@@ -241,7 +243,8 @@ export const fromDB = {
       // calcManualHours) und dann direkt angezeigt, nicht bei jedem Render neu
       // berechnet — müssen deshalb mit persistiert werden.
       sub: row.sub ?? 0, totalHours: row.totalHours ?? 0, tax: row.tax ?? 0, total: row.total ?? 0,
-      mwstRate: row.mwstRate ?? null,
+      // MWST an, Satz 0 = leeres Feld → Büro-Standardsatz statt Rechnung ohne MWST
+      mwstRate: row.mwst !== false && !row.mwstRate ? null : (row.mwstRate ?? null),
     };
   },
 
@@ -279,7 +282,8 @@ export const fromDB = {
       paidDate: row.paidDate ? row.paidDate.slice(0, 10) : "",
       items: row.items || [],
       mwst: row.mwst !== false,
-      mwstRate: row.mwstRate ?? null,
+      // MWST an, Satz 0 = leeres Feld → Büro-Standardsatz statt Rechnung ohne MWST
+      mwstRate: row.mwst !== false && !row.mwstRate ? null : (row.mwstRate ?? null),
       notes: row.notes || "",
       status: row.status || "entwurf",
       invoiceKind: row.invoiceKind || "",
