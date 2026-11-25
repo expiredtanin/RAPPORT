@@ -17,7 +17,7 @@
 // per Drag & Drop. `window.__openProtokoll` öffnet beim Einstieg ein bestimmtes Protokoll
 // (von anderen Ansichten gesetzt).
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { PROTOKOLL_TYPES } from "../constants";
 import { generateId, formatDate, htmlToText, initialsOf, participantKuerzel, responsibleLabel, protocolApproval, nextProtoNumber, protoScopeKey, protoSeqOf, applyProtoNumberFormat, localISODate } from "../utils";
 import { TableToolbar, Header, Modal, FormField, RichEditor, DateInput, ShareButton, SortTh, RowMenu, EmptyState } from "../components/UI";
@@ -40,6 +40,12 @@ declare global {
   }
 }
 
+
+/** Neues Protokoll, an dem noch nichts eingetragen wurde (kein Titel, Ort, Teilnehmer, Traktandum, Eintrag). */
+function isUntouchedProtocol(p: Protocol | undefined): boolean {
+  return !!p && !p.title?.trim() && !(p.participants || []).length && !(p.location || "").trim()
+    && (p.traktanden || []).every(t => !t.title?.trim() && !(t.items || []).length);
+}
 export default
 function Protokolle({ data, saveAll, setPrintContent, modal, setModal }: Pick<ViewProps, "data" | "update" | "saveAll" | "setPrintContent"> & Partial<Pick<ViewProps, "modal" | "setModal">>) {
   const today = localISODate();
@@ -114,6 +120,16 @@ function Protokolle({ data, saveAll, setPrintContent, modal, setModal }: Pick<Vi
   }, [modal?.type]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
+  // Ansicht verlassen (Seitenleiste, Befehlspalette): ein unberührtes neues Protokoll ebenfalls entfernen
+  const leaveRef = useRef({ detailId, data, saveAll });
+  useEffect(() => { leaveRef.current = { detailId, data, saveAll }; });
+  useEffect(() => () => {
+    const { detailId: id, data: d, saveAll: save } = leaveRef.current;
+    if (!id) return;
+    const list = d.protocols || [];
+    if (isUntouchedProtocol(list.find(x => x.id === id))) save({ ...d, protocols: list.filter(x => x.id !== id) });
+  }, []);
+
   // ── Detail-Ansicht ────────────────────────────────────────────
   if (detail) {
     return <ProtokollDetail
@@ -123,10 +139,7 @@ function Protokolle({ data, saveAll, setPrintContent, modal, setModal }: Pick<Vi
       onBack={() => {
         // Unberührtes neues Protokoll (kein Titel, keine Teilnehmer, keine Einträge) beim Verlassen wieder entfernen —
         // sonst blieb nach jedem Klick auf «Protokoll» eine leere Leiche zurück (E2E 25.11.2026)
-        const cur = protokolle.find(x => x.id === detail.id);
-        const untouched = cur && !cur.title?.trim() && !(cur.participants || []).length && !(cur.location || "").trim()
-          && (cur.traktanden || []).every(t => !t.title?.trim() && !(t.items || []).length);
-        if (untouched) saveAll({ ...data, protocols: protokolle.filter(x => x.id !== detail.id) });
+        if (isUntouchedProtocol(protokolle.find(x => x.id === detail.id))) saveAll({ ...data, protocols: protokolle.filter(x => x.id !== detail.id) });
         setDetailId(null);
       }}
       onSave={p => { saveAll({ ...data, protocols: protokolle.map(x => x.id === p.id ? p : x) }); }}

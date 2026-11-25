@@ -14,6 +14,7 @@ import React, { useState, useEffect } from "react";
 import { generateId, formatCHF, formatDate, contactCategory, personReferences } from "../utils";
 import { useConfirm } from "../hooks/useConfirm";
 import { isCloudBackend } from "../storage/adapter";
+import { showToast } from "../toast";
 import { CONTACT_CATEGORIES, CONTACT_TYPES, DEFAULT_LEAD_SOURCES } from "../constants";
 import { clientRevenue, lastContact, referredLeadCount, referredRevenue } from "../crm";
 import ActivityLog from "../components/ActivityLog";
@@ -403,6 +404,11 @@ export default function Persons({ data, update, modal, setModal }: Pick<ViewProp
   const deleteFirm = async (id: string) => {
     const f = persons.find(p => p.id === id);
     const refs = personReferences(data, id);
+    // Cloud: Kontakte mit Rechnungen/Offerten/Verträgen löscht der Server nicht (pb_hooks/integrity.pb.js) — gleich sagen
+    if (isCloudBackend && [...(data.invoices || []), ...(data.quotes || []), ...(data.contracts || [])].some(x => x.clientId === id)) {
+      showToast(`«${f?.name || ""}» steckt in Rechnungen, Offerten oder Verträgen und kann darum nicht gelöscht werden.`);
+      return;
+    }
     if (refs.length && !await askConfirm(<>«{f?.name}» wird noch verwendet: {refs.join(", ")}. Dort fehlen nach dem Löschen Name und Adresse (auch im PDF).</>, "Trotzdem löschen")) return;
     removeWithUndo(`Kontakt «${f?.name || ""}» gelöscht`, "persons", p => p.id === id);
     if (selectedId === id) setSelectedId(null);

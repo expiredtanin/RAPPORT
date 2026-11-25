@@ -114,7 +114,7 @@ function Employees({ data, update, saveAll, setPrintContent, userPermissions, cu
     if (empData.saldoStichtag && empData.eintrittsdatum && empData.saldoStichtag < empData.eintrittsdatum) { showToast("Der Saldo-Stichtag liegt vor dem Eintritt."); return; }
     const lohnVerlauf = (empData.lohnVerlauf || []).filter(v => v.ab && Number(v.monatslohn) > 0).sort((a, b) => a.ab.localeCompare(b.ab));
     if ((empData.lohnVerlauf || []).length !== lohnVerlauf.length) showToast("Lohnänderungen ohne Datum oder Betrag wurden nicht übernommen.");
-    const emp = { ...empData, id: empId, pensumVerlauf, lohnVerlauf, ...(empData.saldoStichtag ? {} : { saldoUebertragStunden: null }) } as Employee;
+    const emp = { ...empData, id: empId, pensumVerlauf, lohnVerlauf, ...(empData.saldoStichtag ? {} : { saldoUebertragStunden: 0 })   /* 0 wie der Server speichert: sonst bei jedem Speichern eine «Änderung» */ } as Employee;
 
     // Cloud: Konten, Passwörter und Rollen verwaltet der Server (Einladen/Rolle unter Einstellungen → Team);
     // hier nur die Mitarbeiter-Felder speichern und die Verknüpfung appUserId unverändert lassen. Vorher verlangte

@@ -23,6 +23,7 @@ import { PROJECT_TYPES } from "../constants";
 import { generateId, formatHours, applyProjectNumberFormat, nextProjectSeq, parseSeqFromNumber, projectReferences, localISODate } from "../utils";
 import { useConfirm } from "../hooks/useConfirm";
 import { showToast } from "../toast";
+import { isCloudBackend } from "../storage/adapter";
 import { Header, Modal, StatusBadge, ShareButton, SortTh, RowMenu, TableToolbar } from "../components/UI";
 import { removeWithUndo } from "../undo";
 import type { Project, ViewProps } from "../types";
@@ -73,6 +74,11 @@ function Projects({ data, saveAll, modal, setModal, onSelect, setPrintContent }:
   const del = async (id: string) => {
     const p = data.projects.find(x => x.id === id);
     const refs = projectReferences(data, id);
+    // Cloud: Projekte mit Rechnungen/Offerten/Verträgen löscht der Server nicht (pb_hooks/integrity.pb.js) — gleich sagen
+    if (isCloudBackend && [...(data.invoices || []), ...(data.quotes || []), ...(data.contracts || [])].some(x => x.projectId === id)) {
+      showToast(`«${p?.name || ""}» hat Rechnungen, Offerten oder Verträge und kann darum nicht gelöscht werden — besser auf «abgeschlossen» setzen.`);
+      return;
+    }
     if (refs.length && !await askConfirm(<>Am Projekt «{p?.name}» hängen {refs.join(", ")}. Sie bleiben erhalten, verlieren aber die Zuordnung zum Projekt. Abgeschlossene Projekte besser auf «abgeschlossen» setzen.</>, "Trotzdem löschen")) return;
     removeWithUndo(`Projekt «${p?.name || ""}» gelöscht`, "projects", x => x.id === id);
   };
