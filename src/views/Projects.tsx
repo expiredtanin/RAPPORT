@@ -19,7 +19,7 @@
 // «quotes» bzw. «invoices» hat (`userPermissions`).
 
 import { applyEdit } from "../storage/merge";
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import { PROJECT_TYPES } from "../constants";
 import { generateId, formatHours, applyProjectNumberFormat, nextProjectSeq, parseSeqFromNumber, projectReferences, localISODate } from "../utils";
 import { useConfirm } from "../hooks/useConfirm";
@@ -108,7 +108,14 @@ function Projects({ data, saveAll, modal, setModal, onSelect, setPrintContent, u
   // eslint-disable-next-line react-hooks/exhaustive-deps -- nur auf neue Aufträge reagieren
   }, [modal?.type]);
 
-  const projectMinutes = (id: string) => data.timeEntries.filter(e => e.projectId === id).reduce((s, e) => s + (e.minutes || 0), 0);
+  // Minuten je Projekt einmal summieren (vorher: pro Projekt und Sortier-Vergleich ein Durchlauf über alle Zeiteinträge)
+  const minutesByProject = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const e of data.timeEntries) if (e.projectId) m.set(e.projectId, (m.get(e.projectId) || 0) + (e.minutes || 0));
+    return m;
+  }, [data.timeEntries]);
+  const projectMinutes = (id: string) => minutesByProject.get(id) || 0;
+  const clientNameById = useMemo(() => new Map((data.persons || []).map(c => [c.id, c.name] as const)), [data.persons]);
 
   const [sort, setSort] = useState({ col: "number", dir: 1 });
   const toggleSort = (col: string) => setSort(s => ({ col, dir: s.col === col ? -s.dir : 1 }));
@@ -119,8 +126,8 @@ function Projects({ data, saveAll, modal, setModal, onSelect, setPrintContent, u
     if (filter.status && p.status !== filter.status) return false;
     if (filter.search) {
       const q = filter.search.toLowerCase();
-      const client = clients.find(c => c.id === p.clientId);
-      return (p.name || "").toLowerCase().includes(q) || (p.number || "").toLowerCase().includes(q) || (client?.name || "").toLowerCase().includes(q) || (p.description || "").toLowerCase().includes(q);
+      const clientName = clientNameById.get(p.clientId) || "";
+      return (p.name || "").toLowerCase().includes(q) || (p.number || "").toLowerCase().includes(q) || clientName.toLowerCase().includes(q) || (p.description || "").toLowerCase().includes(q);
     }
     return true;
   });
@@ -129,7 +136,7 @@ function Projects({ data, saveAll, modal, setModal, onSelect, setPrintContent, u
     if (sort.col === "number") { va = a.number || ""; vb = b.number || ""; }
     else if (sort.col === "name") { va = a.name || ""; vb = b.name || ""; }
     else if (sort.col === "category") { va = a.category || ""; vb = b.category || ""; }
-    else if (sort.col === "client") { va = (clients.find(c => c.id === a.clientId)?.name || ""); vb = (clients.find(c => c.id === b.clientId)?.name || ""); }
+    else if (sort.col === "client") { va = clientNameById.get(a.clientId) || ""; vb = clientNameById.get(b.clientId) || ""; }
     else if (sort.col === "hours") { va = projectMinutes(a.id); vb = projectMinutes(b.id); }
     else if (sort.col === "status") { va = a.status || ""; vb = b.status || ""; }
     else { va = ""; vb = ""; }

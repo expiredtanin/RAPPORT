@@ -1,7 +1,7 @@
 // Tabelle der Rechnungsliste: gruppierte Zeilen mit Status und Mahnung; Klick auf die Zeile öffnet die Rechnung,
 // PDF und Löschen liegen im Zeilenmenü (⋯).
 
-import React from "react";
+import React, { useMemo } from "react";
 import { formatCHF, formatDate } from "../../utils";
 import { StatusSelect, SortTh, RowMenu } from "../../components/UI";
 import type { SortState } from "../../components/UI";
@@ -22,6 +22,7 @@ export function InvoiceTable({ filtered, groupedInvoices, groupBy, sort, toggleS
   openEdit: (inv: Invoice) => void;
   del: (id: string) => void | Promise<void>;
 }) {
+  const clientById = useMemo(() => { const m = new Map<string, Person>(); for (const c of clients) if (!m.has(c.id)) m.set(c.id, c); return m; }, [clients]);
   return (
     <div className="card" style={{ padding: 0 }}>
       <table>
@@ -41,7 +42,7 @@ export function InvoiceTable({ filtered, groupedInvoices, groupBy, sort, toggleS
                 </tr>
               )}
           {group.items.map(inv => {
-            const client = clients.find(c => c.id === inv.clientId);
+            const client = clientById.get(inv.clientId);
             const kindLabel = inv.invoiceKind === "akonto" ? "Akonto" : inv.invoiceKind === "teilrechnung" ? "Teilrechnung" : inv.invoiceKind === "schluss" ? "Schluss" : inv.invoiceKind === "voll" ? "Vollrechnung" : "—";
             return (
               <tr key={inv.id} className="row-link" onClick={() => openEdit(inv)}>

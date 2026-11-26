@@ -145,7 +145,9 @@ export function ProjectDetailPrint({ content, settings }: { content: Content; se
 }
 
 export function ProjectsOverviewPrint({ projects, data, settings, showMoney = false }: { projects: Project[]; data: AppData; settings: Settings; showMoney?: boolean }) {
-  const projectMinutes = (id: string) => data.timeEntries.filter(e => e.projectId === id).reduce((s, e) => s + (e.minutes || 0), 0);
+  const minutesByProject = new Map<string, number>();
+  for (const e of data.timeEntries) if (e.projectId) minutesByProject.set(e.projectId, (minutesByProject.get(e.projectId) || 0) + (e.minutes || 0));
+  const projectMinutes = (id: string) => minutesByProject.get(id) || 0;
   const projectAmount = (p: Project) => {
     const bType = p.billingType || p.type;
     if (bType === "stundensatz") return (projectMinutes(p.id) / 60) * (p.hourlyRate as number);

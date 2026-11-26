@@ -268,3 +268,21 @@ describe("Rechenprüfung 25.11.2026", () => {
     expect(wt0.overtime(emp, "2025-12-31").balance - wt1.overtime(emp, "2025-12-31").balance).toBeCloseTo(10, 6);
   });
 });
+
+describe("period: Ist je Person aus dem Index", () => {
+  it("zählt nur Einträge der eigenen Person im Zeitraum (mehrere Personen, mehrere Aufrufe)", () => {
+    const a = { id: "a", pensum: 100, wochenstunden: 42, eintrittsdatum: "2020-01-01" };
+    const b = { id: "b", pensum: 100, wochenstunden: 42, eintrittsdatum: "2020-01-01" };
+    const d = { feiertage: [], ferienEntries: [], absences: [], timeEntries: [
+      { id: "1", employeeId: "a", date: "2026-03-02", minutes: 480 },
+      { id: "2", employeeId: "b", date: "2026-03-02", minutes: 60 },
+      { id: "3", employeeId: "a", date: "2026-04-01", minutes: 120 },
+      { id: "4", employeeId: "a", date: "2026-03-03", minutes: 30 },
+    ] } as unknown as WorkData;
+    const wt = createWorktime(d, "2026-12-31");
+    expect(wt.month(a, 2026, 2).ist).toBeCloseTo(8.5, 6);
+    expect(wt.month(b, 2026, 2).ist).toBeCloseTo(1, 6);
+    expect(wt.month(a, 2026, 3).ist).toBeCloseTo(2, 6);
+    expect(wt.month({ ...a, id: "zzz" }, 2026, 2).ist).toBe(0);
+  });
+});

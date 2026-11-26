@@ -444,6 +444,17 @@ export function createWorktime(data: WorkData, today: DateStr) {
     return Math.min(soll, list.reduce((s, a) => (type && a.type !== type ? s : s + (a.mins === null ? soll : a.mins / 60)), 0));
   };
 
+  // Zeiteinträge je Person einmal gruppieren: `period` lief sonst bei jedem Aufruf über ALLE Einträge
+  // (30 Personen × 60'000 Einträge × viele Perioden = mehrere Sekunden in Personal/Übersicht)
+  let byEmp: Map<string, NonNullable<WorkData["timeEntries"]>> | null = null;
+  const entriesOf = (empId: string) => {
+    if (!byEmp) {
+      byEmp = new Map();
+      for (const e of data.timeEntries || []) { const l = byEmp.get(e.employeeId); if (l) l.push(e); else byEmp.set(e.employeeId, [e]); }
+    }
+    return byEmp.get(empId) || [];
+  };
+
   /** Saldo einer Periode [from, to]; Soll, Ferien und Absenzen nur bis `upTo` (Standard heute). */
   const period = (emp: WorkEmployee, from: DateStr, to: DateStr, upTo: DateStr = today): PeriodResult => {
     let sollBrutto = 0, ferien = 0, absenz = 0;
@@ -455,9 +466,9 @@ export function createWorktime(data: WorkData, today: DateStr) {
       if (isVacationDay(emp, ds)) ferien += s;
       absenz += absenceHoursForDay(emp, ds);
     }
-    const ist = (data.timeEntries || []).reduce((s, e) =>
+    const ist = entriesOf(emp.id).reduce((s, e) =>
       // Ist wie das Soll nur bis `upTo`: vorausgeplante Einträge erschienen im laufenden Monat sonst als Plus
-      e.employeeId === emp.id && e.date >= from && e.date <= last && countsForBalance(emp, e.date) ? s + (e.minutes || 0) : s, 0) / 60;
+      e.date >= from && e.date <= last && countsForBalance(emp, e.date) ? s + (e.minutes || 0) : s, 0) / 60;
     return { sollBrutto, ferien, soll: sollBrutto - ferien, ist, absenz, saldo: ist + absenz + ferien - sollBrutto };
   };
 

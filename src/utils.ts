@@ -561,18 +561,22 @@ export function sanitizeHtml(html: unknown): string {
   return root.innerHTML;
 }
 
+let chfFormat: Intl.NumberFormat | null = null;   // einmal anlegen: ein neues Intl-Objekt je Aufruf kostete in langen Listen Sekunden
 /** Betrag als «CHF 1’234.50» (de-CH); fehlender Wert zählt als 0. */
 export function formatCHF(amount?: number | null): string {
   const v = amount || 0;
   // negativ als «−CHF 450.50» (Intl de-CH liefert «CHF-450.50», z.B. Abzüge in der Lohnabrechnung)
-  const f = new Intl.NumberFormat("de-CH", { style: "currency", currency: "CHF" }).format(Math.abs(v));
+  const f = (chfFormat ||= new Intl.NumberFormat("de-CH", { style: "currency", currency: "CHF" })).format(Math.abs(v));
   return v < 0 && f !== "CHF 0.00" ? `−${f}` : f;
 }
 
+let dateFormatDe: Intl.DateTimeFormat | null = null;
 /** ISO-Datum als «17.10.2026»; leer → «—». */
 export function formatDate(dateStr?: string | null): string {
   if (!dateStr) return "—";
-  return new Date(dateStr).toLocaleDateString("de-CH");
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return "Invalid Date";   // wie toLocaleDateString; DateTimeFormat.format würde werfen
+  return (dateFormatDe ||= new Intl.DateTimeFormat("de-CH")).format(d);
 }
 
 /**

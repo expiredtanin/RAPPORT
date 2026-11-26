@@ -9,15 +9,24 @@ export type InvoiceGroup = { key: string; label: string; items: Invoice[] };
 /** Stundensatz-Projekt mit unverrechneten Minuten und dem entsprechenden Betrag. */
 export type UnbilledProject = Project & { mins: number; amount: number };
 
+/** Index id → Eintrag; bei doppelten IDs gewinnt wie bei `find` der erste. */
+const indexById = <T extends { id: string }>(list: T[]) => {
+  const m = new Map<string, T>();
+  for (const x of list) if (!m.has(x.id)) m.set(x.id, x);
+  return m;
+};
+
 /** Filtert die Rechnungen nach `filter` und sortiert sie nach `sort`. */
 export const filterAndSortInvoices = (invoices: Invoice[], clients: Person[], filter: InvoiceFilter, sort: { col: string; dir: number }) => {
+  // Kontakt-Index (der erste Treffer gilt wie bei find): bei 3000 Rechnungen × 5000 Kontakten sonst Millionen Vergleiche je Tastendruck
+  const clientById = indexById(clients);
   const matchesFilter = (inv: Invoice) => {
     if (filter.status && inv.status !== filter.status) return false;
     if (filter.clientId && inv.clientId !== filter.clientId) return false;
     if (filter.year && !(inv.date || "").startsWith(filter.year)) return false;
     if (filter.search) {
       const q = filter.search.toLowerCase();
-      const client = clients.find(c => c.id === inv.clientId);
+      const client = clientById.get(inv.clientId);
       const haystack = [
         inv.number,
         client?.name,
@@ -35,7 +44,7 @@ export const filterAndSortInvoices = (invoices: Invoice[], clients: Person[], fi
     if (sort.col === "number") { va = a.number || ""; vb = b.number || ""; }
     else if (sort.col === "date") { va = a.date || ""; vb = b.date || ""; }
     else if (sort.col === "dueDate") { va = a.dueDate || ""; vb = b.dueDate || ""; }
-    else if (sort.col === "client") { va = clients.find(c => c.id === a.clientId)?.name || ""; vb = clients.find(c => c.id === b.clientId)?.name || ""; }
+    else if (sort.col === "client") { va = clientById.get(a.clientId)?.name || ""; vb = clientById.get(b.clientId)?.name || ""; }
     else if (sort.col === "total") { va = a.total || 0; vb = b.total || 0; }
     else if (sort.col === "status") { va = a.status || ""; vb = b.status || ""; }
     else { va = a.date || ""; vb = b.date || ""; }
@@ -46,10 +55,12 @@ export const filterAndSortInvoices = (invoices: Invoice[], clients: Person[], fi
 
 /** Unverrechnete Stunden über alle aktiven Stundensatz-Projekte (global), absteigend nach Minuten. */
 export const summarizeUnbilled = (data: AppData) => {
+  const unbilled = new Map<string, number>();   // ein Durchlauf statt einer je Projekt
+  for (const e of data.timeEntries) if (e.projectId && !e.invoiceId) unbilled.set(e.projectId, (unbilled.get(e.projectId) || 0) + (e.minutes || 0));
   const unbilledProjects = data.projects
     .filter(p => (p.billingType || p.type) === "stundensatz" && p.status === "aktiv")
     .map(p => {
-      const mins = data.timeEntries.filter(e => e.projectId === p.id && !e.invoiceId).reduce((s, e) => s + (e.minutes || 0), 0);
+      const mins = unbilled.get(p.id) || 0;
       const amount = (mins / 60) * (p.hourlyRate || 0);
       return { ...p, mins, amount };
     })
@@ -75,8 +86,9 @@ export const groupInvoices = (filtered: Invoice[], groupBy: string, clients: Per
   }
   if (groupBy === "client") {
     const groups: Record<string, { label: string; items: Invoice[] }> = Object.create(null);
+    const clientById = indexById(clients);
     filtered.forEach(inv => {
-      const cl = clients.find(c => c.id === inv.clientId);
+      const cl = clientById.get(inv.clientId);
       const key = inv.clientId || "__none__";
       const label = cl?.name || "Kein Kunde";
       if (!groups[key]) groups[key] = { label, items: [] };

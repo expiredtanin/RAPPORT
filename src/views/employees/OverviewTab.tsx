@@ -1,7 +1,7 @@
 // Reiter «Übersicht»: Monatstabelle, Überstunden-Konto, Absenz-Matrizen und interne Stunden pro Mitarbeiter.
 // Reine Darstellung; die Kennzahlen kommen aus `calc.ts`.
 
-import React from "react";
+import React, { useMemo } from "react";
 import { monthEnd, monthStart, shiftDate } from "../../worktime";
 import { arbeitszeitAm } from "../../utils";
 import type { Absence, AbsenzType, Employee, ViewProps } from "../../types";
@@ -23,6 +23,17 @@ interface OverviewTabProps {
 /** Reiter «Übersicht» der Mitarbeiter-Ansicht (Monats- und Jahresauswertungen). */
 export default function OverviewTab({ data, employees, absences, absenzTypes, closedMonths, viewYear, viewMonth, setViewYear, setViewMonth, calc }: OverviewTabProps) {
   const { calcEmpMonth, calcFerienYear, wt } = calc;
+  // Interne Minuten (ohne Projekt) je «Person|JJJJ-MM» einmal indizieren: calcInternH lief sonst für jede Person und
+  // jeden Monat über alle Zeiteinträge (30 Personen × 60'000 Einträge: ~3 s Rechenzeit)
+  const internMinutes = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const e of data.timeEntries || []) {
+      if (e.projectId) continue;
+      const k = `${e.employeeId}|${(e.date || "").slice(0, 7)}`;
+      m.set(k, (m.get(k) || 0) + (e.minutes || 0));
+    }
+    return m;
+  }, [data.timeEntries]);
   return (
     <div>
       {employees.length === 0 ? (
@@ -163,14 +174,8 @@ export default function OverviewTab({ data, employees, absences, absenzTypes, cl
               return h;
             };
 
-            const calcInternH = (emp: Employee, year: number, monthIdx: number) => {
-              const monthStr = `${year}-${String(monthIdx + 1).padStart(2, "0")}`;
-              return (data.timeEntries || []).filter(e =>
-                e.employeeId === emp.id &&
-                !e.projectId &&
-                (e.date || "").startsWith(monthStr)
-              ).reduce((s, e) => s + (e.minutes || 0), 0) / 60;
-            };
+            const calcInternH = (emp: Employee, year: number, monthIdx: number) =>
+              (internMinutes.get(`${emp.id}|${year}-${String(monthIdx + 1).padStart(2, "0")}`) || 0) / 60;
 
             return (
               <>

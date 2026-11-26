@@ -15,7 +15,11 @@ export function ProjectList({ data, currentId, onSelect }: { data: AppData; curr
   const [q, setQ] = useState("");
   const [seg, setSeg] = useState<"laufend" | "archiv">(() => data.projects.find(p => p.id === currentId)?.status === "abgeschlossen" ? "archiv" : "laufend");
   const minsBy = new Map<string, number>();
-  for (const e of data.timeEntries || []) minsBy.set(e.projectId, (minsBy.get(e.projectId) || 0) + (e.minutes || 0));
+  const entriesBy = new Map<string, TimeEntry[]>();   // Einträge je Projekt einmal gruppieren (nicht je Listenzeile alle durchsuchen)
+  for (const e of data.timeEntries || []) {
+    minsBy.set(e.projectId, (minsBy.get(e.projectId) || 0) + (e.minutes || 0));
+    const l = entriesBy.get(e.projectId); if (l) l.push(e); else entriesBy.set(e.projectId, [e]);
+  }
   const client = (id?: string) => (data.persons || []).find(p => p.id === id)?.name || "";
   const running = data.projects.filter(p => p.status !== "abgeschlossen");
   const archive = data.projects.filter(p => p.status === "abgeschlossen");
@@ -37,7 +41,7 @@ export function ProjectList({ data, currentId, onSelect }: { data: AppData; curr
       <div className="ws-list-items">
         {list.length === 0 && <div className="ws-empty">Keine Projekte</div>}
         {list.map(p => {
-          const strip = phaseStrip(p, (data.timeEntries || []).filter(e => e.projectId === p.id));
+          const strip = phaseStrip(p, entriesBy.get(p.id) || []);
           const pct = p.budgetHours ? Math.round(((minsBy.get(p.id) || 0) / 60 / p.budgetHours) * 100) : null;
           return (
             <button key={p.id} className={`ws-item${p.id === currentId ? " on" : ""}${p.status === "abgeschlossen" ? " done" : ""}`} onClick={() => onSelect(p.id)} aria-current={p.id === currentId ? "page" : undefined}>

@@ -75,17 +75,16 @@ export default function Dashboard({ data, setView, currentUser, userPermissions,
 
   // ─── Data ──────────────────────────────────────────────────────────
   const activeProjects   = data.projects.filter(p => p.status === "aktiv");
-  const projMins  = (id: string)   => data.timeEntries.filter(e => e.projectId === id).reduce((s, e) => s + (e.minutes || 0), 0);
-  const monthMins        = data.timeEntries.filter(e => (e.date||"").startsWith(thisMonth)).reduce((s,e)=>s+(e.minutes||0),0);
-  const lastMoMins       = data.timeEntries.filter(e => (e.date||"").startsWith(lastMonth)).reduce((s,e)=>s+(e.minutes||0),0);
   const myEmpId          = currentUser?.employeeId;
+  // Alle Aggregate über die Zeiteinträge in EINEM Durchlauf (vorher je Render
+  // mehrere Durchläufe, dazu einer pro aktivem Projekt: bei 60'000 Einträgen und 300 Projekten ~1 s pro Render)
+  const agg = aggregateTime(data.timeEntries, thisMonth, lastMonth, myEmpId);
+  const projMins  = (id: string)   => agg.projMinsMap.get(id) || 0;
+  const { monthMins, lastMoMins, myMonthMins, recentTime, myRecentTime } = agg;
   // Aggregat über alle Mitarbeitenden nur für Admin/Rollen mit "mitarbeiter"-Recht
   // zeigen (gleiche Regel wie Time.jsx canSwitchEmployee) — sonst sieht ein
   // eingeladener, noch nicht verknüpfter Nutzer versehentlich die Firmen-Summe.
   const canSeeAllEmp     = userPermissions === null || (userPermissions||[]).includes("mitarbeiter");
-  const myMonthMins      = data.timeEntries.filter(e => (e.date||"").startsWith(thisMonth) && e.employeeId===myEmpId).reduce((s,e)=>s+(e.minutes||0),0);
-  const recentTime       = [...data.timeEntries].sort((a,b)=>(b.date||"").localeCompare(a.date||"")).slice(0,6);
-  const myRecentTime     = [...data.timeEntries].filter(e=>e.employeeId===myEmpId).sort((a,b)=>(b.date||"").localeCompare(a.date||"")).slice(0,6);
   const openInvoices     = data.invoices.filter(i => i.status==="gesendet"||i.status==="überfällig");
   const overdueInvoices  = data.invoices.filter(i => i.status==="überfällig");
   const openAmount       = openInvoices.reduce((s,i)=>s+(i.total||0),0);
@@ -94,7 +93,7 @@ export default function Dashboard({ data, setView, currentUser, userPermissions,
   const pendingQuotes    = (data.quotes||[]).filter(q=>q.status==="gesendet");
   const expiredQuotes    = (data.quotes||[]).filter(q=>q.status==="gesendet"&&q.validUntil&&q.validUntil<today);
   const unbilledProjects = activeProjects.map(p=>{
-    const mins = data.timeEntries.filter(e=>e.projectId===p.id&&!e.invoiceId).reduce((s,e)=>s+(e.minutes||0),0);
+    const mins = agg.unbilledMap.get(p.id) || 0;
     return {...p, unbilledMins:mins, unbilledAmt:(mins/60)*(p.hourlyRate||0)};
   }).filter(p=>p.unbilledMins>0&&(p.billingType||p.type)==="stundensatz").sort((a,b)=>b.unbilledMins-a.unbilledMins);
   const totalUnbilled    = unbilledProjects.reduce((s,p)=>s+p.unbilledMins,0);
@@ -836,6 +835,32 @@ export default function Dashboard({ data, setView, currentUser, userPermissions,
       )}
     </div>
   );
+}
+
+/**
+ * Alle Aggregate über die Zeiteinträge in EINEM Durchlauf (vorher je Render mehrere Durchläufe, dazu einer pro aktivem
+ * Projekt: bei 60'000 Einträgen und 300 Projekten ~1 s pro Render).
+ */
+function aggregateTime(timeEntries: TimeEntry[], thisMonth: string, lastMonth: string, myEmpId: string | null | undefined) {
+  const projMinsMap = new Map<string, number>(), unbilledMap = new Map<string, number>();
+  let monthMins = 0, lastMoMins = 0, myMonthMins = 0;
+  const mine: typeof timeEntries = [];
+  for (const e of timeEntries) {
+    const m = e.minutes || 0, d = e.date || "";
+    if (e.projectId) {
+      projMinsMap.set(e.projectId, (projMinsMap.get(e.projectId) || 0) + m);
+      if (!e.invoiceId) unbilledMap.set(e.projectId, (unbilledMap.get(e.projectId) || 0) + m);
+    }
+    if (d.startsWith(thisMonth)) { monthMins += m; if (e.employeeId === myEmpId) myMonthMins += m; }
+    if (d.startsWith(lastMonth)) lastMoMins += m;
+    if (e.employeeId === myEmpId) mine.push(e);
+  }
+  const newest = (a: { date?: string }, b: { date?: string }) => (b.date || "").localeCompare(a.date || "");
+  return {
+    projMinsMap, unbilledMap, monthMins, lastMoMins, myMonthMins,
+    recentTime: [...timeEntries].sort(newest).slice(0, 6),
+    myRecentTime: mine.sort(newest).slice(0, 6),
+  };
 }
 
 function TimeTable({entries,data}: { entries: TimeEntry[]; data: AppData }) {

@@ -56,8 +56,8 @@ export function MitarbeiterOverviewPrint({ employees, settings, showLohn = true 
 }
 
 export function TimeReportPrint({ employee, entries, month, data, settings }: { employee: Employee; entries: TimeEntry[]; month: string; data: AppData; settings: Settings }) {
-  const monthEntries = entries.filter(e => e.date.startsWith(month))
-    .sort((a, b) => a.date.localeCompare(b.date) || (a.startTime || "").localeCompare(b.startTime || ""));
+  const monthEntries = entries.filter(e => (e.date || "").startsWith(month))
+    .sort((a, b) => (a.date || "").localeCompare(b.date || "") || (a.startTime || "").localeCompare(b.startTime || ""));
 
   const projects = data.projects || [];
   const getProj = (id?: string) => projects.find(p => p.id === id);
@@ -66,8 +66,10 @@ export function TimeReportPrint({ employee, entries, month, data, settings }: { 
 
   const byProject: Record<string, { proj: Project | undefined; mins: number }> = Object.create(null);
   monthEntries.forEach(e => {
-    const k = e.projectId || "__none__";
-    if (!byProject[k]) byProject[k] = { proj: getProj(e.projectId), mins: 0 };
+    // Einträge ohne Projekt und solche eines inzwischen gelöschten Projekts bilden EINE Zeile «Kein Projekt»
+    const proj = getProj(e.projectId);
+    const k = proj ? proj.id : "__none__";
+    if (!byProject[k]) byProject[k] = { proj, mins: 0 };
     byProject[k].mins += e.minutes || 0;
   });
 
