@@ -59,7 +59,7 @@ export function CalendarTab({ data, update, onSettingsSaved }: Pick<ViewProps, "
     if (!(absenzTypeForm.label || "").trim()) { showToast("Bitte eine Bezeichnung angeben."); return; }
     // nur gültige Farbwerte (beliebiger Text landete sonst im style); bestehende CSS-Farben wie var(--…)/rgb() bleiben
     const c = (absenzTypeForm.color || "").trim();
-    const validColor = /^#[0-9a-f]{3}([0-9a-f]{3})?$/i.test(c) || (/^[\w\s#(),.%-]+$/.test(c) && typeof CSS !== "undefined" && CSS.supports("color", c));
+    const validColor = /^#[0-9a-f]{3}([0-9a-f]{3})?$/i.test(c) || (/^[\w\s#(),.%/-]+$/.test(c) && typeof CSS !== "undefined" && CSS.supports("color", c));
     const color = validColor ? c : "#888888";
     const t = { ...absenzTypeForm, label: (absenzTypeForm.label || "").trim(), color, id: absenzTypeForm.id || generateId() } as AbsenzType;
     const custom = data.absenzTypes || [];

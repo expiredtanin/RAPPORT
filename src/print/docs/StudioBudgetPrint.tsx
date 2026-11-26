@@ -57,9 +57,9 @@ export function StudioBudgetPrint({ snapshot, settings }: { snapshot: StudioBudg
         <div>
           <div style={{ fontSize: 9, letterSpacing: "0.14em", color: "#888", marginBottom: 10, borderBottom: "2px solid var(--doc-accent)", paddingBottom: 6 }}>STUNDENANALYSE</div>
           <PRow label="Jahresstunden (verfügbar)" value={`${r.jahresStundenTotal || 0}h`} />
-          <PRow label={`Produktiv (${b.produktivQuote || 70}%)`} value={`${r.produktivStunden || 0}h`} />
+          <PRow label={`Produktiv (${b.produktivQuote ?? 70}%)`} value={`${r.produktivStunden || 0}h`} />
           <div style={{ height: 6, background: "#eee", borderRadius: 3, margin: "8px 0", overflow: "hidden" }}>
-            <div style={{ width: `${b.produktivQuote || 70}%`, height: "100%", background: "#2d6a4f", borderRadius: 3 }} />
+            <div style={{ width: `${b.produktivQuote ?? 70}%`, height: "100%", background: "#2d6a4f", borderRadius: 3 }} />
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 12 }}>
             <div style={{ background: "#f8f8f6", borderRadius: 4, padding: "10px 12px", textAlign: "center" }}>
@@ -69,7 +69,7 @@ export function StudioBudgetPrint({ snapshot, settings }: { snapshot: StudioBudg
             <div style={{ background: "#f8f8f6", borderRadius: 4, padding: "10px 12px", textAlign: "center" }}>
               <div style={{ fontSize: 9, color: "#888", letterSpacing: "0.1em", marginBottom: 4 }}>ZIEL-HONORAR/H</div>
               <div className="doc-heading" style={{ fontSize: 18, ...HEADING, fontWeight: 700, color: "#b5861e" }}>{formatCHF(Math.round(r.zielHonorar || 0))}</div>
-              <div style={{ fontSize: 9, color: "#aaa", marginTop: 2 }}>inkl. {b.zielMarge || 25}% Marge</div>
+              <div style={{ fontSize: 9, color: "#aaa", marginTop: 2 }}>inkl. {b.zielMarge ?? 25}% Marge</div>
             </div>
           </div>
           <div style={{ marginTop: 10, padding: "8px 10px", borderRadius: 4, border: `1.5px solid ${rateOk ? "#b8dcc8" : "#e8b0b0"}`, background: rateOk ? "#f0f8f4" : "#fdf2f2" }}>

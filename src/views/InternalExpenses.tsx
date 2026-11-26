@@ -61,7 +61,8 @@ function InternalExpenses({ data, update }: Pick<ViewProps, "data" | "update" | 
   const save = () => {
     if (!form.amount) { showToast("Bitte einen Betrag eingeben."); return; }
     // wie bei Spesen (Runde 33: negative/riesige Beträge und −100 % MWST wurden gespeichert)
-    if (!(Number(form.amount) > 0 && Number(form.amount) < 1e7)) { showToast("Der Betrag muss positiv sein (unter CHF 10 Mio.)."); return; }
+    // negativ = Rückerstattung/Gutschrift (erlaubt), nur Unsinn abweisen (Review R34)
+    if (!(Number(form.amount) !== 0 && Math.abs(Number(form.amount)) < 1e7)) { showToast("Bitte einen Betrag unter CHF 10 Mio. eingeben (negativ = Rückerstattung)."); return; }
     if (!(Number(form.mwstRate ?? 0) >= 0 && Number(form.mwstRate ?? 0) <= 30)) { showToast("MWST-Satz zwischen 0 und 30 %."); return; }
     const isNew = modal === "new";
     // Bearbeiten: nur eigene Änderungen auf den aktuellen Stand (applyEdit)
