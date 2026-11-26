@@ -14,11 +14,12 @@ import { ZOOM_LEVELS } from "./schedule/zoom";
 import type { ScheduleItem, ScheduleTrack, ViewProps } from "../types";
 import { requestProjectTab } from "../today";
 import { projectColor } from "./time/projectColor";
+import { ResourcePlan } from "./schedule/ResourcePlan";
 
 
-type Mode = "projekte" | "mitarbeitende";
+type Mode = "projekte" | "mitarbeitende" | "auslastung";
 
-export default function Schedules({ data, setView, onSelectProject, userPermissions = null, myEmployeeId = "" }: Pick<ViewProps, "data" | "setView"> & {
+export default function Schedules({ data, update, setView, onSelectProject, userPermissions = null, myEmployeeId = "" }: Pick<ViewProps, "data" | "update" | "setView"> & {
   onSelectProject: (projectId: string) => void;
   /** Rechte (null = alle): Absenzart fremder Personen nur mit Recht «mitarbeiter» (Gesundheitsdaten, Runde 38) */
   userPermissions?: string[] | null;
@@ -119,10 +120,11 @@ export default function Schedules({ data, setView, onSelectProject, userPermissi
       <Header title="Terminplanung" />
       <div className="sched-bar sched-bar-page">
         <div className="seg" role="tablist" aria-label="Ansicht">
-          {(["projekte", "mitarbeitende"] as Mode[]).map(m => (
-            <button key={m} role="tab" aria-selected={mode === m} className={mode === m ? "on" : ""} onClick={() => setMode(m)}>{m === "projekte" ? "Projekte" : "Mitarbeitende"}</button>
+          {(["projekte", "mitarbeitende", "auslastung"] as Mode[]).map(m => (
+            <button key={m} role="tab" aria-selected={mode === m} className={mode === m ? "on" : ""} onClick={() => setMode(m)}>{m === "projekte" ? "Projekte" : m === "mitarbeitende" ? "Mitarbeitende" : "Auslastung"}</button>
           ))}
         </div>
+        {mode !== "auslastung" && <>
         <div className="seg seg-sm" role="group" aria-label="Programme">
           {(["planung", "bau"] as ScheduleTrack[]).map(t => (
             <button key={t} className={tracks.includes(t) ? "on" : ""} onClick={() => toggleTrack(t)} aria-pressed={tracks.includes(t)} title="Ein-/ausblenden (mindestens eines bleibt)">{t === "planung" ? "Planung" : "Bau"}</button>
@@ -131,6 +133,7 @@ export default function Schedules({ data, setView, onSelectProject, userPermissi
         <button className={`btn btn-sm ${onlyActive ? "btn-ghost" : "btn-quiet"}`} onClick={() => setOnlyActive(v => !v)} aria-pressed={onlyActive}>
           <span className="msr" style={{ fontSize: 16 }}>{onlyActive ? "check" : "filter_list"}</span>{onlyActive ? "nur laufende" : "alle Projekte"}
         </button>
+        </>}
         <div style={{ flex: 1 }} />
         <div className="seg seg-sm" role="group" aria-label="Zoom">
           {ZOOM_LEVELS.map(z => (
@@ -163,7 +166,12 @@ export default function Schedules({ data, setView, onSelectProject, userPermissi
         </div>
       )}
 
-      {items.length === 0 ? (
+      {mode === "auslastung" && (
+        <ResourcePlan data={data} update={update} userPermissions={userPermissions} myEmployeeId={myEmployeeId}
+          today={today} holidays={holidays} dayWidth={dayWidth} fit={zoom === "alles"} />
+      )}
+
+      {mode === "auslastung" ? null : items.length === 0 ? (
         mode === "projekte"
           ? <EmptyState
               icon="view_timeline"

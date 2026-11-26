@@ -50,7 +50,7 @@ import { normalizeTime } from "../utils";
 import type {
   AbsenzType, Absence, AppRole, BlogPost, ContactCategory, DashboardTemplate, ProtocolApproval, DeliveryNote, DocAsset, Employee,
   Expense, Feiertag, FerienEntry, Id, InternalExpense, Invoice, LetterTemplate, LohnEntry,
-  OvertimeClosing, Person, Project, Protocol, Quote, Contract, Role, Settings, TimeEntry,
+  OvertimeClosing, Person, Project, Protocol, Quote, Contract, ResourceEntry, Role, Settings, TimeEntry,
 } from "../types";
 
 type Row = RecordModel;
@@ -467,6 +467,19 @@ export const fromDB = {
     };
   },
 
+  resourceEntry(row: Row) {
+    return {
+      id: row.id,
+      employeeId: row.employee,
+      label: row.label || "",
+      projectId: row.project || null,
+      dateFrom: row.dateFrom ? row.dateFrom.slice(0, 10) : "",
+      dateTo: row.dateTo ? row.dateTo.slice(0, 10) : "",
+      pensum: row.pensum ?? 0,
+      note: row.note || "",
+    };
+  },
+
   blogPost(row: Row) {
     return {
       id: row.id,
@@ -755,6 +768,13 @@ export const toDB = {
       number: d.number, date: d.date || null, client: d.clientId || null, clientManual: d.clientManual,
       project: d.projectId || null, projectManual: d.projectManual, deliveryAddress: d.deliveryAddress,
       notes: d.notes, items: d.items || [],
+    };
+  },
+
+  resourceEntry(e: ResourceEntry, studioId: Id) {
+    return {
+      id: e.id, studio: studioId, employee: e.employeeId, project: e.projectId || null,
+      label: e.label, dateFrom: e.dateFrom || null, dateTo: e.dateTo || null, pensum: e.pensum, note: e.note || "",
     };
   },
 

@@ -284,3 +284,32 @@ onRecordsListRequest((e) => {
   if (!ok) throw new BadRequestError("Filter oder Sortierung über Lohnangaben braucht das Recht Löhne.");
   e.next();
 });
+
+
+// ── Ressourcenplan (Migration 1787970000_resource_plan.js): Bereich und Büro-Zugehörigkeit prüfen ──
+// Von–bis, Pensum 1–100 (das Feld prüft die Grenzen auch; hier die klare Meldung) und: Mitarbeiter/Projekt gehören
+// zum selben Büro (sonst hängte ein Eintrag an einer fremden Person, und die Kaskade griffe dort).
+onRecordCreateRequest((e) => {
+  const r = e.record;
+  const day = (v) => String(v || "").slice(0, 10);
+  const p = r.getFloat("pensum");
+  if (!(p >= 1 && p <= 100)) throw new BadRequestError("Pensum muss zwischen 1 und 100 liegen.");
+  if (day(r.getString("dateTo")) < day(r.getString("dateFrom"))) throw new BadRequestError("Bis liegt vor Von.");
+  try { if (e.app.findRecordById("employees", r.get("employee")).get("studio") !== r.get("studio")) throw new Error("x"); } catch { throw new BadRequestError("Mitarbeiter gehört nicht zu diesem Büro."); }
+  if (r.get("project")) {
+    try { if (e.app.findRecordById("projects", r.get("project")).get("studio") !== r.get("studio")) throw new Error("x"); } catch { throw new BadRequestError("Projekt gehört nicht zu diesem Büro."); }
+  }
+  e.next();
+}, "resourcePlans");
+onRecordUpdateRequest((e) => {
+  const r = e.record;
+  const day = (v) => String(v || "").slice(0, 10);
+  const p = r.getFloat("pensum");
+  if (!(p >= 1 && p <= 100)) throw new BadRequestError("Pensum muss zwischen 1 und 100 liegen.");
+  if (day(r.getString("dateTo")) < day(r.getString("dateFrom"))) throw new BadRequestError("Bis liegt vor Von.");
+  try { if (e.app.findRecordById("employees", r.get("employee")).get("studio") !== r.get("studio")) throw new Error("x"); } catch { throw new BadRequestError("Mitarbeiter gehört nicht zu diesem Büro."); }
+  if (r.get("project")) {
+    try { if (e.app.findRecordById("projects", r.get("project")).get("studio") !== r.get("studio")) throw new Error("x"); } catch { throw new BadRequestError("Projekt gehört nicht zu diesem Büro."); }
+  }
+  e.next();
+}, "resourcePlans");

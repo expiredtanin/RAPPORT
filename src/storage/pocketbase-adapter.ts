@@ -112,6 +112,7 @@ const ENTITY_MAP: [DataKey, string, EntityMapper, string, string | null][] = [
   ["uberstundenAbschluss", "overtimeClosings", "overtimeClosing", "id", null],
   ["protocols", "protocols", "protocol", "id", "number"],
   ["deliveryNotes", "deliveryNotes", "deliveryNote", "id", "number"],
+  ["resourcePlan", "resourcePlans", "resourceEntry", "id", "dateFrom"],
   ["blogPosts", "blogPosts", "blogPost", "id", "-created"],
   // Schriften/Briefpapier fürs Dokument-Design: eine Zeile pro Datei, damit grosse
   // Data-URLs nicht bei jeder Einstellungsänderung mit studioSettings neu gesendet werden.

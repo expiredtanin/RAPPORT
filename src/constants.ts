@@ -306,6 +306,7 @@ export const defaultData: AppData = {
   expenses: [],
   internalExpenses: [],
   deliveryNotes: [],
+  resourcePlan: [],
   protocols: [],
   employees: [],
   feiertage: [],

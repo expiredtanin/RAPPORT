@@ -76,3 +76,19 @@ describe("Feiertage und Rollen (Cloud)", () => {
     expect(rows.map(r => r.sort)).toEqual([0, 1]);
   });
 });
+
+describe("resourceEntry (Ressourcenplan)", () => {
+  const entry = { id: "r1", employeeId: "e1", label: "Wettbewerb Schulhaus", projectId: "p1", dateFrom: "2026-12-01", dateTo: "2027-01-15", pensum: 60, note: "Phase 1" };
+
+  it("überlebt Speichern und Laden", () => {
+    expect(fromDB.resourceEntry(asServer({ ...toDB.resourceEntry(entry, "s1"), id: "r1" }))).toEqual(entry);
+  });
+
+  it("leeres Projekt wird null, leere Notiz leer", () => {
+    const db = toDB.resourceEntry({ ...entry, projectId: undefined, note: undefined }, "s1");
+    expect(db).toMatchObject({ studio: "s1", employee: "e1", project: null });
+    const back = fromDB.resourceEntry(asServer({ ...db, id: "r1", project: "" }));
+    expect(back.projectId).toBeNull();
+    expect(back.note).toBe("");
+  });
+});

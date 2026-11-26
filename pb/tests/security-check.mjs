@@ -438,6 +438,59 @@ check("Rechnungsnummer mit Leerzeichen am Rand abgelehnt", r.status >= 400, `HTT
   check("M: in fremder Umfrage keine Zusatzfelder", r.status >= 400, `HTTP ${r.status}`);
 }
 
+// ── Ressourcenplan (resourcePlans): Lesen mit «projects»/«termine»/«mitarbeiter», Schreiben nur mit «mitarbeiter» ──
+{
+  const rp = rid("rpa"), base = { studio: sid, employee: empOther, label: "Wettbewerb", dateFrom: "2026-12-01", dateTo: "2026-12-31", pensum: 50 };
+  r = await api("POST", "/api/collections/resourcePlans/records", tA, { id: rp, ...base });
+  check("Ressourcenplan: A legt Eintrag an", r.status === 200, `HTTP ${r.status} ${JSON.stringify(r.json)}`);
+  r = await api("GET", `/api/collections/resourcePlans/records?filter=${enc(`studio="${sid}"`)}`, tM);
+  check("Ressourcenplan: M (Recht Projekte) liest", r.status === 200 && r.json.items.length === 1, `HTTP ${r.status}`);
+  r = await api("POST", "/api/collections/resourcePlans/records", tM, { id: rid("rpm"), ...base });
+  check("Ressourcenplan: M legt nicht an", r.status === 403 || r.status === 400, `HTTP ${r.status}`);
+  r = await api("PATCH", `/api/collections/resourcePlans/records/${rp}`, tM, { pensum: 80 });
+  check("Ressourcenplan: M ändert nicht", r.status === 403 || r.status === 404, `HTTP ${r.status}`);
+  r = await api("DELETE", `/api/collections/resourcePlans/records/${rp}`, tM);
+  check("Ressourcenplan: M löscht nicht", r.status === 403 || r.status === 404, `HTTP ${r.status}`);
+  const rpp = rid("rpp");
+  r = await api("POST", "/api/collections/resourcePlans/records", tP, { id: rpp, ...base, pensum: 30 });
+  check("Ressourcenplan: P (Recht Mitarbeiter) legt an", r.status === 200, `HTTP ${r.status} ${JSON.stringify(r.json)}`);
+  r = await api("PATCH", `/api/collections/resourcePlans/records/${rpp}`, tP, { pensum: 40 });
+  check("Ressourcenplan: P ändert", r.status === 200 && r.json.pensum === 40, `HTTP ${r.status}`);
+  r = await api("POST", "/api/collections/resourcePlans/records", tP, { id: rid("rpx"), ...base, pensum: 150 });
+  check("Ressourcenplan: Pensum 150 abgelehnt", r.status >= 400, `HTTP ${r.status}`);
+  r = await api("POST", "/api/collections/resourcePlans/records", tP, { id: rid("rpy"), ...base, pensum: 0 });
+  check("Ressourcenplan: Pensum 0 abgelehnt", r.status >= 400, `HTTP ${r.status}`);
+  r = await api("POST", "/api/collections/resourcePlans/records", tP, { id: rid("rpz"), ...base, dateFrom: "2026-12-31", dateTo: "2026-12-01" });
+  check("Ressourcenplan: Bis vor Von abgelehnt", r.status >= 400, `HTTP ${r.status}`);
+  r = await api("PATCH", `/api/collections/resourcePlans/records/${rpp}`, tP, { dateTo: "2026-11-01" });
+  check("Ressourcenplan: Ändern auf Bis vor Von abgelehnt", r.status >= 400, `HTTP ${r.status}`);
+  r = await api("PATCH", `/api/collections/resourcePlans/records/${rpp}`, tP, { pensum: 101 });
+  check("Ressourcenplan: Ändern auf Pensum 101 abgelehnt", r.status >= 400, `HTTP ${r.status}`);
+  // Aussenstehende: Konto ohne Mitgliedschaft sieht nichts und schreibt nichts
+  const xEmail = `x-${run}@test.local`;
+  must(await api("POST", "/api/collections/users/records", su, { email: xEmail, username: `x${run}`, password: pw, passwordConfirm: pw, displayName: "Aussenstehender X" }), "User X");
+  const tX = await login("users", xEmail, pw);
+  r = await api("GET", `/api/collections/resourcePlans/records?filter=${enc(`studio="${sid}"`)}`, tX);
+  check("Ressourcenplan: Aussenstehender sieht nichts", r.status >= 400 || (r.json && r.json.items && r.json.items.length === 0), `HTTP ${r.status}`);
+  r = await api("GET", `/api/collections/resourcePlans/records/${rp}`, tX);
+  check("Ressourcenplan: Aussenstehender liest Eintrag nicht", r.status >= 400, `HTTP ${r.status}`);
+  r = await api("POST", "/api/collections/resourcePlans/records", tX, { id: rid("rpq"), ...base });
+  check("Ressourcenplan: Aussenstehender legt nicht an", r.status >= 400, `HTTP ${r.status}`);
+  // Mitarbeiter eines anderen Büros darf nicht verknüpft werden
+  const studioC = must(await api("POST", "/api/rapport/create-studio", tA, { name: `Büro C ${run}`, slug: `buero-c-${run}` }), "Büro C");
+  const empFremd = rid("empf");
+  must(await api("POST", "/api/collections/employees/records", tA, { id: empFremd, studio: studioC.studioId || studioC.id, name: "Fremde Person" }), "Mitarbeiter in Büro C");
+  r = await api("POST", "/api/collections/resourcePlans/records", tA, { id: rid("rpf"), ...base, employee: empFremd });
+  check("Ressourcenplan: Mitarbeiter eines anderen Büros abgelehnt", r.status >= 400, `HTTP ${r.status}`);
+  // Mitarbeiter löschen nimmt seine Einträge mit (Kaskade)
+  const empDel = rid("empd"), rpd = rid("rpd");
+  must(await api("POST", "/api/collections/employees/records", tA, { id: empDel, studio: sid, name: "Kaskade" }), "Mitarbeiter für Kaskade");
+  must(await api("POST", "/api/collections/resourcePlans/records", tA, { id: rpd, ...base, employee: empDel }), "Eintrag für Kaskade");
+  r = await api("DELETE", `/api/collections/employees/records/${empDel}`, tA);
+  const gone = await api("GET", `/api/collections/resourcePlans/records/${rpd}`, tA);
+  check("Ressourcenplan: Mitarbeiter löschen nimmt Einträge mit", r.status === 204 && gone.status === 404, `DELETE ${r.status}, danach ${gone.status}`);
+}
+
 // ── Änderungsprotokoll (audit.pb.js) ───────────────────────────────────────────────────────────────────────────
 must(await api("PATCH", `/api/collections/invoices/records/${inv}`, tA, { number: "GEHEIM-002" }), "Rechnung umnummerieren");
 r = await api("GET", `/api/collections/auditLog/records?filter=${enc(`studio="${sid}" && coll="invoices" && recordId="${inv}"`)}&sort=-created`, tA);

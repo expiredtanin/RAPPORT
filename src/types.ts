@@ -1033,6 +1033,26 @@ export interface AppData {
   activities: Activity[];
   /** Schriften und Briefpapier für das Dokument-Design (siehe `Settings.docDesign`). */
   docAssets: DocAsset[];
+  /** Interner Ressourcenplan (Terminplanung → «Auslastung»): wer an was bis wann, unabhängig von den Projekten. */
+  resourcePlan: ResourceEntry[];
+}
+
+/**
+ * Eintrag im internen Ressourcenplan: wer arbeitet an was, von–bis, zu wie viel Prozent der verfügbaren Zeit.
+ * Bewusst ohne Verknüpfung mit den Terminprogrammen der Projekte (nur internes Rechnen).
+ */
+export interface ResourceEntry {
+  id: Id;
+  employeeId: Id;
+  /** «an was» (Freitext, z.B. «Wettbewerb Schulhaus») */
+  label: string;
+  /** optional: Projekt — nur für Name/Farbe in der Ansicht */
+  projectId?: Id | null;
+  dateFrom: DateStr;
+  dateTo: DateStr;
+  /** Anteil der verfügbaren Zeit in Prozent (1–100) */
+  pensum: number;
+  note?: string;
 }
 
 /**

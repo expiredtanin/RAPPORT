@@ -56,6 +56,7 @@ export const AREA_LABELS: Record<AreaKey, string> = {
   uberstundenAbschluss: "Überstunden-Auszahlungen",
   protocols: "Protokolle",
   deliveryNotes: "Lieferscheine",
+  resourcePlan: "Ressourcenplan",
   blogPosts: "Pinnwand",
   docAssets: "Dokument-Design (Schriften, Briefpapier)",
   feiertage: "Feiertage",
