@@ -37,11 +37,12 @@ export function MahnModal({ inv: invAtOpen, data, update, setPrintContent, onClo
         ? { offen: roundCHF(inv.total), zins: r.zins || 0, zinsTage: r.zinsTage || 0, zinsSatz: r.zinsSatz || 0, gebuehr: r.gebuehr || 0, total: roundCHF(inv.total + (r.zins || 0) + (r.gebuehr || 0)) }
         : undefined;
       const { client, subject, body } = buildReminderLetter(inv, r.nr, r.sentDate || r.date, (data.persons||[]), data.settings, stored);
-      setPrintContent({ type: "letter", client, subject, body, settings: data.settings });
+      // Briefdatum = damaliges Sendedatum (Nachdruck zeigte sonst heute — Runde 34)
+      setPrintContent({ type: "letter", client, subject, body, settings: data.settings, date: r.sentDate || r.date });
     } else {
       if (inv.status === "bezahlt") { showToast("Diese Rechnung ist inzwischen bezahlt — keine Mahnung."); onClose(); return; }
       const { client, subject, body, kosten } = buildReminderLetter(inv, nextNr, mahnSentDate, (data.persons||[]), data.settings);
-      setPrintContent({ type: "letter", client, subject, body, settings: data.settings });
+      setPrintContent({ type: "letter", client, subject, body, settings: data.settings, date: mahnSentDate || undefined });
       const newReminder: InvoiceReminder = { nr: nextNr, date: localISODate(), sentDate: mahnSentDate, daysPast: Math.max(0, Math.floor((new Date(`${mahnSentDate || localISODate()}T00:00:00Z`).getTime() - new Date(`${inv.dueDate}T00:00:00Z`).getTime()) / 86400000)),
         ...(kosten.zins > 0 ? { zins: kosten.zins, zinsTage: kosten.zinsTage, zinsSatz: kosten.zinsSatz } : {}),
         ...(kosten.gebuehr > 0 ? { gebuehr: kosten.gebuehr } : {}) };

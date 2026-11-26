@@ -5,7 +5,7 @@ import { StudioLogo } from "../../components/UI";
 import type { Settings } from "../../types";
 import type { Client } from "./shared";
 
-export function LetterPrint({ client, subject, body, isHtml, settings }: { client: Client; subject?: string; body: string; isHtml?: boolean; settings: Settings }) {
+export function LetterPrint({ client, subject, body, isHtml, settings, date }: { client: Client; subject?: string; body: string; isHtml?: boolean; settings: Settings; /** Briefdatum `YYYY-MM-DD` (Mahnung: Sendedatum), sonst heute */ date?: string }) {
   return (
     <>
       <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 80 }}>
@@ -30,7 +30,7 @@ export function LetterPrint({ client, subject, body, isHtml, settings }: { clien
       </div>
 
       <div style={{ marginBottom: 30, fontSize: 10, color: "#666" }}>
-        {settings.city || ((settings.address || "").split("\n").pop() || "").replace(/^\d{4,5}\s*/, "").trim() || "Zürich"}, {new Date().toLocaleDateString("de-CH", { day: "numeric", month: "long", year: "numeric" })}
+        {settings.city || ((settings.address || "").split("\n").pop() || "").replace(/^\d{4,5}\s*/, "").trim() || "Zürich"}, {(date ? new Date(date + "T12:00:00") : new Date()).toLocaleDateString("de-CH", { day: "numeric", month: "long", year: "numeric" })}
       </div>
 
       {subject && <div style={{ fontWeight: 500, marginBottom: 30, fontSize: 11 }}>{subject}</div>}

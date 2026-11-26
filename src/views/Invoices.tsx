@@ -30,6 +30,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { generateId, localISODate, projectFee } from "../utils";
 import { Header } from "../components/UI";
 import { changeWithUndo } from "../undo";
+import { useConfirm } from "../hooks/useConfirm";
 import { showToast } from "../toast";
 import { applyEdit } from "../storage/merge";
 import { MahnModal } from "../components/MahnModal";
@@ -48,6 +49,7 @@ import { buildNewInvoiceForm } from "./invoices/newInvoiceForm";
 
 export default
 function Invoices({ data, update, saveAll, modal, setModal, setPrintContent }: Pick<ViewProps, "data" | "update" | "saveAll" | "modal" | "setModal" | "setPrintContent" | "setView">) {
+  const { askConfirm, ConfirmModalEl } = useConfirm();
   const invoices = data.invoices || [];
   const clients = (data.persons || []);
   const [form, setForm] = useState<InvoiceForm>({ number: "", clientId: "", contactId: "", projectId: "", date: localISODate(), dueDate: "", items: [{ id: generateId(), desc: "", qty: 1, price: 0 }], mwst: true, notes: "", status: "entwurf" });
@@ -141,6 +143,11 @@ function Invoices({ data, update, saveAll, modal, setModal, setPrintContent }: P
       showToast(`Die Rechnungsnummer ${(form.number || "").trim()} ist schon vergeben.`);
       return;
     }
+    // Prüfungen wie bei der Offerte (Runde 34: leere Rechnung, Fälligkeit vor Datum, Rabatt über 100 % wurden gespeichert)
+    if (!form.items.some(it => (it.desc || "").trim() || Number(it.price))) { showToast("Die Rechnung braucht mindestens eine Position."); return; }
+    if (form.dueDate && form.date && form.dueDate < form.date) { showToast("Die Fälligkeit liegt vor dem Rechnungsdatum."); return; }
+    if ((form.discountType === "percent" && !(Number(form.discountValue || 0) >= 0 && Number(form.discountValue || 0) <= 100))
+      || form.items.some(it => !(Number(it.discount || 0) >= 0 && Number(it.discount || 0) <= 100))) { showToast("Rabatte zwischen 0 und 100 %."); return; }
     const { sub, globalDisc, subAfterDisc, tax, total } = calcTotal(form.items, form.mwst, form.mwstRate ?? data.settings.mwstRate, form.discountType, form.discountValue);
     const invoiceId = editingId || generateId();
     const status = statusOverride || form.status || "entwurf";
@@ -228,9 +235,11 @@ function Invoices({ data, update, saveAll, modal, setModal, setPrintContent }: P
   };
   // `paidDate` füttert die Zahlungsmoral-Auswertung (crm.ts): beim ersten Wechsel auf «bezahlt» heute setzen, bei Rückstufung entfernen.
   // Beim Wechsel aus dem Entwurf wird der Abrechnungsblock festgehalten (freezeOnStatus).
-  const setStatus = (id: string, status: string) => update("invoices", invoices.map(i => {
+  // auf dem aktuellen Stand; Versanddatum wie im Versanddialog (Zahlungsmoral rechnete sonst ab Rechnungsdatum — Runde 34)
+  const setStatus = (id: string, status: string) => update("invoices", prev => (prev || []).map(i => {
     if (i.id !== id) return i;
-    return { ...freezeOnStatus(i, status, data), paidDate: status === "bezahlt" ? (i.paidDate || localISODate()) : undefined };
+    return { ...freezeOnStatus(i, status, data), paidDate: status === "bezahlt" ? (i.paidDate || localISODate()) : undefined,
+      ...(status === "gesendet" && !i.sentDate ? { sentDate: localISODate() } : {}) };
   }));
   // PDF einer Rechnung: mit dem Abrechnungsblock (Entwurf aktuell, sonst festgehalten)
   const printWithSummary = (content: PrintContent) => setPrintContent(withPrintSummary(content, data));
@@ -269,12 +278,20 @@ function Invoices({ data, update, saveAll, modal, setModal, setPrintContent }: P
     setSelections(newSelections);
   };
 
-  const prefillFromProject = (projectId: string) => {
+  const prefillFromProject = async (projectId: string) => {
     if (!projectId) { setForm(f => ({ ...f, projectId: "", entrySelections: {}, hoursFromEntries: false })); return; }
     const proj = data.projects.find(p => p.id === projectId);
     if (!proj) return;
     const bType = proj.billingType || proj.type;
     const openEntries = openEntriesForProject(projectId);
+    // Eigene Positionen nicht still überschreiben (Runde 34: freie Rechnung mit 3 Positionen wurde zum Pauschalhonorar,
+    // der Kunde wechselte gleich mit) — nachfragen; «Abbrechen» verknüpft nur das Projekt
+    const hasOwnItems = form.items.some(it => (it.desc || "").trim() || Number(it.price) || 0);
+    if ((bType === "stundensatz" || bType === "pauschal") && hasOwnItems
+      && !await askConfirm(<>Die Positionen durch die des Projekts «{proj.name}» ersetzen{proj.clientId && proj.clientId !== form.clientId ? " und den Kunden übernehmen" : ""}?</>, "Ersetzen")) {
+      setForm(f => ({ ...f, projectId, entrySelections: {}, hoursFromEntries: false }));
+      return;
+    }
     if (bType === "stundensatz") {
       const entrySelections = selectAllEntries(openEntries);
       const totalMins = openEntries.reduce((s, e) => s + e.minutes, 0);
@@ -310,6 +327,7 @@ function Invoices({ data, update, saveAll, modal, setModal, setPrintContent }: P
 
   return (
     <div>
+      {ConfirmModalEl}
       <Header title="Rechnungen" action={
         <div style={{ display: "flex", gap: 8 }}>
           <button className="btn btn-ghost" onClick={() => { setAp({ ...emptyAp, startDate: defaultStartDate() }); setAkontoModal(true); }}>Akonto planen</button>

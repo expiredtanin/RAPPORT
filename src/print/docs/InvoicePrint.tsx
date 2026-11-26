@@ -11,6 +11,8 @@ import { buildQrBillData } from "./qrBillData";
 import { PrintText } from "./PrintText";
 
 export function InvoicePrint({ inv, client, settings }: { inv: Invoice; client: Client; settings: Settings }) {
+  // Gutschrift (Total < 0): als solche betiteln, ohne Fälligkeit und Zahlungsangaben (Runde 34)
+  const isCredit = (inv.total || 0) < 0;
   return (
     <>
       <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 60 }}>
@@ -20,14 +22,14 @@ export function InvoicePrint({ inv, client, settings }: { inv: Invoice; client: 
           <div style={{ marginTop: 4, fontSize: 10, color: "#666" }}>{settings.email} · {settings.phone}</div>
         </div>
         <div className="align-right" style={{ textAlign: "right" }}>
-          <div style={{ fontSize: 10, letterSpacing: "0.15em", color: "#888" }}>RECHNUNG</div>
+          <div style={{ fontSize: 10, letterSpacing: "0.15em", color: "#888" }}>{isCredit ? "GUTSCHRIFT" : "RECHNUNG"}</div>
           <div className="doc-heading" style={{ ...HEADING, fontSize: 22, marginTop: 4 }}>Nr. {inv.number}</div>
         </div>
       </div>
 
       <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 40 }}>
         <div>
-          <div style={{ fontSize: 9, letterSpacing: "0.12em", color: "#888", marginBottom: 6 }}>RECHNUNG AN</div>
+          <div style={{ fontSize: 9, letterSpacing: "0.12em", color: "#888", marginBottom: 6 }}>{isCredit ? "GUTSCHRIFT AN" : "RECHNUNG AN"}</div>
           <div style={{ fontSize: 12, fontWeight: 500 }}>{client?.name || "—"}</div>
           {(() => {
             const contact = inv.contactId ? (client?.contacts || []).find(ct => ct.id === inv.contactId) : null;
@@ -40,7 +42,7 @@ export function InvoicePrint({ inv, client, settings }: { inv: Invoice; client: 
         </div>
         <div className="align-right" style={{ textAlign: "right", fontSize: 10 }}>
           <div><span style={{ color: "#888" }}>Datum:</span> <strong>{formatDate(inv.date)}</strong></div>
-          {inv.dueDate && <div><span style={{ color: "#888" }}>Fällig:</span> <strong>{formatDate(inv.dueDate)}</strong></div>}
+          {inv.dueDate && !isCredit && <div><span style={{ color: "#888" }}>Fällig:</span> <strong>{formatDate(inv.dueDate)}</strong></div>}
         </div>
       </div>
 
@@ -97,12 +99,12 @@ export function InvoicePrint({ inv, client, settings }: { inv: Invoice; client: 
       {inv.notes && <PrintText text={inv.notes} style={{ marginBottom: 40, fontSize: 10, color: "#555", lineHeight: 1.7 }} />}
 
       <div style={{ marginTop: 60, paddingTop: 20, borderTop: "1px solid #ddd", fontSize: 9, color: "#888", display: "flex", justifyContent: "space-between" }}>
-        <div>
+        {isCredit ? <div /> : <div>
           <div style={{ letterSpacing: "0.1em", marginBottom: 3 }}>ZAHLUNG AUF</div>
           <div>{formatIban(settings.iban)}</div>
           {/* Bei einer QR-IBAN gilt nur die QR-Referenz — wer von Hand zahlt, muss genau diese angeben */}
           <div style={{ marginTop: 3 }}>Referenz: {paymentReference(inv.number, settings.iban).display}</div>
-        </div>
+        </div>}
         <div className="align-right" style={{ textAlign: "right" }}>
           <div>{settings.mwst}</div>
         </div>
@@ -193,7 +195,8 @@ export function QRBillPrint({ inv, client, settings }: { inv: Invoice; client: C
   }
 
   if (notice) {
-    return <div style={{ padding: 40, fontSize: 12, color: "#666" }}>{notice}</div>;
+    // Hinweis fürs Büro (z.B. «Gutschrift — kein Einzahlungsschein»), nicht im Kunden-PDF
+    return <div className="no-print" style={{ padding: 40, fontSize: 12, color: "#666" }}>{notice}</div>;
   }
 
   if (!qrSvg) {

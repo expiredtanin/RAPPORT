@@ -317,7 +317,7 @@ export function PrintView({ content, onClose, settings, assets }: { content: Con
               </div>
             </>
           )}
-          {content.type === "letter" && <LetterPrint client={content.client} subject={content.subject} body={content.body} isHtml={content.isHtml} settings={settings} />}
+          {content.type === "letter" && <LetterPrint client={content.client} subject={content.subject} body={content.body} isHtml={content.isHtml} settings={settings} date={content.date} />}
           {content.type === "projectDetail" && <ProjectDetailPrint content={content} settings={settings} />}
           {content.type === "projectsOverview" && <ProjectsOverviewPrint projects={content.projects} data={content.data} settings={settings} />}
           {content.type === "qrbill" && <QRBillPrint inv={content.inv} client={content.client} settings={settings} />}

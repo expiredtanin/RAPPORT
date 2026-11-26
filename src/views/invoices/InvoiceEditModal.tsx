@@ -79,7 +79,11 @@ export function InvoiceEditModal({ modal, setModal, form, setForm, data, clients
           // Neue Rechnung mit automatisch vergebener Nummer: Jahr/Monat der Nummer folgen dem Rechnungsdatum
           const fmt = data.settings.invoiceNumberFormat;
           const auto = !editingId && !!form.date && form.number === nextInvoiceNumber(data.invoices || [], fmt, form.date);
-          setForm({ ...form, date: e.target.value, ...(auto && e.target.value ? { number: nextInvoiceNumber(data.invoices || [], fmt, e.target.value) } : {}) });
+          // Fälligkeit mitschieben, solange sie den bisherigen Abstand zum Datum hat (sonst lag sie nach einem
+          // Datumswechsel vor dem Rechnungsdatum — Runde 34)
+          const shift = form.date && form.dueDate && e.target.value ? Math.round((Date.parse(e.target.value) - Date.parse(form.date)) / 86400000) : 0;
+          const dueDate = shift && form.dueDate ? new Date(Date.parse(form.dueDate + "T00:00:00Z") + shift * 86400000).toISOString().slice(0, 10) : form.dueDate;
+          setForm({ ...form, date: e.target.value, dueDate, ...(auto && e.target.value ? { number: nextInvoiceNumber(data.invoices || [], fmt, e.target.value) } : {}) });
         }} /></FormField>
         <FormField label="Fällig am"><DateInput value={form.dueDate} onChange={e => setForm({ ...form, dueDate: e.target.value })} /></FormField>
         {/* Zahlungseingang (MWST nach vereinnahmten Entgelten, Zahlungsmoral) — beim Statuswechsel heute, hier korrigierbar */}
