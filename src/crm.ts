@@ -164,8 +164,11 @@ export function lastContact(data: AppData, personId: Id): string | null {
 export function dueFollowUps(data: AppData, today: string): (Activity & { overdue: boolean })[] {
   // Wiedervorlagen zu gewonnenen/verlorenen Leads erledigen sich mit dem Abschluss (blieben sonst «überfällig»)
   const closedLeads = new Set((data.leads || []).filter(l => !isOpenLead(l)).map(l => l.id));
+  // ohne Kontakt und ohne Lead (Kontakt gelöscht) nirgends mehr erledigbar → nicht mehr zählen (Runde 31)
+  const persons = new Set((data.persons || []).map(p => p.id)), leads = new Set((data.leads || []).map(l => l.id));
   return (data.activities || [])
-    .filter(a => a.followUpDate && !a.followUpDone && !(a.leadId && closedLeads.has(a.leadId)))
+    .filter(a => a.followUpDate && !a.followUpDone && !(a.leadId && closedLeads.has(a.leadId))
+      && (persons.has(a.personId) || (!!a.leadId && leads.has(a.leadId))))
     .sort((a, b) => (a.followUpDate as string).localeCompare(b.followUpDate as string))
     .map(a => ({ ...a, overdue: (a.followUpDate as string) < today }));
 }

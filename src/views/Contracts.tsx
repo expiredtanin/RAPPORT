@@ -215,7 +215,7 @@ function Contracts({ data, saveAll, modal, setModal, setPrintContent }: Pick<Vie
                     </span>
                   </td>
                   <td className="num">{formatCHF(v.billingType === "stundensatz" ? v.hourlyRate : contractAmounts(v, data.quotes, data.settings.mwstRate ?? 8.1).net)}{v.billingType === "stundensatz" ? "/h" : ""} <span style={{ fontSize: 11, color: "var(--text4)" }}>exkl. MWST</span></td>
-                  <td><StatusSelect value={v.status} options={["entwurf", "unterzeichnet", "beendet"]} onChange={st => saveAll({ ...data, contracts: contracts.map(x => x.id === v.id ? { ...x, status: st } : x) })} /></td>
+                  <td><StatusSelect value={v.status} options={["entwurf", "unterzeichnet", "beendet"]} onChange={st => saveAll(prev => ({ ...prev, contracts: (prev.contracts || []).map(x => x.id === v.id ? { ...x, status: st, ...(st === "unterzeichnet" && !x.signedDate ? { signedDate: localISODate() } : {}) } : x) }))} /></td>
                   <td className="row-actions" onClick={e => e.stopPropagation()}>
                     <RowMenu items={[
                       { label: "Bearbeiten", icon: "edit", onClick: () => openEdit(v) },
@@ -252,7 +252,7 @@ function Contracts({ data, saveAll, modal, setModal, setPrintContent }: Pick<Vie
           </div>
           <div className="form-row">
             <FormField label="Vertragsart">
-              <select value={form.contractType} onChange={e => setForm({ ...form, contractType: e.target.value, clientId: "" })}>
+              <select value={form.contractType} onChange={e => setForm({ ...form, contractType: e.target.value })}>
                 {CONTRACT_TYPES.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
               </select>
             </FormField>

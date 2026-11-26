@@ -50,11 +50,11 @@ export default function Documents({ data, setView }: Pick<ViewProps, "data" | "s
       const proj = data.projects?.find(p => p.id === n.projectId);
       if (proj?.clientId) return (data.persons||[]).find(c => c.id === proj.clientId)?.name || "—";
     }
-    return "—";
+    return n.clientManual || "—";   // frei eingetippter Empfänger (Runde 31)
   };
 
-  const getProject = (n: Pick<DeliveryNote, "projectId">) => {
-    if (!n.projectId) return null;
+  const getProject = (n: Pick<DeliveryNote, "projectId"> & { projectManual?: string }) => {
+    if (!n.projectId) return n.projectManual || null;
     return data.projects?.find(p => p.id === n.projectId)?.name || null;
   };
 

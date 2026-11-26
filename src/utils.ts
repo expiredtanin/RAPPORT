@@ -606,6 +606,13 @@ export function splitAddress(text: string | undefined): { street: string; zip: s
   return { street: i > 0 ? lines[i - 1] : "", zip: m[1], city: m[2] };
 }
 
+/** Adresse eines Kontakts (mehrzeilig) aus Strasse/PLZ/Ort, sonst das alte Freitextfeld `address`. */
+export function personAddress(p: { street?: string; zip?: string; city?: string; address?: string } | null | undefined): string {
+  if (!p) return "";
+  const lines = [p.street, [p.zip, p.city].filter(Boolean).join(" ")].filter(Boolean);
+  return lines.length ? lines.join("\n") : (p.address || "");
+}
+
 /** Absenderadresse (mehrzeilig) aus Strasse/PLZ/Ort; Fallback auf das alte Freitext-Feld `address`. */
 export function formatSenderAddress(settings: Pick<Settings, "street" | "zip" | "city" | "address">): string {
   const parts: string[] = [];
@@ -791,7 +798,7 @@ export function projectReferences(
 
 /** Was beim Löschen eines Kontakts seinen Verweis verlöre (Auftraggeber in Projekten, Offerten, Rechnungen …). */
 export function personReferences(
-  data: Pick<AppData, "projects" | "invoices" | "quotes" | "contracts" | "deliveryNotes" | "leads">,
+  data: Pick<AppData, "projects" | "invoices" | "quotes" | "contracts" | "deliveryNotes" | "leads"> & Partial<Pick<AppData, "activities">>,
   personId: Id,
 ): string[] {
   const n = (list: { clientId?: Id | null }[] | undefined) => (list || []).filter(x => x.clientId === personId).length;
@@ -802,6 +809,7 @@ export function personReferences(
     [n(data.contracts), "Vertrag", "Verträge"],
     [n(data.deliveryNotes), "Lieferschein", "Lieferscheine"],
     [(data.leads || []).filter(l => l.clientId === personId || l.referrerId === personId).length, "Lead", "Leads"],
+    [(data.activities || []).filter(a => a.personId === personId).length, "Aktivität", "Aktivitäten"],
   ];
   return parts.filter(([c]) => c > 0).map(([c, one, many]) => `${c} ${c === 1 ? one : many}`);
 }

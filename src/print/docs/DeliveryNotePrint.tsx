@@ -1,6 +1,6 @@
 // Druckvorlage Lieferschein (`lieferschein`).
 
-import { formatDate, formatSenderAddress } from "../../utils";
+import { formatDate, formatSenderAddress, personAddress } from "../../utils";
 import { StudioLogo } from "../../components/UI";
 import type { AppData, DeliveryNote, Settings } from "../../types";
 import { HEADING, type Client } from "./shared";
@@ -9,7 +9,7 @@ import { PrintText } from "./PrintText";
 export function LieferscheinPrint({ note, client, data, settings }: { note: DeliveryNote; client: Client; data: AppData; settings: Settings }) {
   const project = note.projectId ? (data?.projects || []).find(p => p.id === note.projectId) : null;
   const projectLabel = project?.name || note.projectManual || null;
-  const addr = note.deliveryAddress || client?.address || "";
+  const addr = note.deliveryAddress || personAddress(client);
 
   return (
     <>
@@ -33,7 +33,7 @@ export function LieferscheinPrint({ note, client, data, settings }: { note: Deli
           <div style={{ fontSize: 9, letterSpacing: "0.12em", color: "#888", marginBottom: 6 }}>LIEFERUNG AN</div>
           <div style={{ fontSize: 12, fontWeight: 500 }}>{client?.name || note.clientManual || "—"}</div>
           {client?.company && <div style={{ fontSize: 11 }}>{client.company}</div>}
-          {addr && <div style={{ whiteSpace: "pre-line", fontSize: 11, color: "#555", marginTop: 2 }}>{addr}</div>}
+          {addr && <div style={{ whiteSpace: "pre-line", fontSize: 11, color: "#555", marginTop: 2, overflowWrap: "anywhere" }}>{addr}</div>}
         </div>
         {projectLabel && (
           <div className="align-right" style={{ textAlign: "right" }}>
@@ -60,10 +60,10 @@ export function LieferscheinPrint({ note, client, data, settings }: { note: Deli
           {(note.items || []).map((it, i) => (
             <tr key={it.id || i} style={{ borderBottom: "1px solid #eee" }}>
               <td style={{ padding: "10px 0", color: "#888", fontSize: 10 }}>{i + 1}</td>
-              <td style={{ padding: "10px 8px", fontWeight: it.desc ? 400 : 300 }}>{it.desc || "—"}</td>
+              <td style={{ padding: "10px 8px", fontWeight: it.desc ? 400 : 300, overflowWrap: "anywhere" }}>{it.desc || "—"}</td>
               <td className="align-right" style={{ textAlign: "right", padding: "10px 8px", fontWeight: 500 }}>{it.qty}</td>
               <td style={{ padding: "10px 8px", color: "#555" }}>{it.unit}</td>
-              <td style={{ padding: "10px 0", fontSize: 10, color: "#666" }}>{it.note || ""}</td>
+              <td style={{ padding: "10px 0", fontSize: 10, color: "#666", overflowWrap: "anywhere" }}>{it.note || ""}</td>
               <td style={{ padding: "10px 0", textAlign: "right" }}>
                 <div style={{ display: "inline-block", width: 18, height: 18, border: "1.5px solid #999", borderRadius: 2 }} />
               </td>

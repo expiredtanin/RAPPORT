@@ -57,8 +57,8 @@ export function VertragPrint({ vertrag, amounts, client, project, settings }: { 
           </tr>
           {vertrag.legalBasis && (
             <tr style={{ borderBottom: "1px solid #f0f0f0" }}>
-              <td style={{ padding: "7px 0", color: "#888" }}>Rechtsgrundlage</td>
-              <td style={{ padding: "7px 0" }}>{vertrag.legalBasis}</td>
+              <td style={{ padding: "7px 12px 7px 0", color: "#888", whiteSpace: "nowrap" }}>Rechtsgrundlage</td>
+              <td style={{ padding: "7px 0", overflowWrap: "anywhere" }}>{vertrag.legalBasis}</td>
             </tr>
           )}
           <tr style={{ borderBottom: "1px solid #f0f0f0" }}>
@@ -73,8 +73,8 @@ export function VertragPrint({ vertrag, amounts, client, project, settings }: { 
           </tr>
           {vertrag.paymentTerms && (
             <tr>
-              <td style={{ padding: "7px 0", color: "#888", verticalAlign: "top" }}>Zahlungsbedingungen</td>
-              <td style={{ padding: "7px 0", whiteSpace: "pre-line" }}>{vertrag.paymentTerms}</td>
+              <td style={{ padding: "7px 12px 7px 0", color: "#888", verticalAlign: "top", whiteSpace: "nowrap" }}>Zahlungsbedingungen</td>
+              <td style={{ padding: "7px 0", whiteSpace: "pre-line", overflowWrap: "anywhere" }}>{vertrag.paymentTerms}</td>
             </tr>
           )}
         </tbody>

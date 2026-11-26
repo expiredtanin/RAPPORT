@@ -15,7 +15,7 @@ const leads = [
   { id: "dach", stage: "anfrage", estimatedValue: 12000, createdAt: "2026-11-14" },
   { id: "leer", stage: "anfrage", createdAt: "2026-11-15" },
 ] as unknown as Lead[];
-const data = { leads, persons: [{ id: "ms", name: "Meier + Steiner" }], invoices: [], projects: [], activities: [
+const data = { leads, persons: [{ id: "ms", name: "Meier + Steiner" }, { id: "k", name: "Kunde K" }], invoices: [], projects: [], activities: [
   { id: "a1", personId: "k", leadId: "efh", type: "meeting", date: "2026-10-26", followUpDate: "2026-11-15" },
   { id: "a2", personId: "k", type: "telefon", date: "2026-11-01", followUpDate: "2026-12-01" },
   { id: "a3", personId: "k", type: "telefon", date: "2026-11-02", followUpDate: "2026-11-10", followUpDone: true },
@@ -39,6 +39,10 @@ describe("Pipeline", () => {
   it("Wiedervorlagen: offene, früheste zuerst, überfällig vor heute", () => {
     const r = dueFollowUps(data, "2026-11-20");
     expect(r.map(a => [a.id, a.overdue])).toEqual([["a1", true], ["a2", false]]);
+  });
+  it("Wiedervorlagen gelöschter Kontakte ohne Lead zählen nicht mehr (Runde 31)", () => {
+    const d2 = { ...data, persons: [{ id: "ms", name: "Meier + Steiner" }] };
+    expect(dueFollowUps(d2 as typeof data, "2026-11-20").map(a => a.id)).toEqual(["a1"]);
   });
   it("Wiedervorlagen abgeschlossener Leads zählen nicht mehr", () => {
     const d2 = { ...data, leads: leads.map(l => l.id === "efh" ? { ...l, stage: "verloren", closedAt: "2026-11-18" } : l) };

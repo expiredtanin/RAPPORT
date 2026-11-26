@@ -6,7 +6,7 @@
 // (`nextNumber`), ohne konfigurierbares Format.
 
 import React, { useState } from "react";
-import { generateId, formatDate, linkedClientForNote, localISODate } from "../utils";
+import { generateId, formatDate, linkedClientForNote, localISODate, personAddress } from "../utils";
 import { Header, Modal, FormField, DateInput, SortTh, RowMenu, EmptyState } from "../components/UI";
 import { removeWithUndo } from "../undo";
 import { showToast } from "../toast";
@@ -114,7 +114,7 @@ function DeliveryNotes({ data, saveAll, setPrintContent }: Pick<ViewProps, "data
     return va.localeCompare(vb) * sort.dir;
   });
 
-  const UNITS = ["Stk.", "m", "m²", "m³", "kg", "l", "Set", "Blatt", "Rolle", "Palette", "Pkg."];
+  const UNITS = ["Stk.", "Plan", "Ex.", "Satz", "m", "m²", "m³", "kg", "l", "Set", "Blatt", "Rolle", "Palette", "Pkg."];
 
   // Client-Felder im Modal: verknüpft oder manuell
   const linkedClient = form.clientId ? ((data.persons||[])).find(c => c.id === form.clientId) : null;
@@ -210,7 +210,7 @@ function DeliveryNotes({ data, saveAll, setPrintContent }: Pick<ViewProps, "data
           <div style={{ fontSize: 11, letterSpacing: "0.08em", color: "var(--text4)", margin: "14px 0 10px", paddingTop: 12, borderTop: "1px solid var(--border2)" }}>EMPFÄNGER</div>
           <div className="form-row">
             <FormField label="Kunde (verknüpft)">
-              <select value={form.clientId || ""} onChange={e => setForm({ ...form, clientId: e.target.value, clientManual: "", deliveryAddress: "" })}>
+              <select value={form.clientId || ""} onChange={e => setForm({ ...form, clientId: e.target.value, clientManual: "" })}>
                 <option value="">— manuell eingeben —</option>
                 {((data.persons||[])).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
@@ -221,22 +221,15 @@ function DeliveryNotes({ data, saveAll, setPrintContent }: Pick<ViewProps, "data
               </FormField>
             )}
           </div>
-          <FormField label="Lieferadresse">
-            {form.clientId ? (
-              <div style={{ padding: "8px 10px", background: "var(--surface2)", border: "1.5px solid var(--border)", borderRadius: 4, fontSize: 12, color: "var(--text2)", lineHeight: 1.6, minHeight: 60, whiteSpace: "pre-line" }}>
-                {linkedClient?.address || <span style={{ color: "var(--text4)", fontStyle: "italic" }}>Keine Adresse beim Kunden hinterlegt</span>}
-                <div style={{ fontSize: 10, color: "var(--text4)", marginTop: 6, borderTop: "1px solid var(--border2)", paddingTop: 4 }}>
-                  Adresse aus Kundenstamm · unter «Kunden» bearbeitbar
-                </div>
-              </div>
-            ) : (
-              <textarea
-                value={form.deliveryAddress}
-                onChange={e => setForm({ ...form, deliveryAddress: e.target.value })}
-                placeholder={"Strasse\nPLZ Ort"}
-                style={{ minHeight: 60, resize: "vertical" }}
-              />
-            )}
+          {/* immer erfassbar (z.B. Baustelle statt Firmensitz); leer = Adresse aus dem Kundenstamm (Runde 31: Strasse/PLZ/Ort
+              wurden nicht gelesen, eine abweichende Lieferadresse liess sich bei verknüpftem Kunden nicht erfassen) */}
+          <FormField label={form.clientId ? "Lieferadresse (leer = Adresse des Kunden)" : "Lieferadresse"}>
+            <textarea
+              value={form.deliveryAddress}
+              onChange={e => setForm({ ...form, deliveryAddress: e.target.value })}
+              placeholder={form.clientId && personAddress(linkedClient) ? personAddress(linkedClient) : "Strasse\nPLZ Ort"}
+              style={{ minHeight: 60, resize: "vertical" }}
+            />
           </FormField>
 
           {/* Projekt */}
@@ -278,7 +271,8 @@ function DeliveryNotes({ data, saveAll, setPrintContent }: Pick<ViewProps, "data
                   </td>
                   <td style={{ padding: "4px 6px" }}>
                     <select value={it.unit} onChange={e => updateItem(it.id, { unit: e.target.value })} style={{ height: 32, fontSize: 12 }}>
-                      {UNITS.map(u => <option key={u} value={u}>{u}</option>)}
+                      {/* unbekannte Einheit (Import) als Option behalten — sonst zeigte die Auswahl «Stk.» */}
+                      {[...UNITS, ...(it.unit && !UNITS.includes(it.unit) ? [it.unit] : [])].map(u => <option key={u} value={u}>{u}</option>)}
                     </select>
                   </td>
                   <td style={{ padding: "4px 6px" }}>
