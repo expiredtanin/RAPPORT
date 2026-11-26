@@ -83,7 +83,7 @@ function Employees({ data, update, saveAll, setPrintContent, userPermissions, cu
     // Nach dem Austritt gibt es keinen Lohnlauf mehr: ist der Austrittsmonat schon abgerechnet, bliebe die Auszahlung
     // in keiner Abrechnung hängen (Runde 37) → erst die Abrechnung des Austrittsmonats stornieren
     const exitMonth = (emp.austrittsdatum || "").slice(0, 7);
-    if (exitMonth && exitMonth < localISODate().slice(0, 7) && (data.lohnEntries || []).some(l => l.employeeId === emp.id && l.monat === exitMonth)) {
+    if (exitMonth && (data.lohnEntries || []).some(l => l.employeeId === emp.id && l.monat === exitMonth)) {
       showToast(`Austritt ${emp.austrittsdatum!.split("-").reverse().join(".")}: die Lohnabrechnung ${exitMonth.slice(5)}.${exitMonth.slice(0, 4)} ist schon abgeschlossen. Sie zuerst stornieren, dann die Überstunden erfassen und neu abschliessen.`);
       return;
     }
