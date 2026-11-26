@@ -56,7 +56,7 @@ export default function FerienTab({ ownEmployeeId = null, data, update, askConfi
           if (msg) showToast(msg);
           return !!msg;
         };
-        const approveFerien = (id: string) => !closedF(id) && update("ferienEntries", (data.ferienEntries || []).map(f => {
+        const approveFerien = (id: string) => !closedF(id) && update("ferienEntries", prev => (prev || []).map(f => {
           if (f.id !== id) return f;
           const { originalData: _orig, ...rest } = f;
           return { ...rest, status: "approved" } as FerienEntry;
@@ -78,7 +78,7 @@ export default function FerienTab({ ownEmployeeId = null, data, update, askConfi
             return { ...rest, dateFrom: originalData.dateFrom, dateTo: originalData.dateTo, note: originalData.note, status: "approved" } as FerienEntry;
           }));
         };
-        const approveAbs = (id: string) => !closedA(id) && update("absences", (data.absences || []).map(a => a.id === id ? { ...a, status: "approved" } : a));
+        const approveAbs = (id: string) => !closedA(id) && update("absences", prev => (prev || []).map(a => a.id === id ? { ...a, status: "approved" } : a));
         const rejectAbs = async (id: string) => { if (closedA(id)) return; if (await askConfirm("Absenzantrag ablehnen?", "Ablehnen")) update("absences", prev => (prev || []).map(a => a.id === id ? { ...a, status: "rejected" } : a)); };
         return (
           <div className="card mark" style={{ marginBottom: 20, padding: "14px 20px", ["--mark" as string]: "var(--warning)" } as React.CSSProperties}>

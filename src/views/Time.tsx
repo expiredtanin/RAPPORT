@@ -132,7 +132,7 @@ function Time({ data, update, currentUser, userPermissions, setPrintContent }: P
 
   const { absenzTypes, dayAbs, dayIst, dayDiff, addAbs, updateAbs, delAbs } = buildAbsenceState({ data, update, currentDate, selectedEmpId, selectedEmp, employees, daySoll, dayTotalMins, lockApproved: !isAdmin && !!myEmployeeId && selectedEmpId === myEmployeeId });
 
-  const { antragModal, setAntragModal, antragForm, setAntragForm, openFerienAntrag, saveAntrag, deleteFerien, cancelFerienEdit, editFerien, ferienUebersicht, setFerienUebersicht } = useFerienAntrag(data, update, employees, selectedEmpId, currentDate);
+  const { antragModal, setAntragModal, antragForm, setAntragForm, openFerienAntrag, saveAntrag, deleteFerien, cancelFerienEdit, editFerien, ferienUebersicht, setFerienUebersicht } = useFerienAntrag(data, update, employees, selectedEmpId, currentDate, canSwitchEmployee ? "" : myEmployeeId || "");
   const { ref: navCalRef, open: navCalOpen, setOpen: setNavCalOpen } = useCalendarNav();
 
   const viewDate = new Date(`${currentDate}T12:00:00`);
@@ -359,7 +359,7 @@ function Time({ data, update, currentUser, userPermissions, setPrintContent }: P
         </div>
 
         <FerienModals
-          data={data} selectedEmp={selectedEmp} employees={employees}
+          data={data} selectedEmp={selectedEmp} employees={canSwitchEmployee ? employees : employees.filter(e => e.id === myEmployeeId)}
           ferienUebersicht={ferienUebersicht} setFerienUebersicht={setFerienUebersicht}
           antragModal={antragModal} setAntragModal={setAntragModal} antragForm={antragForm} setAntragForm={setAntragForm}
           saveAntrag={saveAntrag} editFerien={editFerien} cancelFerienEdit={cancelFerienEdit} deleteFerien={deleteFerien}

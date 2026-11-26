@@ -286,10 +286,13 @@ export default function App() {
   const hasViewAccess = userPermissions === null || allAccessibleViews.includes(view);
   // Nach dem Anmelden: die Startansicht galt nur beim ersten Mount (noch ohne Konto → «Heute»); eine Rolle ohne
   // Zeiterfassung landete so auf «Kein Zugriff» (Runde 32)
+  // auch, wenn die Rechte erst nach dem Laden der Daten feststehen (Neuladen: beim Mount fehlten die Rollen noch und
+  // die Startansicht wurde mit leeren Rechten gewählt → «Kein Zugriff», Runde 38)
+  const permsKey = userPermissions === null ? "*" : userPermissions.join("|");
   useEffect(() => {
     if (currentUser && !hasViewAccess) resetTo(initialView);
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- nur beim Wechsel des Kontos
-  }, [currentUser?.id]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- nur beim Wechsel des Kontos bzw. seiner Rechte
+  }, [currentUser?.id, permsKey]);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [modal, setModal] = useState<ModalState>(null);
   const [printContent, setPrintContent] = useState<PrintContent>(null);
@@ -585,7 +588,7 @@ export default function App() {
           {hasViewAccess && view === "pinnwand"  && <Pinboard  data={data} update={update} currentUser={currentUser} />}
           {hasViewAccess && view === "projects" && !selectedProjectId && <Projects data={data} update={update} saveAll={save} modal={modal} setModal={setModal} onSelect={setSelectedProjectId} setPrintContent={setPrintContent} currentUser={currentUser} userPermissions={userPermissions} />}
           {hasViewAccess && view === "projects" && selectedProjectId && <ProjectDetail data={data} update={update} saveAll={save} projectId={selectedProjectId} onBack={() => setSelectedProjectId(null)} onSelect={setSelectedProjectId} run={runPalette} setPrintContent={setPrintContent} modal={modal} setModal={setModal} currentUser={currentUser} userPermissions={userPermissions} />}
-          {hasViewAccess && view === "termine" && <Schedules data={data} setView={navigate} onSelectProject={setSelectedProjectId} />}
+          {hasViewAccess && view === "termine" && <Schedules data={data} setView={navigate} onSelectProject={setSelectedProjectId} userPermissions={userPermissions} myEmployeeId={currentUser?.employeeId || ""} />}
           {hasViewAccess && view === "time" && <Time data={data} update={update} currentUser={currentUser} userPermissions={userPermissions} setPrintContent={setPrintContent} />}
           {hasViewAccess && view === "crm" && <Crm data={data} update={update} setView={navigate} />}
           {hasViewAccess && view === "quotes" && <Quotes data={data} update={update} saveAll={save} modal={modal} setModal={setModal} setPrintContent={setPrintContent} setView={navigate} onSelectProject={setSelectedProjectId} />}

@@ -7,16 +7,18 @@ import { removeWithUndo } from "../../undo";
 import type { AppData, Employee, FerienEntry, UpdateFn } from "../../types";
 
 /** Zustand und Aktionen für «Ferien beantragen» und die Ferien-Übersicht des gewählten Mitarbeiters. */
-export function useFerienAntrag(data: AppData, update: UpdateFn, employees: Employee[], selectedEmpId: string, currentDate: string) {
+export function useFerienAntrag(data: AppData, update: UpdateFn, employees: Employee[], selectedEmpId: string, currentDate: string, ownOnlyEmpId = "") {
   // Ferien-Antrag Modal
   const [antragModal, setAntragModal] = useState<"ferien" | null>(null);
   const [antragForm, setAntragForm] = useState<Partial<FerienEntry>>({});
 
   const openFerienAntrag = () => {
-    setAntragForm({ employeeId: selectedEmpId || (employees[0]?.id || ""), dateFrom: currentDate, dateTo: currentDate, note: "" });
+    setAntragForm({ employeeId: ownOnlyEmpId || selectedEmpId || (employees[0]?.id || ""), dateFrom: currentDate, dateTo: currentDate, note: "" });
     setAntragModal("ferien");
   };
   const saveAntrag = () => {
+    // ohne Personalrecht nur für sich selbst (vorher Anträge für beliebige Kollegen — blockierten deren eigene, Runde 38)
+    if (ownOnlyEmpId && antragForm.employeeId !== ownOnlyEmpId) { showToast("Ferien beantragen kannst du nur für dich selbst."); return; }
     if (!antragForm.employeeId || !antragForm.dateFrom || !antragForm.dateTo) return;
     // Von/Bis vertauscht → tauschen (sonst zählte der Antrag 0 Tage und blieb trotzdem stehen)
     const form = antragForm.dateTo < antragForm.dateFrom ? { ...antragForm, dateFrom: antragForm.dateTo, dateTo: antragForm.dateFrom } : antragForm;
