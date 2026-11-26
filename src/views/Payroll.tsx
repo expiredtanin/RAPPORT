@@ -17,7 +17,7 @@
 
 import React, { useState } from "react";
 import { generateId, formatCHF, calcLohn, lohnAGSaetze, pensumImMonat, monatslohnImMonat } from "../utils";
-import { lohnAGBeitraege, lohnPersonalaufwand, lohnVorperioden, spesenFuerLohn, spesenWartend } from "../accounting";
+import { lohnAGBeitraege, lohnPersonalaufwand, lohnVorperioden, lohnlaufBisMonat, spesenFuerLohn, spesenWartend, ueberstundenFuerLohn } from "../accounting";
 import { Header, NavArrows, ShareButton, EmptyState } from "../components/UI";
 import { showToast } from "../toast";
 import { useConfirm } from "../hooks/useConfirm";
@@ -81,14 +81,12 @@ function Payroll({ data, saveAll, setPrintContent, setView }: Pick<ViewProps, "d
   const monthPensum = (emp: Employee) => Math.round(pensumImMonat(emp, monatStr) * 100) / 100;
   const getEffPensum = (emp: Employee) => pensumOverride[emp.id] != null ? pensumOverride[emp.id] : monthPensum(emp);
 
-  const offeneSpesen = (empId: string) => spesenFuerLohn(data.expenses || [], empId, monatStr);
-  // Überstunden-Auszahlungen (Personal → Jahresabschluss) bis und mit diesem Monat, noch in keiner Lohnabrechnung:
-  // gehören als massgebender Lohn in den Lohnlauf (AHV/ALV/UVG/QST), vorher liefen sie daran vorbei. Erst ab
-  // Kennzeichen `imLohn` — ältere (ohne) wurden separat ausbezahlt und dürfen nicht nochmals kommen.
-  const ueberstundenVerrechnet = new Set(lohnEntries.flatMap(l => l.ueberstundenIds || []));
-  const offeneUeberstunden = (empId: string) => (data.uberstundenAbschluss || []).filter(a =>
-    a.empId === empId && a.type === "payout" && (a.auszahlungBetrag || 0) > 0 && !ueberstundenVerrechnet.has(a.id)
-    && !!a.imLohn && (a.date || "").slice(0, 7) <= monatStr);
+  // Im Austrittsmonat (letzter Lohnlauf) auch später datierte Spesen/Überstunden (lohnlaufBisMonat)
+  const bisMonat = (empId: string) => lohnlaufBisMonat(monatStr, employees.find(e => e.id === empId)?.austrittsdatum);
+  const offeneSpesen = (empId: string) => spesenFuerLohn(data.expenses || [], empId, bisMonat(empId));
+  // Überstunden-Auszahlungen (Personal → Jahresabschluss), noch in keiner Lohnabrechnung: gehören als massgebender
+  // Lohn in den Lohnlauf (AHV/ALV/UVG/QST)
+  const offeneUeberstunden = (empId: string) => ueberstundenFuerLohn(data.uberstundenAbschluss || [], lohnEntries, empId, bisMonat(empId));
   const ueberstundenSumme = (empId: string) => offeneUeberstunden(empId).reduce((t, a) => t + (a.auszahlungBetrag || 0), 0);
   const findEntry = (empId: string) => lohnEntries.find(l => l.monat === monatStr && l.employeeId === empId);
   /** Vorschau/Abschluss mit den Overrides dieses Laufs und den früheren Abrechnungen des Jahres. */
@@ -135,10 +133,12 @@ function Payroll({ data, saveAll, setPrintContent, setView }: Pick<ViewProps, "d
       ...calc, spesenIds: spesen.map(s => s.id), ueberstundenIds: offeneUeberstunden(emp.id).map(a => a.id),
       createdAt: new Date().toISOString(),
     };
-    const updatedExp = (data.expenses || []).map(e =>
-      spesen.some(s => s.id === e.id) ? { ...e, lohnEntryId: entry.id, status: "ausbezahlt" } : e
-    );
-    saveAll({ ...data, lohnEntries: [...lohnEntries, entry], expenses: updatedExp });
+    // auf den aktuellen Stand (wie das Storno): sonst überschrieb der Abschluss inzwischen gespeicherte Änderungen;
+    // steht für den Monat schon eine Abrechnung (Doppelklick, zweites Fenster), nichts tun
+    saveAll(prev => (prev.lohnEntries || []).some(l => l.monat === monatStr && l.employeeId === emp.id) ? prev : ({
+      ...prev, lohnEntries: [...(prev.lohnEntries || []), entry],
+      expenses: (prev.expenses || []).map(e => !e.lohnEntryId && spesen.some(s => s.id === e.id) ? { ...e, lohnEntryId: entry.id, status: "ausbezahlt" } : e),
+    }));
     // Overrides sind nur für DIESEN Monat gedacht ("Pensum diesen Monat",
     // "Einmalzahlung / Bonus") — ohne Reset blieben sie beim Monatswechsel
     // vorausgefüllt und ein "einmaliger" Bonus würde beim nächsten
@@ -273,7 +273,7 @@ function Payroll({ data, saveAll, setPrintContent, setView }: Pick<ViewProps, "d
         return <>
           <LohnRow label={`AHV/IV/EO (${s.ahvSatz ?? 5.3}%${calc.ahvBasis != null && calc.ahvBasis !== calc.bruttoTotal ? ` von ${formatCHF(calc.ahvBasis)}` : ""})`} value={-calc.ahv} indent />
           <LohnRow label={`ALV (${s.alvSatz ?? 1.1}%)`} value={-calc.alv} indent />
-          <LohnRow label={(s.pkBeitragAN ?? 0) > 0 ? "BVG/PK (laut PK-Ausweis)" : `BVG/PK (${s.bvgSatz ?? 8.0}%)`} value={-calc.bvg} indent />
+          <LohnRow label={(s.pkBeitragAN ?? 0) > 0 ? "BVG/PK (laut PK-Ausweis)" : calc.bvg ? `BVG/PK (${s.bvgSatz ?? 8.0}%)` : "BVG/PK (keine Beiträge)"} value={-calc.bvg} indent />
           <LohnRow label={`NBU (${s.nbuSatz ?? 1.5}%)`} value={-calc.nbu} indent />
           <LohnRow label={`KTG (${s.ktgSatz ?? 0.5}%)`} value={-calc.ktg} indent />
           {calc.qst > 0 && <LohnRow label={`Quellensteuer (${s.quellensteuerSatz ?? 10}%)`} value={-calc.qst} indent />}

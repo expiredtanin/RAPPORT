@@ -84,7 +84,9 @@ function Accounting({ data, update, setView, setModal, setPrintContent }: Pick<V
   const drafts = data.invoices.filter(i => i.status === "entwurf");
   const spesenOffen = (data.expenses || []).filter(e => (e.status || "offen") === "offen" && !e.lohnEntryId);
   const thisMonth = today.slice(0, 7);
-  const lohnEmps = (data.employees || []).filter(e => e.active !== false && (e.monatslohn || 0) > 0);
+  // nur wer in diesem Monat angestellt ist (wie im Lohnlauf): Ausgetretene blieben sonst für immer «offen»
+  const lohnEmps = (data.employees || []).filter(e => e.active !== false && ((e.monatslohn || 0) > 0 || (e.lohnVerlauf || []).length > 0)
+    && (e.eintrittsdatum || "").slice(0, 7) <= thisMonth && !(e.austrittsdatum && e.austrittsdatum.slice(0, 7) < thisMonth));
   const lohnDone = lohnEmps.filter(e => (data.lohnEntries || []).some(l => l.employeeId === e.id && l.monat === thisMonth)).length;
   const monthName = new Date(`${thisMonth}-15T12:00:00`).toLocaleDateString("de-CH", { month: "long" });
   // Letzte abgeschlossene MWST-Periode (effektiv: Quartal, Saldosteuersatz: Halbjahr) und ihre Frist

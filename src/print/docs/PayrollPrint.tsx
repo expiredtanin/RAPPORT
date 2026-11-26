@@ -1,6 +1,6 @@
 // Druckvorlage Lohnabrechnung (`lohn`).
 
-import { formatCHF, formatDate, formatSenderAddress, formatIban, monatsAnteilNachEintritt } from "../../utils";
+import { formatCHF, formatDate, formatSenderAddress, formatIban, monatsAnteilNachEintritt, ahvStatus } from "../../utils";
 import { lohnAGBeitraege } from "../../accounting";
 import { StudioLogo } from "../../components/UI";
 import type { AppData, Employee, LohnEntry, Settings } from "../../types";
@@ -25,6 +25,17 @@ export function LohnPrint({ entry, emp, data, monatLabel, settings }: { entry: L
   // Abrechnungszeitpunkt gültigen Personendaten.
   const s = entry.saetzeSnapshot || emp;
   const es = entry.empSnapshot || emp;
+  // AHV-Status des Monats für die Beschriftung: unter 18 beitragsfrei, Rentner:in mit Freibetrag (vorher stand
+  // «Rentnerfreibetrag» auch bei Jugendlichen und «8 %» bei der PK, wenn gar nichts abgezogen wurde)
+  const status = ahvStatus(emp?.geburtsdatum, entry.monat, s.ahvRentner);
+  const ahvLabel = status === "jung" ? "AHV / IV / EO (unter 18: beitragsfrei)"
+    : entry.ahvBasis != null && entry.ahvBasis !== entry.bruttoTotal ? `AHV / IV / EO (auf ${formatCHF(entry.ahvBasis)}, Rentnerfreibetrag)` : "AHV / IV / EO";
+  const pkAusweis = (s.pkBeitragAN ?? 0) > 0;
+  const bvgSatz = pkAusweis ? "PK-Ausweis" : entry.bvg ? `${s.bvgSatz ?? 8.0}%` : "";
+  const bvgLabel = !pkAusweis && !entry.bvg
+    ? `BVG – Berufliche Vorsorge / PK (${status === "jung" ? "unter 18: keine Pflicht" : status === "rentner" ? "Rentner:in: keine Pflicht" : "keine Beiträge"})`
+    : "BVG – Berufliche Vorsorge / PK";
+  const alvSatz = status === "aktiv" ? `${s.alvSatz ?? 1.1}%` : "";
 
 
   return (
@@ -96,9 +107,9 @@ export function LohnPrint({ entry, emp, data, monatLabel, settings }: { entry: L
           {/* Spacer */}
           <tr><td colSpan={3} style={{ padding: "4px 0", borderBottom: "none" }}><div style={{ fontSize: 10, letterSpacing: "0.1em", color: "#888", padding: "8px 10px 2px" }}>ABZÜGE ARBEITNEHMER</div></td></tr>
 
-          <LRow label={entry.ahvBasis != null && entry.ahvBasis !== entry.bruttoTotal ? `AHV / IV / EO (auf ${formatCHF(entry.ahvBasis)}, Rentnerfreibetrag)` : "AHV / IV / EO"} satz={`${s.ahvSatz ?? 5.3}%`} betrag={-entry.ahv} sub color="#8a1a1a" />
-          <LRow label="ALV – Arbeitslosenversicherung" satz={`${s.alvSatz ?? 1.1}%`} betrag={-entry.alv} sub color="#8a1a1a" />
-          <LRow label="BVG – Berufliche Vorsorge / PK" satz={(s.pkBeitragAN ?? 0) > 0 ? "PK-Ausweis" : `${s.bvgSatz ?? 8.0}%`} betrag={-entry.bvg} sub color="#8a1a1a" />
+          <LRow label={ahvLabel} satz={status === "jung" ? "" : `${s.ahvSatz ?? 5.3}%`} betrag={-entry.ahv} sub color="#8a1a1a" />
+          <LRow label="ALV – Arbeitslosenversicherung" satz={alvSatz} betrag={-entry.alv} sub color="#8a1a1a" />
+          <LRow label={bvgLabel} satz={bvgSatz} betrag={-entry.bvg} sub color="#8a1a1a" />
           <LRow label="NBU – Nichtberufsunfallversicherung" satz={`${s.nbuSatz ?? 1.5}%`} betrag={-entry.nbu} sub color="#8a1a1a" />
           <LRow label="KTG – Krankentaggeldversicherung" satz={`${s.ktgSatz ?? 0.5}%`} betrag={-entry.ktg} sub color="#8a1a1a" />
           {entry.qst > 0 && <LRow label="Quellensteuer" satz={`${s.quellensteuerSatz ?? 10}%`} betrag={-entry.qst} sub color="#8a1a1a" />}

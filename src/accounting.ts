@@ -22,7 +22,7 @@
 //   - Spesen im Lohn: nur genehmigte («genehmigt», «auf nächsten Lohn»), nie «offen».
 
 import { csvCell, invoiceNet, roundCHF, type LohnVorperioden } from "./utils";
-import type { AppData, Expense, InternalExpense, Invoice, LohnEntry, LohnResult } from "./types";
+import type { AppData, Expense, InternalExpense, Invoice, LohnEntry, LohnResult, OvertimeClosing } from "./types";
 
 /**
  * Liegt ein Datum in der Periode? `""` = alle, `YYYY` = Jahr, `YYYY-MM` = Monat,
@@ -193,6 +193,25 @@ export function spesenFuerLohn(expenses: Expense[], employeeId: string, monat: s
     if (e.status !== "genehmigt" && e.status !== "auf nächsten Lohn") return false;
     return (e.date || "").slice(0, 7) <= monat;
   });
+}
+
+/**
+ * Bis zu welchem Monat Spesen und Überstunden-Auszahlungen in den Lohnlauf `monat` gehören: sonst bis und mit
+ * `monat`; im Austrittsmonat (letzter Lohnlauf) auch alle später datierten — z.B. Überstunden, die erst nach dem
+ * Austritt im Jahresabschluss erfasst wurden. Vorher blieben sie in keiner Abrechnung hängen.
+ */
+export function lohnlaufBisMonat(monat: string, austrittsdatum?: string | null): string {
+  return (austrittsdatum || "").slice(0, 7) === monat ? "9999-12" : monat;
+}
+
+/**
+ * Überstunden-Auszahlungen (Jahresabschluss, Kennzeichen `imLohn`) einer Person bis und mit `bisMonat`, die noch in
+ * keiner Lohnabrechnung stecken. Ältere ohne `imLohn` wurden separat ausbezahlt und kommen nicht nochmals.
+ */
+export function ueberstundenFuerLohn(abschluesse: OvertimeClosing[], lohnEntries: Pick<LohnEntry, "ueberstundenIds">[], empId: string, bisMonat: string): OvertimeClosing[] {
+  const verrechnet = new Set(lohnEntries.flatMap(l => l.ueberstundenIds || []));
+  return abschluesse.filter(a => a.empId === empId && a.type === "payout" && (a.auszahlungBetrag || 0) > 0
+    && !verrechnet.has(a.id) && !!a.imLohn && (a.date || "").slice(0, 7) <= bisMonat);
 }
 
 /** Noch nicht genehmigte Spesen einer Person bis und mit `monat` (Hinweis im Lohnlauf). */

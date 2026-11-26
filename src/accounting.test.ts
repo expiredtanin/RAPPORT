@@ -6,9 +6,9 @@ import { describe, expect, it } from "vitest";
 import { ahvStatus, bvgAltersgutschriftSatz, bvgKoordinierterLohn, calcLohn, contractAmounts, hoechstlohnKumuliert, monatsAnteilNachEintritt } from "./utils";
 import { periodLabel, mwstDueDate, mwstPerioden, expandInternalExpenses, spesenWartend,
   accountingSummary, buildBuchhaltungCSV, expenseNet, expenseTax, inPeriod, lohnAGBeitraege,
-  lohnPersonalaufwand, lohnVorperioden, spesenFuerLohn,
+  lohnPersonalaufwand, lohnVorperioden, spesenFuerLohn, lohnlaufBisMonat, ueberstundenFuerLohn,
 } from "./accounting";
-import type { AppData, Employee, Expense, InternalExpense, Invoice, LohnEntry } from "./types";
+import type { AppData, Employee, Expense, InternalExpense, Invoice, LohnEntry, OvertimeClosing } from "./types";
 
 const emp = (over: Partial<Employee> = {}): Employee =>
   ({ id: "e1", name: "Anna Muster", role: "Architektin", pensum: 100, wochenstunden: 42, ferienWochen: 5, monatslohn: 7500, ...over }) as Employee;
@@ -199,6 +199,28 @@ describe("spesenFuerLohn", () => {
   it("nur genehmigte bis und mit Monat, ohne bereits ausbezahlte", () => {
     expect(spesenFuerLohn(list, "e1", "2026-03").map(e => e.id)).toEqual(["c", "d"]);
     expect(spesenWartend(list, "e1", "2026-03").map(e => e.id)).toEqual(["a"]);
+  });
+});
+
+describe("Lohnlauf im Austrittsmonat (lohnlaufBisMonat, ueberstundenFuerLohn)", () => {
+  const ub = (id: string, date: string, over: Partial<OvertimeClosing> = {}): OvertimeClosing =>
+    ({ id, empId: "e1", year: 2026, date, type: "payout", hoursSettled: 10, zuschlagPercent: 25, stundenlohn: 40, auszahlungBetrag: 500, imLohn: true, ...over });
+  // Austritt 15.10., Überstunden erst am 2.11. im Jahresabschluss erfasst: vorher in keiner Abrechnung (nach dem
+  // Austritt gibt es keinen Lohnlauf mehr) → vom Saldo abgezogen, aber nie ausbezahlt
+  const list = [ub("u1", "2026-11-02"), ub("u2", "2026-09-30", { imLohn: false }), ub("u3", "2026-10-05", { empId: "e2" }), ub("u4", "2026-08-01")];
+  it("im Austrittsmonat auch später datierte, sonst bis und mit Monat", () => {
+    expect(lohnlaufBisMonat("2026-10", "2026-10-15")).toBe("9999-12");
+    expect(lohnlaufBisMonat("2026-09", "2026-10-15")).toBe("2026-09");
+    expect(lohnlaufBisMonat("2026-10", undefined)).toBe("2026-10");
+    expect(ueberstundenFuerLohn(list, [], "e1", lohnlaufBisMonat("2026-10", "2026-10-15")).map(a => a.id)).toEqual(["u1", "u4"]);
+    expect(ueberstundenFuerLohn(list, [], "e1", lohnlaufBisMonat("2026-10", null)).map(a => a.id)).toEqual(["u4"]);
+  });
+  it("schon abgerechnete nicht nochmals", () => {
+    expect(ueberstundenFuerLohn(list, [{ ueberstundenIds: ["u4"] }], "e1", "9999-12").map(a => a.id)).toEqual(["u1"]);
+  });
+  it("Spesen nach dem Austritt gehen in die Schlussabrechnung", () => {
+    const sp = { id: "s", employeeId: "e1", date: "2026-11-03", status: "genehmigt", amount: 30 } as Expense;
+    expect(spesenFuerLohn([sp], "e1", lohnlaufBisMonat("2026-10", "2026-10-15")).map(e => e.id)).toEqual(["s"]);
   });
 });
 
