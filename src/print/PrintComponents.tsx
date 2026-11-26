@@ -319,7 +319,7 @@ export function PrintView({ content, onClose, settings, assets }: { content: Con
           )}
           {content.type === "letter" && <LetterPrint client={content.client} subject={content.subject} body={content.body} isHtml={content.isHtml} settings={settings} date={content.date} />}
           {content.type === "projectDetail" && <ProjectDetailPrint content={content} settings={settings} />}
-          {content.type === "projectsOverview" && <ProjectsOverviewPrint projects={content.projects} data={content.data} settings={settings} />}
+          {content.type === "projectsOverview" && <ProjectsOverviewPrint projects={content.projects} data={content.data} settings={settings} showMoney={!!content.showMoney} />}
           {content.type === "qrbill" && <QRBillPrint inv={content.inv} client={content.client} settings={settings} />}
           {content.type === "quote" && <QuotePrint quote={content.quote} client={content.client} settings={settings} />}
           {content.type === "vertrag" && <VertragPrint vertrag={content.vertrag} amounts={content.amounts} client={content.client} project={content.project} settings={settings} />}

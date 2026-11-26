@@ -36,6 +36,9 @@ function Projects({ data, saveAll, modal, setModal, onSelect, setPrintContent, u
   onSelect: (projectId: string) => void;
 }) {
   const clients = (data.persons || []);
+  // Honorar/Beträge nur mit «invoices», Offerten nur mit «quotes» (null = Admin)
+  const canInvoices = userPermissions === null || userPermissions.includes("invoices");
+  const canQuotes = userPermissions === null || userPermissions.includes("quotes");
   const emptyForm: ProjectForm = { number: "", name: "", clientId: "", category: "Direktauftrag", billingType: "stundensatz", hourlyRate: data.settings.defaultHourlyRate, budget: 0, status: "aktiv", description: "", startDate: "", enabledPhases: [], budgetHours: 0, linkedQuotes: [], positions: [], customPhases: [], projectContacts: [], internalMembers: [] };
   const [form, setForm] = useState<ProjectForm>(emptyForm);
   const [filter, setFilter] = useState(() => { const cid = window.__navClientId || ""; window.__navClientId = null; return { category: "", status: "", search: "", clientId: cid }; });
@@ -166,7 +169,7 @@ function Projects({ data, saveAll, modal, setModal, onSelect, setPrintContent, u
       {ConfirmModalEl}
       <Header title="Projekte" action={
         <div style={{ display: "flex", gap: 8 }}>
-          <ShareButton options={[{ label: "Gesamt-PDF", onClick: () => setPrintContent({ type: "projectsOverview", projects: data.projects, data }) }]} />
+          <ShareButton options={[{ label: "Gesamt-PDF", onClick: () => setPrintContent({ type: "projectsOverview", projects: data.projects, data, showMoney: canInvoices }) }]} />
           <button className="btn btn-primary" onClick={openNew}>+ Neues Projekt</button>
         </div>
       } />
@@ -280,7 +283,7 @@ function Projects({ data, saveAll, modal, setModal, onSelect, setPrintContent, u
 
         return (
           <Modal title={modal.id ? "Projekt bearbeiten" : "Neues Projekt"} onClose={() => { setModal(null); resetBeteiligter(); }} onSave={saveProject} wide>
-            <ProjectEditForm form={form} setForm={setForm} data={data} />
+            <ProjectEditForm form={form} setForm={setForm} data={data} canMoney={canInvoices || canQuotes} canQuotes={canQuotes} />
 
             <div style={{ marginTop: 20, paddingTop: 16, borderTop: "1px solid var(--border2)" }}>
               <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.08em", color: "var(--text4)", marginBottom: 12 }}>INTERNE PROJEKTBETEILIGUNG</div>

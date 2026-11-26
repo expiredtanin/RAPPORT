@@ -5,12 +5,15 @@ import { formatCHF, formatHours } from "../../utils";
 import { type ViewProps, type Project, type TimeEntry } from "../../types";
 
 /** Auswertungstabelle der erfassten Stunden je Mitarbeiter (rendert nichts ohne Einträge). */
-export function EmployeeCard({ project, data, entries, billingType }: {
+export function EmployeeCard({ project, data, entries, billingType, showMoney = false }: {
   project: Project;
   data: ViewProps["data"];
   entries: TimeEntry[];
   billingType: string;
+  /** Beträge (Stunden × Satz) zeigen — nur mit Recht «Rechnungen» */
+  showMoney?: boolean;
 }) {
+  const showAmount = showMoney && billingType === "stundensatz";
   const employees = data.employees || [];
   // Gruppe nach Mitarbeiter
   const byEmp: Record<string, { mins: number; entries: TimeEntry[] }> = Object.create(null);
@@ -28,7 +31,7 @@ export function EmployeeCard({ project, data, entries, billingType }: {
       const k = e.phaseId || "__none__";
       byPhase[k] = (byPhase[k] || 0) + (e.minutes || 0);
     });
-    const amount = billingType === "stundensatz" ? (d.mins / 60) * (project.hourlyRate as number) : null;
+    const amount = showAmount ? (d.mins / 60) * (project.hourlyRate as number) : null;
     return { empId, emp, mins: d.mins, amount, byPhase, count: d.entries.length };
   }).sort((a, b) => b.mins - a.mins);
 
@@ -45,7 +48,7 @@ export function EmployeeCard({ project, data, entries, billingType }: {
             <th>Mitarbeiter</th>
             <th style={{ textAlign: "right" }}>Stunden</th>
             <th style={{ textAlign: "right" }}>Anteil</th>
-            {billingType === "stundensatz" && <th style={{ textAlign: "right" }}>Betrag</th>}
+            {showAmount && <th style={{ textAlign: "right" }}>Betrag</th>}
             <th style={{ textAlign: "right" }}>Einträge</th>
             <th className="hide-mid">Phasen</th>
           </tr>
@@ -72,7 +75,7 @@ export function EmployeeCard({ project, data, entries, billingType }: {
                     <span style={{ fontSize: 12, color: "var(--text4)", minWidth: 32 }}>{pct}%</span>
                   </div>
                 </td>
-                {billingType === "stundensatz" && <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>{row.amount !== null ? formatCHF(row.amount) : "—"}</td>}
+                {showAmount && <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>{row.amount !== null ? formatCHF(row.amount) : "—"}</td>}
                 <td className="num" style={{ color: "var(--text4)", fontSize: 12, textAlign: "right" }}>{row.count}</td>
                 <td className="hide-mid" style={{ fontSize: 11, color: "var(--text4)" }}>{phases || "—"}</td>
               </tr>
@@ -84,7 +87,7 @@ export function EmployeeCard({ project, data, entries, billingType }: {
             <td><strong>Total</strong></td>
             <td style={{ textAlign: "right", fontWeight: 700, whiteSpace: "nowrap" }}>{formatHours(totalMins)}</td>
             <td style={{ textAlign: "right", fontSize: 12, color: "var(--text4)" }}>100%</td>
-            {billingType === "stundensatz" && <td style={{ textAlign: "right", fontWeight: 700, whiteSpace: "nowrap" }}>{formatCHF(empRows.reduce((s, r) => s + (r.amount || 0), 0))}</td>}
+            {showAmount && <td style={{ textAlign: "right", fontWeight: 700, whiteSpace: "nowrap" }}>{formatCHF(empRows.reduce((s, r) => s + (r.amount || 0), 0))}</td>}
             <td className="num" style={{ color: "var(--text4)", fontSize: 12, textAlign: "right" }}>{entries.length}</td>
             <td className="hide-mid"></td>
           </tr>

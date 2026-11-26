@@ -277,7 +277,7 @@ function ProjectDetail({ data, update, saveAll, projectId, onBack, onSelect, run
               <RowMenu label="Weitere Aktionen" items={[
                 { label: "Projekteinstellungen", icon: "tune", hidden: !isAdmin, onClick: openSettings },
                 { label: "Budget / Offerten", icon: "request_quote", hidden: !canSeeQuotes, onClick: openBudget },
-                { label: "PDF Projektblatt", icon: "picture_as_pdf", onClick: () => setPrintContent({ type: "projectDetail", project, client, entries, phaseStats, unassignedMins, totalMinutes, totalAmount, billingType, invoices: projectInvoices, data }) },
+                { label: "PDF Projektblatt", icon: "picture_as_pdf", onClick: () => setPrintContent({ type: "projectDetail", project, client, entries, phaseStats, unassignedMins, totalMinutes, totalAmount: canSeeInvoices ? totalAmount : 0, billingType, invoices: canSeeInvoices ? projectInvoices : [], showMoney: canSeeInvoices, data }) },
               ]} />
             </div>
           </div>
@@ -300,7 +300,7 @@ function ProjectDetail({ data, update, saveAll, projectId, onBack, onSelect, run
           <div className="ws-stack">
             <KpiRow project={project} data={data} entries={entries} totalMinutes={totalMinutes} totalHours={totalHours} budget={budget} budgetPct={budgetPct} budgetColor={budgetColor} isCostControl={isCostControl} isNonBilling={isNonBilling} invoicedMinutes={invoicedMinutes} openMinutes={openMinutes} showMoney={canSeeInvoices} />
             {phaseCard}
-            {canSeeMitarbeiter && <EmployeeCard project={project} data={data} entries={entries} billingType={billingType} />}
+            {canSeeMitarbeiter && <EmployeeCard project={project} data={data} entries={entries} billingType={billingType} showMoney={canSeeInvoices} />}
             <TimeEntriesCard project={project} data={data} update={update} entries={entries} positions={positions} billingType={billingType} isAdmin={isAdmin} canSeeMitarbeiter={canSeeMitarbeiter} canSeeInvoices={canSeeInvoices} />
           </div>
         )}

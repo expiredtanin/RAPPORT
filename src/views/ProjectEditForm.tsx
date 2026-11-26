@@ -12,8 +12,12 @@ export type ProjectForm = Omit<Project, "id"> & { id?: string };
 type LinkedQuote = { quoteId: string; role: string };
 
 /** Eingabefelder eines Projekts; `form`/`setForm` gehören der aufrufenden Ansicht. */
-export function ProjectEditForm({ form, setForm, data }: {
+export function ProjectEditForm({ form, setForm, data, canMoney = true, canQuotes = true }: {
   form: ProjectForm; setForm: React.Dispatch<React.SetStateAction<ProjectForm>>; data: ViewProps["data"];
+  /** Abrechnungstyp, Stundensatz, Pauschalpreis zeigen/ändern — Recht «invoices» oder «quotes» */
+  canMoney?: boolean;
+  /** Offerten-Verknüpfung (mit Offert-Totalen) zeigen/ändern — Recht «quotes» */
+  canQuotes?: boolean;
 }) {
   const [newPhaseLabel, setNewPhaseLabel] = useState("");
   const togglePhase = (phaseId: string) => {
@@ -72,7 +76,7 @@ export function ProjectEditForm({ form, setForm, data }: {
             <span style={{ fontSize: 16 }}>○</span>
             <span><strong style={{ color: "var(--text)" }}>Nicht verrechenbar</strong> — Stunden werden erfasst, aber nicht fakturiert.</span>
           </div>
-        ) : (
+        ) : canMoney ? (
           <>
             <FormField label="Abrechnungstyp">
               <select value={form.billingType} onChange={e => setForm({ ...form, billingType: e.target.value })}>
@@ -86,17 +90,17 @@ export function ProjectEditForm({ form, setForm, data }: {
                   // mit verknüpften Offerten gilt budgetAmount (projectFee) — von Hand gesetzter Preis überschreibt beide
                   ...(hasQuoteBudget(form) ? { budgetAmount: +e.target.value } : {}) })} /></FormField>}
           </>
-        )}
+        ) : null}
         <FormField label="Startdatum"><DateInput value={form.startDate} onChange={e => setForm({ ...form, startDate: e.target.value })} /></FormField>
       </div>
       <div className="form-row">
         <FormField label="Stundenbudget (Soll-Stunden)">
           <input type="number" step="0.5" min={0} value={form.budgetHours || 0}
-            onChange={e => setForm({ ...form, budgetHours: +e.target.value, linkedQuotes: [], phasesBudget: [] })}
+            onChange={e => setForm({ ...form, budgetHours: +e.target.value, ...(canQuotes ? { linkedQuotes: [], phasesBudget: [] } : {}) })}
             placeholder="0 = aus Offerten berechnet" />
         </FormField>
       </div>
-      {(() => {
+      {canQuotes && (() => {
         const linked = form.linkedQuotes || [];
         const ROLES = ["Hauptofferte", "Nachtrag", "Referenz"];
 

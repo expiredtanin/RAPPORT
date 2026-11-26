@@ -30,7 +30,7 @@ export function TimeEntriesCard({ project, data, update, entries, positions, bil
           {canSeeInvoices && <th style={{ width: "12%" }}>Rechnung</th>}
         </tr></thead>
         <tbody>
-          {entries.length === 0 && <tr><td colSpan={canSeeMitarbeiter && canSeeInvoices ? 7 : 4} style={{ textAlign: "center", color: "var(--text5)", padding: 24 }}>Noch keine Zeiteinträge</td></tr>}
+          {entries.length === 0 && <tr><td colSpan={4 + (canSeeMitarbeiter ? 1 : 0) + (canSeeInvoices ? 2 : 0)} style={{ textAlign: "center", color: "var(--text5)", padding: 24 }}>Noch keine Zeiteinträge</td></tr>}
           {entries.map(e => {
             const phase = SIA_PHASES.find(p => p.id === e.phaseId);
             const pos = positions.find(p => p.code === e.positionId);

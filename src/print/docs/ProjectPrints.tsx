@@ -7,9 +7,9 @@ import type { AppData, Invoice, Project, Settings, TimeEntry } from "../../types
 import { HEADING, type Content, type Client } from "./shared";
 
 export function ProjectDetailPrint({ content, settings }: { content: Content; settings: Settings }) {
-  const { project, client, entries, phaseStats, unassignedMins, totalMinutes, totalAmount, billingType, invoices, data } = content as unknown as {
+  const { project, client, entries, phaseStats, unassignedMins, totalMinutes, totalAmount, billingType, invoices, data, showMoney = false } = content as unknown as {
     project: Project; client: Client; entries: TimeEntry[]; phaseStats: { id: string; label: string; minutes: number; percent: number }[];
-    unassignedMins: number; totalMinutes: number; totalAmount: number; billingType: string; invoices: Invoice[]; data: AppData;
+    unassignedMins: number; totalMinutes: number; totalAmount: number; billingType: string; invoices: Invoice[]; data: AppData; showMoney?: boolean;
   };
   return (
     <>
@@ -31,9 +31,9 @@ export function ProjectDetailPrint({ content, settings }: { content: Content; se
         {project.description && <div style={{ fontSize: 10, color: "#555", marginTop: 12, lineHeight: 1.7 }}>{project.description}</div>}
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 20, marginBottom: 40 }}>
+      <div style={{ display: "grid", gridTemplateColumns: `repeat(${showMoney ? 3 : 2}, 1fr)`, gap: 20, marginBottom: 40 }}>
         <div><div style={{ fontSize: 9, letterSpacing: "0.12em", color: "#888", marginBottom: 4 }}>STUNDEN TOTAL</div><div className="doc-heading" style={{ fontSize: 18, ...HEADING, fontWeight: 700 }}>{formatHours(totalMinutes)}</div></div>
-        <div><div style={{ fontSize: 9, letterSpacing: "0.12em", color: "#888", marginBottom: 4 }}>{billingType === "stundensatz" ? "AUFWAND" : "PAUSCHALE"}</div><div className="doc-heading" style={{ fontSize: 18, ...HEADING, fontWeight: 700 }}>{formatCHF(totalAmount)}</div></div>
+        {showMoney && <div><div style={{ fontSize: 9, letterSpacing: "0.12em", color: "#888", marginBottom: 4 }}>{billingType === "stundensatz" ? "AUFWAND" : "PAUSCHALE"}</div><div className="doc-heading" style={{ fontSize: 18, ...HEADING, fontWeight: 700 }}>{formatCHF(totalAmount)}</div></div>}
         <div><div style={{ fontSize: 9, letterSpacing: "0.12em", color: "#888", marginBottom: 4 }}>EINTRÄGE</div><div className="doc-heading" style={{ fontSize: 18, ...HEADING, fontWeight: 700 }}>{entries.length}</div></div>
       </div>
 
@@ -123,7 +123,7 @@ export function ProjectDetailPrint({ content, settings }: { content: Content; se
         </div>
       )}
 
-      {invoices && invoices.length > 0 && (
+      {showMoney && invoices && invoices.length > 0 && (
         <div>
           <div style={{ fontSize: 10, letterSpacing: "0.12em", color: "#888", marginBottom: 10, paddingBottom: 8, borderBottom: "1px solid var(--doc-ink)" }}>RECHNUNGEN</div>
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 10 }}>
@@ -144,7 +144,7 @@ export function ProjectDetailPrint({ content, settings }: { content: Content; se
   );
 }
 
-export function ProjectsOverviewPrint({ projects, data, settings }: { projects: Project[]; data: AppData; settings: Settings }) {
+export function ProjectsOverviewPrint({ projects, data, settings, showMoney = false }: { projects: Project[]; data: AppData; settings: Settings; showMoney?: boolean }) {
   const projectMinutes = (id: string) => data.timeEntries.filter(e => e.projectId === id).reduce((s, e) => s + (e.minutes || 0), 0);
   const projectAmount = (p: Project) => {
     const bType = p.billingType || p.type;
@@ -178,7 +178,7 @@ export function ProjectsOverviewPrint({ projects, data, settings }: { projects: 
 
       <div style={{ marginBottom: 30, paddingBottom: 20, borderBottom: "2px solid var(--doc-accent)" }}>
         <div className="doc-heading" style={{ ...HEADING, fontSize: 26, fontWeight: 400, letterSpacing: "-0.01em" }}>Alle Projekte</div>
-        <div style={{ fontSize: 11, color: "#666", marginTop: 4 }}>{projects.length} Projekte · {formatHours(totalMins)} · {formatCHF(totalAmount)}</div>
+        <div style={{ fontSize: 11, color: "#666", marginTop: 4 }}>{projects.length} Projekte · {formatHours(totalMins)}{showMoney ? ` · ${formatCHF(totalAmount)}` : ""}</div>
       </div>
 
       {grouped.map(g => (
@@ -187,11 +187,11 @@ export function ProjectsOverviewPrint({ projects, data, settings }: { projects: 
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 10, tableLayout: "fixed" }}>
             <colgroup>
               {/* Stunden «1216h 30m / 2650h» und Beträge «CHF 356'000.00» brauchen Platz (liefen ineinander) */}
-              <col style={{ width: "29%" }} />
-              <col style={{ width: "20%" }} />
-              <col style={{ width: "14%" }} />
-              <col style={{ width: "19%" }} />
-              <col style={{ width: "18%" }} />
+              <col style={{ width: showMoney ? "29%" : "40%" }} />
+              <col style={{ width: showMoney ? "20%" : "26%" }} />
+              <col style={{ width: showMoney ? "14%" : "16%" }} />
+              <col style={{ width: showMoney ? "19%" : "18%" }} />
+              {showMoney && <col style={{ width: "18%" }} />}
             </colgroup>
             <thead>
               <tr style={{ borderBottom: "1px solid #ddd" }}>
@@ -199,7 +199,7 @@ export function ProjectsOverviewPrint({ projects, data, settings }: { projects: 
                 <th style={{ textAlign: "left", padding: "6px 0", fontSize: 9, color: "#888", fontWeight: 500 }}>KUNDE</th>
                 <th style={{ textAlign: "left", padding: "6px 0", fontSize: 9, color: "#888", fontWeight: 500 }}>STATUS</th>
                 <th style={{ textAlign: "right", padding: "6px 0", fontSize: 9, color: "#888", fontWeight: 500 }}>STUNDEN</th>
-                <th style={{ textAlign: "right", padding: "6px 0", fontSize: 9, color: "#888", fontWeight: 500 }}>BETRAG</th>
+                {showMoney && <th style={{ textAlign: "right", padding: "6px 0", fontSize: 9, color: "#888", fontWeight: 500 }}>BETRAG</th>}
               </tr>
             </thead>
             <tbody>
@@ -214,7 +214,7 @@ export function ProjectsOverviewPrint({ projects, data, settings }: { projects: 
                       {formatHours(projectMinutes(p.id))}
                       {(p.budgetHours || 0) > 0 && <span style={{ color: "#aaa" }}> / {p.budgetHours}h</span>}
                     </td>
-                    <td style={{ textAlign: "right", padding: "6px 0 6px 12px", whiteSpace: "nowrap" }}>{formatCHF(projectAmount(p))}</td>
+                    {showMoney && <td style={{ textAlign: "right", padding: "6px 0 6px 12px", whiteSpace: "nowrap" }}>{formatCHF(projectAmount(p))}</td>}
                   </tr>
                 );
               })}
@@ -225,7 +225,7 @@ export function ProjectsOverviewPrint({ projects, data, settings }: { projects: 
 
       <div className="doc-heading" style={{ marginTop: 30, paddingTop: 16, borderTop: "2px solid var(--doc-accent)", display: "flex", justifyContent: "space-between", fontSize: 12, ...HEADING, fontWeight: 700 }}>
         <span>Total</span>
-        <span>{formatHours(totalMins)} · {formatCHF(totalAmount)}</span>
+        <span>{formatHours(totalMins)}{showMoney ? ` · ${formatCHF(totalAmount)}` : ""}</span>
       </div>
     </>
   );

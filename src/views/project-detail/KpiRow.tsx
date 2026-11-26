@@ -30,7 +30,9 @@ export function KpiRow({ project, data, entries, totalMinutes, totalHours, budge
         { label: "Stunden total", value: formatHours(totalMinutes), sub: budget > 0 ? `von ${budget}h Soll` : `${entries.length} Einträge`, color: "var(--accent)" },
         isNonBilling
           ? { label: "Nicht verrechenbar", value: project.category, sub: "Stunden fliessen ins Studio-Budget", color: "var(--text5)" }
-          : { label: "Interner Aufwand", value: internalRate > 0 ? formatCHF(Math.round(internalCost)).replace(/^(−?)CHF\s*/u, "$1").replace(/\.00$/, "") : "—", sub: internalRate > 0 ? `CHF, bei ${formatCHF(internalRate)}/h` : "Kein Stundensatz hinterlegt", color: "var(--text4)" },
+          : !showMoney
+            ? { label: "Interner Aufwand", value: "—", sub: "Beträge nur mit Recht «Rechnungen»", color: "var(--text4)" }
+            : { label: "Interner Aufwand", value: internalRate > 0 ? formatCHF(Math.round(internalCost)).replace(/^(−?)CHF\s*/u, "$1").replace(/\.00$/, "") : "—", sub: internalRate > 0 ? `CHF, bei ${formatCHF(internalRate)}/h` : "Kein Stundensatz hinterlegt", color: "var(--text4)" },
         { label: "Budget genutzt", value: budget > 0 ? `${Math.min(Math.round(budgetPct), 999)}%` : "—", sub: budget > 0 ? `${totalHours.toFixed(1)}h / ${budget}h` : "Kein Stundenbudget", color: budget > 0 ? budgetColor : "var(--text5)" },
         { label: "Status", value: <StatusBadge status={project.status} />, color: "var(--accent)" },
       ];
