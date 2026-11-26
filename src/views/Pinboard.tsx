@@ -359,12 +359,14 @@ export default function Pinboard({ data, update, currentUser }: Pick<ViewProps, 
     setModal(null);
   };
 
-  const deletePost = (id: string) => update("blogPosts", posts.filter(p => p.id !== id));
-  const togglePin  = (id: string) => update("blogPosts", posts.map(p => p.id === id ? { ...p, pinned: !p.pinned } : p));
+  // auf dem aktuellen Stand (prev =>): zwei fast gleichzeitige Stimmen — die zweite schrieb sonst die erste weg und
+  // der Server lehnte ab («Fremde Beiträge …», Cloud-Test Runde 35)
+  const deletePost = (id: string) => update("blogPosts", prev => (prev || []).filter(p => p.id !== id));
+  const togglePin  = (id: string) => update("blogPosts", prev => (prev || []).map(p => p.id === id ? { ...p, pinned: !p.pinned } : p));
 
   const vote = (postId: string, optionId: string) => {
     if (!currentUser?.id) return; // ohne Login keine Stimme (sonst zählte «undefined» als Person)
-    update("blogPosts", posts.map(p => {
+    update("blogPosts", prev => (prev || []).map(p => {
       if (p.id !== postId || !p.poll) return p;
       const votes = { ...p.poll.votes, [currentUser?.id as string]: optionId };
       return { ...p, poll: { ...p.poll, votes } };

@@ -11,7 +11,9 @@ export interface ProjectColor { solid: string; tint: string; text: string }
  * (Sättigung ~30 %, Helligkeit ~55 %), `tint` mischt ihn per `color-mix` in `var(--surface)` und passt sich
  * damit Hell/Dunkel automatisch an; `text` ist `var(--text)`. `dark` hellt `solid` leicht auf.
  */
-export function projectColor(projectId: string, dark = false): ProjectColor {
+export function projectColor(projectIdIn: string | null | undefined, dark = false): ProjectColor {
+  // ohne Projekt (in der Cloud nach Löschen des Projekts null) neutral — vorher stürzte die Zeiterfassung ab (Runde 35)
+  const projectId = projectIdIn || "";
   let h = 2166136261;
   for (let i = 0; i < projectId.length; i++) { h ^= projectId.charCodeAt(i); h = Math.imul(h, 16777619); }
   const idx = (h >>> 0) % HUES.length;

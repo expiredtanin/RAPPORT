@@ -98,7 +98,7 @@ export function DayView({ data, selectedEmp, dayEntries, dayTotalMins, daySoll, 
                 title={isInvoiced ? "Bereits verrechnet — nicht mehr änderbar" : disabled ? "Monat abgeschlossen" : undefined}>
                 <span className="s" />
                 <span className="t">{e.startTime && e.endTime ? `${e.startTime}–${e.endTime}` : "—"}</span>
-                <select className="p" aria-label="Projekt" disabled={disabled} value={e.projectId} onChange={ev => { const proj = data.projects.find(p => p.id === ev.target.value); const { phaseId, positionId } = getFirstPhaseForProject(proj); updateEntry(e.id, { projectId: ev.target.value, phaseId, positionId }); }} style={{ fontWeight: 550 }}>
+                <select className="p" aria-label="Projekt" disabled={disabled} value={e.projectId || ""} onChange={ev => { const proj = data.projects.find(p => p.id === ev.target.value); const { phaseId, positionId } = getFirstPhaseForProject(proj); updateEntry(e.id, { projectId: ev.target.value, phaseId, positionId }); }} style={{ fontWeight: 550 }}>
                   <option value="">Projekt …</option>
                   {data.projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                 </select>

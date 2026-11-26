@@ -51,7 +51,12 @@ export function useExpenses(data: AppData, update: UpdateFn, currentDate: string
     if (msg) showToast(msg);
     return !!msg;
   };
-  const updateExp = (id: string, changes: Partial<Expense>) => { if (locked(id)) return; update("expenses", prev => (prev || []).map(e => e.id === id ? { ...e, ...changes } : e)); };
+  const updateExp = (id: string, changes: Partial<Expense>) => {
+    if (locked(id)) return;
+    // wie der Spesen-Dialog (Server lehnte negative Beträge mit englischer Meldung ab — Cloud-Test Runde 35)
+    if (changes.amount !== undefined && !(Number(changes.amount) >= 0 && Number(changes.amount) < 1e7)) { showToast("Der Betrag muss positiv sein (unter CHF 10 Mio.)."); return; }
+    if (changes.mwstRate !== undefined && !(Number(changes.mwstRate) >= 0 && Number(changes.mwstRate) <= 30)) { showToast("MWST-Satz zwischen 0 und 30 %."); return; }
+    update("expenses", prev => (prev || []).map(e => e.id === id ? { ...e, ...changes } : e)); };
   // Löschen mit «Rückgängig» wie in Buchhaltung → Spesen
   const delExp = (id: string) => {
     if (locked(id)) return;

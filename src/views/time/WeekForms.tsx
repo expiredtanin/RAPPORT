@@ -167,7 +167,7 @@ export function WeekForms({ data, weekSelectStart, setWeekSelectStart, weekForm,
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-end" }}>
                 <div style={{ flex: "1 1 150px" }}>
                   <div style={{ fontSize: 10.5, color: "var(--text4)", marginBottom: 3, letterSpacing: "0.06em", fontWeight: 600 }}>PROJEKT</div>
-                  <select disabled={disabledE} value={e.projectId} onChange={ev => updateEntry(e.id, { projectId: ev.target.value, phaseId: "", positionId: "" })} style={{ height: 34, fontSize: 12, width: "100%" }} autoFocus>
+                  <select disabled={disabledE} value={e.projectId || ""} onChange={ev => updateEntry(e.id, { projectId: ev.target.value, phaseId: "", positionId: "" })} style={{ height: 34, fontSize: 12, width: "100%" }} autoFocus>
                     <option value="">—</option>
                     {data.projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                   </select>
