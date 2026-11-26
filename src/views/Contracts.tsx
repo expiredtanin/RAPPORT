@@ -16,6 +16,7 @@ import { Header, Modal, FormField, StatusSelect, DateInput, SortTh, RowMenu, Emp
 import { removeWithUndo } from "../undo";
 import { showToast } from "../toast";
 import { applyEdit } from "../storage/merge";
+import { isInvoiceNumberTaken } from "./invoices/invoiceHelpers";
 import type { Contract, ViewProps } from "../types";
 
 /** Formularstand: wie `Contract`, aber ohne Id (wird beim Speichern vergeben). */
@@ -74,6 +75,8 @@ function Contracts({ data, saveAll, modal, setModal, setPrintContent }: Pick<Vie
   const save = () => {
     if (!form.clientId) { showToast("Bitte einen Auftraggeber auswählen."); return; }
     const isNew = formModal === "new";
+    // wie bei Rechnungen und Offerten: keinen zweiten Vertrag mit derselben Nummer (von Hand getippt oder aus zwei offenen Fenstern)
+    if (isInvoiceNumberTaken(contracts, form.number, isNew ? null : formModal)) { showToast(`Die Vertragsnummer ${(form.number || "").trim()} ist schon vergeben.`); return; }
     const entry: Contract = { ...form, id: isNew ? generateId() : (formModal as string) };
     // auf den aktuellen Stand; Bearbeiten mit applyEdit (sonst setzte das Fenster z.B. einen inzwischen geänderten Status zurück)
     saveAll(prev => ({ ...prev, contracts: isNew

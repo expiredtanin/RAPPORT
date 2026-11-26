@@ -11,6 +11,7 @@
 // (dort bleibt dann nur die Id).
 
 import { applyEdit } from "../storage/merge";
+import { firmEditForm, type FirmForm } from "./personForm";
 import React, { useState, useEffect, useRef } from "react";
 import { generateId, formatCHF, formatDate, contactCategory, personReferences } from "../utils";
 import { useConfirm } from "../hooks/useConfirm";
@@ -23,8 +24,6 @@ import { Header, Modal, FormField, StatusBadge, RowMenu, EmptyState, TableToolba
 import { changeWithUndo, removeWithUndo } from "../undo";
 import type { AppData, Contact, ContactCategory, Person, UpdateFn, ViewProps } from "../types";
 
-/** Formular einer Firma; die `_haupt*`-Felder gibt es nur beim Neuanlegen (erster Ansprechpartner). */
-type FirmForm = Partial<Person> & { _hauptName?: string; _hauptPosition?: string; _hauptPhone?: string; _hauptEmail?: string; /** Tags als kommagetrennter Text im Formular */ _tags?: string };
 type PersonForm = { firmaId: string; name: string; position: string; phone: string; email: string };
 /** Ansprechpartner mit Angaben seiner Firma (für die Einzelpersonen-Liste). */
 type FlatContact = Contact & { _firmaId: string; _firmaName: string; _firmaType: string };
@@ -386,7 +385,7 @@ export default function Persons({ data, update, modal, setModal, userPermissions
   const openEditFirm = (id: string) => {
     const p = persons.find(x => x.id === id);
     if (!p) return;
-    setFirmForm({ ...emptyFirm, ...p, _tags: (p.tags || []).join(", ") });
+    setFirmForm(firmEditForm(p));
     firmOpenedAs.current = p;
     setFirmModal({ id });
   };

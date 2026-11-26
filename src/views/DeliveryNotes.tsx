@@ -11,6 +11,7 @@ import { Header, Modal, FormField, DateInput, SortTh, RowMenu, EmptyState } from
 import { removeWithUndo } from "../undo";
 import { showToast } from "../toast";
 import { applyEdit } from "../storage/merge";
+import { isInvoiceNumberTaken } from "./invoices/invoiceHelpers";
 import type { DeliveryNote, ViewProps } from "../types";
 
 /** Formularstand: wie `DeliveryNote`, aber die Id wird erst beim Speichern vergeben. */
@@ -61,6 +62,8 @@ function DeliveryNotes({ data, saveAll, setPrintContent }: Pick<ViewProps, "data
 
   const save = () => {
     const isNew = modal === "new";
+    // wie bei Rechnungen und Offerten: keinen zweiten Lieferschein mit derselben Nummer
+    if (isInvoiceNumberTaken(notes, form.number, isNew ? null : modal)) { showToast(`Die Lieferscheinnummer ${(form.number || "").trim()} ist schon vergeben.`); return; }
     // leere Positionen weglassen; Menge muss positiv sein (vorher wurden 0, leer und −3 gespeichert und gedruckt)
     const items = form.items.filter(it => (it.desc || "").trim() || (it.note || "").trim());
     if (items.length === 0) { showToast("Bitte mindestens eine Position erfassen."); return; }
