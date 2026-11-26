@@ -297,7 +297,7 @@ function ProjectDetail({ data, update, saveAll, projectId, onBack, onSelect, run
         </div>
 
         {shownTab === "ueberblick" && (
-          <OverviewTab data={data} project={project} figures={figures} phaseCard={phaseCard} overrun={overrun} canSeeProtocols={canSeeProtocols}
+          <OverviewTab data={data} project={project} figures={figures} phaseCard={phaseCard} overrun={overrun} canSeeProtocols={canSeeProtocols} canSeeMitarbeiter={canSeeMitarbeiter}
             onNachtrag={canSeeQuotes ? openBudget : undefined} onOpenTab={setTab} />
         )}
         {shownTab === "stunden" && (
@@ -310,7 +310,7 @@ function ProjectDetail({ data, update, saveAll, projectId, onBack, onSelect, run
         )}
         {shownTab === "termine" && (
           <div className="ws-stack">
-            <ScheduleEditor project={project} data={data} update={update} setPrintContent={setPrintContent} canEdit={isAdmin || userPermissions.includes("projects")} />
+            <ScheduleEditor project={project} data={data} update={update} setPrintContent={setPrintContent} canEdit={isAdmin || userPermissions.includes("projects")} canSeeProtocols={canSeeProtocols} />
           </div>
         )}
         {shownTab === "honorar" && (
@@ -327,7 +327,7 @@ function ProjectDetail({ data, update, saveAll, projectId, onBack, onSelect, run
         )}
         {shownTab === "beteiligte" && (
           <div className="ws-stack" style={{ maxWidth: 720 }}>
-            <PeopleList data={data} project={project} onEdit={isAdmin ? openSettings : undefined} />
+            <PeopleList data={data} project={project} onEdit={isAdmin ? openSettings : undefined} showHours={canSeeMitarbeiter} />
           </div>
         )}
       </div>

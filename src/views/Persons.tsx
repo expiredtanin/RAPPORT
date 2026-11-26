@@ -207,8 +207,8 @@ function FirmaDetail({ firma, data, update, onBack, onEdit, onAddPerson, onEditP
             </div>
           )}
 
-          {/* Protokolle — wenn der Kontakt an Projekten beteiligt ist */}
-          {protocols.length > 0 && (
+          {/* Protokolle — wenn der Kontakt an Projekten beteiligt ist (nur mit Recht «Protokolle», Runde 41) */}
+          {protocols.length > 0 && (!userPermissions || userPermissions.includes("protokolle")) && (
             <div className="card" style={{ padding: 0, marginBottom: 20 }}>
               <div style={{ padding: "14px 16px 10px", borderBottom: "1px solid var(--border2)", fontSize: 11, fontWeight: 600, letterSpacing: "0.08em", color: "var(--text4)" }}>PROTOKOLLE</div>
               <table style={{ width: "100%" }}>

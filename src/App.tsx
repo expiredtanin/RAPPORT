@@ -591,7 +591,7 @@ export default function App() {
           {hasViewAccess && view === "termine" && <Schedules data={data} setView={navigate} onSelectProject={setSelectedProjectId} userPermissions={userPermissions} myEmployeeId={currentUser?.employeeId || ""} />}
           {hasViewAccess && view === "time" && <Time data={data} update={update} currentUser={currentUser} userPermissions={userPermissions} setPrintContent={setPrintContent} />}
           {hasViewAccess && view === "crm" && <Crm data={data} update={update} setView={navigate} userPermissions={userPermissions} />}
-          {hasViewAccess && view === "quotes" && <Quotes data={data} update={update} saveAll={save} modal={modal} setModal={setModal} setPrintContent={setPrintContent} setView={navigate} onSelectProject={setSelectedProjectId} />}
+          {hasViewAccess && view === "quotes" && <Quotes data={data} update={update} saveAll={save} modal={modal} setModal={setModal} setPrintContent={setPrintContent} setView={navigate} onSelectProject={setSelectedProjectId} userPermissions={userPermissions} />}
           {hasViewAccess && view === "contracts" && <Contracts data={data} update={update} saveAll={save} modal={modal} setModal={setModal} setPrintContent={setPrintContent} setView={navigate} />}
           {hasViewAccess && view === "dokumente" && <Documents data={data} setView={navigate} />}
           {hasViewAccess && view === "lieferscheine" && <DeliveryNotes data={data} update={update} saveAll={save} setPrintContent={setPrintContent} />}

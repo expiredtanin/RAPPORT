@@ -74,9 +74,11 @@ export interface WsFigure { label: string; value: string; sub?: string; tone?: "
  * Reiter «Überblick»: Kennzahlen, Phasen-Aufwand (als `phaseCard` hereingereicht), Pendenzen aus Protokollen;
  * rechts nächste Termine, Beteiligte und ein Hinweis bei überzogenen Phasen.
  */
-export function OverviewTab({ data, project, figures, phaseCard, overrun, onNachtrag, onOpenTab, canSeeProtocols = true }: {
-  /** Knopf «Protokolle →» nur mit Recht «Protokolle» */
+export function OverviewTab({ data, project, figures, phaseCard, overrun, onNachtrag, onOpenTab, canSeeProtocols = true, canSeeMitarbeiter = true }: {
+  /** Pendenzen aus Protokollen und Knopf «Protokolle →» nur mit Recht «Protokolle» */
   canSeeProtocols?: boolean;
+  /** Stunden je Person (Beteiligte) nur mit Recht «mitarbeiter» */
+  canSeeMitarbeiter?: boolean;
   data: AppData;
   project: Project;
   figures: WsFigure[];
@@ -102,7 +104,7 @@ export function OverviewTab({ data, project, figures, phaseCard, overrun, onNach
           ))}
         </div>
         {phaseCard}
-        <section className="card">
+        {canSeeProtocols && <section className="card">
           <div className="today-k">Pendenzen aus Protokollen {canSeeProtocols && <button className="btn btn-quiet btn-sm" onClick={() => onOpenTab("protokolle")}>Protokolle →</button>}</div>
           {tasks.length === 0 && <div className="today-meta">Keine offenen Aufgaben.</div>}
           {tasks.map(t => (
@@ -114,7 +116,7 @@ export function OverviewTab({ data, project, figures, phaseCard, overrun, onNach
               {t.due && <span className={`today-pill${t.overdue ? " late" : ""}`}>{t.overdue ? "überfällig" : `${t.due.slice(8, 10)}.${t.due.slice(5, 7)}.`}</span>}
             </div>
           ))}
-        </section>
+        </section>}
       </div>
       <div className="ws-col ws-side">
         <section className="card">
@@ -127,7 +129,7 @@ export function OverviewTab({ data, project, figures, phaseCard, overrun, onNach
             </div>
           ))}
         </section>
-        <PeopleList data={data} project={project} compact onMore={() => onOpenTab("beteiligte")} />
+        <PeopleList data={data} project={project} compact onMore={() => onOpenTab("beteiligte")} showHours={canSeeMitarbeiter} />
         {overrun.length > 0 && (
           <section className="card ws-hint">
             <div className="today-k" style={{ color: "var(--accent)" }}>Hinweis</div>
@@ -143,7 +145,7 @@ export function OverviewTab({ data, project, figures, phaseCard, overrun, onNach
 }
 
 /** Beteiligte: Firmen mit gewählten Ansprechpersonen und das Team aus dem Büro (Stunden aus den Zeiteinträgen). */
-export function PeopleList({ data, project, compact, onMore, onEdit }: { data: AppData; project: Project; compact?: boolean; onMore?: () => void; onEdit?: () => void }) {
+export function PeopleList({ data, project, compact, onMore, onEdit, showHours = true }: { data: AppData; project: Project; compact?: boolean; onMore?: () => void; onEdit?: () => void; /** Stunden je Person nur mit Recht «mitarbeiter» (Runde 41) */ showHours?: boolean }) {
   const firms = (project.projectContacts || []).map(pc => {
     const firm = (data.persons || []).find(p => p.id === pc.contactId);
     if (!firm) return null;
@@ -161,7 +163,7 @@ export function PeopleList({ data, project, compact, onMore, onEdit }: { data: A
     ...firms.filter(f => f.firm.id !== client?.id).flatMap(f => f.people.length > 0
       ? f.people.map(c => ({ key: `${f.firm.id}-${c.id}`, av: initials(c.name), name: c.name, role: [c.position, f.firm.name].filter(Boolean).join(" · "), right: c.email ? <a href={`mailto:${c.email}`} className="ws-mail" title={c.email}><span className="msr" style={{ fontSize: 17 }}>mail</span></a> : null }))
       : [{ key: f.firm.id, av: initials(f.firm.name), name: f.firm.name, role: f.firm.type || "Beteiligte", right: null }]),
-    ...team.map(e => ({ key: `e-${e.id}`, av: initials(e.name), name: e.name, role: e.role ? `${e.role} (Büro)` : "Büro", right: <span className="num" style={{ fontSize: 12, color: "var(--text4)" }}>{formatHours(minsBy.get(e.id) || 0)}</span> })),
+    ...team.map(e => ({ key: `e-${e.id}`, av: initials(e.name), name: e.name, role: e.role ? `${e.role} (Büro)` : "Büro", right: showHours ? <span className="num" style={{ fontSize: 12, color: "var(--text4)" }}>{formatHours(minsBy.get(e.id) || 0)}</span> : null })),
   ];
   const shown = compact ? rows.slice(0, 5) : rows;
   return (

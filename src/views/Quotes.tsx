@@ -52,11 +52,14 @@ type QuoteForm = Omit<Quote, "id" | "sub" | "tax" | "total" | "manualPhases" | "
   Required<Pick<Quote, "manualPhases" | "quoteRoles" | "sia" | "freeItems">>;
 
 export default
-function Quotes({ data, update, saveAll, modal, setModal, setPrintContent, setView, onSelectProject }: Pick<ViewProps, "data" | "update" | "saveAll" | "modal" | "setModal" | "setPrintContent" | "setView"> & {
+function Quotes({ data, update, saveAll, modal, setModal, setPrintContent, setView, onSelectProject, userPermissions = null }: Pick<ViewProps, "data" | "update" | "saveAll" | "modal" | "setModal" | "setPrintContent" | "setView"> & {
+  /** Rechte (null = alle): verrechnete Beträge und «Rechnung erstellen» nur mit «Rechnungen» (Runde 41) */
+  userPermissions?: string[] | null;
   /** Öffnet ein Projekt in der Projektansicht (nach «Projekt anlegen») */
   onSelectProject?: (projectId: string) => void;
 }) {
   const { askConfirm, ConfirmModalEl } = useConfirm();
+  const canInv = !userPermissions || userPermissions.includes("invoices");
   const clients = (data.persons || []);
   const roles = data.settings.roles || [];
   const defaultRolesForPhase = () => {
@@ -434,7 +437,7 @@ function Quotes({ data, update, saveAll, modal, setModal, setPrintContent, setVi
                   <td className="hide-narrow">{formatDate(q.validUntil)}</td>
                   <td style={{ textAlign: "right" }}>
                     <strong>{formatCHF(q.total)}</strong>
-                    {qInvoiced > 0 && <div style={{ fontSize: 10, color: "var(--positive)", marginTop: 1 }}>verrechnet {formatCHF(qInvoiced)} von {formatCHF(q.sub)} netto</div>}
+                    {canInv && qInvoiced > 0 && <div style={{ fontSize: 10, color: "var(--positive)", marginTop: 1 }}>verrechnet {formatCHF(qInvoiced)} von {formatCHF(q.sub)} netto</div>}
                   </td>
                   <td>
                     <StatusSelect value={q.status} options={["entwurf","gesendet","angenommen","abgelehnt","abgelaufen"]} onChange={v => setStatus(q.id, v)} />
@@ -453,7 +456,7 @@ function Quotes({ data, update, saveAll, modal, setModal, setPrintContent, setVi
                           <RowMenu items={[
                             { label: "Bearbeiten", icon: "edit", onClick: () => openEdit(q) },
                             { label: "PDF", icon: "picture_as_pdf", onClick: () => setPrintContent({ type: "quote", quote: q, client: cl, settings: data.settings }) },
-                            { label: "Rechnung erstellen", icon: "receipt_long", hidden: !!q.convertedToInvoiceId, onClick: () => convertToInvoice(q) },
+                            { label: "Rechnung erstellen", icon: "receipt_long", hidden: !!q.convertedToInvoiceId || !canInv, onClick: () => convertToInvoice(q) },
                             { label: "Vertrag erstellen", icon: "handshake", onClick: () => convertToVertrag(q) },
                             { label: linkedProj ? "Projekt-Verknüpfung" : "Projekt erstellen", icon: "work", hidden: !projectMode, onClick: openProjectModal },
                             { label: "Löschen", icon: "delete", danger: true, onClick: () => del(q.id) },

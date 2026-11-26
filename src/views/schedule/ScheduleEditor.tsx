@@ -45,12 +45,14 @@ const TODAY_KEY = "rapport_schedule_today";
 const readShowToday = () => { try { return localStorage.getItem(TODAY_KEY) !== "0"; } catch { return true; } };
 
 /** Terminprogramm-Karte eines Projekts. */
-export function ScheduleEditor({ project, data, update, setPrintContent, canEdit }: {
+export function ScheduleEditor({ project, data, update, setPrintContent, canEdit, canSeeProtocols = true }: {
   project: Project;
   data: ViewProps["data"];
   update: ViewProps["update"];
   setPrintContent: ViewProps["setPrintContent"];
   canEdit: boolean;
+  /** Vorschläge aus Protokollen (Beschluss-/Fristtexte) nur mit Recht «Protokolle» (Runde 41) */
+  canSeeProtocols?: boolean;
 }) {
   const today = localISODate();
   const schedule = scheduleOf(project, true); // mit leeren Zeilen
@@ -396,7 +398,7 @@ export function ScheduleEditor({ project, data, update, setPrintContent, canEdit
         </button>
       </div>
 
-      {canEdit && suggestions.length > 0 && (
+      {canEdit && canSeeProtocols && suggestions.length > 0 && (
         <SuggestionsPanel suggestions={suggestions} track={track} open={suggestOpen} setOpen={setSuggestOpen}
           onTake={s => takeSuggestions([s])} onTakeAll={() => takeSuggestions(suggestions)} onDismiss={dismissSuggestion} onOpenProtocol={openProtocol} />
       )}
