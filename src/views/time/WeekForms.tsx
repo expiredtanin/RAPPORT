@@ -54,7 +54,7 @@ export function WeekForms({ data, weekSelectStart, setWeekSelectStart, weekForm,
           <div style={{ borderTop: `2px solid ${accentColor}`, padding: "12px 16px", background: "var(--surface2)" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 10 }}>
               <div style={{ fontSize: 10, letterSpacing: "0.1em", color: accentColor, fontWeight: 600 }}>
-                {new Date(weekForm.dayStr).toLocaleDateString("de-CH", { weekday: "long", day: "numeric", month: "long" }).toUpperCase()} · {slotToTime(weekForm.startSlot)} – {slotToTime(weekForm.endSlot + 1)} · {mins >= 60 ? `${mins%60===0?mins/60:(mins/60).toFixed(1)}h` : `${mins} min`}
+                {new Date(`${weekForm.dayStr}T12:00:00`).toLocaleDateString("de-CH", { weekday: "long", day: "numeric", month: "long" }).toUpperCase()} · {slotToTime(weekForm.startSlot)} – {slotToTime(weekForm.endSlot + 1)} · {mins >= 60 ? `${mins%60===0?mins/60:(mins/60).toFixed(1)}h` : `${mins} min`}
               </div>
               <div style={{ display: "flex", gap: 4, marginLeft: "auto", flexShrink: 0 }}>
                 {[["projekt", "Projekt"], ["absenz", "Intern / Absenz"]].map(([m, label]) => (
@@ -161,7 +161,7 @@ export function WeekForms({ data, weekSelectStart, setWeekSelectStart, weekForm,
           return (
             <div style={{ borderTop: `2px solid ${bgE}`, padding: "12px 16px", background: "var(--surface2)" }}>
               <div style={{ fontSize: 10, color: bgE, fontWeight: 600, letterSpacing: "0.1em", marginBottom: 10, display: "flex", alignItems: "center", gap: 8 }}>
-                <span>{new Date(e.date).toLocaleDateString("de-CH", { weekday: "long", day: "numeric", month: "long" }).toUpperCase()} · {e.startTime} – {e.endTime} · {(durE/60).toFixed(1)}h</span>
+                <span>{new Date(`${e.date}T12:00:00`).toLocaleDateString("de-CH", { weekday: "long", day: "numeric", month: "long" }).toUpperCase()} · {e.startTime} – {e.endTime} · {(durE/60).toFixed(1)}h</span>
                 {isInvoiced && <span style={{ fontSize: 11, color: "var(--warning)", fontWeight: 500, letterSpacing: 0 }}>verrechnet</span>}
               </div>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-end" }}>

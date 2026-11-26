@@ -27,7 +27,7 @@ export default function MonthCloseTab({ data, closedMonths, toggleMonth, viewYea
           ...(data.expenses || []).map(e => e.date),
         ].filter(Boolean).sort();
         const today = new Date();
-        const earliest = allDates[0] ? new Date(allDates[0]) : today;
+        const earliest = allDates[0] ? new Date(`${allDates[0].slice(0, 10)}T12:00:00`) : today;
         const startYear = earliest.getFullYear();
         const startMonth = earliest.getMonth(); // 0-indexed
         const availableYears = [];

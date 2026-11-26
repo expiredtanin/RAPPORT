@@ -2,7 +2,8 @@
 // Ostern 2024–2030, Monats-Soll 2026 mit der Zürcher Vorlage, Ferienanteile nach Kalendertagen; bewegliche
 // kantonale Feiertage (Fronleichnam, Genfer Bettag, Bettagsmontag, Näfelser Fahrt) mit dateutil/datetime.
 import { describe, expect, it } from "vitest";
-import { bettagsmontag, createWorktime, easterSunday, employedShareOfYear, genferBettag, KANTONE, naefelserFahrt, overtimeHourlyRate, replaceHolidayTemplate, resolveHolidays, roundHours, swissHolidayTemplate, vacationWeeks, type WorkData } from "./worktime";
+import { bettagsmontag, createWorktime, shiftDate, easterSunday, employedShareOfYear, genferBettag, KANTONE, naefelserFahrt, overtimeHourlyRate, replaceHolidayTemplate, resolveHolidays, roundHours, swissHolidayTemplate, vacationWeeks, type WorkData } from "./worktime";
+import { getFeiertageForYear } from "./utils";
 import type { Absence, Feiertag, FerienEntry, OvertimeClosing, TimeEntry } from "./types";
 
 const template = (): Feiertag[] => swissHolidayTemplate([], 2024, 2030).map((f, i) => ({ ...f, id: `f${i}` }));
@@ -29,6 +30,23 @@ describe("Feiertage", () => {
     expect(fts.find(f => f.date === "2025-12-31")).toBeUndefined();
     // Silvester als Halbtag definiert → kein zusätzlicher Vortag
     expect(resolveHolidays(template(), 2026).filter(f => f.date === "2026-12-31")).toHaveLength(1);
+  });
+});
+
+describe("29. Februar als wiederkehrender Feiertag", () => {
+  const schalt: Feiertag[] = [{ id: "s", date: "2028-02-29", label: "Schalttag", repeatsYearly: true, stundenDelta: 0 }];
+  it("fällt in Jahren ohne Schalttag aus (kein Datum «2027-02-29», kein Vortag davor)", () => {
+    expect(resolveHolidays(schalt, 2027)).toEqual([]);
+    expect(resolveHolidays(schalt, 2028).map(f => f.date)).toEqual(["2028-02-29", "2028-02-28"]);
+    expect(getFeiertageForYear(schalt, 2027)).toEqual([]);
+    expect(getFeiertageForYear(schalt, 2032).map(f => f.date)).toEqual(["2032-02-29"]);
+  });
+  it("shiftDate rechnet auch über nicht vorhandene Tage und Jahresgrenzen ohne Datumstext-Parser", () => {
+    expect(shiftDate("2028-02-28", 1)).toBe("2028-02-29");
+    expect(shiftDate("2027-02-28", 1)).toBe("2027-03-01");
+    expect(shiftDate("2027-02-29", 1)).toBe("2027-03-02"); // rollt wie überall, wirft nie
+    expect(shiftDate("2026-12-31", 1)).toBe("2027-01-01");
+    expect(shiftDate("2026-03-29", -1)).toBe("2026-03-28");
   });
 });
 

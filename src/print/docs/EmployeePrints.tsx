@@ -73,7 +73,7 @@ export function TimeReportPrint({ employee, entries, month, data, settings }: { 
     byProject[k].mins += e.minutes || 0;
   });
 
-  const monthLabel = new Date(month + "-01").toLocaleDateString("de-CH", { month: "long", year: "numeric" });
+  const monthLabel = new Date(month + "-01T12:00:00").toLocaleDateString("de-CH", { month: "long", year: "numeric" });
 
   return (
     <>

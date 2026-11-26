@@ -107,7 +107,7 @@ export const buildMonthCells = (data: AppData, currentDate: string, selectedEmpI
     const dow = weekday(dateStr);
     const isWeekend = dow === 0 || dow === 6;
     const isFeiertag = isFullHoliday(ft);
-    const isVortag = !!ft && ft.stundenDelta === -1 && (ft.id || "").startsWith("vortag-");
+    const isVortag = !!ft && (ft.id || "").startsWith("vortag-"); // Stunden je nach Einstellung `vortagStunden`, nicht fest 1
     const sollH = selectedEmp ? wt.sollForDay(selectedEmp, dateStr) : null;
     // Ferien/Absenz für diesen Tag (nur wenn Mitarbeiter gewählt)
     const isFerien = selectedEmpId ? isApprovedVacationDay(data, selectedEmpId, dateStr) : false;

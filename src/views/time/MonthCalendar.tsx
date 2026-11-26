@@ -57,7 +57,7 @@ export function MonthCalendar({ currentDate, setCurrentDate, monthLabel, monthCe
           const tip = [
             new Date(cell.dateStr + "T12:00:00").toLocaleDateString("de-CH", { weekday: "short", day: "numeric", month: "long" }),
             istH > 0 || (cell.sollH ?? 0) > 0 ? `${h1(istH)} h${cell.sollH ? ` von ${h1(cell.sollH)} h Soll` : ""}` : "",
-            cell.ft?.label && !cell.isVortag ? cell.ft.label : cell.isVortag ? "Vortag Feiertag (−1 h)" : "",
+            cell.ft?.label && !cell.isVortag ? cell.ft.label : cell.isVortag ? `Vortag Feiertag (−${Math.abs(cell.ft?.stundenDelta || 0)} h)` : "",
             cell.isFerien ? "Ferien" : cell.isPendingFerien ? "Ferien beantragt" : cell.isAbsenz ? "Absenz" : cell.isPendingAbsenz ? "Absenz beantragt" : "",
           ].filter(Boolean).join(" · ");
           return (

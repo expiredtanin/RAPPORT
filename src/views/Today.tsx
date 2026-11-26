@@ -60,8 +60,9 @@ export default function Today({ data, currentUser, userPermissions, run, onOpenP
     return () => window.removeEventListener("storage", onStorage);
   }, []);
   useEffect(() => {
-    if (!timer) return;
-    const iv = setInterval(() => setNow(new Date()), 1000);
+    // Mit Stoppuhr sekündlich; sonst alle 30 s, damit «Heute», Begrüssung und Wochensumme über Mitternacht nachrücken
+    // (ein über Nacht offenes Fenster zeigte sonst am Morgen noch den Vortag als «Heute»)
+    const iv = setInterval(() => setNow(new Date()), timer ? 1000 : 30000);
     return () => clearInterval(iv);
   }, [timer]);
 

@@ -145,7 +145,7 @@ export function CalendarTab({ data, update, onSettingsSaved }: Pick<ViewProps, "
                 {feiertage.length === 0 && <tr><td colSpan={4} style={{ textAlign: "center", color: "var(--text5)", padding: 24 }}>Noch keine Feiertage erfasst</td></tr>}
                 {[...feiertage].sort((a, b) => (a.date || "").slice(5).localeCompare((b.date || "").slice(5))).map(f => (
                   <tr key={f.id}>
-                    <td style={{ fontSize: 12 }}>{f.repeatsYearly ? `${f.date.slice(8, 10)}.${f.date.slice(5, 7)}. ↻` : f.date ? new Date(f.date).toLocaleDateString("de-CH") : "—"}</td>
+                    <td style={{ fontSize: 12 }}>{f.repeatsYearly ? `${f.date.slice(8, 10)}.${f.date.slice(5, 7)}. ↻` : f.date ? new Date(`${f.date.slice(0, 10)}T12:00:00`).toLocaleDateString("de-CH") : "—"}</td>
                     <td style={{ fontWeight: 500, fontSize: 12 }}>{f.label}</td>
                     <td style={{ textAlign: "right", fontSize: 12, color: (f.stundenDelta ?? 0) < 0 ? "var(--warning)" : "var(--text5)" }}>{f.stundenDelta === 0 || f.stundenDelta === null ? "ganztag" : `${f.stundenDelta}h`}</td>
                     <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>

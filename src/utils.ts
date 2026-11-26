@@ -574,7 +574,8 @@ let dateFormatDe: Intl.DateTimeFormat | null = null;
 /** ISO-Datum als «17.10.2026»; leer → «—». */
 export function formatDate(dateStr?: string | null): string {
   if (!dateStr) return "—";
-  const d = new Date(dateStr);
+  // Reines «YYYY-MM-DD» als lokaler Mittag lesen: `new Date("2026-03-29")` ist UTC-Mitternacht und zeigte westlich von UTC den Vortag
+  const d = new Date(/^\d{4}-\d{2}-\d{2}$/.test(dateStr) ? `${dateStr}T12:00:00` : dateStr);
   if (isNaN(d.getTime())) return "Invalid Date";   // wie toLocaleDateString; DateTimeFormat.format würde werfen
   return (dateFormatDe ||= new Intl.DateTimeFormat("de-CH")).format(d);
 }
@@ -1170,7 +1171,8 @@ export function getFeiertageForYear(feiertage: Feiertag[] | undefined, year: num
   }).map(f => {
     if (f.repeatsYearly) return { ...f, date: `${year}-${f.date.slice(5, 10)}` };
     return f;
-  });
+    // wiederkehrender 29.2. fällt in Jahren ohne Schalttag aus
+  }).filter(f => f.date.slice(5, 10) !== "02-29" || new Date(Date.UTC(Number(f.date.slice(0, 4)), 1, 29)).getUTCDate() === 29);
 }
 
 /**

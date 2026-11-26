@@ -43,9 +43,9 @@ const r1 = roundHours;
 
 /** Datum + n Tage (UTC-Arithmetik, keine Sommerzeit-Sprünge). */
 export function shiftDate(ds: DateStr, n: number): DateStr {
-  const d = new Date(`${ds.slice(0, 10)}T00:00:00Z`);
-  d.setUTCDate(d.getUTCDate() + n);
-  return d.toISOString().slice(0, 10);
+  // Aus Zahlen statt per Datumstext: «2027-02-29» ergibt in WebKit (Tauri/macOS) «Invalid Date» und `toISOString()` wirft
+  const [y, m, d] = ds.slice(0, 10).split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10);
 }
 
 /** Wochentag 0 = Sonntag … 6 = Samstag. */
@@ -244,7 +244,9 @@ export const isFullHoliday = (ft?: Pick<Feiertag, "stundenDelta"> | null): boole
 function holidaysOfYear(feiertage: Feiertag[] | undefined, year: number): Feiertag[] {
   return (feiertage || [])
     .filter(f => f.date && (f.repeatsYearly || f.date.startsWith(String(year))))
-    .map(f => f.repeatsYearly ? { ...f, date: `${year}-${f.date.slice(5, 10)}` } : f);
+    .map(f => f.repeatsYearly ? { ...f, date: `${year}-${f.date.slice(5, 10)}` } : f)
+    // wiederkehrender 29.2. fällt in Jahren ohne Schalttag aus (statt auf ein nicht vorhandenes Datum zu zeigen)
+    .filter(f => f.date.slice(5, 10) !== "02-29" || monthEnd(Number(f.date.slice(0, 4)), 1) === f.date);
 }
 
 /**
