@@ -28,7 +28,10 @@ export function CalendarTab({ data, update, onSettingsSaved }: Pick<ViewProps, "
   const defaultAbsenzIds = new Set(DEFAULT_ABSENZ_TYPES.map(t => t.id));
 
   const saveFt = () => {
-    if (!ftForm.date) { showToast("Bitte ein Datum angeben."); return; }
+    if (!ftForm.date || ftForm.date < "2000-01-01" || ftForm.date > "2100-12-31") { showToast("Bitte ein Datum angeben (2000–2100)."); return; }
+    if (!(ftForm.label || ftForm.name || "").trim()) { showToast("Bitte eine Bezeichnung angeben."); return; }
+    // Anpassung höchstens einen Tag in jede Richtung (+50 h erhöhte sonst das Tagessoll — Runde 32)
+    if (ftForm.stundenDelta != null && String(ftForm.stundenDelta) !== "" && !(Math.abs(Number(ftForm.stundenDelta)) <= 24)) { showToast("Stundenanpassung zwischen −24 und +24 h."); return; }
     // ein Feiertag je Datum (in der Cloud ist das Datum der Schlüssel: ein zweiter würde den ersten überschreiben)
     if (feiertage.some(f => f.date === ftForm.date && f.id !== ftForm.id)) { showToast("Für dieses Datum gibt es schon einen Feiertag."); return; }
     const isNew = !ftForm.id;
@@ -53,7 +56,10 @@ export function CalendarTab({ data, update, onSettingsSaved }: Pick<ViewProps, "
   };
 
   const saveAbsenzType = () => {
-    const t = { ...absenzTypeForm, id: absenzTypeForm.id || generateId() } as AbsenzType;
+    if (!(absenzTypeForm.label || "").trim()) { showToast("Bitte eine Bezeichnung angeben."); return; }
+    // nur Farbwerte #rgb/#rrggbb (beliebiger Text landete sonst im style)
+    const color = /^#[0-9a-f]{3}([0-9a-f]{3})?$/i.test(absenzTypeForm.color || "") ? absenzTypeForm.color : "#888888";
+    const t = { ...absenzTypeForm, label: (absenzTypeForm.label || "").trim(), color, id: absenzTypeForm.id || generateId() } as AbsenzType;
     const custom = data.absenzTypes || [];
     const exists = custom.some(x => x.id === t.id);
     update("absenzTypes", exists ? custom.map(x => x.id === t.id ? t : x) : [...custom, t]);

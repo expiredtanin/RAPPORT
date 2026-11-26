@@ -77,9 +77,23 @@ export default function Settings({ data, update, currentUser, uiZoom, setUiZoom,
 
   const save = () => {
     // Nummernformate brauchen einen Zähler (N…), sonst entsteht immer dieselbe Nummer
-    const noCounter = ([["Rechnungen", s.invoiceNumberFormat], ["Projekte", s.projectNumberFormat], ["Verträge", s.vertragNumberFormat]] as [string, string | undefined][])
+    const noCounter = ([["Rechnungen", s.invoiceNumberFormat], ["Projekte", s.projectNumberFormat], ["Verträge", s.vertragNumberFormat], ["Protokolle", s.protokollNumberFormat]] as [string, string | undefined][])
       .filter(([, f]) => f && !/N/.test(f)).map(([l]) => l);
     if (noCounter.length) { showToast(`Nummernformat ${noCounter.join(", ")}: es fehlt der Zähler (z.B. NNN).`); return; }
+    // Bereiche (vorher wurden z.B. MWST 81 %, negative Stundensätze oder 99 Ferienwochen gespeichert — Runde 32)
+    const out = (v: number | undefined | null, min: number, max: number) => v !== undefined && v !== null && String(v) !== "" && !(Number(v) >= min && Number(v) <= max);
+    const bad = ([
+      [s.mwstRate, 0, 30, "MWST-Satz (0–30 %)"],
+      [s.defaultHourlyRate, 0, 10000, "Standard-Stundensatz (nicht negativ)"],
+      [s.defaultWochenstunden, 1, 60, "Wochenstunden (1–60)"],
+      [s.defaultFerienWochen, 4, 10, "Ferienwochen (4–10)"],
+      [s.defaultPkAGSatz, 0, 100, "PK-Anteil Arbeitgeber (0–100 %)"],
+      [s.pageMarginTop, 0, 60, "Seitenrand oben (0–60 mm)"], [s.pageMarginBottom, 0, 60, "Seitenrand unten (0–60 mm)"],
+      [s.pageMarginLeft, 0, 60, "Seitenrand links (0–60 mm)"], [s.pageMarginRight, 0, 60, "Seitenrand rechts (0–60 mm)"],
+      [s.logoSize, 0, 400, "Logogrösse (0–400)"],
+      ...(s.roles || []).map(r => [r.rate, 0, 10000, `Stundensatz «${r.label || r.id}» (nicht negativ)`] as const),
+    ] as const).filter(([v, min, max]) => out(v as number | undefined, min, max)).map(([, , , label]) => label);
+    if (bad.length) { showToast(`Bitte prüfen: ${bad.join(", ")}.`); return; }
     const roleIds = (s.roles || []).map(r => (r.id || "").trim());
     if ((s.roles || []).some(r => !r.id?.trim() || !r.label?.trim())) { showToast("Offerten-Rollen brauchen Kürzel und Bezeichnung."); return; }
     if (new Set(roleIds).size !== roleIds.length) { showToast("Jedes Kürzel der Offerten-Rollen nur einmal."); return; }

@@ -156,6 +156,22 @@ export function buildDocCss(r: ResolvedDocDesign, scope?: string): { imports: st
 .print-page h1, .print-page h2, .print-page h3 { text-wrap: balance; hyphens: manual; }
 .qr-bill-wrapper svg, .qr-bill-wrapper svg * { font-family: Arial, Helvetica, sans-serif !important; }`;
 
-  const custom = r.customCss.trim() ? (scope ? `@scope (${scope}) {\n${r.customCss}\n}` : r.customCss) : "";
+  // unausgeglichene Klammern brachen aus @scope aus und blendeten z.B. die ganze App aus (Runde 32) → dann gar nicht anwenden
+  const custom = r.customCss.trim() && cssBalanced(r.customCss) ? (scope ? `@scope (${scope}) {\n${r.customCss}\n}` : r.customCss) : "";
   return { imports: google.join("\n"), css: [vars, custom].filter(Boolean).join("\n") };
+}
+
+/**
+ * true, wenn geschweifte Klammern im CSS ausgeglichen sind (Kommentare und Zeichenketten ausgenommen) — ein
+ * überzähliges «}» schlösse sonst den @scope-Block und das eigene CSS wirkte auf die ganze App.
+ */
+export function cssBalanced(css: string): boolean {
+  const s = css.replace(/\/\*[\s\S]*?\*\//g, "").replace(/"(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*'/g, "");
+  if (/\/\*|["']/.test(s)) return false;   // offener Kommentar oder offene Zeichenkette
+  let depth = 0;
+  for (const ch of s) {
+    if (ch === "{") depth++;
+    else if (ch === "}" && --depth < 0) return false;
+  }
+  return depth === 0;
 }

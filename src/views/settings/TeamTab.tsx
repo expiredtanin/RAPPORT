@@ -211,12 +211,16 @@ export function TeamTab({ s, setField, data, update, isAdmin }: DraftProps & Pic
                     <input value={roleForm.name} onChange={e => setRoleForm({ ...roleForm, name: e.target.value })} style={{ fontSize: 13, width: "100%", maxWidth: 300 }} />
                   </div>
                   <div style={{ marginBottom: 14 }}>
+                    {/* Vollzugriff nur für die Admin-Rolle: eine eigene Rolle damit sah alle Bereiche, war aber kein Admin
+                        (Einstellungen nur «Mein Profil»; in der Cloud dagegen voller Serverzugriff) — Runde 32 */}
+                    {(roleForm.id === "r-admin" || roleForm.permissions === null) && (
                     <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 12, marginBottom: 10 }}>
                       <input type="checkbox" checked={roleForm.permissions === null}
                         onChange={e => setRoleForm({ ...roleForm, permissions: e.target.checked ? null : ["dashboard"] })}
                         style={{ width: "auto" }} />
                       Voller Zugriff (Administrator)
                     </label>
+                    )}
                     {roleForm.permissions !== null && (
                       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: "10px 20px" }}>
                         {PERMISSION_GROUPS.map(group => (

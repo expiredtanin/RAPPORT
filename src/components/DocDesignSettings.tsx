@@ -11,7 +11,7 @@
 // prüft jeder Upload das Budget (print/docAssets.ts) und die Anzeige zeigt den Verbrauch.
 
 import React, { useState, useMemo, lazy, Suspense } from "react";
-import { DOC_FONTS, DEFAULT_DOC_DESIGN } from "../print/docDesign";
+import { DOC_FONTS, DEFAULT_DOC_DESIGN, cssBalanced } from "../print/docDesign";
 import { FONT_ACCEPT, LETTERHEAD_ACCEPT, CLOUD_ASSET_LIMIT, fontAssetFromFile, letterheadFromFile, assetSize } from "../print/docAssets";
 import { isCloudBackend, isFileBackend } from "../storage/adapter";
 import { generateId, LOCAL_STORAGE_BUDGET, checkLocalBudget, formatSize } from "../utils";
@@ -257,6 +257,7 @@ export default function DocDesignSettings({ s, setField, data, update }: {
           <div style={cardTitle}>EIGENES CSS (FÜR FORTGESCHRITTENE)</div>
           <textarea value={d.customCss || ""} onChange={e => setDesign({ customCss: e.target.value || undefined })} rows={8} spellCheck={false}
             placeholder={CSS_EXAMPLE} style={{ width: "100%", fontFamily: "monospace", fontSize: 12, lineHeight: 1.5, resize: "vertical" }} />
+          {d.customCss && !cssBalanced(d.customCss) && <div style={{ fontSize: 12, color: "var(--negative)", marginTop: 6 }}>Geschweifte Klammern, Kommentar oder Anführungszeichen sind nicht geschlossen — das eigene CSS wird so nicht angewendet.</div>}
           {!d.customCss && <button className="btn btn-ghost" style={{ fontSize: 11, height: 28, padding: "0 12px", marginTop: 8 }} onClick={() => setDesign({ customCss: CSS_EXAMPLE })}>Beispiel einfügen</button>}
           <div style={{ ...hint, marginTop: 10 }}>
             Wird nach allen anderen Regeln eingefügt. Die Vorlagen setzen viele Werte direkt am Element — solche Werte mit <code style={code}>!important</code> überschreiben.<br />
