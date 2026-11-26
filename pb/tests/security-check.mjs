@@ -176,6 +176,27 @@ check("Rechtename «*» gibt keinen Vollzugriff", !leaks(r, "GEHEIM-001"), `HTTP
 must(await api("PATCH", `/api/collections/appRoles/records/${roleM.id}`, tA, { permissions: basePerms }), "Rolle zurück");
 r = await api("GET", `/api/collections/timeEntries/records?filter=${enc(`studio="${sid}"`)}&expand=invoice`, tM);
 check("Rolle zurückgenommen: M wieder gesperrt", !leaks(r, "GEHEIM-001"), `HTTP ${r.status}`);
+// Büro-Budget: Kosten je Person nur mit «loehne»/Vollzugriff; Speichern ohne «loehne» erhält sie (Rechte-Test Runde 42)
+{
+  const st0 = (await api("GET", `/api/collections/studioSettings/records?filter=${enc(`studio="${sid}"`)}`, tA)).json.items[0];
+  must(await api("PATCH", `/api/collections/studioSettings/records/${st0.id}`, tA, {
+    studioBudget: { reserve: 10, empRows: [{ id: "e1", kostenOverride: true, kostenManual: 123456 }] },
+    studioBudgetVersions: [{ name: "V1", savedAt: "2026-11-01T00:00:00Z", empSnapshot: [{ name: "X", kosten: 98765, stunden: 1700 }] }],
+  }), "Budget setzen");
+  r = await api("GET", `/api/collections/studioSettings/records/${st0.id}`, tM);
+  check("M: Budget ohne Kosten je Person (kostenManual/kosten)", r.status === 200 && !JSON.stringify(r.json).includes("123456") && !JSON.stringify(r.json).includes("98765"), `HTTP ${r.status}`);
+  r = await api("GET", `/api/collections/studios/records/${sid}?expand=studioSettings_via_studio`, tM);
+  check("M: auch per expand ohne Kosten je Person", !JSON.stringify(r.json || {}).includes("123456"), `HTTP ${r.status}`);
+  // Rolle mit settings + studio-budget, ohne loehne: speichert Budget (z.B. Reserve) — Kosten bleiben erhalten
+  must(await api("PATCH", `/api/collections/appRoles/records/${roleM.id}`, tA, { permissions: [...basePerms, "settings", "studio-budget"] }), "Rolle Budget");
+  const seen = (await api("GET", `/api/collections/studioSettings/records/${st0.id}`, tM)).json;
+  r = await api("PATCH", `/api/collections/studioSettings/records/${st0.id}`, tM, { studioBudget: { ...seen.studioBudget, reserve: 15 }, studioBudgetVersions: seen.studioBudgetVersions });
+  const after = (await api("GET", `/api/collections/studioSettings/records/${st0.id}`, tA)).json;
+  check("M (studio-budget ohne loehne): Speichern erhält Kosten je Person", r.status === 200 && after.studioBudget.reserve === 15 && after.studioBudget.empRows[0].kostenManual === 123456 && after.studioBudgetVersions[0].empSnapshot[0].kosten === 98765, `HTTP ${r.status} ${JSON.stringify(after.studioBudget)}`);
+  must(await api("PATCH", `/api/collections/appRoles/records/${roleM.id}`, tA, { permissions: basePerms }), "Rolle zurück 2");
+  r = await api("GET", `/api/collections/studioSettings/records/${st0.id}`, tA);
+  check("A: sieht Kosten je Person", JSON.stringify(r.json).includes("123456"), `HTTP ${r.status}`);
+}
 // ── eigene Datensätze ohne Personal-/Spesenrecht (1787880000_own_records.js) ─────────────────────────────────
 r = await api("GET", `/api/collections/employees/records?filter=${enc(`studio="${sid}"`)}`, tM);
 check("M: eigenen Mitarbeiter-Datensatz lesen, fremde nicht", r.status === 200 && r.json.items.length === 1 && r.json.items[0].id === empM, `HTTP ${r.status}, ${r.json && r.json.items ? r.json.items.length : "?"} Datensätze`);

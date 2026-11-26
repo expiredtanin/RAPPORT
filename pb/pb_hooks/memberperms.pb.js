@@ -82,9 +82,66 @@ onRecordAfterDeleteSuccess((e) => {
   e.next();
 }, "appRoles");
 
+// Büro-Budget: Kosten je Person (≈ Lohn + AG-Beiträge) nur für Vollzugriff oder Recht «loehne» ausliefern — die App
+// blendete sie lokal aus, der Server lieferte sie aber jedem Mitglied (REST, expand, Realtime; Rechte-Test Runde 42).
+// Beim Speichern ohne «loehne» werden die maskierten Werte unten wieder aus dem gespeicherten Stand eingesetzt.
+onRecordEnrich((e) => {
+  const info = e.requestInfo;
+  const auth = info && info.auth;
+  if (!auth || (auth.collection && auth.collection().name === "_superusers")) return e.next();
+  let perms = "";
+  try { perms = e.app.findFirstRecordByFilter("studioMembers", "studio = {:s} && user = {:u} && active = true", { s: e.record.get("studio"), u: auth.id }).getString("perms"); } catch { perms = ""; }
+  if (perms.indexOf("|*|") >= 0 || perms.indexOf("|loehne|") >= 0) return e.next();
+  const parse = (f) => { try { return JSON.parse(e.record.getString(f) || "null"); } catch { return null; } };
+  const b = parse("studioBudget");
+  if (b && Array.isArray(b.empRows)) {
+    b.empRows = b.empRows.map((r) => (r && typeof r === "object") ? Object.assign({}, r, { kostenManual: null }) : r);
+    e.record.set("studioBudget", b);
+  }
+  const v = parse("studioBudgetVersions");
+  if (Array.isArray(v)) {
+    e.record.set("studioBudgetVersions", v.map((x) => (x && typeof x === "object" && Array.isArray(x.empSnapshot))
+      ? Object.assign({}, x, { empSnapshot: x.empSnapshot.map((p) => (p && typeof p === "object") ? Object.assign({}, p, { kosten: null }) : p) }) : x));
+  }
+  e.next();
+}, "studioSettings");
+
 onRecordUpdateRequest((e) => {
   if (e.hasSuperuserAuth()) return e.next();
   const sid = e.record.get("studio");
+  // ohne «loehne»: maskierte Kosten je Person (siehe onRecordEnrich oben) aus dem gespeicherten Stand übernehmen —
+  // sonst löschte das Speichern des Budgets die Werte, die diese Rolle gar nicht sieht
+  {
+    let p0 = "";
+    try { p0 = e.app.findFirstRecordByFilter("studioMembers", "studio = {:s} && user = {:u} && active = true", { s: sid, u: e.auth ? e.auth.id : "" }).getString("perms"); } catch { p0 = ""; }
+    if (p0.indexOf("|*|") < 0 && p0.indexOf("|loehne|") < 0) {
+      const o = e.record.original();
+      const parse = (rec, f) => { try { return JSON.parse(rec.getString(f) || "null"); } catch { return null; } };
+      const nb = parse(e.record, "studioBudget"), ob = parse(o, "studioBudget");
+      if (nb && Array.isArray(nb.empRows)) {
+        const oldRows = (ob && Array.isArray(ob.empRows)) ? ob.empRows : [];
+        nb.empRows = nb.empRows.map((r) => {
+          if (!r || typeof r !== "object") return r;
+          const prev = oldRows.find((x) => x && x.id === r.id);
+          return Object.assign({}, r, { kostenManual: prev ? (prev.kostenManual === undefined ? null : prev.kostenManual) : null });
+        });
+        e.record.set("studioBudget", nb);
+      }
+      const nv = parse(e.record, "studioBudgetVersions"), ov = parse(o, "studioBudgetVersions");
+      if (Array.isArray(nv)) {
+        const oldV = Array.isArray(ov) ? ov : [];
+        e.record.set("studioBudgetVersions", nv.map((x) => {
+          if (!x || typeof x !== "object" || !Array.isArray(x.empSnapshot)) return x;
+          const prev = oldV.find((y) => y && y.savedAt === x.savedAt && y.name === x.name);
+          return Object.assign({}, x, { empSnapshot: x.empSnapshot.map((p, i) => {
+            if (!p || typeof p !== "object") return p;
+            const pp = prev && Array.isArray(prev.empSnapshot) ? (prev.empSnapshot.find((q) => q && q.name === p.name) || prev.empSnapshot[i]) : null;
+            return Object.assign({}, p, { kosten: pp ? (pp.kosten === undefined ? null : pp.kosten) : null });
+          }) });
+        }));
+      }
+    }
+  }
   const authId = e.auth ? e.auth.id : "";
   let perms = "";
   try { perms = e.app.findFirstRecordByFilter("studioMembers", "studio = {:s} && user = {:u} && active = true", { s: sid, u: authId }).getString("perms"); } catch { perms = ""; }
