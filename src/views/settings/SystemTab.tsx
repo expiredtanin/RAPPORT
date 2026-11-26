@@ -7,7 +7,8 @@ import { storage, isCloudBackend, isFileBackend, fileStorage, isServerMode } fro
 import { canUseDataFolder, chooseDataFolder, folderHasData, writeDataToFolder, activateDataFolder, getDataDir } from "../../storage/data-folder";
 import type { PocketBaseAdapter } from "../../storage/pocketbase-adapter";
 import { hashPassword, localISODate } from "../../utils";
-import { checkBackup } from "../../storage/validate";
+import { checkBackup, splitBackupMeta } from "../../storage/validate";
+import { LATEST_VERSION, compareVersions } from "../../changelog";
 import { applyMigrations } from "../../storage/migrations";
 import { defaultData } from "../../constants";
 import { showToast } from "../../toast";
@@ -83,7 +84,7 @@ export function SystemTab({ s, setField, data, setView, isAdmin, currentUser }: 
     }
   };
 
-  const exportData = async () => {
+  const exportData = async (prefix = "studio-backup") => {
     // Datenordner/Cloud: Belege sind Verweise auf Dateien → einbetten, damit das Backup eigenständig ist
     const full = isFileBackend ? await fileStorage.embedAttachments(data)
       : isCloudBackend ? await cloud.embedAttachments(data) : data;
@@ -96,12 +97,13 @@ export function SystemTab({ s, setField, data, setView, isAdmin, currentUser }: 
       if (password && !rest.passwordHash) { const h = await hashPassword(password); return { ...rest, passwordHash: h.hash, passwordSalt: h.salt }; }
       return rest;
     }));
-    const sanitized = { ...full, users };
+    // Version für das Einspielen: Backup einer neueren App-Version wird erkannt (Runde 29)
+    const sanitized = { _rapport: { version: LATEST_VERSION, exported: new Date().toISOString() }, ...full, users };
     const blob = new Blob([JSON.stringify(sanitized, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `studio-backup-${localISODate()}.json`;
+    a.download = `${prefix}-${localISODate()}.json`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -121,6 +123,10 @@ export function SystemTab({ s, setField, data, setView, isAdmin, currentUser }: 
         return;
       }
       // Fremde Dateien und Backups ohne Anmeldung nicht einspielen (siehe checkBackup)
+      // Kennung der App-Version abtrennen (gehört nicht zu den Daten)
+      const meta = splitBackupMeta(imported);
+      imported = meta.data;
+      const backupVersion = meta.version;
       const problem = checkBackup(imported, !isCloudBackend);
       if (problem) { showToast(problem, { timeout: 10000 }); return; }
       // Cloud: nicht über save() überschreiben, sondern wie ein Umzug (Leer-Prüfung, Fortschritt, Prüfung)
@@ -131,13 +137,29 @@ export function SystemTab({ s, setField, data, setView, isAdmin, currentUser }: 
       const problemText = problems.length
         ? <> Die Datei ist nicht ganz in Ordnung — beim Einspielen wird repariert bzw. weggelassen:<ul style={{ margin: "8px 0 0", paddingLeft: 18, fontSize: 12 }}>{problems.slice(0, 8).map(p => <li key={p}>{p}</li>)}{problems.length > 8 && <li>… und {problems.length - 8} weitere</li>}</ul></>
         : null;
+      const newer = backupVersion && compareVersions(backupVersion, LATEST_VERSION) > 0
+        ? <p style={{ color: "var(--negative)", marginTop: 8 }}>Das Backup stammt aus einer neueren Version ({backupVersion}) als diese App ({LATEST_VERSION}) — Neues kann dabei verloren gehen. Besser zuerst die App aktualisieren.</p>
+        : null;
       if (isCloudBackend) {
-        if (problems.length && !await askConfirm(<>Backup trotzdem übernehmen?{problemText}</>, "Weiter")) return;
+        if ((problems.length || newer) && !await askConfirm(<>Backup trotzdem übernehmen?{newer}{problemText}</>, "Weiter")) return;
         setMigration({ mode: "backup", data: migrated });
         return;
       }
-      if (!await askConfirm(<>Aktuelle Daten wirklich überschreiben?{problemText}</>, "Überschreiben")) return;
+      // Was ersetzt wird, statt nur «wirklich überschreiben?» (eine Datei ohne Projekte leerte sonst still alles — Runde 29)
+      const count = (d: Partial<AppData>) => [
+        `${(d.projects || []).length} Projekte`, `${(d.persons || []).length} Kontakte`,
+        `${(d.invoices || []).length} Rechnungen`, `${(d.timeEntries || []).length} Zeiteinträge`,
+      ].join(", ");
+      if (!await askConfirm(<>Aktuelle Daten durch das Backup ersetzen?
+        <div style={{ fontSize: 12, marginTop: 8 }}>Jetzt: {count(data)}<br />Backup: {count(migrated)}</div>
+        <div style={{ fontSize: 12, marginTop: 8 }}>{isFileBackend ? "Der bisherige Stand wird vorher im Datenordner unter «backups/vor-import-…» gesichert." : "Der bisherige Stand wird vorher als Datei «vor-import-…» heruntergeladen."}</div>
+        {newer}{problemText}</>, "Ersetzen")) return;
       try {
+        // Rückweg: bisherigen Stand sichern (das Tagesbackup des Datenordners enthielte sonst schon den Importstand)
+        if (isFileBackend) await fileStorage.backupNow("vor-import");
+        else await exportData("vor-import");
+        // Anmeldung gilt für die Konten des Backups neu (sonst hing die Sitzung an einem Konto, das es nicht mehr gibt)
+        sessionStorage.removeItem("rapport_user");
         // In aktuelle Form bringen, bevor der Adapter es zerlegt (Datenordner erwartet z.B. Listen)
         await storage.save(migrated);
         window.location.reload();
@@ -157,7 +179,7 @@ export function SystemTab({ s, setField, data, setView, isAdmin, currentUser }: 
           data={migration.data}
           currentUser={currentUser ?? null}
           resolveFiles={migration.mode === "local" && isFileBackend ? d => fileStorage.embedAttachments(d) : undefined}
-          onBackup={exportData}
+          onBackup={() => exportData()}
           onClose={() => setMigration(null)}
           source={{ from: isFileBackend ? "file" : "local", dir: isFileBackend ? dataDir : null }}
           cloudUserIds={migration.mode === "backup" ? (data.users || []).map(u => u.id) : []}
@@ -173,7 +195,7 @@ export function SystemTab({ s, setField, data, setView, isAdmin, currentUser }: 
             <div style={{ padding: "10px 14px", background: "var(--negative-bg)", border: "1px solid #e0b0b0", borderRadius: 8, fontSize: 12, color: "var(--negative)", marginBottom: 20, lineHeight: 1.6 }}>
               Backup vorher erstellen empfohlen.
             </div>
-            <button className="btn btn-primary" style={{ width: "100%", marginBottom: 10 }} onClick={exportData}>↓ Backup erstellen</button>
+            <button className="btn btn-primary" style={{ width: "100%", marginBottom: 10 }} onClick={() => exportData()}>↓ Backup erstellen</button>
             <button className="btn btn-danger" style={{ width: "100%", marginBottom: 10 }} onClick={async () => {
               setInitModal(false);
               if (!await askConfirm("Wirklich initialisieren? Alle Daten gehen verloren.", "Initialisieren")) return;
@@ -285,7 +307,7 @@ export function SystemTab({ s, setField, data, setView, isAdmin, currentUser }: 
                 ? "Daten liegen in der Cloud. Backup zieht den aktuellen Snapshot als JSON-Datei — z.B. für Archiv oder Migration."
                 : "Alle Daten liegen ausschliesslich im Browser (localStorage). Regelmässige Backups sind empfohlen."}
             </p>
-            <button className="btn btn-primary" style={{ width: "100%", marginBottom: 10 }} onClick={exportData}>↓ Backup als JSON herunterladen</button>
+            <button className="btn btn-primary" style={{ width: "100%", marginBottom: 10 }} onClick={() => exportData()}>↓ Backup als JSON herunterladen</button>
             {isAdmin && (
               <button className="btn btn-ghost" style={{ width: "100%", marginBottom: 10 }} onClick={() => setView("dataImport")}>
                 ↑ Stammdaten importieren (CSV/Excel)…

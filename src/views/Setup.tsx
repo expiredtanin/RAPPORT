@@ -14,7 +14,7 @@ import type { CSSProperties } from "react";
 import { defaultData } from "../constants";
 import { generateId, hashPassword, localISODate, splitAddress, withDefaultRates } from "../utils";
 import type { AppData, Employee } from "../types";
-import { checkBackup } from "../storage/validate";
+import { checkBackup, splitBackupMeta } from "../storage/validate";
 import { applyMigrations } from "../storage/migrations";
 
 // ─── Palette — matches the app's light theme exactly ─────────────────────────
@@ -195,7 +195,7 @@ export default function Setup({ onComplete }: { onComplete: (data: AppData) => v
     const reader = new FileReader();
     reader.onload = (ev) => {
       try {
-        const parsed = JSON.parse(ev.target?.result as string);
+        const parsed = splitBackupMeta(JSON.parse(ev.target?.result as string)).data as Parameters<typeof applyMigrations>[0] & { settings?: unknown; projects?: unknown; appRoles?: unknown };
         if (!parsed || typeof parsed !== "object" || !parsed.settings || !Array.isArray(parsed.projects)) {
           setImportErr("Ungültiges Backup-Format.");
           return;

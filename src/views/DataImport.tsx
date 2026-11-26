@@ -122,7 +122,7 @@ async function parseSpreadsheet(file: File): Promise<Row[]> {
   const rows: Row[] = [];
   sheet.eachRow({ includeEmpty: false }, row => {
     // Array.from statt map: leere Zellen sind Lücken im Array, map würde sie als Lücken stehen lassen
-    rows.push(Array.from((row.values as unknown[]).slice(1), v => excelCellText(v)));
+    rows.push(Array.from((row.values as unknown[]).slice(1), (v, i) => excelCellText(v, v == null ? undefined : row.getCell(i + 1).numFmt)));
   });
   return rows;
 }
@@ -426,9 +426,10 @@ const ENTITY_CONFIGS: Record<string, EntityConfig> = {
       // ohne verwertbare Dauer keinen 0-Minuten-Eintrag anlegen (leer, «0», unlesbare Zeiten)
       if (!(Number(values.minutes) > 0) || Number(values.minutes) > 1440) return ["Dauer"];
     },
-    dedupKey: (rec) => [rec.employeeId || "", rec.projectId || "", rec.date || "", rec.minutes || 0].join("::"),
+    // mit Beschreibung und Von/Bis: zwei Sitzungen gleicher Dauer am selben Tag sind kein Duplikat (Runde 29)
+    dedupKey: (rec) => [rec.employeeId || "", rec.projectId || "", rec.date || "", rec.minutes || 0, rec.startTime || "", rec.endTime || "", normalizeHeader(rec.description || "")].join("::"),
     dedupAgainst: (data) => (data.timeEntries || []).map(t => ({
-      key: [t.employeeId || "", t.projectId || "", t.date || "", t.minutes || 0].join("::"),
+      key: [t.employeeId || "", t.projectId || "", t.date || "", t.minutes || 0, t.startTime || "", t.endTime || "", normalizeHeader(t.description || "")].join("::"),
     })),
   },
   ferienEntries: {
@@ -477,9 +478,9 @@ const ENTITY_CONFIGS: Record<string, EntityConfig> = {
       id: generateId(), date: "", category: "", projectId: "", employeeId: "", description: "",
       amount: 0, mwstRate: 8.1, inclMwst: true, status: "offen", receiptData: "", receiptName: "", lohnEntryId: null, ...m,
     }),
-    dedupKey: (rec) => [rec.employeeId || "", rec.projectId || "", rec.date || "", rec.amount || 0, rec.category || ""].join("::"),
+    dedupKey: (rec) => [rec.employeeId || "", rec.projectId || "", rec.date || "", rec.amount || 0, rec.category || "", normalizeHeader(rec.description || "")].join("::"),
     dedupAgainst: (data) => (data.expenses || []).map(e => ({
-      key: [e.employeeId || "", e.projectId || "", e.date || "", e.amount || 0, e.category || ""].join("::"),
+      key: [e.employeeId || "", e.projectId || "", e.date || "", e.amount || 0, e.category || "", normalizeHeader(e.description || "")].join("::"),
     })),
   },
   internalExpenses: {
@@ -531,7 +532,7 @@ const ENTITY_CONFIGS: Record<string, EntityConfig> = {
       const mwstOn = values.mwst !== false;
       const rate = values.mwstRate ?? 8.1;
       values.sub = price;
-      values.tax = mwstOn ? price * (rate / 100) : 0;
+      values.tax = mwstOn ? roundCHF(price * (rate / 100)) : 0;   // wie die manuelle Rechnung auf Rappen (Runde 29)
       values.total = roundCHF(values.sub + values.tax);
     },
     buildRecord: (m) => ({
@@ -719,7 +720,7 @@ export default function DataImport({ data, saveAll, setView }: Pick<ViewProps, "
   const [rowSkips, setRowSkips] = useState<Record<number, boolean>>({});
   const [appendRestToNote, setAppendRestToNote] = useState(true);
   const [error, setError] = useState("");
-  const [result, setResult] = useState<{ imported: number; skipped: number } | null>(null);
+  const [result, setResult] = useState<{ imported: number; skipped: number; reasons?: string } | null>(null);
 
   const cfg = entity ? ENTITY_CONFIGS[entity] : null;
 
@@ -854,7 +855,18 @@ export default function DataImport({ data, saveAll, setView }: Pick<ViewProps, "
     }
 
     saveAll({ ...data, ...patch } as AppData);
-    setResult({ imported: finalRecords.length, skipped: mappedRows.length - finalRecords.length });
+    // Gründe aufschlüsseln (vorher nur «36 übersprungen» — Runde 29)
+    const cnt = { invalid: 0, dupBatch: 0, dupExisting: 0, manual: 0 };
+    mappedRows.forEach((row, i) => {
+      if (!effectiveSkip(row, i)) return;
+      if (row.missingRequired.length || row.invalid.length) cnt.invalid++;
+      else if (rowSkips[i] === undefined && row.dupBatch) cnt.dupBatch++;
+      else if (rowSkips[i] === undefined && row.dupExisting) cnt.dupExisting++;
+      else cnt.manual++;
+    });
+    const reasons = [cnt.invalid && `${cnt.invalid} unvollständig/ungültig`, cnt.dupExisting && `${cnt.dupExisting} schon vorhanden`,
+      cnt.dupBatch && `${cnt.dupBatch} doppelt in der Datei`, cnt.manual && `${cnt.manual} abgewählt`].filter(Boolean).join(", ");
+    setResult({ imported: finalRecords.length, skipped: mappedRows.length - finalRecords.length, reasons });
     setStep("result");
   };
 
@@ -991,7 +1003,8 @@ export default function DataImport({ data, saveAll, setView }: Pick<ViewProps, "
                 </tr>
               </thead>
               <tbody>
-                {mappedRows.slice(0, 50).map((row, i) => {
+                {/* erste 50 Zeilen und alle übersprungenen (sonst liessen sich Duplikate ab Zeile 51 nicht wieder anhaken) */}
+                {mappedRows.map((row, i) => [row, i] as const).filter(([row, i]) => i < 50 || effectiveSkip(row, i)).map(([row, i]) => {
                   const skip = effectiveSkip(row, i);
                   const forced = row.missingRequired.length > 0 || row.invalid.length > 0;
                   return (
@@ -1023,7 +1036,7 @@ export default function DataImport({ data, saveAll, setView }: Pick<ViewProps, "
             </table>
           </div>
           {mappedRows.length > 50 && (
-            <p style={{ fontSize: 11, color: "var(--text5)", marginTop: 8 }}>… und {mappedRows.length - 50} weitere (werden beim Import berücksichtigt).</p>
+            <p style={{ fontSize: 11, color: "var(--text5)", marginTop: 8 }}>Ab Zeile 51 nur übersprungene gezeigt; die übrigen werden importiert.</p>
           )}
           <div style={{ display: "flex", gap: 10, marginTop: 20 }}>
             <button className="btn btn-ghost" onClick={() => setStep(valueMappingFields.length ? "valueMapping" : "mapping")}>← Zurück</button>
@@ -1036,7 +1049,7 @@ export default function DataImport({ data, saveAll, setView }: Pick<ViewProps, "
         <div className="card">
           <div className="section-label">IMPORT ABGESCHLOSSEN</div>
           <p style={{ fontSize: 14, marginBottom: 20 }}>
-            {result.imported} {cfg?.resultLabel} importiert, {result.skipped} übersprungen.
+            {result.imported} {cfg?.resultLabel} importiert, {result.skipped} übersprungen{result.reasons ? ` (${result.reasons})` : ""}.
           </p>
           <div style={{ display: "flex", gap: 10 }}>
             <button className="btn btn-ghost" onClick={reset}>Weiteren Import starten</button>

@@ -124,6 +124,17 @@ function checkNested(listKey: string, item: Record<string, unknown>, problems: s
  * @param needsLogin true = lokale Anmeldung gegen `users` (localStorage, Datenordner)
  * @returns Fehlermeldung für die Anzeige, null = einspielbar
  */
+/**
+ * Kennung `_rapport` (App-Version beim Export, seit Runde 29) vom Backup abtrennen — gehört nicht zu den Daten.
+ * @returns Daten ohne Kennung und die Version ("" bei älteren Backups)
+ */
+export function splitBackupMeta(raw: unknown): { data: unknown; version: string } {
+  if (!isPlainObject(raw) || !("_rapport" in raw)) return { data: raw, version: "" };
+  const { _rapport, ...rest } = raw as Record<string, unknown>;
+  const v = isPlainObject(_rapport) ? (_rapport as { version?: unknown }).version : undefined;
+  return { data: rest, version: typeof v === "string" ? v : "" };
+}
+
 export function checkBackup(raw: unknown, needsLogin: boolean): string | null {
   if (!isPlainObject(raw)) return "Die Datei ist kein Rapport-Backup (kein Datenobjekt).";
   if (!isPlainObject(raw.settings)) return "Die Datei ist kein Rapport-Backup (Studio-Einstellungen fehlen).";

@@ -108,6 +108,8 @@ export interface MigrationPlan {
   badIds: { key: AreaKey; label: string; ids: string[] }[];
   /** Anhänge, die nicht als Datei gelesen werden konnten (Datenordner) — fehlen danach in der Cloud. */
   unresolvedFiles: string[];
+  /** Lokal gefüllte Felder, die die Cloud (noch) nicht speichert (Kontakt-Tags/Herkunft …) — Runde 29. */
+  localOnlyFields: string[];
   /** Lokale Benutzer ohne Cloud-Konto (ohne den, der umzieht). */
   invites: InviteCandidate[];
 }
@@ -149,7 +151,18 @@ export function planMigration(data: AppData, cloudKeys: readonly AreaKey[], self
       return { name: u.displayName || emp?.name || u.username, username: u.username, appRoleId: u.appRoleId || "r-mitarbeiter", employeeId: emp?.id ?? null };
     });
 
-  return { areas, localOnly, badIds, unresolvedFiles: [...unresolved].map(r => r.slice(r.lastIndexOf("/") + 1)), invites };
+  // Felder ohne Spalte im Mapper (pocketbase-mappers.ts) — gingen sonst ohne Hinweis verloren
+  const persons = data.persons || [];
+  const n = (f: (p: (typeof persons)[number]) => unknown) => persons.filter(p => { const v = f(p); return Array.isArray(v) ? v.length > 0 : !!v; }).length;
+  const localOnlyFields = [
+    n(p => p.tags) && `Kontakt-Tags (${n(p => p.tags)})`,
+    n(p => p.source) && `Kontakt-Herkunft (${n(p => p.source)})`,
+    n(p => p.referredById) && `«Vermittelt durch» (${n(p => p.referredById)})`,
+    n(p => p.company) && `Firma bei Personen (${n(p => p.company)})`,
+    (data.settings?.leadSources || []).length > 0 && "eigene Lead-Quellen",
+  ].filter((x): x is string => !!x);
+
+  return { areas, localOnly, localOnlyFields, badIds, unresolvedFiles: [...unresolved].map(r => r.slice(r.lastIndexOf("/") + 1)), invites };
 }
 
 /** true, wenn der Plan den Umzug nicht zulässt (ungültige Ids). */

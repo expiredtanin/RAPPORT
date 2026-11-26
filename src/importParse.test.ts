@@ -79,6 +79,9 @@ describe("excelCellText", () => {
     expect(excelCellText(new Date(Date.UTC(1899, 11, 30, 8, 15)))).toBe("08:15");
     expect(excelCellText({ error: "#DIV/0!" })).toBe("");
     expect(excelCellText(null)).toBe("");
+    expect(excelCellText(0.081, "0.0%")).toBe("8.1");
+    expect(excelCellText({ formula: "A1", result: 0.077 }, "0.00%")).toBe("7.7");
+    expect(excelCellText(0.081, "0.000")).toBe("0.081");
   });
 });
 

@@ -116,8 +116,10 @@ export function parseFlexibleDate(raw: string): string {
 }
 
 /** Excel-Zellwert (ExcelJS) als Text: Datum, reine Uhrzeit, Formel-Ergebnis, Link und formatierter Text (richText). */
-export function excelCellText(v: unknown): string {
+export function excelCellText(v: unknown, numFmt?: string): string {
   if (v == null) return "";
+  // Prozent-formatierte Zelle («8.1%» ist intern 0.081) → wie angezeigt in Prozent (Runde 29)
+  if (typeof v === "number" && numFmt && /%/.test(numFmt.replace(/"[^"]*"/g, ""))) return String(Number((v * 100).toPrecision(12)));
   if (v instanceof Date) {
     // Excel legt reine Uhrzeit-Zellen (z.B. eine Von/Bis-Spalte) als Datum auf seinem internen Epoch-Tag
     // (30.12.1899) ab — sonst würde daraus fälschlich ein Datum statt einer Uhrzeit "HH:MM".
@@ -130,7 +132,7 @@ export function excelCellText(v: unknown): string {
     const o = v as { richText?: { text?: string }[]; text?: unknown; result?: unknown; error?: unknown };
     if (Array.isArray(o.richText)) return o.richText.map(r => r.text ?? "").join("");
     if (o.text !== undefined) return excelCellText(o.text);
-    if (o.result !== undefined) return excelCellText(o.result);
+    if (o.result !== undefined) return excelCellText(o.result, numFmt);
     return "";
   }
   return String(v);

@@ -13,6 +13,13 @@
 /** Aktuelle App-Version (semver), Anzeige über `versionLabel`. */
 export const LATEST_VERSION = "26.11.0";
 
+/** Versionen «26.11.0» numerisch vergleichen: <0 älter, 0 gleich, >0 neuer. */
+export function compareVersions(a: string, b: string): number {
+  const pa = a.split(".").map(n => parseInt(n, 10) || 0), pb = b.split(".").map(n => parseInt(n, 10) || 0);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) if ((pa[i] || 0) !== (pb[i] || 0)) return (pa[i] || 0) - (pb[i] || 0);
+  return 0;
+}
+
 /** Aktuelle Phase für Versionen nach Datum. */
 const RELEASE_STAGE = "Beta";
 

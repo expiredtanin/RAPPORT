@@ -54,6 +54,13 @@ describe("planMigration", () => {
     expect(planBlocked(plan)).toBe(false);
   });
 
+  it("meldet lokal gefüllte Felder ohne Cloud-Spalte (Runde 29)", () => {
+    const d = sample();
+    d.persons = [{ id: "p-1", name: "A", tags: ["VIP"] }, { id: "p-2", name: "B", source: "Empfehlung" }] as AppData["persons"];
+    expect(planMigration(d, KEYS, "admin").localOnlyFields).toEqual(["Kontakt-Tags (1)", "Kontakt-Herkunft (1)"]);
+    expect(planMigration(sample(), KEYS, "admin").localOnlyFields).toEqual([]);
+  });
+
   it("blockiert bei ungültigen oder doppelten Ids (PocketBase: ^[a-zA-Z0-9-]{1,64}$)", () => {
     const d = sample();
     d.projects = [{ id: "a_b" }, { id: "ok-1" }, { id: "ok-1" }, { id: "" }] as AppData["projects"];

@@ -1,7 +1,8 @@
 // Tests für die Formprüfung geladener Daten (validate.ts) und ihr Zusammenspiel mit applyMigrations.
 
 import { describe, expect, it } from "vitest";
-import { checkBackup, validateRawData } from "./validate";
+import { checkBackup, splitBackupMeta, validateRawData } from "./validate";
+import { compareVersions } from "../changelog";
 import { applyMigrations } from "./migrations";
 import { defaultData } from "../constants";
 
@@ -81,5 +82,26 @@ describe("checkBackup", () => {
     expect(checkBackup({ settings: {}, users: [] }, true)).toMatch(/keinen Benutzer/);
     expect(checkBackup({ settings: {}, users: [{ username: "x" }] }, true)).toMatch(/keinen Benutzer/);
     expect(checkBackup({ settings: {} }, false)).toBeNull();
+  });
+});
+
+describe("splitBackupMeta (Runde 29)", () => {
+  it("trennt die Versionskennung ab", () => {
+    const r = splitBackupMeta({ _rapport: { version: "26.12.0" }, settings: {} });
+    expect(r.version).toBe("26.12.0");
+    expect(r.data).toEqual({ settings: {} });
+  });
+  it("ältere Backups und Fremdes unverändert", () => {
+    expect(splitBackupMeta({ settings: {} })).toEqual({ data: { settings: {} }, version: "" });
+    expect(splitBackupMeta([1])).toEqual({ data: [1], version: "" });
+  });
+});
+
+describe("compareVersions", () => {
+  it("vergleicht numerisch", () => {
+    expect(compareVersions("26.12.0", "26.11.0")).toBeGreaterThan(0);
+    expect(compareVersions("26.11.10", "26.11.9")).toBeGreaterThan(0);
+    expect(compareVersions("26.11", "26.11.0")).toBe(0);
+    expect(compareVersions("0.8.3", "26.11.0")).toBeLessThan(0);
   });
 });

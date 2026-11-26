@@ -318,6 +318,12 @@ export function CloudMigration({ mode, data, currentUser, resolveFiles, onBackup
             </div>
           )}
           {filled.length > 0 && ownTarget && <div style={box("warn")}>Das Büro enthält Daten aus dem letzten Versuch. Ein erneuter Lauf ergänzt und korrigiert sie (nichts wird doppelt angelegt).</div>}
+          {plan.localOnlyFields.length > 0 && (
+            <div style={box("warn")}>
+              Diese Angaben speichert die Cloud noch nicht und übernimmt sie darum nicht: {plan.localOnlyFields.join(", ")}.
+              Sie bleiben in der Sicherung und in den bisherigen Daten erhalten.
+            </div>
+          )}
           {plan.localOnly.length > 0 && (
             <div style={box("warn")}>
               Noch nicht in der Cloud gespeichert und deshalb nicht übertragen: {plan.localOnly.map(a => `${a.label} (${a.count})`).join(", ")}.

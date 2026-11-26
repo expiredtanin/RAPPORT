@@ -304,6 +304,15 @@ export class FileStorageAdapter implements StorageAdapter {
     for (const old of mine.slice(0, Math.max(0, mine.length - KEEP_BACKUPS))) await this.fs.remove(this.path(`backups/${old}`)).catch(() => {});
   }
 
+  /** Sichert den aktuellen Stand als backups/<prefix>-<Zeit>.json (z.B. vor dem Einspielen eines Backups — Runde 29). */
+  async backupNow(prefix: string) {
+    await this.flush();
+    const data = this.snapshot();
+    if (!data) return;
+    await this.fs.mkdir(this.path("backups"));
+    await this.writeAtomic(this.path(`backups/${prefix}-${new Date().toISOString().replace(/[:.]/g, "-")}.json`), JSON.stringify(data));
+  }
+
   /** Sichert den aktuellen Stand nach backups/ und entfernt danach die Datendateien (Zurücksetzen). */
   async clear() {
     await this.flush();
