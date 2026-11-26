@@ -74,7 +74,9 @@ export interface WsFigure { label: string; value: string; sub?: string; tone?: "
  * Reiter «Überblick»: Kennzahlen, Phasen-Aufwand (als `phaseCard` hereingereicht), Pendenzen aus Protokollen;
  * rechts nächste Termine, Beteiligte und ein Hinweis bei überzogenen Phasen.
  */
-export function OverviewTab({ data, project, figures, phaseCard, overrun, onNachtrag, onOpenTab }: {
+export function OverviewTab({ data, project, figures, phaseCard, overrun, onNachtrag, onOpenTab, canSeeProtocols = true }: {
+  /** Knopf «Protokolle →» nur mit Recht «Protokolle» */
+  canSeeProtocols?: boolean;
   data: AppData;
   project: Project;
   figures: WsFigure[];
@@ -101,7 +103,7 @@ export function OverviewTab({ data, project, figures, phaseCard, overrun, onNach
         </div>
         {phaseCard}
         <section className="card">
-          <div className="today-k">Pendenzen aus Protokollen <button className="btn btn-quiet btn-sm" onClick={() => onOpenTab("protokolle")}>Protokolle →</button></div>
+          <div className="today-k">Pendenzen aus Protokollen {canSeeProtocols && <button className="btn btn-quiet btn-sm" onClick={() => onOpenTab("protokolle")}>Protokolle →</button>}</div>
           {tasks.length === 0 && <div className="today-meta">Keine offenen Aufgaben.</div>}
           {tasks.map(t => (
             <div key={t.key} className="task-row">

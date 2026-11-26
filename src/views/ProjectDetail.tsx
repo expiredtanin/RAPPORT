@@ -262,6 +262,8 @@ function ProjectDetail({ data, update, saveAll, projectId, onBack, onSelect, run
     ...(canSeeProtocols ? [{ id: "protokolle", label: "Protokolle", count: protocolCount }] : []),
     { id: "beteiligte", label: "Beteiligte", count: peopleCount },
   ];
+  // nicht (mehr) verfügbarer Reiter (fehlendes Recht, Knopf «Protokolle →» im Überblick) → Überblick statt leerer Seite
+  const shownTab = tabs.some(t => t.id === tab) ? tab : "ueberblick";
 
   return (
     <div className="ws">
@@ -287,18 +289,18 @@ function ProjectDetail({ data, update, saveAll, projectId, onBack, onSelect, run
           <PhaseBar project={project} entries={entries} />
           <nav className="ws-tabs" role="tablist">
             {tabs.map(t => (
-              <button key={t.id} role="tab" aria-selected={tab === t.id} className={tab === t.id ? "on" : ""} onClick={() => setTab(t.id)}>
+              <button key={t.id} role="tab" aria-selected={shownTab === t.id} className={shownTab === t.id ? "on" : ""} onClick={() => setTab(t.id)}>
                 {t.label}{t.count ? <span className="ws-count">{t.count}</span> : null}
               </button>
             ))}
           </nav>
         </div>
 
-        {tab === "ueberblick" && (
-          <OverviewTab data={data} project={project} figures={figures} phaseCard={phaseCard} overrun={overrun}
+        {shownTab === "ueberblick" && (
+          <OverviewTab data={data} project={project} figures={figures} phaseCard={phaseCard} overrun={overrun} canSeeProtocols={canSeeProtocols}
             onNachtrag={canSeeQuotes ? openBudget : undefined} onOpenTab={setTab} />
         )}
-        {tab === "stunden" && (
+        {shownTab === "stunden" && (
           <div className="ws-stack">
             <KpiRow project={project} data={data} entries={entries} totalMinutes={totalMinutes} totalHours={totalHours} budget={budget} budgetPct={budgetPct} budgetColor={budgetColor} isCostControl={isCostControl} isNonBilling={isNonBilling} invoicedMinutes={invoicedMinutes} openMinutes={openMinutes} showMoney={canSeeInvoices} />
             {phaseCard}
@@ -306,12 +308,12 @@ function ProjectDetail({ data, update, saveAll, projectId, onBack, onSelect, run
             <TimeEntriesCard project={project} data={data} update={update} entries={entries} positions={positions} billingType={billingType} isAdmin={isAdmin} canSeeMitarbeiter={canSeeMitarbeiter} canSeeInvoices={canSeeInvoices} />
           </div>
         )}
-        {tab === "termine" && (
+        {shownTab === "termine" && (
           <div className="ws-stack">
             <ScheduleEditor project={project} data={data} update={update} setPrintContent={setPrintContent} canEdit={isAdmin || userPermissions.includes("projects")} />
           </div>
         )}
-        {tab === "honorar" && (
+        {shownTab === "honorar" && (
           <div className="ws-stack">
             {canSeeQuotes && <BudgetCard project={project} data={data} entries={entries} positions={positions} projectInvoices={projectInvoices} budget={budget} totalHours={totalHours} budgetPct={budgetPct} budgetColor={budgetColor} canSeeInvoices={canSeeInvoices} budgetChartView={budgetChartView} setBudgetChartView={setBudgetChartView} onOpenBudget={openBudget} />}
             {canSeeQuotes && <QuotesCard data={data} projectId={projectId} client={client} setPrintContent={setPrintContent} />}
@@ -320,10 +322,10 @@ function ProjectDetail({ data, update, saveAll, projectId, onBack, onSelect, run
             )}
           </div>
         )}
-        {tab === "protokolle" && canSeeProtocols && (
+        {shownTab === "protokolle" && (
           <div className="ws-stack"><ProtocolsCard data={data} saveAll={saveAll} projectId={projectId} /></div>
         )}
-        {tab === "beteiligte" && (
+        {shownTab === "beteiligte" && (
           <div className="ws-stack" style={{ maxWidth: 720 }}>
             <PeopleList data={data} project={project} onEdit={isAdmin ? openSettings : undefined} />
           </div>
