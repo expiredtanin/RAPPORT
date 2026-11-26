@@ -159,9 +159,9 @@ export function SystemTab({ s, setField, data, setView, isAdmin, currentUser }: 
         if (isFileBackend) await fileStorage.backupNow("vor-import");
         else await exportData("vor-import");
         // Anmeldung gilt für die Konten des Backups neu (sonst hing die Sitzung an einem Konto, das es nicht mehr gibt)
-        sessionStorage.removeItem("rapport_user");
         // In aktuelle Form bringen, bevor der Adapter es zerlegt (Datenordner erwartet z.B. Listen)
         await storage.save(migrated);
+        sessionStorage.removeItem("rapport_user");   // erst nach erfolgreichem Speichern
         window.location.reload();
       } catch (err) {
         showToast(`Backup konnte nicht gespeichert werden: ${(err as Error).message || err}`, { timeout: 10000 });

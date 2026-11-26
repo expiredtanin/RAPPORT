@@ -860,8 +860,8 @@ export default function DataImport({ data, saveAll, setView }: Pick<ViewProps, "
     mappedRows.forEach((row, i) => {
       if (!effectiveSkip(row, i)) return;
       if (row.missingRequired.length || row.invalid.length) cnt.invalid++;
+      else if (rowSkips[i] === undefined && row.dupExisting) cnt.dupExisting++;   // wie die Vorschau: «bereits vorhanden» zuerst
       else if (rowSkips[i] === undefined && row.dupBatch) cnt.dupBatch++;
-      else if (rowSkips[i] === undefined && row.dupExisting) cnt.dupExisting++;
       else cnt.manual++;
     });
     const reasons = [cnt.invalid && `${cnt.invalid} unvollständig/ungültig`, cnt.dupExisting && `${cnt.dupExisting} schon vorhanden`,
@@ -1004,7 +1004,7 @@ export default function DataImport({ data, saveAll, setView }: Pick<ViewProps, "
               </thead>
               <tbody>
                 {/* erste 50 Zeilen und alle übersprungenen (sonst liessen sich Duplikate ab Zeile 51 nicht wieder anhaken) */}
-                {mappedRows.map((row, i) => [row, i] as const).filter(([row, i]) => i < 50 || effectiveSkip(row, i)).map(([row, i]) => {
+                {mappedRows.map((row, i) => [row, i] as const).filter(([row, i]) => i < 50 || rowSkips[i] !== undefined || row.dupExisting || row.dupBatch || row.missingRequired.length > 0 || row.invalid.length > 0).map(([row, i]) => {
                   const skip = effectiveSkip(row, i);
                   const forced = row.missingRequired.length > 0 || row.invalid.length > 0;
                   return (
@@ -1036,7 +1036,7 @@ export default function DataImport({ data, saveAll, setView }: Pick<ViewProps, "
             </table>
           </div>
           {mappedRows.length > 50 && (
-            <p style={{ fontSize: 11, color: "var(--text5)", marginTop: 8 }}>Ab Zeile 51 nur übersprungene gezeigt; die übrigen werden importiert.</p>
+            <p style={{ fontSize: 11, color: "var(--text5)", marginTop: 8 }}>Ab Zeile 51 nur Duplikate und ungültige Zeilen gezeigt; die übrigen werden importiert.</p>
           )}
           <div style={{ display: "flex", gap: 10, marginTop: 20 }}>
             <button className="btn btn-ghost" onClick={() => setStep(valueMappingFields.length ? "valueMapping" : "mapping")}>← Zurück</button>
