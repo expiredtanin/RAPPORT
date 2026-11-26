@@ -76,6 +76,7 @@ describe("sanitizeHtml: Stilangaben", () => {
   it("entfernt url(), Überlagerung und CSS-Escapes, behält harmlose Stile", () => {
     expect(sanitizeHtml('<p style="background:url(https://track.example/p.gif)">a</p>')).not.toContain("style");
     expect(sanitizeHtml('<p style="position:fixed;inset:0">a</p>')).not.toContain("style");
+    expect(sanitizeHtml('<p style="position:/**/fixed;inset:0">a</p>')).not.toContain("style");   // Runde 37
     expect(sanitizeHtml('<p style="background:\\75rl(x)">a</p>')).not.toContain("style");
     expect(sanitizeHtml('<p style="color: red; font-weight: bold">a</p>')).toContain("color: red");
   });

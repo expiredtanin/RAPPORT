@@ -543,7 +543,7 @@ export function sanitizeHtml(html: unknown): string {
           }
           // Stil ohne externe Adressen (Tracking-Pixel über url(…)), ohne Überlagern der Seite (position fixed/absolute)
           // und ohne CSS-Escapes (\75rl(…)), mit denen sich das umgehen liesse (Robustheitstest 25.11.2026)
-          if (name === "style" && /expression\s*\(|javascript:|url\s*\(|image-set\s*\(|@import|behavior\s*:|-moz-binding|\\|position\s*:\s*(fixed|absolute|sticky)/i.test(attr.value)) {
+          if (name === "style" && /expression\s*\(|javascript:|url\s*\(|image-set\s*\(|@import|behavior\s*:|-moz-binding|\\|\/\*|position\s*:\s*(fixed|absolute|sticky)/i.test(attr.value)) {   // «/*» : Kommentar umging sonst die Prüfung (position:/**/fixed, Runde 37)
             el.removeAttribute(attr.name);
           }
         }
