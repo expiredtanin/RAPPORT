@@ -122,8 +122,10 @@ export function expandInternalExpenses(list: InternalExpense[], today: string): 
  */
 export function expenseTax(e: Pick<Expense, "amount" | "inclMwst" | "mwstRate">): number {
   const amount = e.amount || 0;
-  if (!e.inclMwst || !e.mwstRate) return 0;
-  return roundCHF(amount - amount / (1 + e.mwstRate / 100));
+  // unsinniger Satz (≤ 0, über 100 %, keine Zahl) rechnet ohne Vorsteuer — −100 % ergab sonst ∞ in der ganzen Buchhaltung
+  const rate = Number(e.mwstRate);
+  if (!e.inclMwst || !(rate > 0 && rate <= 100)) return 0;
+  return roundCHF(amount - amount / (1 + rate / 100));
 }
 
 /** Netto einer Spese/Ausgabe = Betrag minus Vorsteuer (pro Beleg auf Rappen). */

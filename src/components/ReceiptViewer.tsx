@@ -1,6 +1,7 @@
 // Vollbild-Ansicht eines Belegs (Spesen, interne Ausgaben); genutzt von Spesen, Zeiterfassung und Buchhaltung.
 // Im Datenordner und in der Cloud ist `receiptData` ein Verweis auf die Datei; gelesen wird sie erst hier (useAttachment).
 
+import { useEffect } from "react";
 import type { Expense } from "../types";
 import { useAttachment } from "../hooks/useAttachment";
 import { isCloudBackend } from "../storage/adapter";
@@ -14,9 +15,22 @@ export function ReceiptViewer({ expense, onClose }: {
   onClose: () => void;
 }) {
   const receipt = useAttachment(expense?.receiptData);
+  const open = !!expense?.receiptData;
+  // Esc schliesst den Beleg (nicht den Dialog darunter, der sonst zuerst zuging — Runde 33)
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") { e.preventDefault(); e.stopImmediatePropagation(); onClose(); } };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [open, onClose]);
   if (!expense?.receiptData) return null;
   const url = receipt.url;
   const isPdf = !!url?.startsWith("data:application/pdf");
+  // Endung passend zum Inhalt (Bilder werden beim Hochladen zu JPEG; «gross.png» war sonst ein JPEG mit .png)
+  const mime = url?.match(/^data:([^;,]+)/)?.[1] || "";
+  const ext = mime === "application/pdf" ? "pdf" : mime === "image/jpeg" ? "jpg" : mime.startsWith("image/") ? mime.slice(6).replace("svg+xml", "svg") : "";
+  const base = (expense.receiptName || "beleg").replace(/\.[a-z0-9]{2,5}$/i, "");
+  const fileName = ext ? `${base}.${ext}` : (expense.receiptName || "beleg");
   return (
     <div
       style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.78)", zIndex: 300, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}
@@ -34,7 +48,7 @@ export function ReceiptViewer({ expense, onClose }: {
             {expense.receiptName && <div style={{ fontSize: 11, color: "var(--text4)", marginTop: 2 }}>{expense.receiptName}</div>}
           </div>
           <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
-            {url && <a href={url} download={expense.receiptName || "beleg"} className="btn btn-ghost" style={{ fontSize: 12 }}>↓ Herunterladen</a>}
+            {url && <a href={url} download={fileName} className="btn btn-ghost" style={{ fontSize: 12 }}>↓ Herunterladen</a>}
             <button className="btn btn-ghost" onClick={onClose}><span className="msr" style={{ fontSize: 16, verticalAlign: "middle" }}>close</span> Schliessen</button>
           </div>
         </div>

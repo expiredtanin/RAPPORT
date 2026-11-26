@@ -26,6 +26,12 @@ import type { Employee, StudioBudgetState, StudioBudgetVersion, ViewProps } from
 type BudgetRow<K extends keyof StudioBudgetState> = StudioBudgetState[K] extends (infer R)[] ? R : never;
 
 /** Kleines Inline-Override-Feld: Checkbox «übersteuern», dann Zahlenfeld statt des berechneten Werts. */
+/** Parameter in [min, max] klammern; kein Zahlenwert (NaN/undefined) → Vorgabe. 0 bleibt gültig, soweit min es erlaubt. */
+function clampParam(v: number | undefined, min: number, max: number, fallback: number): number {
+  const n = typeof v === "number" && Number.isFinite(v) ? v : fallback;
+  return Math.min(max, Math.max(min, n));
+}
+
 function OverrideInput({ aktiv, checked, onToggle, value, onChange, autoVal, unit = "CHF", step = 100 }: {
   label?: string; aktiv: boolean; checked: boolean; onToggle: (checked: boolean) => void; value: number;
   onChange: (value: number) => void; autoVal: number; unit?: string; step?: number;
@@ -197,12 +203,16 @@ function StudioBudget({ data, update, setPrintContent }: Pick<ViewProps, "data" 
   const extraKosten = b.extraRows.filter(r => r.aktiv).reduce((s, r) => s + (r.amount || 0), 0);
 
   const basisKosten = personalKosten + fixKosten + extraKosten;
-  const reserve = basisKosten * ((b.reserve || 0) / 100);
+  // Parameter auf sinnvolle Bereiche klammern (auch für alte/importierte Werte), Anzeige und Rechnung nutzen dieselben Werte
+  const reservePct = clampParam(b.reserve, 0, 80, 10);
+  const quotePct = clampParam(b.produktivQuote, 10, 100, 70);
+  const margePct = clampParam(b.zielMarge, 0, 50, 25);
+  const reserve = basisKosten * (reservePct / 100);
   const gesamtKosten = basisKosten + reserve;
 
-  const produktivStunden = Math.round(jahresStundenFallback * ((b.produktivQuote || 70) / 100));
+  const produktivStunden = Math.round(jahresStundenFallback * (quotePct / 100));
   const selbstkosten = produktivStunden > 0 ? gesamtKosten / produktivStunden : 0;
-  const zielHonorar = selbstkosten > 0 ? selbstkosten / (1 - (b.zielMarge ?? 25) / 100) : 0;
+  const zielHonorar = selbstkosten > 0 ? selbstkosten / (1 - margePct / 100) : 0;
 
   const defaultRate = data.settings.defaultHourlyRate || 120;
   const currentRate = b.rateOverride ? (b.rateManual || defaultRate) : defaultRate;
@@ -255,8 +265,8 @@ function StudioBudget({ data, update, setPrintContent }: Pick<ViewProps, "data" 
     // Gleiche vollständige Feldliste wie saveVersion()/saveSettings() — sonst
     // stellt "Version laden" einen übersteuerten Stundenansatz nicht wieder her
     // (identischer Bug wie der in saveVersion() dokumentierte, hier nochmal).
-    b: { agZuschlag: b.agZuschlag, empRows: b.empRows, fixRows: b.fixRows, extraRows: b.extraRows, extraIncome: b.extraIncome, inkludiereRechnungen: b.inkludiereRechnungen, inkludiereEntwuerfe: b.inkludiereEntwuerfe, inkludiereOfferten: b.inkludiereOfferten, inkludiereOffertEntwuerfe: b.inkludiereOffertEntwuerfe, reserve: b.reserve, produktivQuote: b.produktivQuote, zielMarge: b.zielMarge, rateOverride: b.rateOverride, rateManual: b.rateManual },
-    results: { personalKosten, fixKosten, extraKosten, basisKosten, reserve: basisKosten * ((b.reserve || 0) / 100), gesamtKosten, totalRevenue, ergebnis, jahresStundenTotal: jahresStundenFallback, produktivStunden, selbstkosten, zielHonorar, currentRate },
+    b: { agZuschlag: b.agZuschlag, empRows: b.empRows, fixRows: b.fixRows, extraRows: b.extraRows, extraIncome: b.extraIncome, inkludiereRechnungen: b.inkludiereRechnungen, inkludiereEntwuerfe: b.inkludiereEntwuerfe, inkludiereOfferten: b.inkludiereOfferten, inkludiereOffertEntwuerfe: b.inkludiereOffertEntwuerfe, reserve: reservePct, produktivQuote: quotePct, zielMarge: margePct, rateOverride: b.rateOverride, rateManual: b.rateManual },
+    results: { personalKosten, fixKosten, extraKosten, basisKosten, reserve, gesamtKosten, totalRevenue, ergebnis, jahresStundenTotal: jahresStundenFallback, produktivStunden, selbstkosten, zielHonorar, currentRate },
     empSnapshot: empCalcRows.map(r => ({ name: r.emp.name, kosten: r.kosten, stunden: r.stunden, aktiv: r.aktiv })),
     fixSnapshot: [...fixCalcRows.filter(r => r.aktiv).map(r => ({ label: r.label, amount: r.amount })), ...b.extraRows.filter(r => r.aktiv).map(r => ({ label: r.label, amount: r.amount }))],
   });
@@ -271,7 +281,7 @@ function StudioBudget({ data, update, setPrintContent }: Pick<ViewProps, "data" 
       agZuschlag: b.agZuschlag, empRows: b.empRows, fixRows: b.fixRows, extraRows: b.extraRows, extraIncome: b.extraIncome,
       inkludiereRechnungen: b.inkludiereRechnungen, inkludiereEntwuerfe: b.inkludiereEntwuerfe,
       inkludiereOfferten: b.inkludiereOfferten, inkludiereOffertEntwuerfe: b.inkludiereOffertEntwuerfe,
-      reserve: b.reserve, produktivQuote: b.produktivQuote, zielMarge: b.zielMarge,
+      reserve: reservePct, produktivQuote: quotePct, zielMarge: margePct,
       rateOverride: b.rateOverride, rateManual: b.rateManual,
     } });
     setSaveName("");
@@ -297,9 +307,9 @@ function StudioBudget({ data, update, setPrintContent }: Pick<ViewProps, "data" 
       inkludiereEntwuerfe: b.inkludiereEntwuerfe,
       inkludiereOfferten: b.inkludiereOfferten,
       inkludiereOffertEntwuerfe: b.inkludiereOffertEntwuerfe,
-      reserve: b.reserve,
-      produktivQuote: b.produktivQuote,
-      zielMarge: b.zielMarge,
+      reserve: reservePct,
+      produktivQuote: quotePct,
+      zielMarge: margePct,
       rateOverride: b.rateOverride,
       rateManual: b.rateManual,
     }});
@@ -379,7 +389,7 @@ function StudioBudget({ data, update, setPrintContent }: Pick<ViewProps, "data" 
       {/* ── Kennzahlen als Band (wie Projekt-Arbeitsraum) ── */}
       <div className="ws-figs" style={{ marginBottom: 20 }}>
         <div><small>Selbstkostensatz</small><strong className="num">{formatCHF(Math.round(selbstkosten))}</strong><em>pro produktive Stunde</em></div>
-        <div><small>Ziel-Honorar</small><strong className="num">{formatCHF(Math.round(zielHonorar))}</strong><em>inkl. {b.zielMarge} % Marge</em></div>
+        <div><small>Ziel-Honorar</small><strong className="num">{formatCHF(Math.round(zielHonorar))}</strong><em>inkl. {margePct} % Marge</em></div>
         <div><small>Gesamtkosten / Jahr</small><strong className="num">{formatCHF(gesamtKosten)}</strong><em>{produktivStunden} h produktiv von {jahresStundenFallback} h</em></div>
         {gesamtKosten <= 0 ? (
           <div><small>Aktueller Ansatz</small><strong className="warn">noch offen</strong><em>{personalKosten <= 0 ? "Löhne bei den Mitarbeitenden erfassen oder unten übersteuern" : "keine Kosten erfasst"}</em></div>
@@ -651,14 +661,15 @@ function StudioBudget({ data, update, setPrintContent }: Pick<ViewProps, "data" 
             <SectionLabel>PARAMETER</SectionLabel>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 16, marginBottom: 16 }}>
               {[
-                { label: "Reserve %", key: "reserve" as const, min: 0, max: 50, hint: "Puffer für Unvorhergesehenes" },
+                { label: "Reserve %", key: "reserve" as const, min: 0, max: 80, hint: "Puffer für Unvorhergesehenes" },
                 { label: "Produktiv-Quote %", key: "produktivQuote" as const, min: 10, max: 100, hint: "Verrechenbare Stunden (60–75%)" },
-                { label: "Ziel-Marge %", key: "zielMarge" as const, min: 0, max: 80, hint: "Aufschlag für Gewinn / Reinvestition" },
+                { label: "Ziel-Marge %", key: "zielMarge" as const, min: 0, max: 50, hint: "Aufschlag für Gewinn / Reinvestition" },
               ].map(({ label, key, min, max, hint }) => (
                 <div key={key}>
                   <div style={{ fontSize: 11, color: "var(--text4)", marginBottom: 5 }}>{label}</div>
                   <input type="number" step="1" min={min} max={max} value={b[key]}
-                    onChange={e => setField(key, +e.target.value)}
+                    onChange={e => setField(key, Math.min(max, Math.max(0, Number.isFinite(+e.target.value) ? +e.target.value : 0)))}
+                    onBlur={e => setField(key, Math.min(max, Math.max(min, Number.isFinite(+e.target.value) ? +e.target.value : min)))}
                     style={{ width: "100%", height: 34, fontSize: 13, padding: "0 10px" }} />
                   <div style={{ fontSize: 10, color: "var(--text4)", marginTop: 4 }}>{hint}</div>
                 </div>
@@ -693,7 +704,7 @@ function StudioBudget({ data, update, setPrintContent }: Pick<ViewProps, "data" 
               <div><span>Personalkosten</span><b className="num">{formatCHF(personalKosten)}</b></div>
               <div><span>Fixkosten</span><b className="num">{formatCHF(fixKosten + extraKosten)}</b></div>
               <div><span>Basiskosten</span><b className="num">{formatCHF(basisKosten)}</b></div>
-              <div className="sub"><span>dazu Reserve <i>{b.reserve} %</i></span><b className="num">{formatCHF(reserve)}</b></div>
+              <div className="sub"><span>dazu Reserve <i>{reservePct} %</i></span><b className="num">{formatCHF(reserve)}</b></div>
               <div className="total"><span>Gesamtkosten</span><b className="num">{formatCHF(gesamtKosten)}</b></div>
             </div>
             {totalRevenue > 0 && (
@@ -722,12 +733,12 @@ function StudioBudget({ data, update, setPrintContent }: Pick<ViewProps, "data" 
               <span>{jahresStundenFallback}h {employees.length === 0 && <span style={{ color: "var(--text4)", fontSize: 10 }}>Fallback</span>}</span>
             </div>
             <div style={{ display: "flex", justifyContent: "space-between", padding: "4px 0", borderBottom: "1px solid var(--border2)", fontSize: 12 }}>
-              <span style={{ color: "var(--text2)" }}>Produktiv ({b.produktivQuote}%)</span>
+              <span style={{ color: "var(--text2)" }}>Produktiv ({quotePct}%)</span>
               <span style={{ fontWeight: 600 }}>{produktivStunden}h</span>
             </div>
             <div style={{ marginTop: 10 }}>
               <div style={{ height: 5, background: "var(--border)", borderRadius: 3, overflow: "hidden" }}>
-                <div style={{ width: `${b.produktivQuote}%`, height: "100%", background: b.produktivQuote >= 80 ? "var(--negative)" : b.produktivQuote >= 70 ? "var(--warning)" : "var(--positive)", borderRadius: 3 }} />
+                <div style={{ width: `${quotePct}%`, height: "100%", background: quotePct >= 80 ? "var(--negative)" : quotePct >= 70 ? "var(--warning)" : "var(--positive)", borderRadius: 3 }} />
               </div>
               <div style={{ fontSize: 10, color: "var(--text4)", marginTop: 3 }}>Über 75% ist anspruchsvoll</div>
             </div>
@@ -762,8 +773,8 @@ function StudioBudget({ data, update, setPrintContent }: Pick<ViewProps, "data" 
                   <div style={{ marginTop: 8, display: "flex", justifyContent: "space-between", fontSize: 11, padding: "6px 10px", borderRadius: 5, background: "var(--surface2)" }}>
                     <span style={{ color: "var(--text3)" }}>Ist-Produktivquote</span>
                     <span>
-                      <strong style={{ color: Math.abs(istProduktivQuote - b.produktivQuote) > 10 ? "var(--warning)" : "var(--text)" }}>{Math.round(istProduktivQuote)}%</strong>
-                      <span style={{ color: "var(--text4)", marginLeft: 5 }}>Soll: {b.produktivQuote}%</span>
+                      <strong style={{ color: Math.abs(istProduktivQuote - quotePct) > 10 ? "var(--warning)" : "var(--text)" }}>{Math.round(istProduktivQuote)}%</strong>
+                      <span style={{ color: "var(--text4)", marginLeft: 5 }}>Soll: {quotePct}%</span>
                     </span>
                   </div>
                 )}

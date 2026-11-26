@@ -51,8 +51,17 @@ function Expenses({ data, update, standalone, currentUser }: Pick<ViewProps, "da
   const [expCatEdit, setExpCatEdit] = useState("");
   const [expCatEditIdx, setExpCatEditIdx] = useState<number | null>(null);
   const [newExpCat, setNewExpCat] = useState("");
+  /** Neue Spesen-Kategorie anhängen, ohne Doppel (Runde 33). */
+  const addExpCat = () => {
+    const nu = newExpCat.trim();
+    if (!nu) return;
+    if (expCats.includes(nu)) { showToast(`Die Kategorie «${nu}» gibt es schon.`); return; }
+    update("settings", prev => ({ ...prev, expenseCategories: [...(prev.expenseCategories || expCats), nu] }));
+    setNewExpCat("");
+  };
 
-  const years = Array.from(new Set((data.expenses || []).map(e => (e.date || "").slice(0, 4)).filter(Boolean))).sort().reverse();
+  // laufendes und gewähltes Jahr immer in der Auswahl (sonst zeigte sie im Januar «Alle Jahre», gefiltert war aber leer — Runde 33)
+  const years = Array.from(new Set([currentYear, filter.year, ...(data.expenses || []).map(e => (e.date || "").slice(0, 4))].filter(Boolean))).sort().reverse();
 
   // Belegerkennung: liest den Beleg lokal aus (PDF-Textlayer oder OCR-
   // Fallback für Scans, siehe ocr.js) und füllt nur Felder, die noch auf
@@ -101,6 +110,7 @@ function Expenses({ data, update, standalone, currentUser }: Pick<ViewProps, "da
   const saveExp = () => {
     if (!form.amount) { showToast("Bitte einen Betrag eingeben."); return; }
     if (!(Number(form.amount) > 0 && Number(form.amount) < 1e7)) { showToast("Der Betrag muss positiv sein (unter CHF 10 Mio.)."); return; }
+    if (!(Number(form.mwstRate ?? 0) >= 0 && Number(form.mwstRate ?? 0) <= 30)) { showToast("MWST-Satz zwischen 0 und 30 %."); return; }
     const isNew = modal === "new";
     // über eine Lohnabrechnung ausbezahlt: Betrag und Person stehen in der Abrechnung → nur nach deren Storno ändern
     const orig = isNew ? null : (data.expenses || []).find(e => e.id === modal);
@@ -267,10 +277,10 @@ function Expenses({ data, update, standalone, currentUser }: Pick<ViewProps, "da
                 <div style={{ display: "flex", gap: 8, marginBottom: 20 }}>
                   <input value={newExpCat} placeholder="Neue Kategorie…"
                     onChange={e => setNewExpCat(e.target.value)}
-                    onKeyDown={e => { if (e.key === "Enter" && newExpCat.trim()) { update("settings", { ...data.settings, expenseCategories: [...expCats, newExpCat.trim()] }); setNewExpCat(""); } }}
+                    onKeyDown={e => { if (e.key === "Enter") addExpCat(); }}
                     style={{ flex: 1, height: 32, fontSize: 12 }} />
                   <button className="btn btn-ghost" style={{ whiteSpace: "nowrap" }}
-                    onClick={() => { if (newExpCat.trim()) { update("settings", { ...data.settings, expenseCategories: [...expCats, newExpCat.trim()] }); setNewExpCat(""); } }}>+ Hinzufügen</button>
+                    onClick={addExpCat}>+ Hinzufügen</button>
                 </div>
                 <div style={{ display: "flex", justifyContent: "flex-end" }}>
                   <button className="btn btn-primary" onClick={() => setExpCatModal(false)}>Schliessen</button>
@@ -283,7 +293,7 @@ function Expenses({ data, update, standalone, currentUser }: Pick<ViewProps, "da
 
       {/* KPI-Streifen */}
       {allFiltered.length > 0 && (
-        <ExpenseFigures count={allFiltered.length} brutto={totalBrutto} netto={totalNet} vorsteuer={totalTax} totalSub={offen ? `${offen} offen` : undefined} categories={categoryTotals} />
+        <ExpenseFigures count={allFiltered.length} brutto={totalBrutto} netto={totalNet} vorsteuer={totalTax} totalSub={offen ? `${offen} offen` : undefined} categories={categoryTotals} saldo={data.settings.mwstMethode === "saldo"} />
       )}
 
       <div className="filter-bar">

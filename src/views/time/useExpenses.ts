@@ -1,6 +1,6 @@
 // Zeiterfassung: Spesen des gewählten Tages (anlegen, ändern, löschen) samt Beleg-Upload und Beleg-Ansicht.
 
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { showToast } from "../../toast";
 import { EXPENSE_CATEGORIES } from "../../constants";
 import { generateId, receiptToDataUrl, checkLocalBudget } from "../../utils";
@@ -28,8 +28,22 @@ export function useExpenses(data: AppData, update: UpdateFn, currentDate: string
     return true;
   });
 
+  // Hier angelegte, leer gebliebene Spesen (Betrag 0, ohne Beschreibung/Beleg) beim Tages-/Personenwechsel und beim
+  // Verlassen wieder entfernen — sie standen sonst als «1 Spese genehmigen, CHF 0.00» in der Buchhaltung (Runde 33)
+  const createdRef = useRef(new Set<string>());
+  useEffect(() => () => {
+    const created = createdRef.current;
+    if (!created.size) return;
+    const ids = new Set(created);
+    created.clear();
+    update("expenses", prev => (prev || []).filter(e => !(ids.has(e.id) && !Number(e.amount) && !(e.description || "").trim() && !e.receiptData)));
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- nur beim Wechsel von Tag/Person bzw. Verlassen
+  }, [currentDate, selectedEmpId]);
+
   const addExp = () => {
-    update("expenses", [...(data.expenses || []), { id: generateId(), date: currentDate, category: (data.settings.expenseCategories || EXPENSE_CATEGORIES)[0], projectId: "", description: "", amount: 0, mwstRate, inclMwst: true, employeeId: selectedEmpId || "" } as Expense]);
+    const id = generateId();
+    createdRef.current.add(id);
+    update("expenses", prev => [...(prev || []), { id, date: currentDate, category: (data.settings.expenseCategories || EXPENSE_CATEGORIES)[0], projectId: "", description: "", amount: 0, mwstRate, inclMwst: true, employeeId: selectedEmpId || "" } as Expense]);
   };
   const locked = (id: string) => {
     const e = (data.expenses || []).find(x => x.id === id);

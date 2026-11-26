@@ -18,7 +18,6 @@ import type { Expense, Invoice, ViewProps } from "../types";
 
 export default
 function Accounting({ data, update, setView, setModal, setPrintContent }: Pick<ViewProps, "data" | "update" | "setView" | "setModal" | "setPrintContent">) {
-  const mwstRate = data.settings.mwstRate ?? 8.1;
   const currentYear = new Date().getFullYear().toString();
   // Periode: "" = alle, "2026" = Jahr, "2026-Q3" = Quartal (MWST-Abrechnung)
   const [period, setPeriod] = useState(currentYear);
@@ -129,8 +128,8 @@ function Accounting({ data, update, setView, setModal, setPrintContent }: Pick<V
       {/* Kennzahlen als Band (wie im Projekt-Arbeitsraum) */}
       <div className="ws-figs" style={{ marginBottom: 20 }}>
         <div><small>Umsatz netto</small><strong className="num">{formatCHF(totalInvoiced)}</strong><em>{issuedCount} {issuedCount === 1 ? "Rechnung" : "Rechnungen"}{totalDraftSub > 0 ? ` · ${formatCHF(totalDraftSub)} in Entwürfen` : ""}</em></div>
-        <div><small>Bezahlt</small><strong className="num">{formatCHF(totalPaid)}</strong><em>eingegangen</em></div>
-        <div><small>Offen</small><strong className={`num${totalOverdue > 0 ? " neg" : ""}`}>{formatCHF(totalOpen + totalOverdue)}</strong><em>{totalOverdue > 0 ? `${formatCHF(totalOverdue)} überfällig` : "nichts überfällig"}</em></div>
+        <div><small>Bezahlt</small><strong className="num">{formatCHF(totalPaid)}</strong><em>eingegangen · inkl. MWST</em></div>
+        <div><small>Offen</small><strong className={`num${totalOverdue > 0 ? " neg" : ""}`}>{formatCHF(totalOpen + totalOverdue)}</strong><em>{totalOverdue > 0 ? `${formatCHF(totalOverdue)} überfällig` : "nichts überfällig"} · inkl. MWST</em></div>
         <div><small>Ergebnis vor MWST</small><strong className={`num${result < 0 ? " neg" : ""}`}>{formatCHF(result)}</strong><em>Aufwand {formatCHF(totalAusgaben)}</em></div>
       </div>
 
@@ -156,7 +155,7 @@ function Accounting({ data, update, setView, setModal, setPrintContent }: Pick<V
                 <div><span>Entgelt inkl. MWST <i>{sum.mwstArt === "vereinnahmt" ? "eingegangen" : "fakturiert"}</i></span><b className="num">{formatCHF(sum.mwstEntgeltBrutto)}</b></div>
                 <div><span>Steuer zum Saldosteuersatz <i>{data.settings.mwstSaldoSatz ?? 0} %, ohne Vorsteuerabzug</i></span><b className="num">{formatCHF(sum.umsatzsteuer)}</b></div>
               </> : <>
-                <div><span>Umsatzsteuer <i>{sum.mwstArt === "vereinnahmt" ? "bezahlte Rechnungen" : `gestellte Rechnungen, ${mwstRate} %`}</i></span><b className="num">{formatCHF(sum.umsatzsteuer)}</b></div>
+                <div><span>Umsatzsteuer <i>{sum.mwstArt === "vereinnahmt" ? "bezahlte Rechnungen" : "gestellte Rechnungen"}</i></span><b className="num">{formatCHF(sum.umsatzsteuer)}</b></div>
                 {akontoTax > 0 && sum.mwstArt === "vereinbart" && <div className="sub"><span>davon auf Akontorechnungen</span><b className="num">{formatCHF(akontoTax)}</b></div>}
                 <div><span>Vorsteuer <i>Spesen und Büroausgaben</i></span><b className="num">{minus(sum.vorsteuer)}</b></div>
               </>}

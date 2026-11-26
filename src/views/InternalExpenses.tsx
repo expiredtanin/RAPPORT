@@ -30,6 +30,14 @@ function InternalExpenses({ data, update }: Pick<ViewProps, "data" | "update" | 
   const [catEdit, setCatEdit] = useState("");
   const [catEditIdx, setCatEditIdx] = useState<number | null>(null);
   const [newCat, setNewCat] = useState("");
+  /** Neue Kategorie anhängen (ohne Doppel — zwei gleiche gaben doppelte Schlüssel und doppelte Summen, Runde 33). */
+  const addCat = () => {
+    const nu = newCat.trim();
+    if (!nu) return;
+    if (intCats.includes(nu)) { showToast(`Die Kategorie «${nu}» gibt es schon.`); return; }
+    update("settings", prev => ({ ...prev, internalExpenseCategories: [...(prev.internalExpenseCategories || intCats), nu] }));
+    setNewCat("");
+  };
   const [filter, setFilter] = useState({ year: currentYear, category: "", search: "" });
   const [sort, setSort] = useState({ col: "date", dir: -1 });
   const [groupBy, setGroupBy] = useState<"date" | "category">("date");
@@ -52,6 +60,9 @@ function InternalExpenses({ data, update }: Pick<ViewProps, "data" | "update" | 
   const closeModal = () => { setModal(null); setForm(emptyItem); };
   const save = () => {
     if (!form.amount) { showToast("Bitte einen Betrag eingeben."); return; }
+    // wie bei Spesen (Runde 33: negative/riesige Beträge und −100 % MWST wurden gespeichert)
+    if (!(Number(form.amount) > 0 && Number(form.amount) < 1e7)) { showToast("Der Betrag muss positiv sein (unter CHF 10 Mio.)."); return; }
+    if (!(Number(form.mwstRate ?? 0) >= 0 && Number(form.mwstRate ?? 0) <= 30)) { showToast("MWST-Satz zwischen 0 und 30 %."); return; }
     const isNew = modal === "new";
     // Bearbeiten: nur eigene Änderungen auf den aktuellen Stand (applyEdit)
     const next = { ...form, id: isNew ? generateId() : modal } as InternalExpense;
@@ -172,9 +183,13 @@ function InternalExpenses({ data, update }: Pick<ViewProps, "data" | "update" | 
                     {catEditIdx === idx ? (
                       <input autoFocus value={catEdit} onChange={e => setCatEdit(e.target.value)}
                         onBlur={() => {
-                          if (catEdit.trim()) {
-                            const updated = intCats.map((c, i) => i === idx ? catEdit.trim() : c);
-                            update("settings", { ...data.settings, internalExpenseCategories: updated });
+                          const nu = catEdit.trim();
+                          if (nu && nu !== cat && intCats.includes(nu)) showToast(`Die Kategorie «${nu}» gibt es schon.`);
+                          else if (nu && nu !== cat) {
+                            // umbenennen wie bei Spesen: auch die vorhandenen Ausgaben (Runde 33)
+                            const updated = intCats.map((c, i) => i === idx ? nu : c);
+                            update("settings", prev => ({ ...prev, internalExpenseCategories: updated }));
+                            update("internalExpenses", prev => (prev || []).map(e => e.category === cat ? { ...e, category: nu } : e));
                           }
                           setCatEditIdx(null);
                         }}
@@ -187,7 +202,7 @@ function InternalExpenses({ data, update }: Pick<ViewProps, "data" | "update" | 
                     <button className="btn btn-danger" style={{ padding: "3px 8px", fontSize: 11, opacity: inUse ? 0.35 : 1 }}
                       onClick={() => {
                         if (inUse) return;
-                        update("settings", { ...data.settings, internalExpenseCategories: intCats.filter((_, i) => i !== idx) });
+                        update("settings", prev => ({ ...prev, internalExpenseCategories: intCats.filter((_, i) => i !== idx) }));
                       }} title={inUse ? "In Verwendung" : "Löschen"}><span className="msr" style={{ fontSize: 16 }}>close</span></button>
                   </div>
                 );
@@ -196,10 +211,10 @@ function InternalExpenses({ data, update }: Pick<ViewProps, "data" | "update" | 
             <div style={{ display: "flex", gap: 8, marginBottom: 20 }}>
               <input value={newCat} placeholder="Neue Kategorie…"
                 onChange={e => setNewCat(e.target.value)}
-                onKeyDown={e => { if (e.key === "Enter" && newCat.trim()) { update("settings", { ...data.settings, internalExpenseCategories: [...intCats, newCat.trim()] }); setNewCat(""); } }}
+                onKeyDown={e => { if (e.key === "Enter" && newCat.trim()) { addCat(); } }}
                 style={{ flex: 1, height: 32, fontSize: 12 }} />
               <button className="btn btn-ghost" style={{ whiteSpace: "nowrap" }}
-                onClick={() => { if (newCat.trim()) { update("settings", { ...data.settings, internalExpenseCategories: [...intCats, newCat.trim()] }); setNewCat(""); } }}>+ Hinzufügen</button>
+                onClick={() => { if (newCat.trim()) { addCat(); } }}>+ Hinzufügen</button>
             </div>
             <div style={{ display: "flex", justifyContent: "flex-end" }}>
               <button className="btn btn-primary" onClick={() => setCatModal(false)}>Schliessen</button>
@@ -209,7 +224,7 @@ function InternalExpenses({ data, update }: Pick<ViewProps, "data" | "update" | 
       )}
 
       {allFiltered.length > 0 && (
-        <ExpenseFigures count={allFiltered.length} brutto={totalBrutto} netto={totalNet} vorsteuer={totalTax} totalSub={undefined} categories={categoryTotals} />
+        <ExpenseFigures count={allFiltered.length} brutto={totalBrutto} netto={totalNet} vorsteuer={totalTax} totalSub={undefined} categories={categoryTotals} saldo={data.settings.mwstMethode === "saldo"} />
       )}
 
       <div className="filter-bar">

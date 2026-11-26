@@ -9,7 +9,6 @@ import type { AppData, Settings } from "../../types";
 import { HEADING } from "./shared";
 
 export function BuchhaltungPrint({ data, filterYear, settings }: { data: AppData; filterYear?: string; settings: Settings }) {
-  const mwstRate = settings.mwstRate ?? 8.1;
   // Zeilen und Summen aus accounting.ts — dieselben Zahlen wie Ansicht und CSV
   const { issued: invoices, expenses, internalExpenses, lohnEntries: loehne } = accountingRows(data, filterYear || "");
   const sum = accountingSummary(data, filterYear || "");
@@ -52,7 +51,7 @@ export function BuchhaltungPrint({ data, filterYear, settings }: { data: AppData
           <div style={{ fontSize: 8, letterSpacing: "0.12em", color: "#888", marginBottom: 8 }}>EINNAHMEN</div>
           {[
             { label: "Umsatz (Netto)", value: totalInvoicedNet },
-            { label: `MWST ${mwstRate}% (fakturiert)`, value: totalInvoicedTax, small: true },
+            { label: `MWST (fakturiert)`, value: totalInvoicedTax, small: true },
             ...(sum.akontoTax > 0 ? [{ label: "davon auf Akontorechnungen", value: sum.akontoTax, small: true }] : []),
             { label: "Umsatz (Brutto)", value: totalInvoicedNet + totalInvoicedTax, bold: true },
           ].map((r, i) => (
@@ -71,7 +70,13 @@ export function BuchhaltungPrint({ data, filterYear, settings }: { data: AppData
             ...(saldo ? [] : [{ label: "Vorsteuer", value: sum.vorsteuer, small: true }]),
             { label: `Personalaufwand (${loehne.length} Löhne, Brutto + AG-Beiträge)`, value: sum.personalaufwand },
             { label: "Ergebnis vor MWST", value: sum.ergebnis, bold: true }, // Saldosteuersatz: Ertrag brutto − Saldosteuer, Ausgaben brutto
-            { label: saldo ? `MWST-Schuld (Saldosteuersatz ${settings.mwstSaldoSatz ?? 0} %${sum.mwstArt === "vereinnahmt" ? ", vereinnahmt" : ""})` : `MWST-Schuld (effektiv${sum.mwstArt === "vereinnahmt" ? ", vereinnahmt" : ""})`, value: sum.mwstSchuld, bold: true, small: true },
+            ...(saldo
+              ? [
+                  { label: `Entgelt inkl. MWST (${sum.mwstArt === "vereinnahmt" ? "eingegangen" : "fakturiert"})`, value: sum.mwstEntgeltBrutto, small: true },
+                  { label: `Steuer zum Saldosteuersatz (${settings.mwstSaldoSatz ?? 0} %, ohne Vorsteuerabzug)`, value: sum.umsatzsteuer, small: true },
+                ]
+              : [{ label: `Umsatzsteuer (${sum.mwstArt === "vereinnahmt" ? "bezahlte Rechnungen" : "gestellte Rechnungen"})`, value: sum.umsatzsteuer, small: true }]),
+            { label: `${sum.mwstSchuld < 0 ? "MWST-Guthaben" : "MWST-Schuld"} (${saldo ? `Saldosteuersatz ${settings.mwstSaldoSatz ?? 0} %` : "effektiv"}${sum.mwstArt === "vereinnahmt" ? ", vereinnahmt" : ""})`, value: Math.abs(sum.mwstSchuld), bold: true, small: true },
           ].map((r, i) => (
             <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "2px 0", borderTop: r.bold && !r.small ? "1px solid #ccc" : "none", marginTop: r.bold && !r.small ? 4 : 0 }}>
               <span style={{ fontSize: r.small ? 8 : 9, color: r.small ? "#888" : "#555" }}>{r.label}</span>
