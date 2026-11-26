@@ -82,6 +82,21 @@ onRecordAfterDeleteSuccess((e) => {
   e.next();
 }, "appRoles");
 
+// Filter/Sortierung über die Budget-Felder sperren: die Maskierung unten wirkt nur auf die Ausgabe, ein Filter wie
+// «studioBudget.empRows.0.kostenManual > 123000» lief auf den echten Werten und verriet sie per Bisektion (Review
+// Runde 43). Die App filtert nie danach — gilt für alle Collections (auch über Relationen wie studioSettings_via_studio).
+onRecordsListRequest((e) => {
+  if (!e.hasSuperuserAuth()) {
+    const q = e.requestInfo().query || {};
+    if (/studiobudget/i.test(String(q.filter || "") + " " + String(q.sort || ""))) throw new BadRequestError("Filter oder Sortierung über das Büro-Budget ist nicht erlaubt.");
+  }
+  e.next();
+});
+onRealtimeSubscribeRequest((e) => {
+  if (!e.hasSuperuserAuth() && (e.subscriptions || []).some((t) => /studiobudget/i.test(String(t)))) throw new BadRequestError("Filter über das Büro-Budget ist nicht erlaubt.");
+  e.next();
+});
+
 // Büro-Budget: Kosten je Person (≈ Lohn + AG-Beiträge) nur für Vollzugriff oder Recht «loehne» ausliefern — die App
 // blendete sie lokal aus, der Server lieferte sie aber jedem Mitglied (REST, expand, Realtime; Rechte-Test Runde 42).
 // Beim Speichern ohne «loehne» werden die maskierten Werte unten wieder aus dem gespeicherten Stand eingesetzt.

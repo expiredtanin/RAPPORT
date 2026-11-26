@@ -187,6 +187,15 @@ check("Rolle zurückgenommen: M wieder gesperrt", !leaks(r, "GEHEIM-001"), `HTTP
   check("M: Budget ohne Kosten je Person (kostenManual/kosten)", r.status === 200 && !JSON.stringify(r.json).includes("123456") && !JSON.stringify(r.json).includes("98765"), `HTTP ${r.status}`);
   r = await api("GET", `/api/collections/studios/records/${sid}?expand=studioSettings_via_studio`, tM);
   check("M: auch per expand ohne Kosten je Person", !JSON.stringify(r.json || {}).includes("123456"), `HTTP ${r.status}`);
+  // Filter-Orakel (Review Runde 43): Filter/Sortierung über Budget-Felder abgelehnt, auch über Relationen
+  for (const f of [`studioBudget.empRows.0.kostenManual > 123000`, `studioBudgetVersions ~ "98765"`]) {
+    r = await api("GET", `/api/collections/studioSettings/records?filter=${enc(`studio="${sid}" && (${f})`)}`, tM);
+    check(`M: kein Filter-Orakel auf Budget (${f.slice(0, 30)}…)`, r.status >= 400 || !(r.json && r.json.items && r.json.items.length), `HTTP ${r.status}`);
+  }
+  r = await api("GET", `/api/collections/studios/records?filter=${enc(`studioSettings_via_studio.studioBudget ~ "123456"`)}`, tM);
+  check("M: kein Filter-Orakel über Relation", r.status >= 400 || !(r.json && r.json.items && r.json.items.length), `HTTP ${r.status}`);
+  r = await api("GET", `/api/collections/studioSettings/records?filter=${enc(`studio="${sid}"`)}&sort=-studioBudget`, tM);
+  check("M: keine Sortierung nach Budget", r.status >= 400, `HTTP ${r.status}`);
   // Rolle mit settings + studio-budget, ohne loehne: speichert Budget (z.B. Reserve) — Kosten bleiben erhalten
   must(await api("PATCH", `/api/collections/appRoles/records/${roleM.id}`, tA, { permissions: [...basePerms, "settings", "studio-budget"] }), "Rolle Budget");
   const seen = (await api("GET", `/api/collections/studioSettings/records/${st0.id}`, tM)).json;
