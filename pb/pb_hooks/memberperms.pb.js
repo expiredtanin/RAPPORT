@@ -94,8 +94,32 @@ onRecordsListRequest((e) => {
 });
 onRealtimeSubscribeRequest((e) => {
   // auch Lohnfelder (Filter in Abos verrieten sie per Bisektion; die App filtert nie danach)
-  if (!e.hasSuperuserAuth() && (e.subscriptions || []).some((t) => /studiobudget|monatslohn|lohnverlauf|lohniban|ahvnr|pkbeitrag|familienzulagen|quellensteuer|auszahlungbetrag|stundenlohn|personalnr|adresse|geburtsdatum|ferienwochen|ferienuebertrag|saldostichtag|saldouebertrag/i.test(String(t))
-    || /^(employees|absences)\//.test(String(t)) && /(email|ort|note)/i.test(decodeURIComponent(String(t).split("?options=")[1] || "")))) throw new BadRequestError("Filter über Budget, Lohn- oder Personalangaben ist nicht erlaubt.");
+  // PocketBase liest das Thema URL-dekodiert und «options» als JSON: auf dem Rohtext umgingen «m%6Fnatslohn»,
+  // «?%6Fptions=» oder «monatslohn» die Prüfung (Review 26.11.2026). Deshalb dekodiert prüfen; email/ort/note
+  // in Abo-Optionen gar nicht (die App abonniert nur «*» ohne Optionen).
+  if (e.hasSuperuserAuth()) return e.next();
+  const SECRET = /studiobudget|monatslohn|lohnverlauf|lohniban|ahvnr|pkbeitrag|familienzulagen|quellensteuer|dreizehnterlohn|ahvrentner|(ahv|alv|bvg|nbu|ktg|pkag)satz|auszahlungbetrag|stundenlohn|personalnr|adresse|geburtsdatum|ferienwochen|ferienuebertrag|saldostichtag|saldouebertrag/i;
+  const dec = (v) => decodeURIComponent(String(v).replace(/\+/g, " "));
+  for (const raw of e.subscriptions || []) {
+    const t = String(raw);
+    const texts = [t];
+    let opts = [];
+    try {
+      texts.push(dec(t));
+      const qi = t.indexOf("?");
+      for (const part of (qi < 0 ? "" : t.slice(qi + 1)).split("&")) {
+        const eq = part.indexOf("=");
+        if (eq < 0) continue;
+        const k = dec(part.slice(0, eq)), v = dec(part.slice(eq + 1));
+        if (k !== "options") continue;
+        opts.push(v);
+        try { opts.push(JSON.stringify(JSON.parse(v))); } catch { /* kein JSON: Rohtext genügt */ }
+      }
+    } catch { throw new BadRequestError("Ungültiges Abo-Thema."); }
+    if (texts.concat(opts).some((x) => SECRET.test(x)) || opts.some((x) => /\b(email|ort|note)\b/i.test(x))) {
+      throw new BadRequestError("Filter über Budget, Lohn- oder Personalangaben ist nicht erlaubt.");
+    }
+  }
   e.next();
 });
 

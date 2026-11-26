@@ -17,7 +17,7 @@ export interface WeekLoad {
   available: number;
   /** erfasste Stunden (bis heute) */
   ist: number;
-  /** verplante Stunden (ab heute; verfügbare Stunden × Plan-Prozente) */
+  /** verplante Stunden (ab morgen; verfügbare Stunden × Plan-Prozente) */
   planned: number;
   /** Tage mit mehr als 100 % verplant */
   overbooked: number;
@@ -44,7 +44,7 @@ export function weeklyLoad(data: WorkData, emp: WorkEmployee, entries: { dateFro
       const p = wt.period(emp, d, d, d);
       const free = Math.max(0, p.soll - p.absenz);
       available += free;
-      if (d < today || free <= 0) continue;
+      if (d <= today || free <= 0) continue;   // heute zählt schon als erfasst (ist bis heute), nicht doppelt
       const pct = entries.reduce((c, t) => c + (t.dateFrom <= d && t.dateTo >= d ? Math.max(0, Number(t.pensum) || 0) : 0), 0);
       planned += free * pct / 100;
       if (pct > 100) overbooked++;

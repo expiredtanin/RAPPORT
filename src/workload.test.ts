@@ -25,6 +25,12 @@ describe("weeklyLoad", () => {
     expect(w.available).toBe(16);   // 5 × 4 h − 4 h Ferien
     expect(w.planned).toBe(16);
   });
+  it("laufende Woche: heute zählt als erfasst, verplant erst ab morgen (nicht doppelt)", () => {
+    const data = { ...base, timeEntries: [{ id: "t", employeeId: "e1", date: "2026-11-26", minutes: 480 }] };
+    const [w] = weeklyLoad(data as never, emp, [{ dateFrom: "2026-11-23", dateTo: "2026-11-27", pensum: 100 }], ["2026-11-23"], "2026-11-26");
+    expect(w.ist).toBe(8);
+    expect(w.planned).toBe(8);   // nur Freitag
+  });
   it("vergangene Woche: erfasst zählt, nichts verplant", () => {
     const data = { ...base, timeEntries: [{ id: "t", employeeId: "e1", date: "2026-11-17", minutes: 300 }] };
     const [w] = weeklyLoad(data as never, emp, [{ dateFrom: "2026-11-16", dateTo: "2026-11-20", pensum: 100 }], ["2026-11-16"], "2026-11-26");

@@ -483,6 +483,8 @@ check("Rechnungsnummer mit Leerzeichen am Rand abgelehnt", r.status >= 400, `HTT
   must(await api("POST", "/api/collections/employees/records", tA, { id: empFremd, studio: studioC.studioId || studioC.id, name: "Fremde Person" }), "Mitarbeiter in Büro C");
   r = await api("POST", "/api/collections/resourcePlans/records", tA, { id: rid("rpf"), ...base, employee: empFremd });
   check("Ressourcenplan: Mitarbeiter eines anderen Büros abgelehnt", r.status >= 400, `HTTP ${r.status}`);
+  r = await api("PATCH", `/api/collections/resourcePlans/records/${rpp}`, tA, { studio: studioC.studioId || studioC.id, employee: empFremd });
+  check("Ressourcenplan: Eintrag nicht in ein anderes Büro verschieben", r.status >= 400, `HTTP ${r.status}`);
   // Mitarbeiter löschen nimmt seine Einträge mit (Kaskade)
   const empDel = rid("empd"), rpd = rid("rpd");
   must(await api("POST", "/api/collections/employees/records", tA, { id: empDel, studio: sid, name: "Kaskade" }), "Mitarbeiter für Kaskade");
@@ -577,6 +579,44 @@ check("M2: keinen Kontakt in Büro A anlegen", r.status >= 400, `HTTP ${r.status
     r = await api("GET", `/api/collections/${coll}/records?filter=${enc(f)}`, tN);
     check(`N: Filter-Orakel ${what} gesperrt`, r.status === 400 || (r.status === 200 && r.json.items.length === 0), `HTTP ${r.status}, ${r.json && r.json.items ? r.json.items.length : "-"}`);
   }
+  // Vollzugriff in einem zweiten Büro öffnet den Filter im ersten nicht («studio = "<anderes Büro>" || note ~ …»)
+  const studioD = must(await api("POST", "/api/rapport/create-studio", tA, { name: `Büro D ${run}`, slug: `buero-d-${run}` }), "Büro D");
+  const sidD = studioD.studioId || studioD.id;
+  must(await api("POST", "/api/rapport/invite-member", tA, { userId: nUser.id, studioId: sidD, appRoleId: "r-admin" }), "invite N in D als Admin");
+  for (const [what, coll, f] of [
+    ["Absenz-Notiz", "absences", `studio = "${sidD}" || note ~ "ARZT"`],
+    ["E-Mail", "employees", `studio = "${sidD}" || email ~ "geheim"`],
+    ["Lohn", "employees", `studio = "${sidD}" || monatslohn > 8000`],
+  ]) {
+    r = await api("GET", `/api/collections/${coll}/records?filter=${enc(f)}`, tN);
+    check(`N (Admin in Büro D): Filter-Orakel ${what} über Büro A gesperrt`, r.status === 400 || (r.status === 200 && r.json.items.length === 0), `HTTP ${r.status}, ${r.json && r.json.items ? r.json.items.length : "-"}`);
+  }
+  // Realtime: PocketBase dekodiert Thema und options (URL, JSON) — verschlüsselte Feldnamen dürfen die Sperre nicht umgehen
+  const subscribe = async (token, topic) => {
+    const ctl = new AbortController();
+    const res = await fetch(PB + "/api/realtime", { signal: ctl.signal });
+    const reader = res.body.getReader(), td = new TextDecoder();
+    let buf = "", clientId = null;
+    while (!clientId) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buf += td.decode(value);
+      const m = /"clientId"\s*:\s*"([^"]+)"/.exec(buf);
+      if (m) clientId = m[1];
+    }
+    const x = await api("POST", "/api/realtime", token, { clientId, subscriptions: [topic] });
+    ctl.abort();
+    return x.status;
+  };
+  const opt = (f) => "?options=" + enc(JSON.stringify({ query: { filter: f } }));
+  check("N: Realtime-Abo ohne Optionen erlaubt", (await subscribe(tN, "employees/*")) === 204);
+  for (const [what, topic] of [
+    ["Lohn %-kodiert", "employees/*" + opt("monatslohn > 8000").replace("monatslohn", "m%6Fnatslohn")],
+    ["Adresse %-kodiert", "employees/*" + opt('adresse ~ "Geheim"').replace("adresse", "%61dresse")],
+    ["E-Mail mit kodiertem options-Schlüssel", "employees/*" + opt('email ~ "geheim"').replace("?options=", "?%6Fptions=")],
+    ["Lohn mit JSON-Escape", "employees/*?options=" + enc('{"query":{"filter":"m\\u006fnatslohn > 8000"}}')],
+    ["E-Mail über Relation", "resourcePlans/*" + opt('employee.email ~ "geheim"')],
+  ]) check(`N: Realtime-Filter ${what} gesperrt`, (await subscribe(tN, topic)) === 400);
   r = await api("GET", `/api/collections/absences/records?filter=${enc(`studio = "${sid}"`)}&sort=note`, tN);
   check("N: Sortierung nach Notiz gesperrt", r.status === 400, `HTTP ${r.status}`);
   r = await api("GET", `/api/collections/absences/records?filter=${enc(`studio = "${sid}" && note ~ "ARZT"`)}`, tA);
@@ -599,6 +639,11 @@ check("M (aktiv): sieht Kolleginnen", r.status === 200 && r.json.items.length >=
 must(await api("PATCH", `/api/collections/studioMembers/records/${myMember.id}`, su, { active: false }), "M deaktivieren");
 r = await api("GET", "/api/collections/users/records", tM);
 check("M (deaktiviert): sieht nur das eigene Konto", r.status === 200 && r.json.items.length === 1, `${r.json && r.json.items ? r.json.items.length : "?"} Konten`);
+// Regel mit «active ?= true»: ein deaktiviertes Mitglied sperrt den Ressourcenplan nicht für alle
+r = await api("GET", `/api/collections/resourcePlans/records?filter=${enc(`studio="${sid}"`)}`, tA);
+check("A: Ressourcenplan lesbar, obwohl ein Mitglied deaktiviert ist", r.status === 200 && r.json.items.length >= 1, `HTTP ${r.status}, ${r.json && r.json.items ? r.json.items.length : "-"}`);
+r = await api("POST", "/api/collections/resourcePlans/records", tA, { id: rid("rpk"), studio: sid, employee: empOther, label: "Nach Deaktivierung", dateFrom: "2026-12-01", dateTo: "2026-12-02", pensum: 20 });
+check("A: Ressourcenplan-Eintrag anlegen, obwohl ein Mitglied deaktiviert ist", r.status === 200, `HTTP ${r.status}`);
 let last = 0;
 for (let i = 0; i < 5; i++) last = (await api("POST", "/api/collections/users/request-password-reset", null, { email: mEmail })).status;
 check("Passwort-Reset: Mengenlimit greift", last === 429, `5. Anfrage HTTP ${last}`);

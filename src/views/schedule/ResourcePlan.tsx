@@ -41,7 +41,7 @@ export function ResourcePlan({ data, update, userPermissions, myEmployeeId, toda
   // Balkenplan: Einsätze und genehmigte Ferien je Person
   const items: ScheduleItem[] = employees.flatMap(emp => [
     ...plan.filter(r => r.employeeId === emp.id).map(r => ({ id: `rp|${r.id}`, label: labelOf(r), kind: "task" as const, track: "planung" as const, group: emp.name, start: r.dateFrom, end: r.dateTo })),
-    ...(data.ferienEntries || []).filter(f => f.employeeId === emp.id && f.status !== "rejected" && f.dateFrom && (f.dateTo || f.dateFrom) >= weeks[0])
+    ...(data.ferienEntries || []).filter(f => f.employeeId === emp.id && f.status !== "rejected" && f.status !== "pending" && f.dateFrom && (f.dateTo || f.dateFrom) >= weeks[0])
       .map(f => ({ id: `ferien|${f.id}`, label: "Ferien", kind: "task" as const, track: "planung" as const, group: emp.name, start: f.dateFrom, end: f.dateTo || f.dateFrom })),
   ]).sort((a, b) => (a.group || "").localeCompare(b.group || "") || a.start.localeCompare(b.start));
   const lastEnd = items.reduce((m, it) => (it.end > m ? it.end : m), addDays(today, 90));

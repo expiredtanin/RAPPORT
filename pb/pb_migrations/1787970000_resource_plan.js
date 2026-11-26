@@ -18,11 +18,13 @@ migrate((app) => {
   const member =
     "@request.auth.id != '' && " +
     `${M}.user ?= @request.auth.id && ` +
-    `${M}.active = true`;
+    `${M}.active ?= true`;   // «?=»: MEINE Mitgliedschaft (ohne «?» hiesse es «alle Mitglieder aktiv», 1787800000)
   const has = (p) => `${M}.perms ?~ '|${p}|'`;
   const full = `${M}.perms ?~ '|*|'`;
   const readRule = `(${member}) && (${has("termine")} || ${has("projects")} || ${has("mitarbeiter")} || ${full})`;
   const writeRule = `(${member}) && (${has("mitarbeiter")} || ${full})`;
+  // Ändern: Büro nicht wechseln (wie GUARD in 1787800000_member_rules_fix.js)
+  const updateRule = `(${member}) && (@request.body.studio:isset = false || @request.body.studio = studio) && (${has("mitarbeiter")} || ${full})`;
   const uuidId = { name: "id", type: "text", primaryKey: true, required: true, system: true, autogeneratePattern: "", pattern: "^[a-zA-Z0-9-]+$", min: 1, max: 64 };
   const rel = (name, target, required, cascadeDelete) =>
     ({ name, type: "relation", required, collectionId: target.id, cascadeDelete, maxSelect: 1 });
@@ -44,7 +46,7 @@ migrate((app) => {
       { name: "updated", type: "autodate", onCreate: true, onUpdate: true },
     ],
     indexes: ["CREATE INDEX idx_resourcePlans_studio ON resourcePlans (studio)"],
-    listRule: readRule, viewRule: readRule, createRule: writeRule, updateRule: writeRule, deleteRule: writeRule,
+    listRule: readRule, viewRule: readRule, createRule: writeRule, updateRule, deleteRule: writeRule,
   });
   app.save(c);
 }, (app) => {

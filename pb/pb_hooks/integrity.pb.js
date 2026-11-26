@@ -288,9 +288,10 @@ onRecordsListRequest((e) => {
     || (direct && /(^|[^\w.])-?(email|ort|note)\b/i.test(text));
   if (!hit) return e.next();
   const uid = e.auth ? e.auth.id : "";
-  const m = String(q.filter || "").match(/studio\s*=\s*["']([a-zA-Z0-9_-]+)["']/);
+  // immer ALLE aktiven Mitgliedschaften: «studio = "<Büro mit Recht>" || note ~ …» lief sonst über die Datensätze eines
+  // zweiten Büros, in dem das Recht fehlt (Review 26.11.2026; die App filtert nie nach diesen Feldern)
   let mems = [];
-  try { mems = m ? [e.app.findFirstRecordByFilter("studioMembers", "studio = {:s} && user = {:u} && active = true", { s: m[1], u: uid })] : e.app.findRecordsByFilter("studioMembers", "user = {:u} && active = true", "", 0, 0, { u: uid }); } catch { mems = []; }
+  try { mems = e.app.findRecordsByFilter("studioMembers", "user = {:u} && active = true", "", 0, 0, { u: uid }); } catch { mems = []; }
   const ok = mems.length > 0 && mems.every((x) => { const p = x.getString("perms"); return p.indexOf("|*|") >= 0 || p.indexOf("|mitarbeiter|") >= 0; });
   if (!ok) throw new BadRequestError("Filter oder Sortierung über Personalangaben braucht das Recht Mitarbeitende.");
   e.next();
@@ -308,17 +309,18 @@ onRecordEnrich((e) => {
   r.hide("auszahlungBetrag", "stundenlohn");
   e.next();
 }, "overtimeClosings");
-// Filter/Sortierung über Lohnfelder ohne «loehne» ablehnen (Orakel per Bisektion, auch über Relationen). Büro aus dem
-// Filter («studio = "…"»), sonst muss das Recht in allen Mitgliedschaften bestehen.
+// Filter/Sortierung über Lohnfelder ohne «loehne» ablehnen (Orakel per Bisektion, auch über Relationen). Das Recht muss
+// in allen aktiven Mitgliedschaften bestehen.
 onRecordsListRequest((e) => {
   if (e.hasSuperuserAuth()) return e.next();
   const q = e.requestInfo().query || {};
   const text = String(q.filter || "") + " " + String(q.sort || "");
   if (!/(monatslohn|lohnverlauf|lohniban|ahvnr|pkbeitrag|familienzulagen|quellensteuer|dreizehnterlohn|ahvrentner|(ahv|alv|bvg|nbu|ktg|pkag)satz|auszahlungbetrag|stundenlohn)/i.test(text)) return e.next();
   const uid = e.auth ? e.auth.id : "";
-  const m = String(q.filter || "").match(/studio\s*=\s*["']([a-zA-Z0-9_-]+)["']/);
+  // immer ALLE aktiven Mitgliedschaften: «studio = "<Büro mit Recht>" || note ~ …» lief sonst über die Datensätze eines
+  // zweiten Büros, in dem das Recht fehlt (Review 26.11.2026; die App filtert nie nach diesen Feldern)
   let mems = [];
-  try { mems = m ? [e.app.findFirstRecordByFilter("studioMembers", "studio = {:s} && user = {:u} && active = true", { s: m[1], u: uid })] : e.app.findRecordsByFilter("studioMembers", "user = {:u} && active = true", "", 0, 0, { u: uid }); } catch { mems = []; }
+  try { mems = e.app.findRecordsByFilter("studioMembers", "user = {:u} && active = true", "", 0, 0, { u: uid }); } catch { mems = []; }
   const ok = mems.length > 0 && mems.every((x) => { const p = x.getString("perms"); return p.indexOf("|*|") >= 0 || p.indexOf("|loehne|") >= 0; });
   if (!ok) throw new BadRequestError("Filter oder Sortierung über Lohnangaben braucht das Recht Löhne.");
   e.next();
