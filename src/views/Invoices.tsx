@@ -285,11 +285,11 @@ function Invoices({ data, update, saveAll, modal, setModal, setPrintContent }: P
     const bType = proj.billingType || proj.type;
     const openEntries = openEntriesForProject(projectId);
     // Eigene Positionen nicht still überschreiben (Runde 34: freie Rechnung mit 3 Positionen wurde zum Pauschalhonorar,
-    // der Kunde wechselte gleich mit) — nachfragen; «Abbrechen» verknüpft nur das Projekt
+    // der Kunde wechselte gleich mit) — nachfragen; «Abbrechen» ändert gar nichts (vorher löste es die Zeiteinträge
+    // und hängte die Rechnung an das andere Projekt — Review R35)
     const hasOwnItems = form.items.some(it => (it.desc || "").trim() || Number(it.price) || 0);
     if ((bType === "stundensatz" || bType === "pauschal") && hasOwnItems
       && !await askConfirm(<>Die Positionen durch die des Projekts «{proj.name}» ersetzen{proj.clientId && proj.clientId !== form.clientId ? " und den Kunden übernehmen" : ""}?</>, "Ersetzen")) {
-      setForm(f => ({ ...f, projectId, entrySelections: {}, hoursFromEntries: false }));
       return;
     }
     if (bType === "stundensatz") {
