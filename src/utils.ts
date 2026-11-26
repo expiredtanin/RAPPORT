@@ -602,6 +602,24 @@ export function lineAmount(qty?: number | null, price?: number | null, discountP
   return roundCHF(line - disc);
 }
 
+/**
+ * Summen einer Offerte aus ihrem Inhalt (Modus, SIA-Angaben, Phasen, Rollen, freie Positionen, MWST): Netto und MWST
+ * auf Rappen, Total = Netto + MWST (wie Rechnungen). `roles` = Büro-Rollen, falls die Offerte keine eigenen hat;
+ * `defaultRate` = Büro-MWST-Satz, falls die Offerte keinen trägt. Dieselbe Rechnung wie im Offert-Editor — gebraucht,
+ * wenn der Inhalt aus zwei gleichzeitigen Bearbeitungen zusammengeführt wird.
+ */
+export function quoteTotals(q: Pick<Quote, "mode" | "sia" | "manualPhases" | "quoteRoles" | "freeItems" | "mwst" | "mwstRate">, roles: Role[], defaultRate?: number) {
+  const activeRoles = q.quoteRoles || roles;
+  const sia = q.mode === "sia" && q.sia ? calcSIAHours(q.sia.baukosten, q.sia.schwierigkeit, q.sia.phases) : null;
+  const man = q.mode === "manual" ? calcManualHours(q.manualPhases || [], activeRoles) : null;
+  const freeSub = q.mode === "free" ? (q.freeItems || []).reduce((s, it) => s + lineAmount(it.qty, it.price), 0) : 0;
+  const sub = roundCHF(q.mode === "sia" ? (sia?.total || 0) * (q.sia?.stundenansatz || 0) : q.mode === "manual" ? (man?.totalAmount || 0) : freeSub);
+  const totalHours = q.mode === "sia" ? (sia?.total || 0) : q.mode === "manual" ? (man?.totalHours || 0) : 0;
+  const taxRate = q.mwstRate ?? defaultRate ?? 8.1;
+  const tax = q.mwst ? roundCHF(sub * (taxRate / 100)) : 0;
+  return { sub, totalHours, taxRate, tax, total: roundCHF(sub + tax) };
+}
+
 /** Freitext-Adresse («Strasse⏎PLZ Ort») in Strasse/PLZ/Ort zerlegen; ohne Zeile «PLZ Ort» leere Felder. */
 export function splitAddress(text: string | undefined): { street: string; zip: string; city: string } {
   const lines = (text || "").split(/\r?\n/).map(l => l.trim()).filter(Boolean);

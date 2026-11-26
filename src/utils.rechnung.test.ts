@@ -2,7 +2,7 @@
 // Erwartete Werte unabhängig mit Python (decimal, ROUND_HALF_UP) nachgerechnet.
 
 import { describe, expect, it, vi, afterEach } from "vitest";
-import { buildReminderLetter, contractAmounts, isValidIban, fillLetterTemplate, letterToTemplate, lineAmount, mahnKosten, roundCHF } from "./utils";
+import { buildReminderLetter, contractAmounts, isValidIban, fillLetterTemplate, letterToTemplate, lineAmount, mahnKosten, quoteTotals, roundCHF } from "./utils";
 import type { Invoice, Person } from "./types";
 
 describe("roundCHF kaufmännisch", () => {
@@ -128,5 +128,21 @@ describe("isValidIban", () => {
 describe("letterToTemplate und HTML-Entities", () => {
   it("Kunde «nbsp»/«amp» trifft keine Entities", () => {
     expect(letterToTemplate("Hallo&nbsp;nbsp &amp; amp", { client: "nbsp", project: "amp" })).toBe("Hallo&nbsp;{{client}} &amp; {{project}}");
+  });
+});
+
+describe("quoteTotals (Summen einer Offerte aus dem Inhalt)", () => {
+  it("freie Positionen: Netto auf Rappen, MWST mit eigenem Satz, sonst Büro-Satz", () => {
+    const q = { mode: "free", mwst: true, mwstRate: 8.1, freeItems: [{ id: "a", desc: "", qty: 1, price: 1111 }, { id: "b", desc: "", qty: 2.5, price: 100.02 }] };
+    expect(quoteTotals(q, [])).toEqual({ sub: 1361.05, totalHours: 0, taxRate: 8.1, tax: 110.25, total: 1471.3 });
+    expect(quoteTotals({ ...q, mwstRate: null }, [], 7.7).taxRate).toBe(7.7);
+    expect(quoteTotals({ ...q, mwst: false }, []).total).toBe(1361.05);
+  });
+
+  it("Aufwand: Stunden je Rolle × Satz der Offerten-Rollen", () => {
+    const q = { mode: "manual", mwst: false, quoteRoles: [{ id: "PL", label: "PL", rate: 150 }], manualPhases: [{ id: "p1", enabled: true, hoursByRole: { PL: 10 } }] } as unknown as Parameters<typeof quoteTotals>[0];
+    const t = quoteTotals(q, []);
+    expect(t.totalHours).toBe(10);
+    expect(t.sub).toBe(1500);
   });
 });

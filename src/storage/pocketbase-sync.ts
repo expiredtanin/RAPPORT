@@ -23,7 +23,7 @@
 // Ohne `base` (null) gilt das frühere Verhalten «Full Replace»: alles, was lokal fehlt,
 // wird gelöscht, geänderte Zeilen werden ganz geschrieben.
 
-import { jsonEqual } from "./merge";
+import { jsonEqual, mergeValue } from "./merge";
 
 /** Eine Zeile in Datenbankform (Ausgabe der toDB-Mapper bzw. ein PocketBase-Record). */
 export type SyncRow = Record<string, unknown>;
@@ -134,4 +134,42 @@ export function planSync(
     ops.push({ type: "delete", id: String(r.id) });
   }
   return ops;
+}
+
+const isJsonValue = (v: unknown) => typeof v === "object" && v !== null;
+
+/**
+ * JSON-Felder (Listen/Objekte), die vor dem Senden mit dem Serverstand verrechnet werden dürfen
+ * (`mergeJsonWithServer`). Bewusst nur Felder ohne abgeleitete Werte: Rechnungspositionen, Offert-Inhalt oder
+ * verknüpfte Offerten eines Projekts bestimmen Summen/Budget in skalaren Feldern daneben — dort ergäbe das
+ * Verrechnen Positionen, die nicht zur gespeicherten Summe passen (E2E 26.11.2026: Total einer Rechnung blieb auf
+ * dem Stand des zweiten Schreibers). Diese Felder schreibt weiterhin der letzte als Ganzes.
+ */
+export const MERGEABLE_JSON: Record<string, readonly string[]> = {
+  blogPosts: ["poll"],
+  projects: ["schedule", "projectContacts", "internalMembers"],
+  protocols: ["participants", "traktanden"],
+};
+
+/** Felder eines Updates, die JSON-Werte tragen und für `table` verrechnet werden dürfen (`MERGEABLE_JSON`). */
+export function jsonFieldsOf(body: SyncRow, table?: string): string[] {
+  const allowed = table === undefined ? null : MERGEABLE_JSON[table] || [];
+  return Object.keys(body).filter(k => isJsonValue(body[k]) && (!allowed || allowed.includes(k)));
+}
+
+/**
+ * JSON-Felder eines Updates mit dem frischen Serverstand verrechnen (Drei-Wege: `before` = Abgleichsstand,
+ * `body` = meine Fassung, `server` = jetzt auf dem Server). Ohne das ersetzte ein Speichern, das vor dem
+ * Realtime-Nachladen kam, den ganzen Wert: zwei Stimmen derselben Umfrage kurz nacheinander → die erste ging still
+ * verloren (E2E 26.11.2026). Mit `table` nur die Felder aus `MERGEABLE_JSON`. Hat der Server das Feld seit
+ * `before` nicht geändert, bleibt `body` wie es ist. Gibt ein neues Objekt zurück.
+ */
+export function mergeJsonWithServer(body: SyncRow, before: SyncRow | undefined, server: SyncRow | undefined, table?: string): SyncRow {
+  if (!before || !server) return body;
+  const out: SyncRow = { ...body };
+  for (const k of jsonFieldsOf(body, table)) {
+    if (!(k in server) || fieldEqual(server[k], before[k])) continue;
+    out[k] = mergeValue(before[k], body[k], server[k]);
+  }
+  return out;
 }

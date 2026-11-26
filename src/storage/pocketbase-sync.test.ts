@@ -1,7 +1,7 @@
 // Tests für die Abgleichsplanung des PocketBase-Adapters (pocketbase-sync.ts).
 
 import { describe, expect, it } from "vitest";
-import { baseFrom, fieldEqual, normalizeEmpty, planSync, rowUnchanged } from "./pocketbase-sync";
+import { baseFrom, fieldEqual, jsonFieldsOf, mergeJsonWithServer, normalizeEmpty, planSync, rowUnchanged } from "./pocketbase-sync";
 
 const te = (id: string, extra: Record<string, unknown> = {}) => ({ id, studio: "s1", date: "2026-11-02", hours: 2, note: "", ...extra });
 /** Server-Zeile, wie PocketBase sie liefert (Datum mit Uhrzeit, System-Felder). */
@@ -112,5 +112,38 @@ describe("planSync mit Abgleichsstand (Drei-Wege)", () => {
       { type: "create", body: { id: "neu", name: "C", studio: "s1" } },
       { type: "delete", id: "lokal" },
     ]);
+  });
+});
+
+describe("mergeJsonWithServer (JSON-Felder vor dem Senden mit dem Serverstand verrechnen)", () => {
+  const poll = (votes: Record<string, string>) => ({ question: "Dabei?", options: [{ id: "ja", label: "Ja" }, { id: "nein", label: "Nein" }], votes });
+
+  it("zwei Stimmen kurz nacheinander: die erste bleibt (E2E 26.11.2026: Stimme ging still verloren)", () => {
+    const before = { id: "p1", title: "Grill", poll: poll({}) };
+    const body = { poll: poll({ admin: "nein" }) };
+    const server = { id: "p1", poll: poll({ paula: "ja" }) };
+    expect(mergeJsonWithServer(body, before, server)).toEqual({ poll: poll({ paula: "ja", admin: "nein" }) });
+  });
+
+  it("Listen mit id: verschiedene Einträge bleiben beide, gleicher Eintrag: meiner gewinnt", () => {
+    const items = (a: number, b: number) => [{ id: "i1", desc: "A", price: a }, { id: "i2", desc: "B", price: b }];
+    const before = { id: "r1", items: items(100, 200) };
+    expect(mergeJsonWithServer({ items: items(150, 200) }, before, { id: "r1", items: items(100, 250) })).toEqual({ items: items(150, 250) });
+    expect(mergeJsonWithServer({ items: items(150, 200) }, before, { id: "r1", items: items(170, 200) })).toEqual({ items: items(150, 200) });
+  });
+
+  it("mit Tabelle nur erlaubte Felder: Rechnungspositionen nicht (Summen daneben würden nicht mehr passen)", () => {
+    const before = { id: "r1", items: [{ id: "i1", price: 1 }] };
+    const body = { items: [{ id: "i1", price: 1 }, { id: "i2", price: 2 }] };
+    expect(mergeJsonWithServer(body, before, { id: "r1", items: [{ id: "i1", price: 5 }] }, "invoices")).toEqual(body);
+    expect(jsonFieldsOf({ poll: {}, title: "x", other: [] }, "blogPosts")).toEqual(["poll"]);
+  });
+
+  it("lässt Felder unverändert, die der Server seit dem Abgleichsstand nicht geändert hat, und skalare Felder", () => {
+    const before = { id: "x", tags: ["a"], note: "alt" };
+    const body = { tags: ["a", "b"], note: "neu" };
+    expect(mergeJsonWithServer(body, before, { id: "x", tags: ["a"], note: "fremd" })).toEqual(body);
+    expect(mergeJsonWithServer(body, undefined, { id: "x", tags: ["c"] })).toBe(body);
+    expect(jsonFieldsOf({ a: 1, b: [], c: {}, d: null, e: "x" })).toEqual(["b", "c"]);
   });
 });

@@ -9,5 +9,8 @@ pb/pb_data
 pb/pocketbase
 .env
 .env.local
+# Compose-.env (server/container/.env, server/app/.env) enthält Superuser-Passwort und Einrichtungscode — nicht in
+# den Build-Kontext (Dockerfile.app kopiert mit `COPY . .` die ganze Repo-Wurzel in die Build-Stufe)
+**/.env
 *.log
 .DS_Store

@@ -49,8 +49,9 @@ import type { AppData, Id } from "../types";
 import type { RawData } from "./migrations";
 import type { StorageAdapter } from "./adapter";
 import { fromDB, toDB } from "./pocketbase-mappers";
-import { baseFrom, changedFields, planSync, type SyncOp, type SyncRow } from "./pocketbase-sync";
+import { baseFrom, changedFields, jsonFieldsOf, mergeJsonWithServer, normalizeEmpty, planSync, type SyncOp, type SyncRow } from "./pocketbase-sync";
 import { PB_FILE_FIELDS, PbFileStore, pbFileRef, replacePbRefs, type PbFileRef, type PreparedBody } from "./pocketbase-files";
+import { mergeValue } from "./merge";
 
 /** Fehlerform von PocketBase (ClientResponseError), soweit hier benutzt. */
 type PbError = { status?: number; message?: string; data?: { message?: string; data?: Record<string, { code?: string; message?: string }> } };
@@ -782,7 +783,11 @@ export class PocketBaseAdapter implements StorageAdapter {
               const merged: Record<string, unknown> = { ...serverUi };
               for (const k of new Set([...Object.keys(mineUi), ...Object.keys(baseUi)])) {
                 if (JSON.stringify(mineUi[k]) === JSON.stringify(baseUi[k])) continue;   // nicht von mir geändert
-                if (mineUi[k] === undefined) delete merged[k]; else merged[k] = mineUi[k];
+                // Listen/Objekte (Spesenkategorien, abgeschlossene Monate …) mit dem Serverstand verrechnen statt
+                // ersetzen: zwei Personen, die kurz nacheinander je eine Kategorie anlegen, behalten beide
+                if (mineUi[k] === undefined) delete merged[k];
+                else merged[k] = mineUi[k] && typeof mineUi[k] === "object" && serverUi[k] !== undefined && JSON.stringify(serverUi[k]) !== JSON.stringify(baseUi[k])
+                  ? mergeValue(baseUi[k], mineUi[k], serverUi[k]) : mineUi[k];
               }
               if (JSON.stringify(merged) === JSON.stringify(serverUi)) delete body.ui; else body.ui = merged;
             }
@@ -850,7 +855,8 @@ export class PocketBaseAdapter implements StorageAdapter {
     const fields = keyField === "id" ? "id" : `id,${keyField}`;
     const existing = (await c.getFullList(base ? { filter, fields, batch: LIST_BATCH } : { filter, batch: LIST_BATCH }))
       .map(r => this._files.fromRecord(table, r));
-    await this._applyOps(table, planSync(rows, existing, keyField, base));
+    const ops = await this._mergeJsonUpdates(table, filter, planSync(rows, existing, keyField, base), existing, keyField, base);
+    await this._applyOps(table, ops);
     // Gerade hochgeladene Dateien stehen im Abgleichsstand als Verweis (wie nach dem nächsten Laden)
     if (this._studioId === sid) this._base.set(table, baseFrom(rows.map(r => this._files.toRefs(table, r)), keyField));
   }
@@ -1043,6 +1049,37 @@ export class PocketBaseAdapter implements StorageAdapter {
       }
     }
     if (first !== null) throw first;
+  }
+
+  /**
+   * Updates mit verrechenbaren JSON-Feldern (`MERGEABLE_JSON`: Umfrage-Stimmen, Terminprogramm, Protokoll-Einträge)
+   * vor dem Senden mit dem frischen Serverstand verrechnen (`mergeJsonWithServer`): mit Abgleichsstand lädt
+   * `_syncTable` vom Server nur Schlüssel, ein Speichern vor dem Realtime-Nachladen ersetzte sonst die Änderung eines
+   * anderen am selben Feld (zwei Stimmen einer Umfrage kurz nacheinander). Nur betroffene Zeilen, nur diese Felder.
+   */
+  async _mergeJsonUpdates(table: string, scope: string, ops: Op[], existing: SyncRow[], keyField: string, base: Map<string, SyncRow> | null): Promise<Op[]> {
+    if (!base) return ops;
+    const want = ops.filter((op): op is Extract<Op, { type: "update" }> => op.type === "update" && jsonFieldsOf(op.body, table).length > 0);
+    if (!want.length) return ops;
+    const keyById = new Map(existing.map(r => [String(r.id), String(normalizeEmpty(r[keyField]))]));
+    const fields = [...new Set(["id", ...want.flatMap(op => jsonFieldsOf(op.body, table))])].join(",");
+    const server = new Map<string, SyncRow>();
+    try {
+      for (let i = 0; i < want.length; i += 40) {
+        const ids = want.slice(i, i + 40).map(op => op.id);
+        const filter = ids.map((_, j) => `id = {:id${j}}`).join(" || ");
+        const params = Object.fromEntries(ids.map((id, j) => [`id${j}`, id]));
+        // `scope` (`studio = "…"`) vorne: die Rollen-Prüfung für Listen (permissions.pb.js) liest das Büro aus dem Filter
+        const list = await this.client.collection(table).getFullList({ filter: `${scope} && (${this.client.filter(filter, params)})`, fields, batch: LIST_BATCH });
+        for (const r of list) server.set(String(r.id), r as SyncRow);
+      }
+    } catch (err) {
+      // Abfrage gescheitert: wie vorher ohne Verrechnen schreiben (Netzfehler meldet danach das Schreiben selbst)
+      console.warn(`PocketBaseAdapter._mergeJsonUpdates: Serverstand von "${table}" nicht geladen.`, err);
+      return ops;
+    }
+    return ops.map(op => op.type !== "update" || !want.includes(op) ? op
+      : { ...op, body: mergeJsonWithServer(op.body, base.get(keyById.get(op.id) ?? op.id), server.get(op.id), table) });
   }
 
   // Wie _syncTable, aber Personen-spezifisch wegen Sharing (siehe load()):

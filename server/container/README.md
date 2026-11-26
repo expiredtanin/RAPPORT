@@ -142,11 +142,18 @@ PocketBase-Daten sind eine einzelne SQLite-Datei + File-Storage-Ordner — deutl
 einfacher als der alte `pg_dumpall`-Weg:
 
 ```bash
-docker compose exec -T pb tar -czf - /pb/pb_data > backup-$(date +%Y%m%d).tar.gz
+docker compose stop pb
+docker compose run --rm -T --no-deps --entrypoint tar pb -czf - -C / pb/pb_data > backup-$(date +%Y%m%d).tar.gz
+docker compose start pb
 ```
 
+PocketBase dafür kurz stoppen (wenige Sekunden): ein `tar` der laufenden Datenbank kann `data.db` und
+`data.db-wal` aus verschiedenen Momenten erwischen — so ein Backup lässt sich unter Umständen nicht oder nur
+ohne die letzten Änderungen zurückspielen. (Die Server-App macht es genauso.) Ohne Unterbruch: im Dashboard
+`/_/` → **Settings → Backups** (konsistente ZIP-Sicherung, auch zeitgesteuert und auf S3).
+
 Empfohlen: per `cron` täglich + auf externe Disk/S3/Backblaze sichern.
-Rücksicherung: Container stoppen, Volume-Inhalt durch das Backup ersetzen, neu starten.
+Rücksicherung: Container stoppen, Volume-Inhalt durch das Backup ersetzen (`tar -xzf - -C /` im Einmal-Container wie oben), neu starten.
 
 ---
 

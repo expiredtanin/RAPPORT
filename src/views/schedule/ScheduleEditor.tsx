@@ -29,6 +29,7 @@ import {
 import { Modal, FormField, DateInput, RowMenu } from "../../components/UI";
 import { useConfirm } from "../../hooks/useConfirm";
 import { showToast } from "../../toast";
+import { applyEdit } from "../../storage/merge";
 import { GanttChart, ScheduleLegend } from "./GanttChart";
 import { ZOOM_LEVELS } from "./zoom";
 import type { Id, Project, ProjectSchedule, ScheduleBreak, ScheduleItem, ScheduleMarker, ScheduleTrack, ScheduleVariant, ViewProps } from "../../types";
@@ -74,8 +75,9 @@ export function ScheduleEditor({ project, data, update, setPrintContent, canEdit
     try { localStorage.setItem(TODAY_KEY, v ? "0" : "1"); } catch { /* privater Modus: nur für diese Sitzung */ }
     return !v;
   });
-  const [history, setHistory] = useState<ProjectSchedule[]>([]);
-  const [future, setFuture] = useState<ProjectSchedule[]>([]);
+  /** Eigene Schritte dieser Ansicht (Stand vorher/nachher) für Rückgängig/Wiederholen */
+  const [history, setHistory] = useState<{ before: ProjectSchedule; after: ProjectSchedule }[]>([]);
+  const [future, setFuture] = useState<{ before: ProjectSchedule; after: ProjectSchedule }[]>([]);
   const [templateStart, setTemplateStart] = useState("");
   const [breaksOpen, setBreaksOpen] = useState(false);
   const cardRef = useRef<HTMLDivElement>(null);
@@ -95,27 +97,38 @@ export function ScheduleEditor({ project, data, update, setPrintContent, canEdit
   const zoomLevel = ZOOM_LEVELS.find(z => z.id === zoom) || ZOOM_LEVELS[1];
   const selected = items.find(it => it.id === selectedId) || null;
 
-  /** Speichert das Programm (Nachfolger rücken nach) und merkt den alten Stand für «Rückgängig». */
+  /**
+   * Schreibt `next` auf das aktuelle Programm: nur was gegenüber `base` (Stand, auf dem die Änderung beruht) geändert
+   * wurde (applyEdit), danach rücken Nachfolger nach. Vorher ersetzte jede Änderung das ganze Programm durch den Stand
+   * der Ansicht — ein Balken, den jemand anderes kurz vorher verschoben hatte, sprang still zurück (E2E 26.11.2026:
+   * Ziehen, das vor dem Nachladen begonnen hatte; Rückgängig setzte auch fremde Änderungen zurück).
+   */
+  const commit = (next: ProjectSchedule, base: ProjectSchedule) => update("projects", prev => prev.map(p => {
+    if (p.id !== project.id) return p;
+    const merged = applyEdit(base, next, scheduleOf(p, true));
+    return { ...p, schedule: { ...merged, items: shiftSuccessors(merged.items) } };
+  }));
+  /** Speichert das Programm (Nachfolger rücken nach) und merkt den Schritt (vorher/nachher) für «Rückgängig». */
   const save = (next: ProjectSchedule) => {
-    setHistory(h => [...h.slice(-(MAX_UNDO - 1)), schedule]);
+    setHistory(h => [...h.slice(-(MAX_UNDO - 1)), { before: schedule, after: { ...next, items: shiftSuccessors(next.items) } }]);
     setFuture([]);
-    const shifted = { ...next, items: shiftSuccessors(next.items) };
-    update("projects", prev => prev.map(p => p.id === project.id ? { ...p, schedule: shifted } : p));
+    commit(next, schedule);
   };
+  /** Rückgängig nimmt nur den eigenen letzten Schritt zurück (nachher → vorher), fremde Änderungen seither bleiben. */
   const undo = () => {
-    const prevState = history[history.length - 1];
-    if (!prevState) return;
+    const step = history[history.length - 1];
+    if (!step) return;
     setHistory(h => h.slice(0, -1));
-    setFuture(f => [...f, schedule]);
-    update("projects", prev => prev.map(p => p.id === project.id ? { ...p, schedule: prevState } : p));
+    setFuture(f => [...f, step]);
+    commit(step.before, step.after);
   };
   /** Wiederherstellen (⌘⇧Z / Ctrl+Y): vorher machte ⌘⇧Z ein weiteres Rückgängig, bis das Programm leer war */
   const redo = () => {
-    const nextState = future[future.length - 1];
-    if (!nextState) return;
+    const step = future[future.length - 1];
+    if (!step) return;
     setFuture(f => f.slice(0, -1));
-    setHistory(h => [...h.slice(-(MAX_UNDO - 1)), schedule]);
-    update("projects", prev => prev.map(p => p.id === project.id ? { ...p, schedule: nextState } : p));
+    setHistory(h => [...h.slice(-(MAX_UNDO - 1)), step]);
+    commit(step.after, step.before);
   };
   /** Ersetzt die Elemente dieses Programms, das andere bleibt unverändert. */
   const saveTrack = (trackList: ScheduleItem[]) => {

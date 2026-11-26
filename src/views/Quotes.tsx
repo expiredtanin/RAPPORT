@@ -25,7 +25,7 @@ import { applyEdit, jsonEqual } from "../storage/merge";
 import React, { useState, useEffect, useRef } from "react";
 import { nextRoleId, renameQuoteRole } from "./quoteRoles";
 import { SIA_PHASES, SIA_PHASE_WEIGHTS } from "../constants";
-import { calcSIAHours, calcManualHours, generateId, formatCHF, formatDate, formatHours, roundCHF, lineAmount, applyProjectNumberFormat, nextProjectSeq, migrateLinkedQuotes, localISODate, invoiceNet, quoteBudgetFields } from "../utils";
+import { calcSIAHours, calcManualHours, generateId, formatCHF, formatDate, formatHours, roundCHF, lineAmount, quoteTotals, applyProjectNumberFormat, nextProjectSeq, migrateLinkedQuotes, localISODate, invoiceNet, quoteBudgetFields } from "../utils";
 import { invoicesForQuote } from "./invoices/invoiceHelpers";
 import { Header, Modal, FormField, StatusSelect, DateInput, SortTh, RowMenu, TableToolbar } from "../components/UI";
 import { removeWithUndo } from "../undo";
@@ -218,19 +218,13 @@ function Quotes({ data, update, saveAll, modal, setModal, setPrintContent, setVi
   const activeRoles = form.quoteRoles || roles;
   const siaCalc = form.mode === "sia" ? calcSIAHours(form.sia.baukosten, form.sia.schwierigkeit, form.sia.phases) : null;
   const manCalc = form.mode === "manual" ? calcManualHours(form.manualPhases, activeRoles) : null;
-  // Freie Positionen je auf Rappen (wie gedruckt), Netto = ihre Summe
-  const freeSubTotal = form.mode === "free" ? (form.freeItems || []).reduce((s, it) => s + lineAmount(it.qty, it.price), 0) : 0;
-  // Netto und MWST auf Rappen, Total = Netto + MWST (wie Rechnungen, calcTotal) — gespeicherte Offerten
+  // Netto und MWST auf Rappen, Total = Netto + MWST (wie Rechnungen; quoteTotals in utils.ts) — gespeicherte Offerten
   // behalten ihre Summen, bis sie bearbeitet und neu gespeichert werden.
-  const subTotal = roundCHF(form.mode === "sia" ? (siaCalc?.total || 0) * (form.sia.stundenansatz || 0) : form.mode === "manual" ? (manCalc?.totalAmount || 0) : freeSubTotal);
-  const totalHours = form.mode === "sia" ? (siaCalc?.total || 0) : form.mode === "manual" ? (manCalc?.totalHours || 0) : 0;
   // Beim Bearbeiten den tatsächlich gespeicherten Satz beibehalten (form.mwstRate,
   // von openEdit aus der Offerte geladen) — sonst würde reines Öffnen+Speichern
   // einer alten Offerte ihren MWST-Satz rückwirkend auf den aktuellen Studio-
   // Default überschreiben, selbst wenn der gespeicherte Satz bewusst 0 war.
-  const taxRate = form.mwstRate ?? data.settings.mwstRate ?? 8.1;
-  const tax = form.mwst ? roundCHF(subTotal * (taxRate / 100)) : 0;
-  const total = roundCHF(subTotal + tax);
+  const { sub: subTotal, totalHours, taxRate, tax, total } = quoteTotals(form, roles, data.settings.mwstRate);
 
   const editOriginal = useRef<Quote | null>(null);
   const save = () => {
@@ -258,18 +252,26 @@ function Quotes({ data, update, saveAll, modal, setModal, setPrintContent, setVi
     }
     const q: Quote = { ...form, estimate: form.mode === "manual" ? form.estimate ?? null : null, sub: subTotal, totalHours, tax, total, mwstRate: taxRate, id: (modal?.id as string | undefined) || generateId(), createdAt: modal?.id ? form.createdAt : new Date().toISOString() };
     // Bearbeiten: Status, Nummer, Kunde usw. nur übernehmen, wo im Fenster geändert (applyEdit); den Inhalt
-    // (Modus, Positionen, Phasen, MWST samt Summen) als Block — aus dem Fenster, wenn dort etwas daran geändert
-    // wurde, sonst den aktuellen (Summen hängen an der ganzen Berechnung und lassen sich nicht feldweise mischen)
+    // (Modus, Positionen, Phasen, MWST samt Summen) als Block — aus dem Fenster, wenn nur dort etwas daran geändert
+    // wurde, sonst den aktuellen. Haben beide am Inhalt geändert, Inhalt feldweise zusammenführen (Positionen/Rollen
+    // pro id) und die Summen daraus neu rechnen — vorher ersetzte das Fenster still die Positionen, die jemand anderes
+    // inzwischen geändert hatte (E2E 26.11.2026)
     const current = modal?.id ? (data.quotes || []).find(x => x.id === modal.id) : undefined;
     if (modal?.id && !current) { showToast("Diese Offerte wurde inzwischen gelöscht — die Änderungen sind nicht gespeichert."); return; }
     let saved = q;
     if (current) {
       const original = editOriginal.current?.id === current.id ? editOriginal.current : current;
       const CONTENT: (keyof Quote)[] = ["mode", "sia", "manualPhases", "freeItems", "quoteRoles", "estimate", "mwst", "mwstRate", "sub", "totalHours", "tax", "total"];
-      const mineContent = CONTENT.some(k => k !== "sub" && k !== "totalHours" && k !== "tax" && k !== "total" && !jsonEqual(q[k], original[k]) && !(q[k] == null && original[k] == null));
+      const changedIn = (x: Quote) => CONTENT.some(k => k !== "sub" && k !== "totalHours" && k !== "tax" && k !== "total" && !jsonEqual(x[k], original[k]) && !(x[k] == null && original[k] == null));
+      const mineContent = changedIn(q);
       saved = applyEdit<Quote>(original, { ...original, ...q }, current);
-      const src = mineContent ? q : current;
-      for (const k of CONTENT) (saved as unknown as Record<string, unknown>)[k] = src[k];
+      if (mineContent && changedIn(current)) {
+        const t = quoteTotals(saved, roles, data.settings.mwstRate);
+        saved = { ...saved, sub: t.sub, totalHours: t.totalHours, tax: t.tax, total: t.total, mwstRate: t.taxRate };
+      } else {
+        const src = mineContent ? q : current;
+        for (const k of CONTENT) (saved as unknown as Record<string, unknown>)[k] = src[k];
+      }
     }
     const quotes = modal?.id ? (data.quotes||[]).map(x => x.id === modal.id ? saved : x) : [...(data.quotes||[]), q];
     // Mit Projekten verknüpfte Offerte: das aus den Offerten abgeleitete Projektbudget (Stunden, Betrag,
