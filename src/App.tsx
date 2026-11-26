@@ -606,7 +606,7 @@ export default function App() {
           {hasViewAccess && view === "letters" && <Letters data={data} update={update} setPrintContent={setPrintContent} />}
           {hasViewAccess && view === "settings" && <Settings data={data} update={update} currentUser={currentUser} uiZoom={uiZoom} setUiZoom={setUiZoom} setView={navigate} />}
           {userPermissions === null && view === "dataImport" && <DataImport data={data} saveAll={save} setView={navigate} />}
-          {hasViewAccess && view === "studio-budget" && <StudioBudget data={data} update={update} setView={navigate} setPrintContent={setPrintContent} />}
+          {hasViewAccess && view === "studio-budget" && <StudioBudget data={data} update={update} setView={navigate} setPrintContent={setPrintContent} userPermissions={userPermissions} />}
         </Suspense>
         </ErrorBoundary>
       </div>

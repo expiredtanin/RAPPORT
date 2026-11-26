@@ -54,7 +54,8 @@ export default function EmployeeModal({ data, empForm, setEmpForm, nextPersonalN
         <FormField label="PLZ / Ort"><input value={empForm.ort || ""} onChange={e => setEmpForm({ ...empForm, ort: e.target.value })} placeholder="8001 Zürich" /></FormField>
       </div>
       <div className="form-row">
-        <FormField label="AHV-Nr."><input value={empForm.ahvNr || ""} onChange={e => setEmpForm({ ...empForm, ahvNr: e.target.value })} placeholder="756.1234.5678.90" /></FormField>
+        {/* Sozialversicherungsnummer nur mit Recht «Löhne» (Runde 39) */}
+        {canEditLohn && <FormField label="AHV-Nr."><input value={empForm.ahvNr || ""} onChange={e => setEmpForm({ ...empForm, ahvNr: e.target.value })} placeholder="756.1234.5678.90" /></FormField>}
         <FormField label="Geburtsdatum"><DateInput value={empForm.geburtsdatum || ""} onChange={e => setEmpForm({ ...empForm, geburtsdatum: e.target.value })} /></FormField>
         <FormField label="E-Mail"><input type="email" value={empForm.email || ""} onChange={e => setEmpForm({ ...empForm, email: e.target.value })} /></FormField>
       </div>

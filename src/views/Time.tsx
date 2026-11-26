@@ -128,7 +128,8 @@ function Time({ data, update, currentUser, userPermissions, setPrintContent }: P
 
   const { addEntry, updateEntry, delEntry, duplicateToNextDay } = createEntryActions({ data, update, currentDate, selectedEmpId, isMonthClosed });
 
-  const { dayExpenses, addExp, updateExp, delExp, isExpLocked, receiptView, setReceiptView, setUploadingExpId, expReceiptInputRef, handleExpReceiptUpload } = useExpenses(data, update, currentDate, selectedEmpId, !isAdmin && !(userPermissions || []).includes("expenses") && !!myEmployeeId && selectedEmpId === myEmployeeId);
+  const { dayExpenses, addExp, updateExp, delExp, isExpLocked, receiptView, setReceiptView, setUploadingExpId, expReceiptInputRef, handleExpReceiptUpload } = useExpenses(data, update, currentDate, selectedEmpId, !isAdmin && !(userPermissions || []).includes("expenses") && !!myEmployeeId && selectedEmpId === myEmployeeId,
+    !isAdmin && !(userPermissions || []).includes("expenses") && selectedEmpId !== myEmployeeId);
 
   const { absenzTypes, dayAbs, dayIst, dayDiff, addAbs, updateAbs, delAbs } = buildAbsenceState({ data, update, currentDate, selectedEmpId, selectedEmp, employees, daySoll, dayTotalMins, lockApproved: !isAdmin && !!myEmployeeId && selectedEmpId === myEmployeeId });
 

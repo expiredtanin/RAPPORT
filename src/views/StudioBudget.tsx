@@ -59,7 +59,10 @@ function SectionLabel({ children }: { children?: React.ReactNode }) {
 }
 
 export default
-function StudioBudget({ data, update, setPrintContent }: Pick<ViewProps, "data" | "update" | "setView" | "setPrintContent">) {
+function StudioBudget({ data, update, setPrintContent, userPermissions = null }: Pick<ViewProps, "data" | "update" | "setView" | "setPrintContent"> & { userPermissions?: string[] | null }) {
+  // Kosten je Person (≈ Lohn + AG-Beiträge) nur mit Recht «Löhne»; sonst nur die Summe (Runde 39)
+  const canLohn = !userPermissions || userPermissions.includes("loehne");
+  const maskSnap = <T extends { empSnapshot?: { kosten?: number | null }[] }>(v: T): T => canLohn ? v : { ...v, empSnapshot: (v.empSnapshot || []).map(e => ({ ...e, kosten: null })) };
   const employees = data.employees || [];
   const internalExpenses = data.internalExpenses || [];
   const currentYear = new Date().getFullYear();
@@ -322,7 +325,7 @@ function StudioBudget({ data, update, setPrintContent }: Pick<ViewProps, "data" 
           <button className="btn btn-ghost" onClick={() => setShowVersions(v => !v)}>
             ⊞ Versionen {versions.length > 0 && <span style={{ marginLeft: 4, background: "var(--accent)", color: "var(--text)", borderRadius: 20, fontSize: 10, padding: "1px 6px", fontWeight: 700 }}>{versions.length}</span>}
           </button>
-          <ShareButton options={[{ label: "PDF", onClick: () => setPrintContent({ type: "studioBudget", snapshot: buildSnapshot("Aktuell"), settings: data.settings }) }]} />
+          <ShareButton options={[{ label: "PDF", onClick: () => setPrintContent({ type: "studioBudget", snapshot: maskSnap(buildSnapshot("Aktuell")), settings: data.settings }) }]} />
           <button className="btn btn-primary" onClick={saveSettings}>Speichern</button>
         </div>
       } />
@@ -372,7 +375,7 @@ function StudioBudget({ data, update, setPrintContent }: Pick<ViewProps, "data" 
                     </td>
                     <td style={{ padding: "8px 0", textAlign: "right", whiteSpace: "nowrap", borderBottom: "1px solid var(--border2)" }}>
                       <ShareButton style={{ fontSize: 11, padding: "4px 8px", marginRight: 4 }}
-                        options={[{ label: "PDF", onClick: () => setPrintContent({ type: "studioBudget", snapshot: v, settings: data.settings }) }]} />
+                        options={[{ label: "PDF", onClick: () => setPrintContent({ type: "studioBudget", snapshot: maskSnap(v), settings: data.settings }) }]} />
                       <button className="btn btn-ghost" style={{ fontSize: 11, padding: "4px 8px", marginRight: 4 }}
                         onClick={() => loadVersion(v)}>Laden</button>
                       <button className="btn-icon danger" title="Entfernen" aria-label="Entfernen"
@@ -448,8 +451,9 @@ function StudioBudget({ data, update, setPrintContent }: Pick<ViewProps, "data" 
                         </label>
                       </td>
                       <td style={{ padding: "8px 6px", borderBottom: "1px solid var(--border2)", verticalAlign: "top", textAlign: "right" }}>
-                        <OverrideInput aktiv={aktiv} checked={row.kostenOverride} onToggle={v => setEmpRow(emp.id, { kostenOverride: v })}
+                        {canLohn ? <OverrideInput aktiv={aktiv} checked={row.kostenOverride} onToggle={v => setEmpRow(emp.id, { kostenOverride: v })}
                           value={row.kostenManual} onChange={v => setEmpRow(emp.id, { kostenManual: v })} autoVal={auto.totalKosten} step={500} />
+                          : <span style={{ fontSize: 12, color: "var(--text4)" }} title="Nur mit Recht «Löhne»">—</span>}
                       </td>
                       <td style={{ padding: "8px 0 8px 6px", borderBottom: "1px solid var(--border2)", verticalAlign: "top", textAlign: "right" }}>
                         <OverrideInput aktiv={aktiv} checked={row.stundenOverride} onToggle={v => setEmpRow(emp.id, { stundenOverride: v })}

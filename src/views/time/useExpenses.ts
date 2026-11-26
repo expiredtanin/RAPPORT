@@ -19,10 +19,11 @@ export function expenseLock(e: Expense, lockApproved: boolean): string | null {
 }
 
 /** Spesen-Zustand und -Aktionen für den Tag `currentDate` (und den Mitarbeiter `selectedEmpId`, falls gesetzt). */
-export function useExpenses(data: AppData, update: UpdateFn, currentDate: string, selectedEmpId: string, lockApproved = false) {
+export function useExpenses(data: AppData, update: UpdateFn, currentDate: string, selectedEmpId: string, lockApproved = false, foreignHidden = false) {
   // Tages-Spesen — inline editing
   const mwstRate = data.settings.mwstRate ?? 8.1;
-  const dayExpenses = (data.expenses || []).filter(e => {
+  // ohne Recht «Spesen» keine Spesen anderer Personen (sichtbar und änderbar über die Personenwahl — Runde 39)
+  const dayExpenses = foreignHidden ? [] : (data.expenses || []).filter(e => {
     if (e.date !== currentDate) return false;
     if (selectedEmpId) return e.employeeId === selectedEmpId;
     return true;
@@ -41,10 +42,12 @@ export function useExpenses(data: AppData, update: UpdateFn, currentDate: string
   }, [currentDate, selectedEmpId]);
 
   const addExp = () => {
+    if (foreignHidden) { showToast("Spesen anderer Personen erfasst, wer das Recht «Spesen» hat."); return; }
     const id = generateId();
     createdRef.current.add(id);
     update("expenses", prev => [...(prev || []), { id, date: currentDate, category: (data.settings.expenseCategories || EXPENSE_CATEGORIES)[0], projectId: "", description: "", amount: 0, mwstRate, inclMwst: true, employeeId: selectedEmpId || "" } as Expense]);
   };
+  const foreign = (id: string) => foreignHidden || (!!selectedEmpId && (data.expenses || []).find(x => x.id === id)?.employeeId !== selectedEmpId);
   const locked = (id: string) => {
     const e = (data.expenses || []).find(x => x.id === id);
     const msg = e ? expenseLock(e, lockApproved) : null;
@@ -52,14 +55,14 @@ export function useExpenses(data: AppData, update: UpdateFn, currentDate: string
     return !!msg;
   };
   const updateExp = (id: string, changes: Partial<Expense>) => {
-    if (locked(id)) return;
+    if (foreign(id) || locked(id)) return;
     // wie der Spesen-Dialog (Server lehnte negative Beträge mit englischer Meldung ab — Cloud-Test Runde 35)
     if (changes.amount !== undefined && !(Number(changes.amount) >= 0 && Number(changes.amount) < 1e7)) { showToast("Der Betrag muss positiv sein (unter CHF 10 Mio.)."); return; }
     if (changes.mwstRate !== undefined && !(Number(changes.mwstRate) >= 0 && Number(changes.mwstRate) <= 30)) { showToast("MWST-Satz zwischen 0 und 30 %."); return; }
     update("expenses", prev => (prev || []).map(e => e.id === id ? { ...e, ...changes } : e)); };
   // Löschen mit «Rückgängig» wie in Buchhaltung → Spesen
   const delExp = (id: string) => {
-    if (locked(id)) return;
+    if (foreign(id) || locked(id)) return;
     const e = (data.expenses || []).find(x => x.id === id);
     removeWithUndo(`Spese${e?.description ? " «" + e.description + "»" : ""} gelöscht`, "expenses", x => x.id === id);
   };

@@ -99,7 +99,7 @@ export function StudioBudgetPrint({ snapshot, settings }: { snapshot: StudioBudg
               {snapshot.empSnapshot.filter(r => r.aktiv).map((r, i) => (
                 <tr key={i}>
                   <td style={{ padding: "4px 0", borderBottom: "1px solid #f5f5f5" }}>{r.name}</td>
-                  <td style={{ textAlign: "right", padding: "4px 8px", borderBottom: "1px solid #f5f5f5" }}>{formatCHF(r.kosten)}</td>
+                  <td style={{ textAlign: "right", padding: "4px 8px", borderBottom: "1px solid #f5f5f5" }}>{r.kosten == null ? "—" : formatCHF(r.kosten)}</td>
                   <td style={{ textAlign: "right", padding: "4px 0", borderBottom: "1px solid #f5f5f5" }}>{r.stunden}h</td>
                 </tr>
               ))}
