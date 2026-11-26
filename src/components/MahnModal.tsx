@@ -43,7 +43,7 @@ export function MahnModal({ inv: invAtOpen, data, update, setPrintContent, onClo
       if (inv.status === "bezahlt") { showToast("Diese Rechnung ist inzwischen bezahlt — keine Mahnung."); onClose(); return; }
       const { client, subject, body, kosten } = buildReminderLetter(inv, nextNr, mahnSentDate, (data.persons||[]), data.settings);
       setPrintContent({ type: "letter", client, subject, body, settings: data.settings, date: mahnSentDate || undefined });
-      const newReminder: InvoiceReminder = { nr: nextNr, date: localISODate(), sentDate: mahnSentDate, daysPast: Math.max(0, Math.floor((new Date(`${mahnSentDate || localISODate()}T00:00:00Z`).getTime() - new Date(`${inv.dueDate}T00:00:00Z`).getTime()) / 86400000)),
+      const newReminder: InvoiceReminder = { nr: nextNr, date: localISODate(), sentDate: mahnSentDate, daysPast: !inv.dueDate ? 0 : Math.max(0, Math.floor((new Date(`${mahnSentDate || localISODate()}T00:00:00Z`).getTime() - new Date(`${inv.dueDate}T00:00:00Z`).getTime()) / 86400000)),
         ...(kosten.zins > 0 ? { zins: kosten.zins, zinsTage: kosten.zinsTage, zinsSatz: kosten.zinsSatz } : {}),
         ...(kosten.gebuehr > 0 ? { gebuehr: kosten.gebuehr } : {}) };
       // auf den aktuellen Stand: nicht über eine Zahlung hinweg, Mahnstufe nicht doppelt

@@ -1,6 +1,6 @@
 // Tests für das Lesen von Import-Dateien (importParse.ts): Kodierung, Trennzeichen, Zahlen, Daten, Excel-Zellen.
 import { describe, expect, it } from "vitest";
-import { decodeText, excelCellText, parseCSV, parseFlexibleDate, parseNumber } from "./importParse";
+import { decodeText, excelCellText, parseCSV, parseFlexibleDate, parseNumber, parseMoney } from "./importParse";
 
 const latin1 = (s: string) => Uint8Array.from([...s].map(c => c.charCodeAt(0)));
 
@@ -99,5 +99,31 @@ describe("parseNumber: Stunden als H:MM", () => {
     expect(parseNumber("(1:30)")).toBe(-1.5);
     expect(parseNumber("7:30:00")).toBe(7.5);
     expect(parseNumber("2:30 h")).toBe(2.5);
+  });
+});
+
+describe("Runde 46: Datum und Geldbeträge", () => {
+  it("zweistellige Jahre wie Excel: 30–99 → 1900er (Geburtsdatum), 00–29 → 2000er", () => {
+    expect(parseFlexibleDate("15.03.85")).toBe("1985-03-15");
+    expect(parseFlexibleDate("31.12.26")).toBe("2026-12-31");
+    expect(parseFlexibleDate("01.01.30")).toBe("1930-01-01");
+  });
+  it("Excel-Seriennummer und weitere Trennerformen", () => {
+    expect(parseFlexibleDate("46387")).toBe("2026-12-31");
+    expect(parseFlexibleDate("46387.5")).toBe("2026-12-31");
+    expect(parseFlexibleDate("2026/12/31")).toBe("2026-12-31");
+    expect(parseFlexibleDate("31. 12. 2026")).toBe("2026-12-31");
+    expect(parseFlexibleDate("123")).toBe("");
+    expect(parseFlexibleDate("20261231")).toBe("");
+  });
+  it("parseMoney: «1.250» ist Tausender, nicht 1.25", () => {
+    expect(parseMoney("1.250")).toBe(1250);
+    expect(parseMoney("CHF 12,500")).toBe(12500);
+    expect(parseMoney("-1.250")).toBe(-1250);
+    expect(parseMoney("1.25")).toBe(1.25);
+    expect(parseMoney("0.125")).toBe(0.125);
+    expect(parseMoney("1'234.50")).toBe(1234.5);
+    expect(parseMoney("1.234,50")).toBe(1234.5);
+    expect(parseMoney("1250")).toBe(1250);
   });
 });

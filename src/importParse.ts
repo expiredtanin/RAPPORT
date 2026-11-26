@@ -104,11 +104,16 @@ export function parseNumber(raw: string): number {
  */
 export function parseFlexibleDate(raw: string): string {
   const v = String(raw ?? "").trim();
-  const iso = v.match(/^(\d{4})-(\d{1,2})-(\d{1,2})(?:$|[T\s])/);
-  const ch = v.match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{4}|\d{2})(?:$|\s)/);
+  // Excel-Seriennummer (Zelle ohne Datumsformat, z.B. «46387» = 31.12.2026): 1954–2099, Epoche 30.12.1899
+  if (/^\d{5}(?:[.,]\d+)?$/.test(v) && +v.replace(",", ".") >= 20000 && +v.replace(",", ".") < 73051) {
+    return new Date(Date.UTC(1899, 11, 30) + Math.floor(+v.replace(",", ".")) * 86400000).toISOString().slice(0, 10);
+  }
+  const iso = v.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})(?:$|[T\s])/);
+  const ch = v.match(/^(\d{1,2})\s*[./-]\s*(\d{1,2})\s*[./-]\s*(\d{4}|\d{2})(?:$|\s)/);
   let y: number, m: number, d: number;
+  // zweistellige Jahre wie in Excel: 00–29 → 2000er, 30–99 → 1900er («15.03.85» ist ein Geburtsdatum, nicht 2085)
   if (iso) [y, m, d] = [+iso[1], +iso[2], +iso[3]];
-  else if (ch) [y, m, d] = [ch[3].length === 2 ? 2000 + +ch[3] : +ch[3], +ch[2], +ch[1]];
+  else if (ch) [y, m, d] = [ch[3].length === 2 ? (+ch[3] < 30 ? 2000 : 1900) + +ch[3] : +ch[3], +ch[2], +ch[1]];
   else return "";
   const date = new Date(Date.UTC(y, m - 1, d));
   if (date.getUTCFullYear() !== y || date.getUTCMonth() !== m - 1 || date.getUTCDate() !== d) return ""; // 31.02. o.ä.
@@ -136,4 +141,15 @@ export function excelCellText(v: unknown, numFmt?: string): string {
     return "";
   }
   return String(v);
+}
+
+/**
+ * Geldbetrag aus einer Zelle: wie `parseNumber`, aber «1.250» / «1,250» (ein Trenner, genau drei Stellen danach, davor
+ * 1–3 Ziffern ausser 0) gilt als Tausendertrenner (1250) — Rappenbeträge haben nie drei Nachkommastellen; vorher wurde
+ * aus «1.250» (deutsches Excel ohne Dezimalstellen) still 1.25 CHF.
+ */
+export function parseMoney(raw: string): number {
+  const s = String(raw ?? "").trim().replace(/^(?:CHF|Fr\.?|EUR|€)\s*/i, "").replace(/\s*(?:CHF|Fr\.?|EUR|€)$/i, "");
+  const m = /^([-−–]?)([1-9]\d{0,2})[.,](\d{3})$/.exec(s);
+  return m ? (m[1] ? -1 : 1) * Number(m[2] + m[3]) : parseNumber(raw);
 }

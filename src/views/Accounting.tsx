@@ -242,7 +242,7 @@ function Accounting({ data, update, setView, setModal, setPrintContent }: Pick<V
             <tbody>
               {overdueInvoices.map(inv => {
                 const client = ((data.persons||[])).find(c => c.id === inv.clientId);
-                const daysPast = Math.floor((new Date(`${today}T00:00:00Z`).getTime() - new Date(`${inv.dueDate}T00:00:00Z`).getTime()) / 86400000);
+                const daysPast = inv.dueDate ? Math.floor((new Date(`${today}T00:00:00Z`).getTime() - new Date(`${inv.dueDate}T00:00:00Z`).getTime()) / 86400000) : 0;
                 const reminders = inv.reminders || [];
                 const nextNr = reminders.length + 1;
                 const mahnLabel = nextNr === 1 ? "Zahlungserinnerung" : `${nextNr}. Mahnung`;
@@ -253,7 +253,7 @@ function Accounting({ data, update, setView, setModal, setPrintContent }: Pick<V
                     <td>{client?.name || "—"}</td>
                     <td>
                       <span style={{ color: daysPast > 30 ? "var(--negative)" : "var(--warning)", fontWeight: 500 }}>
-                        {formatDate(inv.dueDate)} ({daysPast} Tage)
+                        {inv.dueDate ? `${formatDate(inv.dueDate)} (${daysPast} Tage)` : "ohne Fälligkeit"}
                       </span>
                     </td>
                     <td>

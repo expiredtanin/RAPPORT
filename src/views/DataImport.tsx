@@ -27,7 +27,7 @@ import { PROJECT_TYPES, CONTACT_TYPES, CONTACT_CATEGORIES, EXPENSE_CATEGORIES, I
 import { Header, FormField } from "../components/UI";
 import { isCloudBackend } from "../storage/adapter";
 import type { AppData, ViewProps } from "../types";
-import { decodeText, excelCellText, parseCSV, parseFlexibleDate, parseNumber, type Row } from "../importParse";
+import { decodeText, excelCellText, parseCSV, parseFlexibleDate, parseMoney, parseNumber, type Row } from "../importParse";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type ImportRecord = Record<string, any>;
@@ -652,9 +652,13 @@ function buildMappedValues(
         values[f.key] = sel;
       }
     } else if (f.boolLike) {
-      values[f.key] = /^(ja|yes|true|wahr|1|x|✓|oui|vrai|si|sì)$/i.test(raw);   // «WAHR» aus deutschem Excel
+      // «WAHR» aus deutschem Excel. Unbekannte Werte (z.B. «8.1» in einer Spalte «MWST» mit Beträgen) nicht still als
+      // «nein» lesen — sonst fehlte die MWST bzw. der Betrag galt als netto: Zeile als ungültig melden
+      if (/^(ja|yes|true|wahr|1|x|✓|oui|vrai|si|sì|y|j)$/i.test(raw)) values[f.key] = true;
+      else if (/^(nein|no|false|falsch|0|n|non|faux|-|–|✗)$/i.test(raw)) values[f.key] = false;
+      else { invalid.push(f.label); continue; }
     } else if (f.numeric) {
-      const n = parseNumber(raw);
+      const n = MONEY.has(f.key) ? parseMoney(raw) : parseNumber(raw);
       if (isNaN(n) || Math.abs(n) > 1e9 || (n < 0 && NON_NEGATIVE.has(f.key))) { invalid.push(f.label); continue; }
       // Geldbeträge auf Rappen (12.345 blieb sonst ungerundet in Spesen/Positionen)
       values[f.key] = MONEY.has(f.key) ? Math.round(n * 100) / 100 : n;
