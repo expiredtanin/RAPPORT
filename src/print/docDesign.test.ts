@@ -7,6 +7,11 @@ describe("cssBalanced", () => {
     expect(cssBalanced(".doc-heading { color: red !important; }")).toBe(true);
     expect(cssBalanced("@media print { .a { b: c } }")).toBe(true);
     expect(cssBalanced('.a::after { content: "}"; } /* } */')).toBe(true);
+    // Review R33: «/*» im String, escapte Klammer, Zeilenfortsetzung im String
+    expect(cssBalanced('a::before{content:"/*"} b{color:red} /* x */')).toBe(true);
+    expect(cssBalanced(".a\\{b { color: red }")).toBe(true);
+    expect(cssBalanced('.a { content: "ab\\\ncd" }')).toBe(true);
+    expect(cssBalanced('.a { content: "\\"" }')).toBe(true);
   });
   it("überzählige oder fehlende Klammer, offener Kommentar/String", () => {
     expect(cssBalanced("} .card, aside { display:none !important } body{background:red} .x{")).toBe(false);

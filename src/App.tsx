@@ -282,12 +282,12 @@ export default function App() {
   // Startansicht «Heute» für alle, die Zeit erfassen; sonst wie bisher die Übersicht bzw. die erste erlaubte Ansicht
   const initialView = !userPermissions || userPermissions.includes("time") ? "heute" : (userPermissions.includes("dashboard") ? "dashboard" : (userPermissions[0] || "dashboard"));
   const allAccessibleViews = visibleNavItems.flatMap(item => item.children ? item.children.map(c => c.id) : [item.id]);
-  const { view, navigate, goBack, goForward, navCanBack, navCanForward } = useNavigation(initialView);
+  const { view, navigate, goBack, goForward, navCanBack, navCanForward, resetTo } = useNavigation(initialView);
   const hasViewAccess = userPermissions === null || allAccessibleViews.includes(view);
   // Nach dem Anmelden: die Startansicht galt nur beim ersten Mount (noch ohne Konto → «Heute»); eine Rolle ohne
   // Zeiterfassung landete so auf «Kein Zugriff» (Runde 32)
   useEffect(() => {
-    if (currentUser && !hasViewAccess) navigate(initialView);
+    if (currentUser && !hasViewAccess) resetTo(initialView);
   // eslint-disable-next-line react-hooks/exhaustive-deps -- nur beim Wechsel des Kontos
   }, [currentUser?.id]);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);

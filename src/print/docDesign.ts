@@ -166,10 +166,22 @@ export function buildDocCss(r: ResolvedDocDesign, scope?: string): { imports: st
  * überzähliges «}» schlösse sonst den @scope-Block und das eigene CSS wirkte auf die ganze App.
  */
 export function cssBalanced(css: string): boolean {
-  const s = css.replace(/\/\*[\s\S]*?\*\//g, "").replace(/"(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*'/g, "");
-  if (/\/\*|["']/.test(s)) return false;   // offener Kommentar oder offene Zeichenkette
+  // ein Durchgang: Escapes, Kommentare und Zeichenketten überspringen (ein «/*» in einem String ist kein Kommentar)
   let depth = 0;
-  for (const ch of s) {
+  for (let i = 0; i < css.length; i++) {
+    const ch = css[i];
+    if (ch === "\\") { i++; continue; }
+    if (ch === "/" && css[i + 1] === "*") {
+      const end = css.indexOf("*/", i + 2);
+      if (end < 0) return false;   // offener Kommentar
+      i = end + 1; continue;
+    }
+    if (ch === '"' || ch === "'") {
+      let j = i + 1;
+      while (j < css.length && css[j] !== ch) { if (css[j] === "\\") j++; else if (css[j] === "\n") return false; j++; }
+      if (j >= css.length) return false;   // offene Zeichenkette
+      i = j; continue;
+    }
     if (ch === "{") depth++;
     else if (ch === "}" && --depth < 0) return false;
   }

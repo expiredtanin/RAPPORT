@@ -43,5 +43,14 @@ export function useNavigation(initialView: string) {
     setNavCanForward(pos + 1 < hist.length - 1);
   }, []);
 
-  return { view, navigate, goBack, goForward, navCanBack, navCanForward };
+  /** Verlauf auf eine Ansicht zurücksetzen (z.B. Startansicht nach dem Anmelden — «Zurück» führte sonst auf eine gesperrte). */
+  const resetTo = useCallback((newView: string) => {
+    navHistRef.current = [newView];
+    navPosRef.current = 0;
+    setView(newView);
+    setNavCanBack(false);
+    setNavCanForward(false);
+  }, []);
+
+  return { view, navigate, goBack, goForward, navCanBack, navCanForward, resetTo };
 }

@@ -70,8 +70,8 @@ export const fromDB = {
       // ausschliesslich "s.mwst". "mwstNr" bleibt der PocketBase-Feldname.
       mwst: row.mwstNr || "", mwstRate: row.mwstRate ?? 8.1,
       defaultHourlyRate: row.defaultHourlyRate ?? 120,
-      defaultWochenstunden: row.defaultWochenstunden ?? 35,
-      defaultFerienWochen: row.defaultFerienWochen ?? 5,
+      defaultWochenstunden: row.defaultWochenstunden || 35,   // leer = 0 in PocketBase (wie defaultPkAGSatz)
+      defaultFerienWochen: row.defaultFerienWochen || 5,
       defaultPkAGSatz: row.defaultPkAGSatz || 8.0, // leer = 0 in PocketBase
       vertragNumberFormat: row.vertragNumberFormat || "V-YYYY-NNN",
       // Projektnummern-Zähler (Projects.jsx/Quotes.jsx) — ohne diese beiden

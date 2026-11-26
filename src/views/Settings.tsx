@@ -82,17 +82,20 @@ export default function Settings({ data, update, currentUser, uiZoom, setUiZoom,
     if (noCounter.length) { showToast(`Nummernformat ${noCounter.join(", ")}: es fehlt der Zähler (z.B. NNN).`); return; }
     // Bereiche (vorher wurden z.B. MWST 81 %, negative Stundensätze oder 99 Ferienwochen gespeichert — Runde 32)
     const out = (v: number | undefined | null, min: number, max: number) => v !== undefined && v !== null && String(v) !== "" && !(Number(v) >= min && Number(v) <= max);
+    // nur geänderte Felder prüfen — ein unveränderter Altwert (z.B. 0 aus der Cloud) blockierte sonst jedes Speichern (Review R33)
+    const changed = (k: keyof StudioSettings) => !jsonEqual(s[k], base[k]);
     const bad = ([
-      [s.mwstRate, 0, 30, "MWST-Satz (0–30 %)"],
-      [s.defaultHourlyRate, 0, 10000, "Standard-Stundensatz (nicht negativ)"],
-      [s.defaultWochenstunden, 1, 60, "Wochenstunden (1–60)"],
-      [s.defaultFerienWochen, 4, 10, "Ferienwochen (4–10)"],
-      [s.defaultPkAGSatz, 0, 100, "PK-Anteil Arbeitgeber (0–100 %)"],
-      [s.pageMarginTop, 0, 60, "Seitenrand oben (0–60 mm)"], [s.pageMarginBottom, 0, 60, "Seitenrand unten (0–60 mm)"],
-      [s.pageMarginLeft, 0, 60, "Seitenrand links (0–60 mm)"], [s.pageMarginRight, 0, 60, "Seitenrand rechts (0–60 mm)"],
-      [s.logoSize, 0, 400, "Logogrösse (0–400)"],
-      ...(s.roles || []).map(r => [r.rate, 0, 10000, `Stundensatz «${r.label || r.id}» (nicht negativ)`] as const),
-    ] as const).filter(([v, min, max]) => out(v as number | undefined, min, max)).map(([, , , label]) => label);
+      ["mwstRate", 0, 30, "MWST-Satz (0–30 %)"],
+      ["defaultHourlyRate", 0, 10000, "Standard-Stundensatz (nicht negativ)"],
+      ["defaultWochenstunden", 1, 60, "Wochenstunden (1–60)"],
+      ["defaultFerienWochen", 4, 10, "Ferienwochen (4–10)"],
+      ["defaultPkAGSatz", 0, 100, "PK-Anteil Arbeitgeber (0–100 %)"],
+      ["pageMarginTop", 0, 60, "Seitenrand oben (0–60 mm)"], ["pageMarginBottom", 0, 60, "Seitenrand unten (0–60 mm)"],
+      ["pageMarginLeft", 0, 60, "Seitenrand links (0–60 mm)"], ["pageMarginRight", 0, 60, "Seitenrand rechts (0–60 mm)"],
+      ["logoSize", 0, 400, "Logogrösse (0–400)"],
+    ] as [keyof StudioSettings, number, number, string][]).filter(([k, min, max]) => changed(k) && out(s[k] as number | undefined, min, max)).map(([, , , label]) => label);
+    const baseRoles = new Map((base.roles || []).map(r => [r.id, r.rate]));
+    for (const r of s.roles || []) if (baseRoles.get(r.id) !== r.rate && out(r.rate, 0, 10000)) bad.push(`Stundensatz «${r.label || r.id}» (nicht negativ)`);
     if (bad.length) { showToast(`Bitte prüfen: ${bad.join(", ")}.`); return; }
     const roleIds = (s.roles || []).map(r => (r.id || "").trim());
     if ((s.roles || []).some(r => !r.id?.trim() || !r.label?.trim())) { showToast("Offerten-Rollen brauchen Kürzel und Bezeichnung."); return; }
