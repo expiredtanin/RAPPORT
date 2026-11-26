@@ -93,7 +93,8 @@ onRecordsListRequest((e) => {
   e.next();
 });
 onRealtimeSubscribeRequest((e) => {
-  if (!e.hasSuperuserAuth() && (e.subscriptions || []).some((t) => /studiobudget/i.test(String(t)))) throw new BadRequestError("Filter über das Büro-Budget ist nicht erlaubt.");
+  // auch Lohnfelder (Filter in Abos verrieten sie per Bisektion; die App filtert nie danach)
+  if (!e.hasSuperuserAuth() && (e.subscriptions || []).some((t) => /studiobudget|monatslohn|lohnverlauf|lohniban|ahvnr|pkbeitrag|familienzulagen|quellensteuer|auszahlungbetrag|stundenlohn/i.test(String(t)))) throw new BadRequestError("Filter über Budget oder Lohnangaben ist nicht erlaubt.");
   e.next();
 });
 

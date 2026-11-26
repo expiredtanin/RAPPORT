@@ -86,6 +86,15 @@ onRecordUpdateRequest((e) => {
   const has = (p) => perms.indexOf("|*|") >= 0 || perms.indexOf("|" + p + "|") >= 0;
   const full = perms.indexOf("|*|") >= 0;
   if (name === "employees") {
+    // ohne «loehne» liefert der Server die Lohnfelder fremder Datensätze nicht aus (onRecordEnrich unten); schickt der
+    // Client sie leer zurück, gelten sie als unverändert (sonst Ablehnung bzw. gelöschte Löhne beim Speichern des Namens)
+    if (!has("loehne") && o.get("appUser") !== uid) {
+      for (const f of ["monatslohn", "lohnVerlauf", "lohnIban", "dreizehnterLohn", "ahvSatz", "alvSatz", "bvgSatz", "nbuSatz", "ktgSatz",
+        "quellensteuerPflichtig", "quellensteuerSatz", "pkBeitragAN", "pkBeitragAG", "pkAgSatz", "familienzulagen", "ahvRentner", "ahvNr"]) {
+        const nv = r.getString(f).trim();
+        if ((nv === "" || nv === "0" || nv === "false" || nv === "[]" || nv === "null" || nv === "{}") && JSON.stringify(r.get(f)) !== JSON.stringify(o.get(f))) r.set(f, o.get(f));
+      }
+    }
     // Verknüpfung mit einem Konto nur mit Vollzugriff: sonst konnte ein Projektleiter Konten abtrennen oder einem
     // fremden Mitarbeiter-Datensatz (samt dessen Zeiterfassung und Ferien) zuordnen (E2E 25.11.2026)
     if (!full && JSON.stringify(r.get("appUser")) !== JSON.stringify(o.get("appUser"))) throw new ForbiddenError("Die Verknüpfung mit einem Konto ändert ein Admin (Einstellungen → Team).");
@@ -99,7 +108,7 @@ onRecordUpdateRequest((e) => {
     }
     if (!has("loehne")) {
       const SAL = ["monatslohn", "lohnVerlauf", "lohnIban", "dreizehnterLohn", "ahvSatz", "alvSatz", "bvgSatz", "nbuSatz", "ktgSatz",
-        "quellensteuerPflichtig", "quellensteuerSatz", "pkBeitragAN", "pkBeitragAG", "pkAgSatz", "familienzulagen", "ahvRentner"];
+        "quellensteuerPflichtig", "quellensteuerSatz", "pkBeitragAN", "pkBeitragAG", "pkAgSatz", "familienzulagen", "ahvRentner", "ahvNr"];
       for (const f of SAL) if (JSON.stringify(r.get(f)) !== JSON.stringify(o.get(f))) throw new ForbiddenError("Lohnangaben ändern braucht das Recht Löhne (" + f + ").");
     }
     return e.next();
@@ -230,3 +239,48 @@ onRecordDeleteRequest((e) => {
   }
   e.next();
 }, "timeEntries", "absences", "vacationEntries", "overtimeClosings", "persons", "projects", "quotes", "employees");
+
+
+// ── Lohnfelder nur mit Recht «loehne» (Entscheid 26.11.2026: Projektleiter sehen keine Löhne; einstellbar pro Rolle) ──
+// Vorher lieferte der Server Monatslohn, IBAN, AHV-Nr. usw. jedem mit «mitarbeiter» (z.B. Projektleiter). Ausgeblendet
+// für fremde Datensätze; die eigenen sieht jede Person. Gilt für REST, expand und Realtime.
+onRecordEnrich((e) => {
+  const auth = e.requestInfo && e.requestInfo.auth;
+  if (!auth || (auth.collection && auth.collection().name === "_superusers")) return e.next();
+  const r = e.record;
+  if (r.get("appUser") === auth.id) return e.next();
+  let perms = "";
+  try { perms = e.app.findFirstRecordByFilter("studioMembers", "studio = {:s} && user = {:u} && active = true", { s: r.get("studio"), u: auth.id }).getString("perms"); } catch { perms = ""; }
+  if (perms.indexOf("|*|") >= 0 || perms.indexOf("|loehne|") >= 0) return e.next();
+  r.hide("monatslohn", "lohnVerlauf", "lohnIban", "dreizehnterLohn", "ahvSatz", "alvSatz", "bvgSatz", "nbuSatz", "ktgSatz",
+    "quellensteuerPflichtig", "quellensteuerSatz", "pkBeitragAN", "pkBeitragAG", "pkAgSatz", "familienzulagen", "ahvRentner", "ahvNr");
+  e.next();
+}, "employees");
+onRecordEnrich((e) => {
+  const auth = e.requestInfo && e.requestInfo.auth;
+  if (!auth || (auth.collection && auth.collection().name === "_superusers")) return e.next();
+  const r = e.record;
+  let own = false;
+  try { own = e.app.findRecordById("employees", r.get("employee")).get("appUser") === auth.id; } catch { own = false; }
+  if (own) return e.next();
+  let perms = "";
+  try { perms = e.app.findFirstRecordByFilter("studioMembers", "studio = {:s} && user = {:u} && active = true", { s: r.get("studio"), u: auth.id }).getString("perms"); } catch { perms = ""; }
+  if (perms.indexOf("|*|") >= 0 || perms.indexOf("|loehne|") >= 0) return e.next();
+  r.hide("auszahlungBetrag", "stundenlohn");
+  e.next();
+}, "overtimeClosings");
+// Filter/Sortierung über Lohnfelder ohne «loehne» ablehnen (Orakel per Bisektion, auch über Relationen). Büro aus dem
+// Filter («studio = "…"»), sonst muss das Recht in allen Mitgliedschaften bestehen.
+onRecordsListRequest((e) => {
+  if (e.hasSuperuserAuth()) return e.next();
+  const q = e.requestInfo().query || {};
+  const text = String(q.filter || "") + " " + String(q.sort || "");
+  if (!/(monatslohn|lohnverlauf|lohniban|ahvnr|pkbeitrag|familienzulagen|quellensteuer|dreizehnterlohn|ahvrentner|(ahv|alv|bvg|nbu|ktg|pkag)satz|auszahlungbetrag|stundenlohn)/i.test(text)) return e.next();
+  const uid = e.auth ? e.auth.id : "";
+  const m = String(q.filter || "").match(/studio\s*=\s*["']([a-zA-Z0-9_-]+)["']/);
+  let mems = [];
+  try { mems = m ? [e.app.findFirstRecordByFilter("studioMembers", "studio = {:s} && user = {:u} && active = true", { s: m[1], u: uid })] : e.app.findRecordsByFilter("studioMembers", "user = {:u} && active = true", "", 0, 0, { u: uid }); } catch { mems = []; }
+  const ok = mems.length > 0 && mems.every((x) => { const p = x.getString("perms"); return p.indexOf("|*|") >= 0 || p.indexOf("|loehne|") >= 0; });
+  if (!ok) throw new BadRequestError("Filter oder Sortierung über Lohnangaben braucht das Recht Löhne.");
+  e.next();
+});

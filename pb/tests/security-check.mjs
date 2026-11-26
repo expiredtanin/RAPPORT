@@ -375,6 +375,18 @@ check("Rechnungsnummer mit Leerzeichen am Rand abgelehnt", r.status >= 400, `HTT
   check("P (ohne Vollzugriff): Mitarbeiter nicht löschbar", r.status >= 400, `HTTP ${r.status}`);
   r = await api("DELETE", `/api/collections/employees/records/${empOther}`, tA);
   check("A: Mitarbeiter mit Lohnabrechnungen nicht löschbar", r.status >= 400, `HTTP ${r.status}`);
+  // Entscheid 26.11.2026: Lohnfelder fremder Mitarbeitender nur mit «loehne» (P hat «mitarbeiter», nicht «loehne»)
+  r = await api("GET", `/api/collections/employees/records/${empOther}`, tP);
+  check("P (ohne Löhne): fremder Mitarbeiter ohne Lohn/AHV/IBAN", r.status === 200 && r.json.monatslohn === undefined && r.json.ahvNr === undefined && r.json.lohnIban === undefined && r.json.name, `HTTP ${r.status} ${JSON.stringify(r.json).slice(0, 120)}`);
+  r = await api("GET", `/api/collections/employees/records/${empP}`, tP);
+  check("P: eigener Lohn sichtbar", r.status === 200 && r.json.monatslohn === 9000, `HTTP ${r.status}`);
+  r = await api("GET", `/api/collections/timeEntries/records?filter=${enc(`studio = "${sid}" && employee.monatslohn > 0`)}`, tP);
+  check("P (ohne Löhne): Filter über Lohn abgelehnt", r.status >= 400, `HTTP ${r.status}`);
+  r = await api("PATCH", `/api/collections/employees/records/${empOther}`, tP, { name: "Andere Person", monatslohn: 0, lohnIban: "", ahvNr: "" });
+  const ao = (await api("GET", `/api/collections/employees/records/${empOther}`, tA)).json;
+  check("P: Speichern mit leeren Lohnfeldern löscht sie nicht", r.status === 200 && ao.monatslohn === SECRET_LOHN && ao.ahvNr === SECRET_AHV, `HTTP ${r.status} ${ao.monatslohn}`);
+  r = await api("GET", `/api/collections/employees/records/${empOther}`, tA);
+  check("A: sieht Lohn", r.json.monatslohn === SECRET_LOHN, `HTTP ${r.status}`);
   r = await api("POST", "/api/collections/employees/records", tP, { id: rid("empx"), studio: sid, name: "Neu mit Lohn", monatslohn: 99999, lohnIban: "CH9300762011623852957" });
   check("P (ohne Löhne): neuer Mitarbeiter ohne Lohnangaben", r.status >= 400, `HTTP ${r.status}`);
   // wie die App ihn sendet (toDB.employee: leere Verläufe, Standardsätze, null-Felder) — Review Runde 26
