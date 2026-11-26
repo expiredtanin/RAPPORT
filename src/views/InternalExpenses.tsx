@@ -9,7 +9,7 @@ import { isLocalBackend } from "../storage/adapter";
 import { ExpenseFigures } from "../components/ExpenseFigures";
 import { TableToolbar, Header, Modal, FormField, DateInput, SortTh, RowMenu, EmptyState } from "../components/UI";
 import { removeWithUndo } from "../undo";
-import { expandInternalExpenses, expenseNet, expenseTax } from "../accounting";
+import { changeRecurringAmount, earliestAmountChangeMonth, expandInternalExpenses, expenseNet, expenseTax } from "../accounting";
 import { showToast } from "../toast";
 import { extractReceiptText, parseReceiptFields } from "../ocr";
 import type { InternalExpense, ViewProps } from "../types";
@@ -55,8 +55,11 @@ function InternalExpenses({ data, update }: Pick<ViewProps, "data" | "update" | 
   const openEdit = (e: InternalExpense & { occurrenceOf?: string }) => {
     const src = e.occurrenceOf ? items.find(x => x.id === e.occurrenceOf) : e;
     if (!src) return;
-    setForm({ ...src }); setEditBase(src); setModal(src.id);
+    setForm({ ...src }); setEditBase(src); setValidFrom(localISODate().slice(0, 7)); setModal(src.id);
   };
+  // Betragsänderung einer wiederkehrenden Ausgabe gilt ab diesem Monat («gültig ab», Standard: laufender Monat)
+  const [validFrom, setValidFrom] = useState(localISODate().slice(0, 7));
+  const earliestChange = earliestAmountChangeMonth(localISODate(), data.settings.mwstMethode);
   const [editBase, setEditBase] = useState<InternalExpense | null>(null);
   const closeModal = () => { setModal(null); setForm(emptyItem); };
   const save = () => {
@@ -68,7 +71,14 @@ function InternalExpenses({ data, update }: Pick<ViewProps, "data" | "update" | 
     const isNew = modal === "new";
     // Bearbeiten: nur eigene Änderungen auf den aktuellen Stand (applyEdit)
     // Betrag auf Rappen (wie bei Spesen): sonst weicht die angezeigte Zeile von der gerundeten Summe ab
-    const next = { ...form, amount: roundCHF(Number(form.amount)), id: isNew ? generateId() : modal } as InternalExpense;
+    let next = { ...form, amount: roundCHF(Number(form.amount)), id: isNew ? generateId() : modal } as InternalExpense;
+    // Wiederkehrend + Betrag geändert: ab «gültig ab», frühere Monate behalten den alten Betrag (Verlauf am Eintrag)
+    if (!isNew && editBase && editBase.id === next.id && editBase.recurring && next.recurring && next.amount !== editBase.amount) {
+      if (!/^\d{4}-\d{2}$/.test(validFrom)) { showToast("Bitte angeben, ab welchem Monat der neue Betrag gilt."); return; }
+      if (validFrom < earliestChange) { showToast(`Der neue Betrag kann frühestens ab ${earliestChange.slice(5)}.${earliestChange.slice(0, 4)} gelten — frühere MWST-Perioden bleiben unverändert.`); return; }
+      const ch = changeRecurringAmount(editBase, next.amount, validFrom);
+      next = { ...next, amount: ch.amount, amountHistory: ch.amountHistory };
+    }
     update("internalExpenses", prev => isNew ? [...(prev || []), next]
       : (prev || []).map(e => e.id === next.id ? (editBase?.id === next.id ? applyEdit(editBase, next, e) : next) : e));
     closeModal();
@@ -366,6 +376,12 @@ function InternalExpenses({ data, update }: Pick<ViewProps, "data" | "update" | 
               </label>
             </FormField>
           </div>
+          {modal !== "new" && form.recurring && editBase?.recurring && roundCHF(Number(form.amount)) !== editBase.amount && (
+            <FormField label="Neuer Betrag gilt ab (Monat)">
+              <input type="month" value={validFrom} min={earliestChange} onChange={e => setValidFrom(e.target.value)} style={{ maxWidth: 180 }} />
+              <div style={{ fontSize: 11, color: "var(--text4)", marginTop: 4 }}>Frühere Monate behalten den alten Betrag ({formatCHF(editBase.amount)}); Buchungen in abgeschlossenen MWST-Perioden ändern sich nicht (frühestens {earliestChange.slice(5)}.{earliestChange.slice(0, 4)}).</div>
+            </FormField>
+          )}
           {form.amount > 0 && (
             <div style={{ fontSize: 11, color: "var(--text4)", padding: "8px 12px", background: "var(--surface2)", borderRadius: 4, marginBottom: 12 }}>
               {form.inclMwst

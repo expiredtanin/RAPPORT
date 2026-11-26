@@ -13,6 +13,8 @@
 //   - Eintrag gelöscht, aber von der Gegenseite geändert → bleibt (Löschen verliert)
 //   - Listen aus Texten/Zahlen → als Menge (Hinzufügen und Entfernen beider Seiten)
 // Andere Listen ohne `id` gelten als ein Wert.
+// Optional meldet `onConflict` jeden Pfad, an dem beide Seiten verschieden geändert haben (oder eine Seite
+// gelöscht und die andere geändert hat) — für den Hinweis «… hat inzwischen ebenfalls geändert» (Cloud-Sperre).
 
 type Json = unknown;
 type Obj = Record<string, Json>;
@@ -36,7 +38,10 @@ export function jsonEqual(a: Json, b: Json): boolean {
   return false;
 }
 
-function mergeIdLists(base: Obj[] | undefined, mine: Obj[], theirs: Obj[]): Obj[] {
+/** Meldet einen Konfliktpfad (siehe Dateikopf). */
+type ConflictFn = (path: string) => void;
+
+function mergeIdLists(base: Obj[] | undefined, mine: Obj[], theirs: Obj[], onConflict?: ConflictFn, path = ""): Obj[] {
   const byId = (l: Obj[] | undefined) => new Map((l || []).map(x => [x.id as string, x]));
   const b = byId(base), m = byId(mine), t = byId(theirs);
   const out: Obj[] = [];
@@ -45,9 +50,10 @@ function mergeIdLists(base: Obj[] | undefined, mine: Obj[], theirs: Obj[]): Obj[
     done.add(id);
     const bi = b.get(id), mi = m.get(id), ti = t.get(id);
     if (mi === undefined && ti === undefined) return;
-    if (mi === undefined) { if (bi !== undefined && jsonEqual(bi, ti)) return; out.push(ti as Obj); return; } // ich habe gelöscht
-    if (ti === undefined) { if (bi === undefined || !jsonEqual(bi, mi)) out.push(mi); return; } // sie haben gelöscht
-    out.push(mergeValue(bi, mi, ti) as Obj);
+    const at = `${path}[${id}]`;
+    if (mi === undefined) { if (bi !== undefined && jsonEqual(bi, ti)) return; if (bi !== undefined) onConflict?.(at); out.push(ti as Obj); return; } // ich habe gelöscht
+    if (ti === undefined) { if (bi === undefined || !jsonEqual(bi, mi)) { if (bi !== undefined) onConflict?.(at); out.push(mi); } return; } // sie haben gelöscht
+    out.push(mergeValue(bi, mi, ti, onConflict, at) as Obj);
   };
   // Reihenfolge der Platte beibehalten, eigene neue Einträge hinten anhängen
   for (const x of theirs) take(x.id as string);
@@ -55,8 +61,11 @@ function mergeIdLists(base: Obj[] | undefined, mine: Obj[], theirs: Obj[]): Obj[
   return out;
 }
 
-/** Drei-Wege-Merge eines JSON-Werts. `base` darf fehlen (dann zählen nur `mine` und `theirs`). */
-export function mergeValue(base: Json, mine: Json, theirs: Json): Json {
+/**
+ * Drei-Wege-Merge eines JSON-Werts. `base` darf fehlen (dann zählen nur `mine` und `theirs`). `onConflict` (optional)
+ * bekommt jeden Pfad, an dem `mine` sich gegen eine andere Änderung durchgesetzt hat bzw. eine Löschung verlor.
+ */
+export function mergeValue(base: Json, mine: Json, theirs: Json, onConflict?: ConflictFn, path = ""): Json {
   if (jsonEqual(mine, theirs)) return mine;
   if (base !== undefined) {
     if (jsonEqual(mine, base)) return theirs;
@@ -68,13 +77,14 @@ export function mergeValue(base: Json, mine: Json, theirs: Json): Json {
     for (const k of new Set([...Object.keys(theirs), ...Object.keys(mine)])) {
       if (k === "__proto__" || k === "constructor" || k === "prototype") continue;   // keine Prototyp-Manipulation über fremde Dateien
       const inMine = k in mine && mine[k] !== undefined, inTheirs = k in theirs && theirs[k] !== undefined;
-      if (inMine && inTheirs) out[k] = mergeValue(b[k], mine[k], theirs[k]);
-      else if (inMine) { if (!(k in b) || !jsonEqual(b[k], mine[k])) out[k] = mine[k]; }   // neu oder von mir geändert; sonst von ihnen gelöscht
-      else if (inTheirs) { if (!(k in b) || !jsonEqual(b[k], theirs[k])) out[k] = theirs[k]; } // neu oder von ihnen geändert; sonst von mir gelöscht
+      const at = path ? `${path}.${k}` : k;
+      if (inMine && inTheirs) out[k] = mergeValue(b[k], mine[k], theirs[k], onConflict, at);
+      else if (inMine) { if (!(k in b) || !jsonEqual(b[k], mine[k])) { if (k in b && b[k] !== undefined) onConflict?.(at); out[k] = mine[k]; } }   // neu oder von mir geändert; sonst von ihnen gelöscht
+      else if (inTheirs) { if (!(k in b) || !jsonEqual(b[k], theirs[k])) { if (k in b && b[k] !== undefined) onConflict?.(at); out[k] = theirs[k]; } } // neu oder von ihnen geändert; sonst von mir gelöscht
     }
     return out;
   }
-  if (isIdList(mine) && isIdList(theirs)) return mergeIdLists(isIdList(base) ? base : undefined, mine, theirs);
+  if (isIdList(mine) && isIdList(theirs)) return mergeIdLists(isIdList(base) ? base : undefined, mine, theirs, onConflict, path);
   // Listen aus Texten/Zahlen (z.B. Spesenkategorien) als Menge: beide fügen etwas hinzu → beides bleibt
   // (vorher galt die ganze Liste als ein Wert, eine der beiden neuen Kategorien ging verloren)
   // Nur Textlisten ohne doppelte Einträge (Kategorien, Monate, Schlagworte) — Zahlenlisten mit fester Position
@@ -85,6 +95,7 @@ export function mergeValue(base: Json, mine: Json, theirs: Json): Json {
     for (const x of mine) if (!b.has(x) && !out.includes(x)) out.push(x);   // was ich hinzugefügt habe, kommt dazu
     return out;
   }
+  onConflict?.(path);   // beide haben denselben Wert verschieden geändert: meiner gilt
   return mine;
 }
 
@@ -93,7 +104,8 @@ export function mergeValue(base: Json, mine: Json, theirs: Json): Json {
  * Öffnen (`original`) geändert wurde, überschreibt `current`; was inzwischen jemand anderes geändert hat, bleibt.
  * Vorher schrieb das Fenster den ganzen beim Öffnen kopierten Datensatz zurück (z.B. Status «gesendet» → wieder
  * «entwurf», Test gleichzeitiges Arbeiten 25.11.2026). Abgeleitete Werte (Summen) danach neu berechnen.
+ * `onConflict` (optional): Pfade, an denen das Fenster eine inzwischen anders geänderte Stelle überschrieben hat.
  */
-export function applyEdit<T>(original: T, edited: T, current: T): T {
-  return mergeValue(original, edited, current) as T;
+export function applyEdit<T>(original: T, edited: T, current: T, onConflict?: (path: string) => void): T {
+  return mergeValue(original, edited, current, onConflict) as T;
 }

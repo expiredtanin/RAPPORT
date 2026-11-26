@@ -15,7 +15,7 @@
 
 import { DEFAULT_ABSENZ_TYPES, NON_BILLING_CATEGORIES } from "./constants";
 import type {
-  AbsenzType, AppData, ContactCategory, DashboardRow, ProtocolApproval, ProtocolParticipant, DateStr, DeliveryNote, Employee, Feiertag, Id,
+  AbsenzType, AppData, ContactCategory, DashboardRow, DreizehnterModus, ProtocolApproval, ProtocolParticipant, DateStr, DeliveryNote, Employee, Feiertag, Id,
   Invoice, LohnResult, ManualPhase, Person, Project, ProjectUsage, Protocol, Quote, Role, Settings, SiaItem, SiaPhase,
   TimeEntry, User, Contract,
 } from "./types";
@@ -608,7 +608,7 @@ export function lineAmount(qty?: number | null, price?: number | null, discountP
  * `defaultRate` = Büro-MWST-Satz, falls die Offerte keinen trägt. Dieselbe Rechnung wie im Offert-Editor — gebraucht,
  * wenn der Inhalt aus zwei gleichzeitigen Bearbeitungen zusammengeführt wird.
  */
-export function quoteTotals(q: Pick<Quote, "mode" | "sia" | "manualPhases" | "quoteRoles" | "freeItems" | "mwst" | "mwstRate">, roles: Role[], defaultRate?: number) {
+export function quoteTotals(q: Pick<Quote, "mode" | "sia" | "manualPhases" | "quoteRoles" | "freeItems" | "mwst" | "mwstRate">, roles: Role[], defaultRate?: number, runden5?: boolean) {
   const activeRoles = q.quoteRoles || roles;
   const sia = q.mode === "sia" && q.sia ? calcSIAHours(q.sia.baukosten, q.sia.schwierigkeit, q.sia.phases) : null;
   const man = q.mode === "manual" ? calcManualHours(q.manualPhases || [], activeRoles) : null;
@@ -617,7 +617,18 @@ export function quoteTotals(q: Pick<Quote, "mode" | "sia" | "manualPhases" | "qu
   const totalHours = q.mode === "sia" ? (sia?.total || 0) : q.mode === "manual" ? (man?.totalHours || 0) : 0;
   const taxRate = q.mwstRate ?? defaultRate ?? 8.1;
   const tax = q.mwst ? roundCHF(sub * (taxRate / 100)) : 0;
-  return { sub, totalHours, taxRate, tax, total: roundCHF(sub + tax) };
+  // `runden5` (Büro-Einstellung): Total nach der MWST auf 5 Rappen; Netto und MWST bleiben rappengenau
+  return { sub, totalHours, taxRate, tax, total: runden5 ? runden5Rappen(roundCHF(sub + tax)) : roundCHF(sub + tax) };
+}
+
+/**
+ * Rundungsdifferenz eines gespeicherten Totals (Total − Netto − MWST), die bei «Total auf 5 Rappen» als Zeile
+ * «Rundung» erscheint. Wird aus den gespeicherten Summen abgeleitet (kein eigenes Feld). Eine Rundung auf 5 Rappen
+ * ist höchstens ±0.02; grössere Abweichungen (Import, Altdaten) zählen nicht als Rundung.
+ */
+export function rundungsDifferenz(total: number | undefined, net: number | undefined, tax: number | undefined): number {
+  const d = roundCHF((total || 0) - (net || 0) - (tax || 0));
+  return Math.abs(d) >= 0.01 && Math.abs(d) <= 0.02 ? d : 0;
 }
 
 /** Freitext-Adresse («Strasse⏎PLZ Ort») in Strasse/PLZ/Ort zerlegen; ohne Zeile «PLZ Ort» leere Felder. */
@@ -1397,6 +1408,37 @@ export interface LohnVorperioden {
   dreizehnterBasisBisher?: number;
   /** Σ bereits ausbezahlter 13. Monatslohn der früheren Monate */
   dreizehnterBisher?: number;
+  /** Σ Monatslöhne (`brutto`) aller früheren Monate des Jahres samt Nachzahlungs-Differenzen (Basis des 13. bei Auszahlung im November/Dezember) */
+  bruttoMonatslohnBisher?: number;
+  /** Umstieg mitten im Jahr: Summen aus dem Vorsystem sind in den Werten oben enthalten (Hinweis in der Abrechnung) */
+  vorsystem?: { bisMonat: string; brutto: number; alvBasis: number };
+}
+
+/** Wahlmöglichkeiten der Lohnabrechnung (aus den Büro-Einstellungen bzw. dem Lauf). */
+export interface LohnOptionen {
+  /** Auszahlung des 13. Monatslohns im Betrieb; fehlt = monatlich 1/12. Eine Einstellung an der Person (`dreizehnterModus`) geht vor. */
+  dreizehnterModus?: DreizehnterModus;
+  /** Auszahlungsbetrag auf 5 Rappen runden (kaufmännisch); Abzüge bleiben rappengenau */
+  runden5?: boolean;
+  /** Nachzahlung für rückwirkende Lohnänderungen in CHF (negativ = Rückforderung); sozialversicherungspflichtig wie ein Bonus */
+  nachzahlung?: number;
+  /** Differenz der Monatslöhne darin, die erst den 13. Monatslohn erhöht (Auszahlung im November/Dezember, gleiches Jahr) */
+  nachzahlungBasis?: number;
+}
+
+/** Lohn-Optionen aus den Büro-Einstellungen. */
+export function lohnOptionen(settings: Partial<Pick<Settings, "dreizehnterModus" | "lohnAuszahlungRunden5">> | undefined): LohnOptionen {
+  return {
+    ...(settings?.dreizehnterModus ? { dreizehnterModus: settings.dreizehnterModus } : {}),
+    ...(settings?.lohnAuszahlungRunden5 ? { runden5: true } : {}),
+  };
+}
+
+/** Betrag auf 5 Rappen runden, kaufmännisch (2 Rappen ab → abwärts, 3 Rappen auf → aufwärts), gespiegelt für negative Beträge. */
+export function runden5Rappen(betrag: number): number {
+  const rappen = Math.round(Math.abs(betrag) * 100 + 1e-7);
+  const runden = Math.floor(rappen / 5 + 0.5 + 1e-9) * 5;
+  return (Math.sign(betrag) * runden) / 100 + 0;
 }
 
 /**
@@ -1454,7 +1496,9 @@ export function withDefaultRates<T extends Partial<Employee>>(emp: T, defaultPkA
  * @param monat `YYYY-MM` (für Eintritt und Höchstlohn)
  * @param spesen mit dem Lohn ausbezahlte Spesen (`amount` in CHF, brutto)
  * @param bonus einmalige Zulage in CHF; AHV-pflichtig, nicht anteilig
- * @param vorperioden frühere Abrechnungen desselben Jahres (Standard: keine)
+ * @param vorperioden frühere Abrechnungen desselben Jahres (Standard: keine); mit Vorsystem-Summen bei Umstieg im Jahr
+ * @param optionen 13. Monatslohn (monatlich 1/12, mit dem Novemberlohn oder Dezemberlohn; bei Austritt anteilig im
+ *   Austrittsmonat), Nachzahlung, Auszahlung auf 5 Rappen
  */
 export function calcLohn(
   emp: Employee,
@@ -1464,6 +1508,7 @@ export function calcLohn(
   vorperioden?: LohnVorperioden,
   agSaetze?: LohnAGSaetze,
   ueberstunden?: number,
+  optionen?: LohnOptionen,
 ): LohnResult {
   const r2 = roundCHF;   // kaufmännisch, ohne Gleitkomma-Abrundung bei halben Rappen (159.265 → 159.27, Runde 28)
   const hinweise: string[] = [];
@@ -1473,20 +1518,60 @@ export function calcLohn(
   const anteil = monatsAnteilNachEintritt(emp.eintrittsdatum, monat, emp.austrittsdatum);
   const brutto = r2(monatsLohn * anteil);
   if (anteil > 0 && anteil < 1) hinweise.push(`Monatslohn anteilig (${Math.round(anteil * 1000) / 10} % des Monats, Ein-/Austritt)`);
-  // 13. Monatslohn: 1/12 pro Monat; der Dezember gleicht die Rappen-Rundung der Vormonate aus,
-  // damit übers Jahr genau 1/12 der Monatslöhne herauskommt (11 × 1'208.33 + 1'208.37 = 14'500.00).
-  // Mit Vorperioden (Lohnlauf, Budget) auf Basis der tatsächlichen Monatslöhne, damit es auch nach einem
-  // Pensumwechsel aufgeht; ohne Vorperioden wie bei elf gleichen Vormonaten.
+  // 13. Monatslohn — je nach Betrieb (Einstellung, pro Person übersteuerbar):
+  // · monatlich: 1/12 pro Monat; der Dezember gleicht die Rappen-Rundung der Vormonate aus, damit übers Jahr genau
+  //   1/12 der Monatslöhne herauskommt (11 × 1'208.33 + 1'208.37 = 14'500.00). Mit Vorperioden (Lohnlauf, Budget) auf
+  //   Basis der tatsächlichen Monatslöhne, damit es auch nach einem Pensumwechsel aufgeht.
+  // · november/dezember: einmal im Auszahlungsmonat 1/12 aller Monatslöhne des Jahres (beim Novemberlohn samt dem
+  //   Dezemberlohn, wie er heute feststeht; der Dezember gleicht eine Abweichung aus). Bei Austritt anteilig im
+  //   Austrittsmonat: 1/12 der Monatslöhne bis dahin.
+  const dzModus: DreizehnterModus = emp.dreizehnterModus ?? optionen?.dreizehnterModus ?? "monatlich";
   const dzBasis = vorperioden?.dreizehnterBasisBisher, dzBisher = vorperioden?.dreizehnterBisher;
-  const dreizehnter = !emp.dreizehnterLohn ? 0
-    : !monat?.endsWith("-12") ? r2(brutto / 12)
-    : dzBasis !== undefined && dzBisher !== undefined ? r2(r2((dzBasis + brutto) / 12) - dzBisher)
-    : r2(brutto - 11 * r2(brutto / 12));
+  const nzBasis = r2(optionen?.nachzahlungBasis || 0);
+  let dreizehnter = 0;
+  let dreizehnterArt: LohnResult["dreizehnterArt"];
+  if (emp.dreizehnterLohn) {
+    const jahrOk = !!monat && /^\d{4}-\d{2}$/.test(monat);
+    if (dzModus === "monatlich" || !jahrOk) {
+      dreizehnter = !monat?.endsWith("-12") ? r2(brutto / 12)
+        : dzBasis !== undefined && dzBisher !== undefined ? r2(r2((dzBasis + brutto) / 12) - dzBisher)
+        : r2(brutto - 11 * r2(brutto / 12));
+      dreizehnterArt = "monatlich";
+    } else {
+      const jahrStr = monat!.slice(0, 4), m = Number(monat!.slice(5, 7));
+      const zahlMonat = dzModus === "november" ? 11 : 12;
+      const austrittMonat = emp.austrittsdatum && emp.austrittsdatum.slice(0, 4) === jahrStr ? Number(emp.austrittsdatum.slice(5, 7)) : 0;
+      const beiAustritt = austrittMonat === m && m < zahlMonat;
+      if (anteil > 0 && (m === zahlMonat || m === 12 || beiAustritt)) {
+        // Monatslöhne der früheren Monate: aus den Abrechnungen; ohne Vorperioden wie bei gleichen Vormonaten
+        let vorBasis = vorperioden?.bruttoMonatslohnBisher;
+        if (vorBasis === undefined) {
+          let n = 0;
+          for (let k = 1; k < m; k++) if (monatsAnteilNachEintritt(emp.eintrittsdatum, `${jahrStr}-${String(k).padStart(2, "0")}`, emp.austrittsdatum) > 0) n++;
+          vorBasis = r2(n * brutto);
+        }
+        // Novemberlohn: der Dezemberlohn, wie er heute feststeht, zählt schon mit
+        const dezember = dzModus === "november" && m === 11
+          ? r2(lohnImMonat(emp, `${jahrStr}-12`) * monatsAnteilNachEintritt(emp.eintrittsdatum, `${jahrStr}-12`, emp.austrittsdatum)) : 0;
+        dreizehnter = r2(r2((vorBasis + brutto + dezember + nzBasis) / 12) - (dzBisher || 0));
+        dreizehnterArt = beiAustritt ? "austritt" : "einmal";
+        if (beiAustritt) hinweise.push("13. Monatslohn anteilig im Austrittsmonat ausbezahlt (1/12 der Monatslöhne bis zum Austritt)");
+        else if (m === zahlMonat) hinweise.push(`13. Monatslohn mit dem ${m === 11 ? "Novemberlohn" : "Dezemberlohn"} ausbezahlt (1/12 der Monatslöhne des Jahres)`);
+        else if (dreizehnter !== 0) hinweise.push("13. Monatslohn: Ausgleich zur Auszahlung im November (Dezemberlohn weicht von der Annahme ab)");
+      }
+    }
+  }
   const bonusBetrag = r2(bonus || 0);
+  // Nachzahlung für rückwirkende Lohnänderungen: massgebender Lohn wie der Bonus (AHV, ALV, UVG, KTG, PK, QST)
+  const nachzahlung = r2(optionen?.nachzahlung || 0);
   // Ausbezahlte Überstunden (Jahresabschluss): massgebender Lohn wie der Bonus (AHV, ALV, UVG, QST), aber nicht
   // in der PK-Basis und nicht im 13. (vorher liefen sie an der Lohnabrechnung vorbei — Rechenprüfung 25.11.2026)
   const ueberstundenBetrag = r2(ueberstunden || 0);
-  const bruttoTotal = r2(brutto + dreizehnter + bonusBetrag + ueberstundenBetrag); // Bonus ist AHV-pflichtig
+  const bruttoTotal = r2(brutto + dreizehnter + bonusBetrag + ueberstundenBetrag + nachzahlung); // Bonus ist AHV-pflichtig
+  if (vorperioden?.vorsystem) {
+    const v = vorperioden.vorsystem;
+    hinweise.push(`Vorsystem berücksichtigt (bis ${v.bisMonat.slice(5)}.${v.bisMonat.slice(0, 4)}): AHV-Lohn CHF ${v.brutto.toLocaleString("de-CH")}, ALV-/NBU-Basis CHF ${v.alvBasis.toLocaleString("de-CH")} von ${HOECHSTLOHN_ALV_UVG.toLocaleString("de-CH")}`);
+  }
 
   const status = ahvStatus(emp.geburtsdatum, monat, emp.ahvRentner);
   // AHV-pflichtiger Lohn: Jugendliche bis 17 beitragsfrei, Rentner mit Freibetrag 1'400/Monat
@@ -1543,7 +1628,7 @@ export function calcLohn(
   }
   if (bvgAG < bvg) hinweise.push("PK: Der Arbeitgeber muss mindestens gleich viel zahlen wie der Arbeitnehmer (Art. 66 BVG)");
   // Prüfung gegen das BVG-Minimum (Altersgutschriften), wenn das Geburtsdatum bekannt ist
-  if (emp.geburtsdatum && monat && status === "aktiv" && anteil === 1) {
+  if (emp.geburtsdatum && monat && status === "aktiv" && anteil === 1 && dzModus === "monatlich") {
     const alter = Number(monat.slice(0, 4)) - Number(emp.geburtsdatum.slice(0, 4));
     const minMonat = r2(bvgKoordinierterLohn(jahreslohn) * bvgAltersgutschriftSatz(alter) / 100 / 12);
     if (minMonat > 0 && bvg + bvgAG + 0.005 < minMonat) hinweise.push(`PK-Beiträge unter dem BVG-Minimum (Altersgutschrift ${bvgAltersgutschriftSatz(alter)} % ≈ CHF ${minMonat.toFixed(2)}/Monat): Beträge laut PK-Ausweis erfassen`);
@@ -1552,7 +1637,14 @@ export function calcLohn(
   const totalAbzuege = r2(ahv + alv + bvg + nbu + ktg + qst);
   const netto = r2(bruttoTotal - totalAbzuege);
   const spesenTotal = r2((spesen || []).reduce((s, e) => s + (e.amount || 0), 0));
-  const auszahlung = r2(netto + familienzulagen + spesenTotal);
+  let auszahlung = r2(netto + familienzulagen + spesenTotal);
+  // Auszahlung auf 5 Rappen (Einstellung): nur der Auszahlungsbetrag, die Abzüge bleiben rappengenau
+  let rundung = 0;
+  if (optionen?.runden5) {
+    const gerundet = runden5Rappen(auszahlung);
+    rundung = r2(gerundet - auszahlung);
+    auszahlung = gerundet;
+  }
 
   // Weitere Arbeitgeberkosten (nur mit Sätzen; ältere Aufrufe ohne → 0)
   const ag = agSaetze;
@@ -1562,9 +1654,10 @@ export function calcLohn(
   const agKtg = ag ? r2(bruttoTotal * (ag.ktgAG ?? (emp.ktgSatz ?? 0.5)) / 100) : 0;
 
   return {
-    brutto, bruttoBase, dreizehnter, bonusBetrag, ...(ueberstundenBetrag ? { ueberstundenBetrag } : {}), bruttoTotal, alvBasis, ahvBasis,
+    brutto, bruttoBase, dreizehnter, ...(dreizehnterArt && emp.dreizehnterLohn ? { dreizehnterArt } : {}), bonusBetrag, ...(ueberstundenBetrag ? { ueberstundenBetrag } : {}),
+    ...(nachzahlung ? { nachzahlung, ...(nzBasis ? { nachzahlungBasis: nzBasis } : {}) } : {}), bruttoTotal, alvBasis, ahvBasis,
     ahv, alv, bvg, nbu, ktg, qst, totalAbzuege, netto, familienzulagen, spesenTotal, auszahlung, bvgAG,
-    agFak, agVk, agBu, agKtg, ...(hinweise.length ? { hinweise } : {}),
+    agFak, agVk, agBu, agKtg, ...(rundung ? { rundung } : {}), ...(hinweise.length ? { hinweise } : {}),
   };
 }
 

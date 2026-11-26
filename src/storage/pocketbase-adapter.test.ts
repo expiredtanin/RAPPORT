@@ -1,7 +1,9 @@
 // Tests für Schreib-Robustheit des PocketBase-Adapters (ohne Server: Netzteile gestubbt).
 
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { pbMessage, PocketBaseAdapter, RejectedSaveError } from "./pocketbase-adapter";
+import { pbMessage, PocketBaseAdapter, RejectedSaveError, type SaveConflict } from "./pocketbase-adapter";
+import { toDB } from "./pocketbase-mappers";
+import { baseFrom } from "./pocketbase-sync";
 import type { AppData } from "../types";
 
 const data = (n: number) => ({ n } as unknown as AppData);
@@ -155,5 +157,102 @@ describe("PocketBaseAdapter.save: nach einer Ablehnung weiterschreiben", () => {
     (a as unknown as { _studioId: string })._studioId = "s1";
     a._writeSnapshot = vi.fn(async () => { throw new RejectedSaveError("abgelehnt", ["timeEntries"]); }) as never;
     await expect(a.save({ n: 1 } as never)).rejects.toMatchObject({ keys: ["timeEntries"] });
+  });
+});
+
+describe("PocketBaseAdapter: optimistische Sperre (409 → frisch laden, verrechnen, erneut schreiben)", () => {
+  type Rec = Record<string, unknown>;
+  const item = (id: string, price: number) => ({ id, desc: "Pos " + id, qty: 1, price, discount: 0 });
+  const invoice = (items: ReturnType<typeof item>[], extra: Rec = {}) => ({
+    id: "inv1", number: "R-2026-001", clientId: "c1", date: "2026-11-26", items, mwst: true, mwstRate: 8.1, status: "gesendet",
+    sub: 0, globalDisc: 0, subAfterDisc: 0, tax: 0, total: 0, ...extra,
+  });
+  /** Server mit einem Datensatz; Update mit Header prüft den Stand wie concurrency.pb.js. */
+  function fakeServer(rec: Rec) {
+    let n = 2;
+    const calls: { id: string; body: Rec; header?: string }[] = [];
+    const coll = {
+      getFullList: vi.fn(async () => [{ id: rec.id }]),
+      getOne: vi.fn(async () => ({ ...rec })),
+      create: vi.fn(),
+      delete: vi.fn(),
+      update: vi.fn(async (id: string, body: Rec, opts?: { headers?: Record<string, string> }) => {
+        const header = opts?.headers?.["X-Rapport-If-Updated"];
+        calls.push({ id, body, header });
+        if (header && header !== rec.updated) throw Object.assign(new Error("409"), { status: 409 });
+        Object.assign(rec, body, { updated: "v" + ++n });
+        return { ...rec };
+      }),
+    };
+    return { coll, calls, rec, client: { collection: () => coll, filter: (f: string) => f } };
+  }
+  const setup = (base: ReturnType<typeof invoice>, server: ReturnType<typeof invoice>, version = "v1") => {
+    const a = new PocketBaseAdapter("http://test.invalid");
+    a.setStudioId("s1");
+    const srv = fakeServer({ ...toDB.invoice(server as never, "s1"), updated: "v2" });
+    (a as unknown as { client: unknown }).client = srv.client;
+    a._base.set("invoices", baseFrom([toDB.invoice(base as never, "s1")], "id"));
+    a._versions.set("invoices", new Map([["inv1", version]]));
+    const conflicts: SaveConflict[] = [];
+    a.onConflict = c => conflicts.push(c);
+    const sync = (mine: ReturnType<typeof invoice>) => a._syncTable("invoices", "s1", [toDB.invoice(mine as never, "s1")], "id",
+      { mapper: "invoice", ctx: { settings: { mwstRate: 8.1, roles: [] }, projects: [], quotes: [], invoices: [] } as never });
+    return { a, srv, conflicts, sync };
+  };
+  const base = invoice([item("i1", 1000), item("i2", 2000), item("i3", 3000)], { sub: 6000, subAfterDisc: 6000, tax: 486, total: 6486 });
+
+  it("verschiedene Positionen: beide Änderungen bleiben, Summen neu, kein Hinweis", async () => {
+    const { srv, conflicts, sync } = setup(base, invoice([item("i1", 1000), item("i2", 2222), item("i3", 3000)], { sub: 6222, subAfterDisc: 6222, tax: 503.98, total: 6725.98 }));
+    await sync(invoice([item("i1", 1111), item("i2", 2000), item("i3", 3000)], { sub: 6111, subAfterDisc: 6111, tax: 494.99, total: 6605.99 }));
+    expect(srv.calls[0].header).toBe("v1");   // erster Versuch mit dem bekannten Stand → 409
+    expect(srv.calls[1].header).toBe("v2");   // zweiter mit dem frisch geladenen
+    expect((srv.rec.items as { price: number }[]).map(i => i.price)).toEqual([1111, 2222, 3000]);
+    expect(srv.rec.sub).toBe(6333);
+    expect(srv.rec.total).toBe(6845.97);
+    expect(conflicts).toEqual([]);
+  });
+
+  it("dieselbe Position: eigene Fassung gilt, Hinweis an die App", async () => {
+    const { srv, conflicts, sync } = setup(base, invoice([item("i1", 1222), item("i2", 2000), item("i3", 3000)], { sub: 6222, total: 6725.98 }));
+    await sync(invoice([item("i1", 1111), item("i2", 2000), item("i3", 3000)], { sub: 6111, subAfterDisc: 6111, tax: 494.99, total: 6605.99 }));
+    expect((srv.rec.items as { price: number }[])[0].price).toBe(1111);
+    expect(srv.rec.total).toBe(6605.99);
+    expect(conflicts).toHaveLength(1);
+    expect(conflicts[0]).toMatchObject({ table: "invoices", dataKey: "invoices", id: "inv1", paths: ["items[i1].price"] });
+    expect(conflicts[0].message).toContain("die Rechnung R-2026-001");
+  });
+
+  it("Stand stimmt: ein Update mit Header, danach gilt der neue Stand der Antwort", async () => {
+    const { a, srv, sync } = setup(base, base, "v2");
+    await sync(invoice([item("i1", 1111), item("i2", 2000), item("i3", 3000)]));
+    expect(srv.calls).toHaveLength(1);
+    expect(srv.calls[0].header).toBe("v2");
+    expect(a._versions.get("invoices")?.get("inv1")).toBe("v3");
+  });
+
+  it("nach dem Verrechnen bleibt der alte Stand bekannt: nächstes Speichern wird wieder verrechnet statt fremde Positionen zu überschreiben", async () => {
+    const { a, srv, sync } = setup(base, invoice([...base.items, item("b", 20)]));
+    const mine = invoice([item("i1", 1000), item("i2", 2000), item("i3", 3000), item("a", 10)]);
+    await sync(mine);
+    expect((srv.rec.items as { id: string }[]).map(i => i.id)).toEqual(["i1", "i2", "i3", "b", "a"]);
+    expect(a._versions.get("invoices")?.get("inv1")).toBe("v1");
+    // App zeigt noch meine Fassung (ohne «b»), ich ändere weiter
+    await sync({ ...mine, items: [...mine.items.slice(0, 3), item("a", 15)] });
+    expect((srv.rec.items as { id: string; price: number }[]).map(i => `${i.id}:${i.price}`)).toEqual(["i1:1000", "i2:2000", "i3:3000", "b:20", "a:15"]);
+  });
+
+  it("ohne bekannten Stand (älterer Server/kein updated): Update ohne Header wie bisher", async () => {
+    const { a, srv, sync } = setup(base, base);
+    a._versions = new Map();
+    await sync(invoice([item("i1", 1111), item("i2", 2000), item("i3", 3000)]));
+    expect(srv.calls).toHaveLength(1);
+    expect(srv.calls[0].header).toBeUndefined();
+  });
+
+  it("gibt nach CONFLICT_RETRIES Versuchen auf und meldet, dass nicht gespeichert wurde", async () => {
+    const { srv, sync } = setup(base, base);
+    srv.coll.update.mockImplementation(async () => { throw Object.assign(new Error("409"), { status: 409 }); });
+    await expect(sync(invoice([item("i1", 1111), item("i2", 2000), item("i3", 3000)]))).rejects.toThrow(/nicht gespeichert/);
+    expect(srv.coll.update).toHaveBeenCalledTimes(1 + PocketBaseAdapter.CONFLICT_RETRIES);
   });
 });

@@ -62,3 +62,19 @@ export function unassignedPhaseMinutes(
   ]);
   return entries.filter(e => !e.phaseId || !known.has(e.phaseId)).reduce((s, e) => s + (e.minutes || 0), 0);
 }
+
+/**
+ * Eigene Phase umbenennen: nur das Label ändert sich, die `id` bleibt — Zeiteinträge hängen über `phaseId` daran und
+ * zählen so weiter zur Phase. Leerer Name oder unbekannte id: Liste unverändert.
+ */
+export function renameCustomPhase<T extends { id: Id; label: string }>(phases: T[], id: Id, label: string): T[] {
+  const name = label.trim();
+  if (!name || !phases.some(p => p.id === id)) return phases;
+  return phases.map(p => p.id === id ? { ...p, label: name } : p);
+}
+
+/** Auf eine Phase gebuchte Minuten im Projekt (für die Rückfrage beim Löschen einer eigenen Phase); ohne Projekt-id 0. */
+export function phaseBookedMinutes(entries: Pick<TimeEntry, "projectId" | "phaseId" | "minutes">[], projectId: Id | undefined, phaseId: Id): number {
+  if (!projectId) return 0;
+  return entries.filter(e => e.projectId === projectId && e.phaseId === phaseId).reduce((s, e) => s + (e.minutes || 0), 0);
+}

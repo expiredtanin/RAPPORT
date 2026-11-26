@@ -62,7 +62,9 @@ services:
       context: ../..
       dockerfile: server/container/Dockerfile.app
       args:
-        POCKETBASE_URL: ${API_EXTERNAL_URL}
+        # Leer (Standard) = die App nutzt PocketBase über die eigene Adresse (/api/ → pb, nginx.conf) — wie das
+        # fertige Registry-Image. Nur für eine eigene API-Domain setzen (z.B. https://api.buero.ch).
+        POCKETBASE_URL: ${APP_POCKETBASE_URL:-}
     container_name: rapport-server-app
     restart: unless-stopped
     depends_on:

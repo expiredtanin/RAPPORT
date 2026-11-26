@@ -151,8 +151,11 @@ function Employees({ data, update, saveAll, setPrintContent, userPermissions, cu
     if (empData.saldoStichtag && empData.eintrittsdatum && empData.saldoStichtag < empData.eintrittsdatum) { showToast("Der Saldo-Stichtag liegt vor dem Eintritt."); return; }
     const lohnVerlauf = (empData.lohnVerlauf || []).filter(v => v.ab && Number(v.monatslohn) > 0).sort((a, b) => a.ab.localeCompare(b.ab));
     if ((empData.lohnVerlauf || []).length !== lohnVerlauf.length) showToast("Lohnänderungen ohne Datum oder Betrag wurden nicht übernommen.");
+    // Vorsystem-Summen (Umstieg mitten im Jahr): nur mit Jahr und Monat des Jahres; ohne Angaben verwerfen
+    const lohnVorsystem = (empData.lohnVorsystem || []).filter(v => v.jahr >= 2000 && /^\d{4}-(0[1-9]|1[0-2])$/.test(v.bisMonat || "") && v.bisMonat.slice(0, 4) === String(v.jahr) && Number(v.brutto) >= 0 && (v.brutto > 0 || (v.alvBasis ?? 0) > 0));
+    if ((empData.lohnVorsystem || []).length !== lohnVorsystem.length) showToast("Vorsystem-Summen ohne Monat oder Betrag wurden nicht übernommen.");
     // angezeigte Standardsätze ausdrücklich speichern (sonst «leer» → in der Cloud 0 % → Lohn ohne Sozialabzüge)
-    const emp = { ...withDefaultRates(empData, data.settings.defaultPkAGSatz), id: empId, pensumVerlauf, lohnVerlauf,
+    const emp = { ...withDefaultRates(empData, data.settings.defaultPkAGSatz), id: empId, pensumVerlauf, lohnVerlauf, lohnVorsystem: lohnVorsystem.sort((a, b) => a.bisMonat.localeCompare(b.bisMonat)),
       // angezeigten Studio-Standard festschreiben (sonst zeigte der Dialog 41 h / 5 Wo., gerechnet wurde mit 35 h / 4 Wo. — Runde 28)
       wochenstunden: empData.wochenstunden || data.settings.defaultWochenstunden || 35, ferienWochen: empData.ferienWochen || data.settings.defaultFerienWochen || 5,
       ...(empData.saldoStichtag ? {} : { saldoUebertragStunden: 0 })   /* 0 wie der Server speichert: sonst bei jedem Speichern eine «Änderung» */ } as Employee;
@@ -165,7 +168,7 @@ function Employees({ data, update, saveAll, setPrintContent, userPermissions, cu
     // Basis gleich normalisieren wie das Formular (leere Verläufe, Standardsätze, Übertrag 0): sonst galten diese
     // Ergänzungen als «eigene Änderung» und überschrieben z.B. eine gleichzeitig erfasste Lohnänderung (Review R23)
     const rawBase = empBaseRef.current?.id === emp.id ? empBaseRef.current : undefined;
-    const base = rawBase && ({ ...withDefaultRates(rawBase, data.settings.defaultPkAGSatz), pensumVerlauf: rawBase.pensumVerlauf || [], lohnVerlauf: rawBase.lohnVerlauf || [],
+    const base = rawBase && ({ ...withDefaultRates(rawBase, data.settings.defaultPkAGSatz), pensumVerlauf: rawBase.pensumVerlauf || [], lohnVerlauf: rawBase.lohnVerlauf || [], lohnVorsystem: rawBase.lohnVorsystem || [],
       // wie beim Speichern festgeschrieben (sonst überschrieb der Standard eine parallele Änderung bzw. wurde am eigenen
       // Datensatz vom Server abgelehnt — Review R29)
       wochenstunden: rawBase.wochenstunden || data.settings.defaultWochenstunden || 35, ferienWochen: rawBase.ferienWochen || data.settings.defaultFerienWochen || 5,

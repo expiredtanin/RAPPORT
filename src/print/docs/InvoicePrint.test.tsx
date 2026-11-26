@@ -66,4 +66,18 @@ describe("InvoicePrint Abrechnungsblock über dem Honorar", () => {
     expect(html).toMatch(/Über dem Honorar nach dieser Rechnung.*1.000\.00.*10\.0 %/);
     expect(html).not.toMatch(/CHF\s?-/);
   });
+
+  // Total auf 5 Rappen (Büro-Einstellung): Zeile «Rundung» zwischen MWST und Total, MWST bleibt rappengenau
+  it("Rundung auf 5 Rappen: eigene Zeile, MWST unverändert, Total gerundet", () => {
+    const items = [{ id: "1", desc: "Honorar", qty: 1, price: 1000.01, discount: 0 }];
+    const t = calcTotal(items, true, 8.1, "none", 0, true);
+    const inv = { id: "i2", number: "2026-006", clientId: "c1", date: "2026-11-19", items, mwst: true, mwstRate: 8.1, status: "entwurf", ...t } as Invoice;
+    const html = markup(<InvoicePrint inv={inv} client={undefined} settings={settings} />);
+    expect(row(html, "Rundung")).toMatch(/−CHF\s?0\.01/);
+    expect(row(html, "MWST")).toMatch(/81\.00/);
+    expect(html).toMatch(/1’081\.00|1'081\.00/);
+    // ohne Rundung keine Zeile
+    const plain = markup(<InvoicePrint inv={{ ...inv, ...calcTotal(items, true, 8.1) } as Invoice} client={undefined} settings={settings} />);
+    expect(row(plain, "Rundung")).toBeNull();
+  });
 });

@@ -4,7 +4,7 @@ import React from "react";
 import { arbeitszeitAm, formatIban, formatCHF, localISODate, monatslohnAm } from "../../utils";
 import { Modal, FormField, DateInput, DatePicker } from "../../components/UI";
 import { isCloudBackend } from "../../storage/adapter";
-import type { LohnWechsel, PensumWechsel, ViewProps } from "../../types";
+import type { DreizehnterModus, LohnVorsystem, LohnWechsel, PensumWechsel, ViewProps } from "../../types";
 import type { EmpForm } from "./types";
 
 interface EmployeeModalProps {
@@ -28,6 +28,12 @@ export default function EmployeeModal({ data, empForm, setEmpForm, nextPersonalN
   const lohnVerlauf = empForm.lohnVerlauf || [];
   const setLohnVerlauf = (list: LohnWechsel[]) => setEmpForm({ ...empForm, lohnVerlauf: list });
   const lohnHeute = monatslohnAm(empForm, localISODate());
+  const vorsystem = empForm.lohnVorsystem || [];
+  const setVorsystem = (list: LohnVorsystem[]) => setEmpForm({ ...empForm, lohnVorsystem: list });
+  const setVs = (i: number, patch: Partial<LohnVorsystem>) => setVorsystem(vorsystem.map((x, j) => j === i ? { ...x, ...patch } : x));
+  const numOrNull = (v: string) => v === "" ? null : +v;
+  const modusLabel: Record<DreizehnterModus, string> = { monatlich: "monatlich (1/12)", november: "mit dem Novemberlohn", dezember: "mit dem Dezemberlohn" };
+  const monateNamen = ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"];
   const stichtagJahr = (empForm.saldoStichtag || "").slice(0, 4);
   const ferienStichtag = stichtagJahr ? (empForm.ferienUebertragVorjahr || {})[stichtagJahr] : undefined;
   const hint = { fontSize: 10, color: "var(--text5)", marginTop: 3 } as const;
@@ -147,6 +153,19 @@ export default function EmployeeModal({ data, empForm, setEmpForm, nextPersonalN
           </label>
         </FormField>
       </div>
+      {empForm.dreizehnterLohn && (
+        <div className="form-row">
+          <FormField label="13. Monatslohn wird ausbezahlt">
+            <select value={empForm.dreizehnterModus || ""} onChange={e => setEmpForm({ ...empForm, dreizehnterModus: (e.target.value || undefined) as DreizehnterModus | undefined })}>
+              <option value="">wie im Büro ({modusLabel[data.settings.dreizehnterModus || "monatlich"]})</option>
+              <option value="monatlich">{modusLabel.monatlich}</option>
+              <option value="november">{modusLabel.november}</option>
+              <option value="dezember">{modusLabel.dezember}</option>
+            </select>
+            <div style={hint}>Bei Austritt immer anteilig im Austrittsmonat</div>
+          </FormField>
+        </div>
+      )}
       {/* Lohnänderungen: ab einem Datum gilt ein anderer Monatslohn (im Wechselmonat tagesgenau) */}
       <div style={{ fontSize: 11, color: "var(--text4)", margin: "4px 0 8px" }}>
         Lohnänderungen <span style={{ color: "var(--text5)" }}>— ab dem Datum gilt der neue Monatslohn (100 %); im Wechselmonat tagesgenau anteilig, frühere Abrechnungen bleiben</span>
@@ -162,6 +181,37 @@ export default function EmployeeModal({ data, empForm, setEmpForm, nextPersonalN
       ))}
       <button type="button" className="btn btn-ghost" style={{ fontSize: 11, padding: "3px 10px", marginBottom: 6 }}
         onClick={() => setLohnVerlauf([...lohnVerlauf, { ab: "", monatslohn: lohnHeute }])}>+ Lohn ab …</button>
+      {/* Umstieg mitten im Jahr: Summen des Vorsystems fliessen in den kumulierten Höchstlohn und den 13. Monatslohn ein */}
+      <div style={{ fontSize: 11, color: "var(--text4)", margin: "10px 0 8px" }}>
+        Umstieg mitten im Jahr: bisherige Lohnsumme im Jahr (vor RAPPORT) <span style={{ color: "var(--text5)" }}>— der ALV/NBU-Höchstlohn (CHF 148'200) und der 13. Monatslohn rechnen diese Summen mit; die Monate bis und mit dem gewählten Monat stammen aus dem Vorsystem</span>
+      </div>
+      {vorsystem.map((v, i) => (
+        <div key={i} style={{ border: "1px solid var(--border2)", borderRadius: 6, padding: "10px 12px 2px", marginBottom: 8 }}>
+          <div className="form-row" style={{ alignItems: "flex-end" }}>
+            <FormField label="Jahr"><input type="number" min={2000} max={2100} step={1} value={v.jahr || ""} onChange={e => setVs(i, { jahr: +e.target.value, bisMonat: `${e.target.value}-${(v.bisMonat || "").slice(5, 7) || "01"}` })} /></FormField>
+            <FormField label="Vorsystem bis und mit">
+              <select value={(v.bisMonat || "").slice(5, 7)} onChange={e => setVs(i, { bisMonat: `${v.jahr}-${e.target.value}` })}>
+                <option value="">Monat wählen</option>
+                {monateNamen.slice(0, 11).map((n, k) => <option key={n} value={String(k + 1).padStart(2, "0")}>{n}</option>)}
+              </select>
+            </FormField>
+            <FormField label="AHV-pflichtiger Lohn bisher CHF"><input type="number" min={0} step={100} value={v.brutto || ""} onChange={e => setVs(i, { brutto: +e.target.value })} /></FormField>
+            <FormField label="ALV/NBU-pflichtig bisher CHF"><input type="number" min={0} step={100} value={v.alvBasis ?? ""} placeholder="= AHV-Lohn" onChange={e => setVs(i, { alvBasis: numOrNull(e.target.value) })} /></FormField>
+            <div style={{ flex: "0 0 auto", paddingBottom: 6 }}>
+              <button type="button" className="btn-icon danger" title="Vorsystem-Summen entfernen" aria-label="Vorsystem-Summen entfernen" onClick={() => setVorsystem(vorsystem.filter((_, j) => j !== i))}><span className="msr" style={{ fontSize: 16 }}>close</span></button>
+            </div>
+          </div>
+          {empForm.dreizehnterLohn && (
+            <div className="form-row">
+              <FormField label="13. Monatslohn bereits bezahlt CHF"><input type="number" min={0} step={10} value={v.dreizehnter ?? ""} placeholder="0" onChange={e => setVs(i, { dreizehnter: numOrNull(e.target.value) })} /></FormField>
+              <FormField label="Monatslöhne bisher (ohne 13. und Boni) CHF"><input type="number" min={0} step={100} value={v.monatslohnSumme ?? ""} placeholder="= AHV-Lohn − 13." onChange={e => setVs(i, { monatslohnSumme: numOrNull(e.target.value) })} /></FormField>
+            </div>
+          )}
+          <div style={{ ...hint, marginBottom: 8 }}>Lohnausweis bzw. Auswertung des alten Systems per Ende {v.bisMonat ? `${monateNamen[Number(v.bisMonat.slice(5, 7)) - 1] || ""} ${v.jahr}` : "…"}. «ALV/NBU-pflichtig» ist der Lohn, auf dem bisher ALV/NBU abgezogen wurde (höchstens 148'200).</div>
+        </div>
+      ))}
+      <button type="button" className="btn btn-ghost" style={{ fontSize: 11, padding: "3px 10px", marginBottom: 12 }}
+        onClick={() => { const y = new Date().getFullYear(); setVorsystem([...vorsystem, { jahr: y, bisMonat: "", brutto: 0, alvBasis: null, dreizehnter: null, monatslohnSumme: null }]); }}>+ Vorsystem-Summen</button>
       <div style={{ fontSize: 11, color: "var(--text4)", marginBottom: 8 }}>Sozialabzüge Arbeitnehmer (anpassbar)</div>
       <div className="form-row">
         <FormField label="AHV/IV/EO %">

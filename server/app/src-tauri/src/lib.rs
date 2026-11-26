@@ -216,26 +216,10 @@ pub fn run() {
                 }
             });
 
-            // Pre-pull aller Compose-Images im Hintergrund. Erste Klicks
-            // sollen nicht hinter einem 150-MB-Pull haengen bleiben.
-            tauri::async_runtime::spawn(async move {
-                events::info("Pre-pull Docker-Images gestartet").await;
-                let out = tokio::process::Command::new("docker")
-                    .current_dir(services::compose_dir())
-                    .args(["compose", "pull"])
-                    .output()
-                    .await;
-                match out {
-                    Ok(o) if o.status.success() => events::info("Pre-pull fertig").await,
-                    Ok(o) => {
-                        events::warn(format!(
-                            "Pre-pull mit Fehlern: {}",
-                            String::from_utf8_lossy(&o.stderr).trim().chars().take(200).collect::<String>()
-                        )).await;
-                    }
-                    Err(e) => events::warn(format!("Pre-pull konnte nicht starten: {e}")).await,
-                }
-            });
+            // Kein Pre-Pull beim Start (Regel 26.11.2026): ein `compose pull` hier zog neue Images auch bei
+            // ausgeschaltetem Auto-Update, und das naechste `up -d` (Auto-Start, Neustart, Erste Hilfe) stellte
+            // ohne Backup auf sie um. Neue Images gibt es nur ueber die Update-Aktion (container_update::apply,
+            // manuell oder per Auto-Update), die vorher ein Backup macht. Fehlende Images zieht `up -d` selbst.
 
             // Backup-Scheduler — taeglich zur BACKUP_HOUR (pb kurz gestoppt,
             // konsistente SQLite-Kopie), Aufbewahrung BACKUP_RETENTION_COUNT.

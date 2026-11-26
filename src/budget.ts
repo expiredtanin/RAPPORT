@@ -6,13 +6,14 @@
 //     Lohnläufe): Bruttolohn inkl. 13. Monatslohn + alle Arbeitgeberbeiträge (AHV/IV/EO, ALV bis
 //     Höchstlohn, PK laut Ausweis oder %-Satz, FAK, Verwaltungskosten, UVG-BU, KTG). Ein-/Austritt,
 //     Rentner und BVG-Eintrittsschwelle wirken wie in der Lohnabrechnung. Vorher pauschal 20 %.
-//   - Fixkosten = interne Ausgaben netto: wiederkehrende aufs Jahr hochgerechnet (monatlich × 12,
-//     quartalsweise × 4, jährlich × 1); endet eine im Jahr (`recurringUntil`), zählen nur ihre
-//     Buchungen in diesem Jahr, ist sie vorher beendet, gar nicht. Einmalige nur aus dem Jahr.
+//   - Fixkosten = interne Ausgaben netto: wiederkehrende zählen mit ihren Buchungen im Jahr (monatlich
+//     12, quartalsweise 4, jährlich 1) — beginnt eine erst später im Jahr (Start Juli → 6×) oder endet
+//     sie früher (`recurringUntil`), nur mit den Monaten, in denen sie läuft; ein geänderter Betrag
+//     (`amountHistory`) gilt je Monat wie damals. Vorher beendete gar nicht. Einmalige nur aus dem Jahr.
 //   - Einnahmen: gestellte Rechnungen des Jahres netto (Entwürfe nur auf Wunsch); Offerten des Jahres
 //     netto abzüglich dessen, was aus ihnen schon in Rechnung gestellt ist (sonst doppelt gezählt).
 
-import { calcLohn, invoiceNet, invoicesForQuote, roundCHF, monatsAnteilNachEintritt, type LohnAGSaetze } from "./utils";
+import { calcLohn, invoiceNet, invoicesForQuote, roundCHF, monatsAnteilNachEintritt, type LohnAGSaetze, type LohnOptionen } from "./utils";
 import { expandInternalExpenses, expenseNet, lohnAGBeitraege, lohnVorperioden } from "./accounting";
 import type { AppData, Employee, InternalExpense, LohnEntry } from "./types";
 
@@ -32,13 +33,13 @@ export interface JahresLohnkosten {
  * Lohnkosten von `emp` im Jahr `year` (alle 12 Monate, ohne Spesen und Boni), gerechnet wie die
  * Lohnläufe inkl. kumuliertem ALV-/UVG-Höchstlohn.
  */
-export function jahresLohnkosten(emp: Employee, year: number, ag: LohnAGSaetze): JahresLohnkosten {
+export function jahresLohnkosten(emp: Employee, year: number, ag: LohnAGSaetze, optionen?: LohnOptionen): JahresLohnkosten {
   const done: LohnEntry[] = [];
   let brutto = 0, agSum = 0, monate = 0;
   for (let m = 1; m <= 12; m++) {
     const monat = `${year}-${String(m).padStart(2, "0")}`;
     if (monatsAnteilNachEintritt(emp.eintrittsdatum, monat, emp.austrittsdatum) === 0) continue;
-    const r = calcLohn(emp, monat, [], 0, lohnVorperioden(done, emp.id, monat), ag);
+    const r = calcLohn(emp, monat, [], 0, lohnVorperioden(done, emp.id, monat, emp.lohnVorsystem), ag, 0, optionen ? { dreizehnterModus: optionen.dreizehnterModus } : undefined);
     done.push({ ...r, id: monat, employeeId: emp.id, monat });
     brutto += r.bruttoTotal;
     agSum += lohnAGBeitraege(r).total;
@@ -61,8 +62,6 @@ export function mergeBudgetRows<T extends { id: string }>(current: T[], loaded: 
 /** Eine Zeile der Fixkosten. */
 export interface BudgetFixRow { id: string; label: string; cat: string; amount: number }
 
-const PER_YEAR: Record<string, number> = { monatlich: 12, quartalsweise: 4, "jährlich": 1 };
-
 /** Fixkosten des Jahres aus den internen Ausgaben (Regeln im Dateikopf). */
 export function budgetFixkosten(list: InternalExpense[], year: number): BudgetFixRow[] {
   const y = String(year);
@@ -76,13 +75,9 @@ export function budgetFixkosten(list: InternalExpense[], year: number): BudgetFi
     if ((e.date || "") > `${y}-12-31`) continue;               // beginnt erst später
     const until = e.recurringUntil ? e.recurringUntil.slice(0, 7) : null;
     if (until && until < `${y}-01`) continue;                    // im Vorjahr beendet
-    let amount: number;
-    if (until && until <= `${y}-12`) {
-      // endet in diesem Jahr: nur seine Buchungen im Jahr
-      amount = expandInternalExpenses([e], `${y}-12-31`).filter(x => x.date.startsWith(y)).reduce((s, x) => s + expenseNet(x), 0);
-    } else {
-      amount = expenseNet(e) * (PER_YEAR[e.recurringInterval || "monatlich"] ?? 12);
-    }
+    // Nur die Buchungen, die im Jahr wirklich anfallen: beginnt die Ausgabe erst im Jahr (Start Juli → 6 Monate),
+    // endet sie früher oder änderte sich ihr Betrag, zählt jeder Monat mit dem Betrag, der damals galt.
+    const amount = expandInternalExpenses([e], `${y}-12-31`).filter(x => x.date.startsWith(y)).reduce((s, x) => s + expenseNet(x), 0);
     rows.push({ id: e.id, label, cat: e.category, amount: roundCHF(amount) });
   }
   return rows;

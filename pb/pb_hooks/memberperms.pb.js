@@ -98,7 +98,7 @@ onRealtimeSubscribeRequest((e) => {
   // «?%6Fptions=» oder «monatslohn» die Prüfung (Review 26.11.2026). Deshalb dekodiert prüfen; email/ort/note
   // in Abo-Optionen gar nicht (die App abonniert nur «*» ohne Optionen).
   if (e.hasSuperuserAuth()) return e.next();
-  const SECRET = /studiobudget|monatslohn|lohnverlauf|lohniban|ahvnr|pkbeitrag|familienzulagen|quellensteuer|dreizehnterlohn|ahvrentner|(ahv|alv|bvg|nbu|ktg|pkag)satz|auszahlungbetrag|stundenlohn|personalnr|adresse|geburtsdatum|ferienwochen|ferienuebertrag|saldostichtag|saldouebertrag/i;
+  const SECRET = /studiobudget|monatslohn|lohnverlauf|lohniban|ahvnr|pkbeitrag|familienzulagen|quellensteuer|dreizehnterlohn|dreizehntermodus|lohnvorsystem|ahvrentner|(ahv|alv|bvg|nbu|ktg|pkag)satz|auszahlungbetrag|stundenlohn|personalnr|adresse|geburtsdatum|ferienwochen|ferienuebertrag|saldostichtag|saldouebertrag/i;
   const dec = (v) => decodeURIComponent(String(v).replace(/\+/g, " "));
   for (const raw of e.subscriptions || []) {
     const t = String(raw);

@@ -74,6 +74,12 @@ export interface Settings {
   lohnBuSatz?: number;
   /** Anteil des Arbeitgebers an der Krankentaggeldprämie in % (bei paritätischer Teilung = AN-Satz) */
   lohnKtgAGSatz?: number;
+  /** Auszahlung des 13. Monatslohns im Betrieb: monatlich 1/12 (Standard), mit dem Novemberlohn oder mit dem Dezemberlohn. Pro Person übersteuerbar (`Employee.dreizehnterModus`). */
+  dreizehnterModus?: DreizehnterModus;
+  /** Lohnauszahlung auf 5 Rappen runden (nur der Auszahlungsbetrag; Abzüge bleiben rappengenau). Standard aus. */
+  lohnAuszahlungRunden5?: boolean;
+  /** Rechnungs- und Offert-Total (inkl. MWST) auf 5 Rappen runden; MWST bleibt rappengenau, Differenz als Zeile «Rundung». Standard aus. */
+  rechnungRunden5?: boolean;
   quoteNumberFormat?: string;
   /** Vorgabe für den Genehmigungsvermerk im Protokolldruck (pro Protokoll übersteuerbar). Standard «unterschrift». */
   protokollApproval?: ProtocolApproval;
@@ -83,6 +89,8 @@ export interface Settings {
   familienzulagenAnteilig?: boolean;
   /** Stunden weniger Soll am Werktag vor einem ganzen Feiertag (Büro-Usanz, nicht gesetzlich); Standard 1, 0 = aus. */
   vortagStunden?: number;
+  /** Welcher Tag den Vortag-Abzug trägt: «direkt» (Werktag unmittelbar vor dem Feiertag, Standard), «werktag» (nur bei Feiertagen Mo–Fr), «letzter» (letzter Arbeitstag davor, auch Freitag vor Montagsfeiertag). */
+  vortagModus?: VortagModus;
   /** Mahnwesen: Verzugszins in Mahnungen ausweisen (OR 104). Standard aus. */
   verzugszinsAktiv?: boolean;
   /** Verzugszins in % p.a.; Standard 5 (gesetzlicher Satz). */
@@ -551,6 +559,11 @@ export interface InternalExpense {
   recurringInterval?: string;
   /** Letzter Monat einer wiederkehrenden Ausgabe (leer = läuft weiter) */
   recurringUntil?: DateStr | null;
+  /**
+   * Frühere Beträge einer wiederkehrenden Ausgabe (Betragsänderung «gültig ab»): bis (ausschliesslich) Monat `before`
+   * («YYYY-MM») galt `amount`; ab dem letzten `before` gilt das Feld `amount` der Ausgabe. Cloud: JSON-Spalte.
+   */
+  amountHistory?: { before: string; amount: number }[];
   /** Beleg wie `Expense.receiptData` (Cloud: «rapport-pb:internalExpenses/<id>/<Datei>»). */
   receiptData?: string | null;
   receiptName?: string | null;
@@ -685,6 +698,10 @@ export interface Employee {
   pensumVerlauf?: PensumWechsel[];
   /** Lohnänderungen über die Zeit (`monatslohn` = Lohn ab Eintritt); im Wechselmonat tagesgenau anteilig. */
   lohnVerlauf?: LohnWechsel[];
+  /** 13. Monatslohn: Auszahlung nur für diese Person übersteuern (sonst gilt die Büro-Einstellung). */
+  dreizehnterModus?: DreizehnterModus;
+  /** Umstieg mitten im Jahr: Lohnsummen aus dem Vorsystem, die in den kumulierten Höchstlohn und den 13. Monatslohn einfliessen. */
+  lohnVorsystem?: LohnVorsystem[];
   /** Cloud-User, der diesem Mitarbeiter entspricht (Self-Service-Ansichten) */
   appUserId?: Id | null;
   active?: boolean;
@@ -694,7 +711,39 @@ export interface Employee {
   city?: string;
 }
 
-/** Ein Pensumwechsel: ab `ab` (einschliesslich) gilt `pensum` (%), optional mit neuen Wochenstunden (100-%-Basis). */
+/** Auszahlung des 13. Monatslohns: monatlich 1/12, mit dem Novemberlohn oder mit dem Dezemberlohn (bei Austritt immer anteilig im Austrittsmonat). */
+export type DreizehnterModus = "monatlich" | "november" | "dezember";
+
+/** Welcher Tag vor einem ganzen Feiertag weniger Soll bekommt (Einstellungen → Feiertage, `vortagModus`). */
+export type VortagModus = "direkt" | "werktag" | "letzter";
+
+/**
+ * Lohnsummen aus dem Vorsystem für einen Umstieg mitten im Jahr: gelten für die Abrechnungen im Jahr `jahr`
+ * nach dem Monat `bisMonat` (die Monate bis und mit `bisMonat` ersetzt das Vorsystem).
+ */
+export interface LohnVorsystem {
+  jahr: number;
+  /** letzter Monat, den das Vorsystem abgerechnet hat (`YYYY-MM`) */
+  bisMonat: string;
+  /** Σ AHV-pflichtiger Lohn bisher (Bruttolohn Total inkl. bezahltem 13. Monatslohn und Boni) */
+  brutto: number;
+  /** Σ ALV-/NBU-pflichtiger Lohn bisher (bis Höchstlohn); leer = AHV-Lohn, höchstens der anteilige Höchstlohn bis `bisMonat` */
+  alvBasis?: number | null;
+  /** Σ bereits ausbezahlter 13. Monatslohn */
+  dreizehnter?: number | null;
+  /** Σ Monatslöhne (ohne 13. und Boni) bisher, Basis des 13.; leer = AHV-Lohn minus bezahlter 13. */
+  monatslohnSumme?: number | null;
+}
+
+/** Eine Zeile der Nachzahlung: Differenz des Monatslohns eines abgeschlossenen Monats (und Anteil 13. Monatslohn). */
+export interface NachzahlungMonat {
+  monat: string;
+  /** Differenz Monatslohn neu − abgerechnet */
+  betrag: number;
+  /** Anteil 13. Monatslohn (1/12), wenn er mit dieser Nachzahlung ausbezahlt wird */
+  dreizehnter?: number;
+}
+
 /** Lohnänderung: ab `ab` gilt dieser Monatslohn (100-%-Basis). */
 export interface LohnWechsel {
   ab: DateStr;
@@ -794,6 +843,14 @@ export interface LohnResult {
   agKtg?: number;
   /** Hinweise zur Abrechnung (z.B. BVG unter Eintrittsschwelle, Rentnerfreibetrag) */
   hinweise?: string[];
+  /** Wie der 13. Monatslohn in diesem Monat ausbezahlt wurde: monatlich 1/12, einmal (Novemberlohn/Dezemberlohn) oder anteilig bei Austritt */
+  dreizehnterArt?: "monatlich" | "einmal" | "austritt";
+  /** Nachzahlung für rückwirkende Lohnänderungen (sozialversicherungspflichtig, im Bruttolohn Total); negativ = Rückforderung */
+  nachzahlung?: number;
+  /** Differenz der Monatslöhne in der Nachzahlung, die den 13. Monatslohn des Jahres erst bei der Auszahlung erhöht (Auszahlung Nov/Dez) */
+  nachzahlungBasis?: number;
+  /** Rundung des Auszahlungsbetrags auf 5 Rappen (Einstellung), in `auszahlung` enthalten */
+  rundung?: number;
 }
 
 /** Zum Abschluss eingefrorene Sätze: spätere Änderungen am Mitarbeiter ändern alte Abrechnungen nicht. */
@@ -824,7 +881,13 @@ export interface LohnEntry extends LohnResult {
   saetzeSnapshot?: SaetzeSnapshot;
   /** true = Monatslohn wurde für diesen Lauf manuell angepasst */
   bruttoWasOverridden?: boolean;
+  /** true = Pensum wurde für diesen Lauf manuell angepasst (dann keine Nachzahlung-Prüfung für diesen Monat) */
+  pensumWasOverridden?: boolean;
   bonusBeschrieb?: string;
+  /** Bezeichnung der Nachzahlung («Nachzahlung Lohn 03.2026–05.2026») */
+  nachzahlungBeschrieb?: string;
+  /** Monate, für die diese Abrechnung nachzahlt (Differenz je Monat) */
+  nachzahlungMonate?: NachzahlungMonat[];
   /** Spesen, die mit diesem Lohn ausbezahlt wurden */
   spesenIds?: Id[];
   /** Überstunden-Auszahlungen (uberstundenAbschluss), die mit diesem Lohn abgerechnet wurden */

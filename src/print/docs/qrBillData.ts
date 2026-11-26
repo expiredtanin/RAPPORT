@@ -5,6 +5,7 @@
 import type { Data, Debtor } from "swissqrbill/types";
 import { isQRIban, isValidIban, paymentReference, roundCHF, splitAddress } from "../../utils";
 import type { Invoice, Person, Settings } from "../../types";
+import { countryCode } from "../../countries";
 
 /** Ergebnis: Daten für swissqrbill oder der Grund, warum kein Zahlteil gedruckt wird. */
 export type QrBillResult = { ok: true; data: Data } | { ok: false; reason: string; error?: boolean };
@@ -30,15 +31,12 @@ export function qrText(value: string | null | undefined, max: number): string {
   return Array.from(cleaned).slice(0, max).join("").trim();
 }
 
-/** Land als ISO-Code mit zwei Buchstaben; Freitext wie «Schweiz» oder leer → CH. */
-const countryCode = (c?: string | null) => {
-  const v = (c || "").trim().toUpperCase();
-  return /^[A-Z]{2}$/.test(v) ? v : "CH";
-};
+// Land als ISO-Code mit zwei Buchstaben aus dem Feld «Land» (countries.ts): Code bleibt, bekannte Ländernamen
+// («Deutschland») werden abgebildet — vorher wurde daraus still CH —, leer/unbekannt → CH. Nie aus der Freitext-Adresse.
 
 /**
  * Adresse der zahlungspflichtigen Partei (Typ S: PLZ und Ort sind Pflicht). Ohne strukturierte Felder wird
- * das alte Freitextfeld gelesen («Strasse⏎PLZ Ort»). Unvollständig → undefined: der Zahlteil zeigt dann
+ * das alte Freitextfeld gelesen («Strasse⏎PLZ Ort»); das Land kommt immer aus dem Feld «Land» des Kontakts. Unvollständig → undefined: der Zahlteil zeigt dann
  * das leere Feld zum Ausfüllen, statt einen ungültigen QR-Code zu erzeugen.
  */
 export function qrDebtor(client: Person | null | undefined): Debtor | undefined {

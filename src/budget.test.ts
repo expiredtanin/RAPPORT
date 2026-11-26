@@ -26,6 +26,20 @@ describe("Budget: Fixkosten", () => {
     expect(budgetFixkosten([x({ recurringUntil: "2025-12-01" })], 2026)).toEqual([]);
     expect(budgetFixkosten([x({ recurring: false, date: "2025-05-01" })], 2026)).toEqual([]);
   });
+  it("beginnt im Budgetjahr erst später: nur die Monate, in denen sie läuft (Start Juli → 6×)", () => {
+    expect(budgetFixkosten([x({ date: "2026-07-01" })], 2026)[0].amount).toBe(6000);
+    expect(budgetFixkosten([x({ date: "2026-07-01", recurringUntil: "2026-09-01" })], 2026)[0].amount).toBe(3000);
+    expect(budgetFixkosten([x({ date: "2026-07-01" })], 2027)[0].amount).toBe(12000);
+    expect(budgetFixkosten([x({ date: "2027-01-01" })], 2026)).toEqual([]);
+  });
+  it("quartalsweise ab Juli: Juli und Oktober; jährlich: einmal", () => {
+    expect(budgetFixkosten([x({ date: "2026-07-01", recurringInterval: "quartalsweise" })], 2026)[0].amount).toBe(2000);
+    expect(budgetFixkosten([x({ date: "2025-03-01", recurringInterval: "jährlich" })], 2026)[0].amount).toBe(1000);
+  });
+  it("Betragsverlauf: jeder Monat mit dem Betrag, der damals galt", () => {
+    const e = x({ amount: 1100, amountHistory: [{ before: "2026-04", amount: 1000 }] });
+    expect(budgetFixkosten([e], 2026)[0].amount).toBe(3 * 1000 + 9 * 1100);
+  });
 });
 
 describe("Budget: Einnahmen ohne Doppelzählung", () => {

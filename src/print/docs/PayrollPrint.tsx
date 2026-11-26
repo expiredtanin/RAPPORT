@@ -99,9 +99,15 @@ export function LohnPrint({ entry, emp, data, monatLabel, settings }: { entry: L
           {monatsAnteilNachEintritt(s.eintrittsdatum, entry.monat, s.austrittsdatum) < 1 && (
             <LRow label={s.austrittsdatum && s.austrittsdatum.slice(0, 7) === entry.monat ? `Anteilig bis Austritt ${formatDate(s.austrittsdatum)}` : `Anteilig ab Eintritt ${formatDate(s.eintrittsdatum)}`} betrag={entry.brutto} sub />
           )}
-          {entry.dreizehnter > 0 && <LRow label="13. Monatslohn (1/12)" betrag={entry.dreizehnter} sub />}
+          {entry.dreizehnter !== 0 && <LRow label={entry.dreizehnterArt === "austritt" ? "13. Monatslohn (anteilig bei Austritt)" : entry.dreizehnterArt === "einmal" ? "13. Monatslohn (Auszahlung, 1/12 der Monatslöhne)" : "13. Monatslohn (1/12)"} betrag={entry.dreizehnter} sub />}
           {(entry.ueberstundenBetrag || 0) > 0 && <LRow label="Überstunden-Auszahlung" betrag={entry.ueberstundenBetrag || 0} sub />}
           {entry.bonusBetrag > 0 && <LRow label={entry.bonusBeschrieb || "Einmalzahlung / Bonus"} betrag={entry.bonusBetrag} sub />}
+          {(entry.nachzahlung || 0) !== 0 && <>
+            <LRow label={entry.nachzahlungBeschrieb || "Nachzahlung Lohn"} betrag={entry.nachzahlung || 0} sub />
+            {(entry.nachzahlungMonate || []).map(m => (
+              <LRow key={m.monat} label={`Differenz ${m.monat.slice(5)}.${m.monat.slice(0, 4)}${m.dreizehnter ? " (inkl. 13. Monatslohn)" : ""}`} betrag={m.betrag + (m.dreizehnter || 0)} sub />
+            ))}
+          </>}
           <LRow label="Bruttolohn" betrag={entry.bruttoTotal} bold topBorder />
 
           {/* Spacer */}
@@ -122,6 +128,7 @@ export function LohnPrint({ entry, emp, data, monatLabel, settings }: { entry: L
             {spesen.map(s => <LRow key={s.id} label={`${s.category}${s.description ? " — " + s.description : ""}`} betrag={s.amount} sub />)}
           </>}
 
+          {(entry.rundung || 0) !== 0 && <LRow label="Rundung auf 5 Rappen" betrag={entry.rundung || 0} sub />}
           <LRow label="AUSZAHLUNG TOTAL" betrag={entry.auszahlung} bold topBorder color="#2d6a4f" />
         </tbody>
       </table>

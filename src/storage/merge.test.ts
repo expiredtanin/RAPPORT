@@ -58,3 +58,30 @@ describe("mergeValue: Listen mit fester Position", () => {
     expect(mergeValue(["a", "a"], ["a", "a", "b"], ["a", "a", "c"])).toEqual(["a", "a", "b"]);
   });
 });
+
+describe("mergeValue: Konflikte melden (onConflict, für den Hinweis der Cloud-Sperre)", () => {
+  const collect = (base: unknown, mine: unknown, theirs: unknown) => { const p: string[] = []; const v = mergeValue(base, mine, theirs, x => p.push(x), "items"); return { v, p }; };
+  const base = [{ id: "a", price: 1 }, { id: "b", price: 2 }];
+
+  it("verschiedene Einträge geändert: kein Konflikt", () => {
+    const { v, p } = collect(base, [{ id: "a", price: 10 }, { id: "b", price: 2 }], [{ id: "a", price: 1 }, { id: "b", price: 20 }]);
+    expect(v).toEqual([{ id: "a", price: 10 }, { id: "b", price: 20 }]);
+    expect(p).toEqual([]);
+  });
+  it("derselbe Eintrag verschieden geändert: Konflikt mit Pfad, meiner gilt", () => {
+    const { v, p } = collect(base, [{ id: "a", price: 10 }, { id: "b", price: 2 }], [{ id: "a", price: 11 }, { id: "b", price: 2 }]);
+    expect(v).toEqual([{ id: "a", price: 10 }, { id: "b", price: 2 }]);
+    expect(p).toEqual(["items[a].price"]);
+  });
+  it("gleich geändert ist kein Konflikt; neue Einträge beider Seiten auch nicht", () => {
+    expect(collect(base, [{ id: "a", price: 5 }, { id: "b", price: 2 }], [{ id: "a", price: 5 }, { id: "b", price: 2 }]).p).toEqual([]);
+    expect(collect(base, [...base, { id: "c", price: 3 }], [...base, { id: "d", price: 4 }]).p).toEqual([]);
+  });
+  it("gelöscht gegen geändert ist ein Konflikt (in beide Richtungen)", () => {
+    expect(collect(base, [{ id: "b", price: 2 }], [{ id: "a", price: 9 }, { id: "b", price: 2 }]).p).toEqual(["items[a]"]);
+    expect(collect(base, [{ id: "a", price: 9 }, { id: "b", price: 2 }], [{ id: "b", price: 2 }]).p).toEqual(["items[a]"]);
+  });
+  it("ohne onConflict unverändert", () => {
+    expect(mergeValue(1, 2, 3)).toBe(2);
+  });
+});

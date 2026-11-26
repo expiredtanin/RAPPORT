@@ -1,7 +1,7 @@
 // Druckvorlage Offerte (`quote`).
 
 import React from "react";
-import { calcSIAHours, calcManualHours, formatCHF, formatDate, formatHours, formatSenderAddress, lineAmount } from "../../utils";
+import { calcSIAHours, calcManualHours, formatCHF, formatDate, formatHours, formatSenderAddress, lineAmount, rundungsDifferenz } from "../../utils";
 import { StudioLogo } from "../../components/UI";
 import type { Quote, Settings } from "../../types";
 import { HEADING, type Client } from "./shared";
@@ -19,6 +19,7 @@ export function QuotePrint({ quote, client, settings }: { quote: Quote; client: 
   const siaCalc = quote.mode === "sia" && quote.sia ? calcSIAHours(quote.sia!.baukosten, quote.sia!.schwierigkeit, quote.sia.phases) : null;
   const manCalc = quote.mode === "manual" ? calcManualHours(quote.manualPhases || [], roles) : null;
   const stundenansatz = quote.sia?.stundenansatz || 0;
+  const rundung = rundungsDifferenz(quote.total, quote.sub, quote.mwst ? quote.tax : 0);   // Rundung auf 5 Rappen
 
   return (
     <>
@@ -192,6 +193,12 @@ export function QuotePrint({ quote, client, settings }: { quote: Quote; client: 
             <div style={{ display: "flex", justifyContent: "space-between", padding: "4px 0" }}>
               <span style={{ color: "#666" }}>MWST {taxRate}%</span>
               <span>{formatCHF(quote.tax)}</span>
+            </div>
+          )}
+          {rundung !== 0 && (
+            <div style={{ display: "flex", justifyContent: "space-between", padding: "4px 0" }}>
+              <span style={{ color: "#666" }}>Rundung</span>
+              <span>{rundung > 0 ? formatCHF(rundung) : `−${formatCHF(-rundung)}`}</span>
             </div>
           )}
           <div className="doc-heading" style={{ display: "flex", justifyContent: "space-between", padding: "10px 0", borderTop: "2px solid var(--doc-accent)", marginTop: 6, ...HEADING, fontSize: 15, fontWeight: 700 }}>

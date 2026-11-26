@@ -40,6 +40,43 @@ describe("employee (Saldo-Übertrag, Pensumwechsel)", () => {
     expect(back).toMatchObject({ saldoStichtag: "2026-06-01", saldoUebertragStunden: -4.5, pensumVerlauf: e.pensumVerlauf, lohnVerlauf: e.lohnVerlauf });
   });
 
+  it("Lohn-Optionen: 13. Monatslohn je Person und Vorsystem-Summen rundlaufen", () => {
+    const e = {
+      id: "e1", name: "A", dreizehnterModus: "november",
+      lohnVorsystem: [{ jahr: 2026, bisMonat: "2026-05", brutto: 100000, alvBasis: 61750, dreizehnter: 3125, monatslohnSumme: 96875 }],
+    } as Employee;
+    const wire = toDB.employee(e, "s1");
+    expect(wire).toMatchObject({ dreizehnterModus: "november", lohnVorsystem: e.lohnVorsystem });
+    expect(fromDB.employee(asServer(wire))).toMatchObject({ dreizehnterModus: "november", lohnVorsystem: e.lohnVorsystem });
+    // ohne Übersteuerung speichert PocketBase einen leeren Wert: kein Modus an der Person, leere Vorsystem-Liste
+    const ohne = fromDB.employee(asServer(toDB.employee({ id: "e2", name: "B" } as Employee, "s1")));
+    expect(ohne.dreizehnterModus).toBeUndefined();
+    expect(ohne.lohnVorsystem).toEqual([]);
+    expect(fromDB.employee({ ...rec, id: "e3", name: "Alt" })).toMatchObject({ lohnVorsystem: [] });
+  });
+
+  it("Büro-Einstellungen 13. Monatslohn und 5-Rappen-Rundung liegen im ui-Blob", () => {
+    const wire = toDB.studioSettings({ name: "Büro", dreizehnterModus: "dezember", lohnAuszahlungRunden5: true } as never, "s1");
+    expect(wire.ui).toMatchObject({ dreizehnterModus: "dezember", lohnAuszahlungRunden5: true });
+    expect(fromDB.studioSettings({ ...rec, id: "s1", name: "Büro", ui: wire.ui })).toMatchObject({ dreizehnterModus: "dezember", lohnAuszahlungRunden5: true });
+  });
+
+  it("Büro-Einstellung Rechnungstotal auf 5 Rappen liegt im ui-Blob", () => {
+    const wire = toDB.studioSettings({ name: "Büro", rechnungRunden5: true } as never, "s1");
+    expect(wire.ui).toMatchObject({ rechnungRunden5: true });
+    expect(fromDB.studioSettings({ ...rec, id: "s1", name: "Büro", ui: wire.ui })).toMatchObject({ rechnungRunden5: true });
+  });
+
+  it("wiederkehrende interne Ausgabe: Betragsverlauf hin und zurück, ohne Verlauf kein Feld", () => {
+    const e = { id: "i1", date: "2026-01-15", category: "Miete", description: "Miete", amount: 1100, mwstRate: 0, inclMwst: false, recurring: true, recurringInterval: "monatlich", amountHistory: [{ before: "2026-04", amount: 1000 }] };
+    const wire = toDB.internalExpense(e as never, "s1");
+    expect(wire.amountHistory).toEqual([{ before: "2026-04", amount: 1000 }]);
+    expect(fromDB.internalExpense({ ...rec, ...wire, id: "i1" })).toMatchObject({ amountHistory: [{ before: "2026-04", amount: 1000 }] });
+    const ohne = toDB.internalExpense({ ...e, amountHistory: undefined } as never, "s1");
+    expect(ohne.amountHistory).toBeNull();
+    expect(fromDB.internalExpense({ ...rec, ...ohne, id: "i1" })).not.toHaveProperty("amountHistory");
+  });
+
   it("alter Datensatz ohne die neuen Felder: kein Stichtag, leerer Verlauf", () => {
     // So liefert PocketBase einen Datensatz von vor der Migration worktime_history (Spalten mit Standardwert)
     const back = fromDB.employee({ ...rec, id: "e1", name: "Alt", saldoStichtag: "", saldoUebertragStunden: 0, pensumVerlauf: null });

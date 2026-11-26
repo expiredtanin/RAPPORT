@@ -26,6 +26,12 @@
 // gelöscht). Realtime (subscribeToChanges) lädt Änderungen anderer gezielt nach
 // (loadPartial). Gleiches Feld gleichzeitig geändert → letzter Schreiber gewinnt.
 //
+// Optimistische Sperre (pocketbase-conflict.ts, pb/pb_hooks/concurrency.pb.js): jedes Update schickt den
+// `updated`-Stand mit, auf dem es beruht (`_versions`, aus Laden und eigenen Schreibantworten). Ist der Datensatz
+// auf dem Server inzwischen neuer, lehnt der Server mit 409 ab; der Adapter lädt ihn frisch, verrechnet drei Wege
+// (Abgleichsstand, eigene Fassung, Server), rechnet Summen neu und schreibt erneut (höchstens CONFLICT_RETRIES Mal).
+// Gleiches Feld von beiden geändert → eigene Fassung gilt, die App bekommt aber einen Hinweis (`onConflict`).
+//
 // Gleichzeitige save()-Aufrufe werden zusammengefasst: es läuft höchstens ein
 // Schreibvorgang, der letzte angeforderte Stand gewinnt (siehe save()). Netzfehler,
 // 429 (Rate-Limit) und 5xx werden mit kurzer Wartezeit wiederholt.
@@ -52,6 +58,7 @@ import { fromDB, toDB } from "./pocketbase-mappers";
 import { baseFrom, changedFields, jsonFieldsOf, mergeJsonWithServer, normalizeEmpty, planSync, type SyncOp, type SyncRow } from "./pocketbase-sync";
 import { PB_FILE_FIELDS, PbFileStore, pbFileRef, replacePbRefs, type PbFileRef, type PreparedBody } from "./pocketbase-files";
 import { mergeValue } from "./merge";
+import { conflictMessage, deriveMerged, derivedFields, mergeRow, type DeriveContext } from "./pocketbase-conflict";
 
 /** Fehlerform von PocketBase (ClientResponseError), soweit hier benutzt. */
 type PbError = { status?: number; message?: string; data?: { message?: string; data?: Record<string, { code?: string; message?: string }> } };
@@ -84,6 +91,10 @@ const LIST_BATCH = 1000;
 const isTransient = (e: unknown) => { const s = pbError(e).status; return s === 0 || s === 429 || (s !== undefined && s >= 500); };
 /** data-Keys, deren Dateien beim Laden gleich als data:-URL geholt werden (Druck/PDF brauchen sie sofort). */
 const EAGER_FILE_KEYS = ["settings", "blogPosts", "docAssets"] as const;
+/** Header mit dem bekannten `updated`-Stand eines Updates (optimistische Sperre, pb/pb_hooks/concurrency.pb.js). */
+export const IF_UPDATED_HEADER = "X-Rapport-If-Updated";
+/** Ein gemeldeter Konflikt: eigene und fremde Änderung am selben Feld, eigene wurde übernommen. */
+export interface SaveConflict { table: string; dataKey: DataKey | null; id: string; paths: string[]; message: string }
 /** Datei-Token gilt bei PocketBase 3 Minuten; etwas früher erneuern. */
 const FILE_TOKEN_MS = 120_000;
 
@@ -168,6 +179,12 @@ export class PocketBaseAdapter implements StorageAdapter {
   _currentWrite?: Promise<void> | null;
   /** Abgleichsstand pro Collection (Datenbankform, nach Schlüssel), siehe pocketbase-sync.ts. */
   _base: Map<string, Map<string, SyncRow>>;
+  /** Bekannter `updated`-Stand pro Collection und Datensatz-id (optimistische Sperre, siehe Dateikopf). */
+  _versions = new Map<string, Map<string, string>>();
+  /** Wird aufgerufen, wenn beim Verrechnen nach einem 409 beide Seiten dasselbe geändert hatten (eigene gewann). */
+  onConflict: ((c: SaveConflict) => void) | null = null;
+  /** Wie oft nach einem 409 frisch geladen, verrechnet und erneut geschrieben wird. */
+  static CONFLICT_RETRIES = 3;
   /** Dateiablage: Zuordnung data:-URL ↔ Verweis, Upload-Vorbereitung, Download (pocketbase-files.ts). */
   _files: PbFileStore;
   _fileToken: { token: Promise<string>; at: number } | null = null;
@@ -233,8 +250,28 @@ export class PocketBaseAdapter implements StorageAdapter {
 
   /** Aktives Studio setzen (nach Login/Studio-Wechsel). Wechsel verwirft den Sync-Snapshot. */
   setStudioId(studioId: Id | null) {
-    if (studioId !== this._studioId) { this._lastData = null; this._base = new Map(); this._files.clear(); }
+    if (studioId !== this._studioId) { this._lastData = null; this._base = new Map(); this._versions = new Map(); this._files.clear(); }
     this._studioId = studioId;
+  }
+
+  /** `updated`-Stände aus geladenen Records (Liste ersetzt den bisherigen Stand der Collection). */
+  static _versionsOf(records: { id?: unknown; updated?: unknown }[]): Map<string, string> {
+    return new Map(records.filter(r => r.id && r.updated).map(r => [String(r.id), String(r.updated)]));
+  }
+
+  /** `updated`-Stand eines gerade geschriebenen Records merken (Antwort von create/update). */
+  _noteVersion(table: string, rec: unknown) {
+    const r = rec as { id?: unknown; updated?: unknown } | null;
+    if (!r || !r.id || !r.updated) return;
+    let m = this._versions.get(table);
+    if (!m) { m = new Map(); this._versions.set(table, m); }
+    m.set(String(r.id), String(r.updated));
+  }
+
+  /** Request-Optionen mit dem bekannten Stand (Header) für ein Update; ohne bekannten Stand keine Prüfung. */
+  _ifUpdated(table: string, id: string): { headers: Record<string, string> } | undefined {
+    const v = this._versions.get(table)?.get(id);
+    return v ? { headers: { [IF_UPDATED_HEADER]: v } } : undefined;
   }
 
   /** Abgleichsstand einer Collection aus App-Zeilen setzen (nach dem Laden). */
@@ -305,6 +342,7 @@ export class PocketBaseAdapter implements StorageAdapter {
     this._studioId = null;
     this._lastData = null;
     this._base = new Map();
+    this._versions = new Map();
     this._files.clear();
     this._fileToken = null;
   }
@@ -549,9 +587,10 @@ export class PocketBaseAdapter implements StorageAdapter {
     // jeweilige View für diese Rolle ohnehin aus (App.jsx hasViewAccess).
     const entityMapNonPersons = ENTITY_MAP.filter(([dataKey]) => dataKey !== "persons");
     this._forbidden = new Set();
+    const versions = new Map<string, Map<string, string>>();
     const entityLoads = entityMapNonPersons.map(([, coll, mapper, , sort]) =>
       c.collection(coll).getFullList(sort ? { filter, sort, batch: LIST_BATCH } : { filter, batch: LIST_BATCH })
-        .then(rows => rows.map(fromDB[mapper]))
+        .then(rows => { versions.set(coll, PocketBaseAdapter._versionsOf(rows)); return rows.map(fromDB[mapper]); })
         .catch((err: unknown) => { if (pbError(err).status !== 403 && pbError(err).status !== 404) throw err; this._forbidden.add(coll); return []; }));
     const configLoads = CONFIG_MAP.map(([, coll, mapper]) =>
       c.collection(coll).getFullList({ filter, batch: LIST_BATCH })
@@ -589,6 +628,8 @@ export class PocketBaseAdapter implements StorageAdapter {
     // Abgleichsstand = gerade geladener Serverstand (Grundlage für den Drei-Wege-Abgleich
     // beim nächsten Speichern, siehe pocketbase-sync.ts).
     this._base = new Map();
+    versions.set("persons", PocketBaseAdapter._versionsOf(personsRows));
+    this._versions = versions;
     this._base.set("studioRoles", baseFrom(toDB.studioRoles((result.settings as AppData["settings"]).roles, sid), "roleId"));
     this._base.set("persons", baseFrom((result.persons as AppData["persons"]).map(p => toDB.person(p)), "id"));
     for (const [dataKey, coll, mapper, keyField] of [...entityMapNonPersons, ...CONFIG_MAP]) {
@@ -643,22 +684,27 @@ export class PocketBaseAdapter implements StorageAdapter {
       const rows = await c.collection("persons").getFullList({ filter: personsFilter, batch: LIST_BATCH });
       const persons = rows.map(r => fromDB.person(r));
       result.persons = persons;
-      if (this._studioId === sid) this._base.set("persons", baseFrom(persons.map(p => toDB.person(p)), "id"));
+      if (this._studioId === sid) {
+        this._base.set("persons", baseFrom(persons.map(p => toDB.person(p)), "id"));
+        this._versions.set("persons", PocketBaseAdapter._versionsOf(rows));
+      }
     }
 
     const loads = [...ENTITY_MAP.filter(([dk]) => dk !== "persons"), ...CONFIG_MAP]
       .filter(([dataKey]) => keys.has(dataKey))
-      .map(([dataKey, coll, mapper, keyField, sort]) =>
-        c.collection(coll).getFullList(sort ? { filter, sort, batch: LIST_BATCH } : { filter, batch: LIST_BATCH })
-          .then(rows => rows.map(fromDB[mapper]))
+      .map(([dataKey, coll, mapper, keyField, sort]) => {
+        let versions = new Map<string, string>();
+        return c.collection(coll).getFullList(sort ? { filter, sort, batch: LIST_BATCH } : { filter, batch: LIST_BATCH })
+          .then(rows => { versions = PocketBaseAdapter._versionsOf(rows); return rows.map(fromDB[mapper]); })
           .catch((err: unknown) => { if (pbError(err).status !== 403 && pbError(err).status !== 404) throw err; return []; })
           .then(async rows => {
             const loaded: Record<string, unknown> = { [dataKey]: rows };
             await this._inlineEagerFiles(loaded);
             const list = loaded[dataKey];
             result[dataKey] = list;
-            if (this._studioId === sid) this._setBaseFromApp(coll, mapper, list, sid, keyField);
-          }));
+            if (this._studioId === sid) { this._setBaseFromApp(coll, mapper, list, sid, keyField); this._versions.set(coll, versions); }
+          });
+      });
     await Promise.all(loads);
 
     return result;
@@ -806,17 +852,19 @@ export class PocketBaseAdapter implements StorageAdapter {
 
     // Reihenfolge wichtig: employees/persons vor allem, das sie referenziert
     // (timeEntries/expenses/absences/… → employee-Relation; projects/quotes/… → client-Relation).
+    // Kontext für das Neuberechnen von Summen nach dem Verrechnen eines Konflikts (pocketbase-conflict.ts)
+    const ctx: DeriveContext = { settings: data.settings, projects: data.projects, quotes: data.quotes, invoices: data.invoices };
     if (changed("persons")) {
-      await skip403("persons", () => this._syncPersons(sid, data.persons || []));
+      await skip403("persons", () => this._syncPersons(sid, data.persons || [], ctx));
     }
     if (changed("employees")) {
-      await skip403("employees", () => this._syncTable("employees", sid, (data.employees || []).map(e => toDB.employee(e, sid)), "id"));
+      await skip403("employees", () => this._syncTable("employees", sid, (data.employees || []).map(e => toDB.employee(e, sid)), "id", { mapper: "employee", ctx }));
     }
 
     for (const [dataKey, coll, mapper] of ENTITY_MAP) {
       if (coll === "persons" || coll === "employees") continue; // schon oben synchronisiert
       if (!changed(dataKey)) continue;
-      await skip403(coll, () => this._syncTable(coll, sid, this._toRows(mapper, data[dataKey], sid, coll), "id"));
+      await skip403(coll, () => this._syncTable(coll, sid, this._toRows(mapper, data[dataKey], sid, coll), "id", { mapper, ctx }));
     }
     for (const [dataKey, coll, mapper, keyField] of CONFIG_MAP) {
       if (!changed(dataKey)) continue;
@@ -848,7 +896,7 @@ export class PocketBaseAdapter implements StorageAdapter {
    * Speichern); ohne ihn ganze Zeilen wie bisher. Nach Erfolg gilt `rows` als neuer
    * Abgleichsstand.
    */
-  async _syncTable(table: string, sid: Id, rows: Record<string, unknown>[], keyField: string): Promise<void> {
+  async _syncTable(table: string, sid: Id, rows: Record<string, unknown>[], keyField: string, conflict?: { mapper: EntityMapper; ctx: DeriveContext }): Promise<void> {
     const c = this.client.collection(table);
     const base = this._base.get(table) ?? null;
     const filter = `studio = "${sid}"`;
@@ -856,7 +904,9 @@ export class PocketBaseAdapter implements StorageAdapter {
     const existing = (await c.getFullList(base ? { filter, fields, batch: LIST_BATCH } : { filter, batch: LIST_BATCH }))
       .map(r => this._files.fromRecord(table, r));
     const ops = await this._mergeJsonUpdates(table, filter, planSync(rows, existing, keyField, base), existing, keyField, base);
-    await this._applyOps(table, ops);
+    const conflicts = await this._applyOps(table, ops);
+    // Abgelehnt, weil inzwischen geändert (409): frisch laden, verrechnen, erneut schreiben
+    if (conflicts.length && conflict) await this._resolveConflicts(table, sid, conflicts, rows, keyField, base, conflict.mapper, conflict.ctx);
     // Gerade hochgeladene Dateien stehen im Abgleichsstand als Verweis (wie nach dem nächsten Laden)
     if (this._studioId === sid) this._base.set(table, baseFrom(rows.map(r => this._files.toRefs(table, r)), keyField));
   }
@@ -928,8 +978,10 @@ export class PocketBaseAdapter implements StorageAdapter {
   /** Einstellungen (DB-Form) beim letzten Laden/Schreiben; Basis für den Drei-Wege-Abgleich. */
   _settingsBase: SyncRow | null = null;
 
-  async _applyOps(table: string, allOps: Op[]): Promise<void> {
+  /** Führt die Operationen aus; Rückgabe = Updates, die der Server mit 409 («inzwischen geändert») abgelehnt hat. */
+  async _applyOps(table: string, allOps: Op[]): Promise<Op[]> {
     const c = this.client.collection(table);
+    const conflicts: Op[] = [];
     // Dateifelder vorbereiten: Uploads (multipart) gehen einzeln, alles andere wie bisher (Batch)
     const ops: Op[] = [];
     const uploads: { op: Op; prepared: PreparedBody }[] = [];
@@ -946,7 +998,7 @@ export class PocketBaseAdapter implements StorageAdapter {
     for (const chunk of PocketBaseAdapter._chunkOps(ops)) {
       // Eine einzelne Operation braucht keinen Batch (häufigster Fall: eine Zeile geändert)
       if (this._batchSupported === false || chunk.length === 1) {
-        await this._applyOpsSequential(c, chunk);
+        conflicts.push(...await this._applyOpsSequential(c, chunk, table));
         continue;
       }
       try {
@@ -958,10 +1010,12 @@ export class PocketBaseAdapter implements StorageAdapter {
           await new Promise(r => setTimeout(r, PocketBaseAdapter.BATCH_RETRY_MS));
           try { await this._applyOpsBatched(table, chunk); continue; } catch { /* unten einzeln */ }
         }
-        await this._applyOpsSequential(c, chunk);
+        // auch bei 409 in einem Teil: der Batch ist ganz zurückgerollt, einzeln findet sich der abgelehnte Datensatz
+        conflicts.push(...await this._applyOpsSequential(c, chunk, table));
       }
     }
-    for (const { op, prepared } of uploads) await this._applyUpload(table, op, prepared);
+    for (const { op, prepared } of uploads) if (await this._applyUpload(table, op, prepared)) conflicts.push(op);
+    return conflicts;
   }
 
   /** Datei eines Datensatzes vor dem Löschen merken (für «Rückgängig»); Fehler sind egal, gelöscht wird trotzdem. */
@@ -981,23 +1035,25 @@ export class PocketBaseAdapter implements StorageAdapter {
    * Schreibt eine Operation mit Datei (multipart, nicht im Batch) und merkt sich danach den Verweis
    * zur hochgeladenen data:-URL. 404 bei Update wie im sequenziellen Pfad: übersprungen.
    */
-  async _applyUpload(table: string, op: Op, prepared: PreparedBody): Promise<void> {
+  async _applyUpload(table: string, op: Op, prepared: PreparedBody): Promise<boolean> {
     const c = this.client.collection(table);
     for (let attempt = 0; ; attempt++) {
       try {
         if (op.type === "create") await this._reserveCreates(1);
-        const rec = op.type === "update" ? await c.update(op.id, prepared.body) : await c.create(prepared.body);
+        const rec = op.type === "update" ? await c.update(op.id, prepared.body, this._ifUpdated(table, op.id)) : await c.create(prepared.body);
+        this._noteVersion(table, rec);
         if (prepared.upload) this._files.remember(table, rec, prepared.upload);
-        return;
+        return false;
       } catch (err) {
         const status = pbError(err).status;
+        if (op.type === "update" && status === 409) return true;   // inzwischen geändert: verrechnen (_resolveConflicts)
         if (status === 429 && attempt < PocketBaseAdapter.UPLOAD_RETRY_MS.length) {
           await new Promise(r => setTimeout(r, PocketBaseAdapter.UPLOAD_RETRY_MS[attempt]));
           continue;
         }
         if (op.type === "update" && status === 404) {
           console.warn(`PocketBaseAdapter: Upload ${op.id} nicht möglich (nicht gefunden), übersprungen.`);
-          return;
+          return false;
         }
         throw err;
       }
@@ -1012,10 +1068,12 @@ export class PocketBaseAdapter implements StorageAdapter {
     const batch = this.client.createBatch();
     for (const op of chunk) {
       if (op.type === "create") batch.collection(table).create(op.body);
-      else if (op.type === "update") batch.collection(table).update(op.id, op.body);
+      else if (op.type === "update") batch.collection(table).update(op.id, op.body, this._ifUpdated(table, op.id));
       else batch.collection(table).delete(op.id);
     }
-    await batch.send();
+    const results = await batch.send();
+    // neue `updated`-Stände aus den Antworten (Basis für das nächste Update)
+    if (Array.isArray(results)) results.forEach((r, i) => { if (chunk[i]?.type !== "delete") this._noteVersion(table, r?.body); });
   }
 
   // 404 bei Update/Delete heisst: Datensatz ist inzwischen weg (von jemand anderem
@@ -1024,15 +1082,18 @@ export class PocketBaseAdapter implements StorageAdapter {
   // Jetzt wird nur diese eine Operation übersprungen.
   // Eine abgelehnte Operation hält die übrigen nicht mehr auf (sonst ging z.B. ein erlaubter neuer Eintrag mit
   // einem abgelehnten im selben Chunk verloren); der erste echte Fehler wird nach dem Durchlauf geworfen.
-  async _applyOpsSequential(c: ReturnType<PocketBase["collection"]>, chunk: Op[]): Promise<void> {
+  // `table` gesetzt: Updates mit bekanntem Stand (optimistische Sperre); 409 sammeln statt melden (Rückgabe).
+  async _applyOpsSequential(c: ReturnType<PocketBase["collection"]>, chunk: Op[], table?: string): Promise<Op[]> {
     let first: unknown = null;
+    const conflicts: Op[] = [];
     for (const op of chunk) {
       try {
-        if (op.type === "create") { await this._reserveCreates(1); await c.create(op.body); }
-        else if (op.type === "update") await c.update(op.id, op.body);
+        if (op.type === "create") { await this._reserveCreates(1); const rec = await c.create(op.body); if (table) this._noteVersion(table, rec); }
+        else if (op.type === "update") { const rec = await c.update(op.id, op.body, table ? this._ifUpdated(table, op.id) : undefined); if (table) this._noteVersion(table, rec); }
         else await c.delete(op.id);
       } catch (err) {
         if (isTransient(err)) throw err;
+        if (op.type === "update" && pbError(err).status === 409) { conflicts.push(op); continue; }
         if (op.type !== "create" && pbError(err).status === 404) {
           // 404 heisst «weg» ODER «Regel verbietet es». Ist der Datensatz noch lesbar, war es eine Ablehnung —
           // melden statt still überspringen (sonst zeigte die App z.B. geänderte Ferien, die der Server nie
@@ -1049,6 +1110,58 @@ export class PocketBaseAdapter implements StorageAdapter {
       }
     }
     if (first !== null) throw first;
+    return conflicts;
+  }
+
+  /**
+   * Updates, die der Server mit 409 abgelehnt hat (Datensatz inzwischen von jemand anderem geändert): frisch laden,
+   * drei Wege verrechnen (Abgleichsstand, meine Zeile aus `rows`, Server), abgeleitete Werte neu rechnen und mit dem
+   * frischen Stand erneut schreiben — höchstens CONFLICT_RETRIES Mal, dann als Ablehnung melden (der Bereich wird neu
+   * geladen). Hatten beide dasselbe Feld geändert, gilt meine Fassung und `onConflict` bekommt einen Hinweis.
+   * Der bekannte Stand dieser Zeilen bleibt absichtlich der alte: die App zeigt bis zum Nachladen noch meine Fassung
+   * ohne die fremden Änderungen; ein weiteres Speichern daraus muss wieder verrechnet werden statt sie zu überschreiben.
+   */
+  async _resolveConflicts(table: string, sid: Id, conflicts: Op[], rows: SyncRow[], keyField: string, base: Map<string, SyncRow> | null,
+    mapper: EntityMapper, ctx: DeriveContext): Promise<void> {
+    const c = this.client.collection(table);
+    const mineById = new Map(rows.map(r => [String(r.id), r]));
+    const toApp = fromDB[mapper] as (r: RecordModel) => unknown;
+    for (const op of conflicts) {
+      if (op.type !== "update") continue;
+      const mine = mineById.get(op.id);
+      if (!mine) continue;
+      const before = base?.get(String(normalizeEmpty(mine[keyField])));
+      let done = false;
+      for (let attempt = 0; attempt < PocketBaseAdapter.CONFLICT_RETRIES && !done; attempt++) {
+        let rec: RecordModel;
+        try {
+          rec = await c.getOne(op.id);
+        } catch (err) {
+          if (pbError(err).status !== 404) throw err;
+          console.warn(`PocketBaseAdapter: ${table} ${op.id} inzwischen gelöscht, Änderung übersprungen.`);
+          done = true;
+          break;
+        }
+        const server = this._toRows(mapper, [toApp(rec)], sid, table)[0];
+        const { row, conflicts: paths } = mergeRow(before, mine, server, derivedFields(table));
+        const merged = deriveMerged(table, row, mine, server, ctx);
+        const body = changedFields(merged, server);
+        if (Object.keys(body).length === 0) { done = true; break; }   // meine Änderung steht schon so auf dem Server
+        try {
+          const prepared = PB_FILE_FIELDS[table] ? await this._files.prepareBody(table, op.id, body, false) : { body, upload: null, multipart: false };
+          const updated = String(rec.updated || "");
+          const saved = await c.update(op.id, prepared.body, updated ? { headers: { [IF_UPDATED_HEADER]: updated } } : undefined);
+          if (prepared.upload) this._files.remember(table, saved, prepared.upload);
+          done = true;
+          if (paths.length && this.onConflict) {
+            try { this.onConflict({ table, dataKey: collToDataKey(table), id: op.id, paths, message: conflictMessage(table, merged) }); } catch (e) { console.error("onConflict:", e); }
+          }
+        } catch (err) {
+          if (pbError(err).status !== 409) throw err;   // schon wieder geändert: nochmals laden und verrechnen
+        }
+      }
+      if (!done) throw new Error(conflictMessage(table, mine, true));
+    }
   }
 
   /**
@@ -1091,16 +1204,17 @@ export class PocketBaseAdapter implements StorageAdapter {
   // wirklich lokal zu diesem Studio gehört (studio === sid) — geteilte Personen,
   // die aus dem lokalen data.persons-Snapshot verschwunden sind (z.B. weil ein
   // anderes Studio sie entfernt hat), bleiben unangetastet.
-  async _syncPersons(sid: Id, persons: AppData["persons"]): Promise<void> {
+  async _syncPersons(sid: Id, persons: AppData["persons"], ctx?: DeriveContext): Promise<void> {
     const c = this.client.collection("persons");
     const base = this._base.get("persons") ?? null;
     const filter = `studio = "${sid}" || personStudioLinks_via_person.studio ?= "${sid}"`;
     const existing = await c.getFullList(base ? { filter, fields: "id,studio", batch: LIST_BATCH } : { filter, batch: LIST_BATCH });
     const rows = persons.map(p => toDB.person(p));
-    await this._applyOps("persons", planSync(rows, existing, "id", base, {
+    const conflicts = await this._applyOps("persons", planSync(rows, existing, "id", base, {
       deletable: r => r.studio === sid,
       createExtra: { studio: sid },
     }));
+    if (conflicts.length && ctx) await this._resolveConflicts("persons", sid, conflicts, rows, "id", base, "person", ctx);
     if (this._studioId === sid) this._base.set("persons", baseFrom(rows, "id"));
   }
 

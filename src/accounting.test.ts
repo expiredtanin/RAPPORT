@@ -277,17 +277,19 @@ describe("accountingSummary — Jahresergebnis und MWST-Abrechnung", () => {
     expect(s.taxTotal).toBe(1215);
     expect(s.akontoTax).toBe(405);
     expect(s.umsatzsteuer).toBe(1215); // Akonto-MWST wird mit der Akontorechnung abgerechnet
-    expect(s.expNet).toBe(150);
-    expect(s.expTax).toBe(12.15); // vorher 4.05: Vorsteuer der über Lohn bezahlten Spese fehlte
+    expect(s.expNet).toBe(100);   // nur die über Lohn bezahlte Spese; s2 ist noch «offen» (nicht genehmigt)
+    expect(s.expTax).toBe(8.1);   // vorher 4.05: Vorsteuer der über Lohn bezahlten Spese fehlte
+    expect(s.expPendingCount).toBe(1);
+    expect(s.expPendingGross).toBe(54.05);
     expect(s.intNet).toBe(8500); // Miete Jan, Feb, Mär (je 2'500) + CAD 1'000
     expect(s.intTax).toBe(81);
-    expect(s.vorsteuer).toBe(93.15);
-    expect(s.mwstSchuld).toBe(1121.85);
+    expect(s.vorsteuer).toBe(89.1);
+    expect(s.mwstSchuld).toBe(1125.9);
     expect(s.lohnBrutto).toBe(7500);
     expect(s.lohnAG).toBe(1080);
     expect(s.personalaufwand).toBe(8580); // vorher 6'978.10 (Auszahlung inkl. Spesen + PK-AG)
-    expect(s.ausgabenTotal).toBe(17230);
-    expect(s.ergebnis).toBe(-2230);
+    expect(s.ausgabenTotal).toBe(17180);
+    expect(s.ergebnis).toBe(-2180);
     expect(s.openTotal).toBe(10810);
     expect(s.paidTotal).toBe(5405);
   });
@@ -296,7 +298,7 @@ describe("accountingSummary — Jahresergebnis und MWST-Abrechnung", () => {
     const s = accountingSummary(data, "2026", END);
     expect(s.revenueNet).toBe(17000);
     expect(s.umsatzsteuer).toBe(1377);
-    expect(s.mwstSchuld).toBe(1283.85);
+    expect(s.mwstSchuld).toBe(1287.9);
     expect(s.intNet).toBe(31000); // 12 × Miete + CAD
     expect(s.paidTotal).toBe(7567);
   });
@@ -351,10 +353,10 @@ describe("accountingSummary — Jahresergebnis und MWST-Abrechnung", () => {
 
   it("CSV-Zusammenfassung = Ansicht", () => {
     const csv = buildBuchhaltungCSV(data, "2026-Q1");
-    expect(csv).toContain('"MWST-Schuld";"";"";"1121.85"');
+    expect(csv).toContain('"MWST-Schuld";"";"";"1125.90"');
     expect(csv).toContain('"Personalaufwand (Bruttolohn + AG-Beiträge)";"8580.00"');
     // Spesen-Tabelle: TOTAL über alle Zeilen, Lohn-Spese mit Monat markiert
-    expect(csv).toContain('"TOTAL";"150.00";"";"12.15";"162.15"');
+    expect(csv).toContain('"TOTAL";"100.00";"";"8.10";"108.10"');
     expect(csv).toContain('"2026-03"');
     // Entwurf nicht in der Einnahmen-Tabelle
     expect(csv).not.toContain("2026-03-004");

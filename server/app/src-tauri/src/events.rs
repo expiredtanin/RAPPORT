@@ -2,7 +2,7 @@
 //!
 //! Ringbuffer (max 100 Eintraege) mit Timestamp + Severity + Message.
 //! Wird von verschiedenen Stellen geschrieben (Supervisor, Backup-Scheduler,
-//! Container-Update, Pre-Pull, App-Startup) und vom Frontend gepollt.
+//! Container-Update, App-Startup) und vom Frontend gepollt.
 
 use chrono::Local;
 use serde::Serialize;

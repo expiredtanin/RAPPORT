@@ -37,7 +37,7 @@ export const SLOT_H = 12;
 export const slotToTime = (idx: number) => { const m = SLOT_START_H * 60 + idx * 15; return `${String(Math.floor(m/60)).padStart(2,"0")}:${String(m%60).padStart(2,"0")}`; };
 
 /** Feiertage für ein Jahr auflösen (jährlich wiederkehrende aufs Jahr, plus «Vortag»-Einträge); Regeln in worktime.ts. */
-export const resolveFTs = (data: Pick<AppData, "feiertage"> & { settings?: Partial<Pick<AppData["settings"], "vortagStunden">> }, yr: number | string): Feiertag[] => resolveHolidays(data.feiertage, yr, data.settings?.vortagStunden ?? 1);
+export const resolveFTs = (data: Pick<AppData, "feiertage"> & { settings?: Partial<Pick<AppData["settings"], "vortagStunden" | "vortagModus">> }, yr: number | string): Feiertag[] => resolveHolidays(data.feiertage, yr, data.settings?.vortagStunden ?? 1, data.settings?.vortagModus);
 
 /** Prüft ob ein Mitarbeiter an einem Tag eingetragene, bestätigte Ferien hat (auch am Wochenende, für die Anzeige). */
 export const isApprovedVacationDay = (data: Pick<AppData, "ferienEntries">, empId: string, dateStr: string) =>

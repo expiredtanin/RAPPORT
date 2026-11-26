@@ -231,6 +231,14 @@ export function useStudioData(currentUser: CurrentUser | null) {
     return () => window.removeEventListener("beforeunload", onBeforeUnload);
   }, []);
 
+  // Cloud, optimistische Sperre: jemand anders hat denselben Datensatz gleichzeitig geändert und dasselbe Feld
+  // betroffen — meine Fassung wurde übernommen, aber darauf hinweisen (pocketbase-conflict.ts)
+  useEffect(() => {
+    if (!isCloudBackend) return;
+    cloudStorage.onConflict = c => { showToast(c.message, { timeout: 12000 }); };
+    return () => { cloudStorage.onConflict = null; };
+  }, []);
+
   // «Rückgängig» für Löschungen (undo.ts) speichert über denselben Weg
   useEffect(() => registerUndoSaver(save), [save]);
 

@@ -11,7 +11,7 @@
 // (dort bleibt dann nur die Id).
 
 import { applyEdit } from "../storage/merge";
-import { firmEditForm, type FirmForm } from "./personForm";
+import { countryOptions, countrySelectValue, firmEditForm, type FirmForm } from "./personForm";
 import React, { useState, useEffect, useRef } from "react";
 import { generateId, formatCHF, formatDate, contactCategory, personReferences } from "../utils";
 import { useConfirm } from "../hooks/useConfirm";
@@ -513,6 +513,12 @@ export default function Persons({ data, update, modal, setModal, userPermissions
           <FormField label="PLZ"><input value={firmForm.zip || ""} onChange={e => setFirmForm({ ...firmForm, zip: e.target.value })} style={{ maxWidth: 90 }} /></FormField>
           <FormField label="Ort"><input value={firmForm.city || ""} onChange={e => setFirmForm({ ...firmForm, city: e.target.value })} /></FormField>
         </div>
+        {/* Land aus der Liste (ISO-Code, Standard CH) — geht so in den QR-Zahlteil (countries.ts) */}
+        <FormField label="Land">
+          <select value={countrySelectValue(firmForm.country)} onChange={e => setFirmForm({ ...firmForm, country: e.target.value })} style={{ maxWidth: 240 }}>
+            {countryOptions(firmForm.country).map(c => <option key={c.code} value={c.code}>{c.label}</option>)}
+          </select>
+        </FormField>
         <div className="form-row">
           <FormField label="E-Mail (Firma)"><input type="email" value={firmForm.email || ""} onChange={e => setFirmForm({ ...firmForm, email: e.target.value })} /></FormField>
           <FormField label="Telefon (Firma)"><input value={firmForm.phone || ""} onChange={e => setFirmForm({ ...firmForm, phone: e.target.value })} /></FormField>

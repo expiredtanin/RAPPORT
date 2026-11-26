@@ -173,6 +173,7 @@ Der erste Pfad mit einer `docker-compose.yml` wird genommen. Hat keiner eine, lo
 - **Restore:** Safety-Backup → `compose stop pb app` → Einmal-Container puffert das Archiv, prüft es (`tar -tz`, nur `pb/pb_data/…`, kein `..`) und löscht erst dann die alten Daten → `compose up -d` (auch nach Fehlern).
 - **Reihenfolge:** Backup, Restore, Container-Update und Daten-Reset laufen über einen gemeinsamen Lock nie gleichzeitig.
 - **Container-Update:** `compose pull`, dann je Container die laufende Image-ID mit der lokal getaggten vergleichen (früher: `compose images` vorher/nachher — fand nie etwas, weil das die Container-Image-ID ist). Bei Updates: Pre-Backup (`vor-update`), `compose up -d`, Rotation.
+- **Keine neuen Images ohne Backup** (Regel 26.11.2026): kein Pre-Pull beim App-Start mehr (zog neue Images auch bei ausgeschaltetem Auto-Update, das nächste `up -d` stellte ohne Backup um). Neue Images nur über `container_update::apply()` (Knopf oder Auto-Update), das vor dem Umstellen ein Backup macht. «Nach Updates suchen» (`check()`) pullt zwar, setzt die Image-Referenzen danach aber auf die bisherigen Images zurück (`docker tag <alte ID> <Referenz>`, Referenzen aus `compose config --images`) — Auto-Start, Neustart und Erste Hilfe laufen so weiter mit den bisherigen Images; `apply()` pullt erneut (Schichten im Cache).
 
 Container-Volumes verwaltet Compose über Docker selbst (`pb-data`-Named-Volume). Wenn die App stoppt, bleiben die Daten erhalten.
 

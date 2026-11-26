@@ -7,7 +7,7 @@ import { isLocalBackend } from "../../storage/adapter";
 import { formatIban, isQRIban, isValidIban, readAsDataUrl, checkLocalBudget, DEFAULT_MAHNGEBUEHREN } from "../../utils";
 import { FormField } from "../../components/UI";
 import { Section, type DraftProps } from "./shared";
-import type { AppData } from "../../types";
+import type { AppData, DreizehnterModus } from "../../types";
 
 /** Stammdaten des Büros; das Logo prüft im lokalen Modus das Speicherbudget. */
 export function StudioTab({ s, setField, data }: DraftProps & { data: AppData }) {
@@ -100,6 +100,11 @@ export function StudioTab({ s, setField, data }: DraftProps & { data: AppData })
               <div style={{ fontSize: 10, color: "var(--text5)", marginTop: 3 }}>{s.mwstAbrechnungsart === "vereinnahmt" ? "nach Zahlungseingang (Bewilligung ESTV)" : "nach Rechnungsdatum (Standard)"}</div>
             </FormField>
           </div>
+          <label style={{ display: "flex", alignItems: "center", gap: 8, textTransform: "none", fontSize: 13, color: "var(--text2)", marginTop: 6 }}>
+            <input type="checkbox" checked={!!s.rechnungRunden5} onChange={e => setField({ rechnungRunden5: e.target.checked })} style={{ width: "auto" }} />
+            Rechnungs- und Offerttotal auf 5 Rappen runden
+          </label>
+          <div style={{ fontSize: 10, color: "var(--text5)", marginTop: 3, marginLeft: 24 }}>Das Total inkl. MWST wird kaufmännisch gerundet, die Differenz steht als Zeile «Rundung»; die MWST bleibt rappengenau. Der QR-Zahlteil nimmt das gerundete Total. Gilt für neu gespeicherte Rechnungen und Offerten.</div>
           {s.mwstMethode === "saldo" && (
             <FormField label="Saldosteuersatz (%)">
               <input type="number" step="0.1" min={0} value={s.mwstSaldoSatz ?? ""} placeholder="laut Bewilligung der ESTV" onChange={e => setField({ mwstSaldoSatz: e.target.value === "" ? undefined : +e.target.value })} style={{ maxWidth: 160 }} />
@@ -136,6 +141,24 @@ export function StudioTab({ s, setField, data }: DraftProps & { data: AppData })
           Familienzulagen im Ein- und Austrittsmonat anteilig nach Kalendertagen
         </label>
         <div style={{ fontSize: 10, color: "var(--text5)", marginTop: 3, marginLeft: 24 }}>Je nach Familienausgleichskasse; ausgeschaltet wird der volle Monatsbetrag ausbezahlt.</div>
+      </Section>
+      <Section title="LOHNAUSZAHLUNG">
+        <div style={{ fontSize: 11, color: "var(--text5)", marginBottom: 12 }}>Je nach Betrieb. Gilt für neue Lohnabrechnungen; gespeicherte bleiben unverändert.</div>
+        <div className="form-row">
+          <FormField label="13. Monatslohn wird ausbezahlt">
+            <select value={s.dreizehnterModus || "monatlich"} onChange={e => setField({ dreizehnterModus: e.target.value as DreizehnterModus })}>
+              <option value="monatlich">monatlich (1/12)</option>
+              <option value="november">mit dem Novemberlohn</option>
+              <option value="dezember">mit dem Dezemberlohn</option>
+            </select>
+            <div style={{ fontSize: 10, color: "var(--text5)", marginTop: 3 }}>Bei Austritt immer anteilig im Austrittsmonat. Pro Person übersteuerbar (Personal → Mitarbeiter bearbeiten).</div>
+          </FormField>
+        </div>
+        <label style={{ display: "flex", alignItems: "center", gap: 8, textTransform: "none", fontSize: 13, color: "var(--text2)", marginTop: 6 }}>
+          <input type="checkbox" checked={!!s.lohnAuszahlungRunden5} onChange={e => setField({ lohnAuszahlungRunden5: e.target.checked })} style={{ width: "auto" }} />
+          Auszahlungsbetrag auf 5 Rappen runden
+        </label>
+        <div style={{ fontSize: 10, color: "var(--text5)", marginTop: 3, marginLeft: 24 }}>Nur der Auszahlungsbetrag; Abzüge bleiben rappengenau, die Rundungsdifferenz steht als Zeile «Rundung» auf der Abrechnung. Ausgeschaltet wird auf den Rappen ausbezahlt.</div>
       </Section>
     </div>
 

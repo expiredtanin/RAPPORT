@@ -32,7 +32,7 @@ onRecordCreateRequest((e) => {
       // über getString vergleichen: JSON-Felder (lohnVerlauf) liefert get() nicht als Array — ein leerer Verlauf «[]»
       // galt sonst als Lohnangabe und kein Projektleiter konnte jemanden anlegen (Review Runde 26)
       const empty = (f) => { const v = r.getString(f).trim(); return v === "" || v === "0" || v === "false" || v === "[]" || v === "null" || v === "{}"; };
-      for (const f of ["monatslohn", "lohnVerlauf", "lohnIban", "pkBeitragAN", "pkBeitragAG", "familienzulagen", "dreizehnterLohn", "ahvRentner", "quellensteuerPflichtig"]) {
+      for (const f of ["monatslohn", "lohnVerlauf", "lohnIban", "pkBeitragAN", "pkBeitragAG", "familienzulagen", "dreizehnterLohn", "ahvRentner", "quellensteuerPflichtig", "lohnVorsystem", "dreizehnterModus"]) {
         if (!empty(f)) throw new ForbiddenError("Lohnangaben erfasst, wer das Recht Löhne hat (" + f + ").");
       }
       // Sätze nur leer oder Standard (wie der Dialog sie setzt)
@@ -90,7 +90,7 @@ onRecordUpdateRequest((e) => {
     // Client sie leer zurück, gelten sie als unverändert (sonst Ablehnung bzw. gelöschte Löhne beim Speichern des Namens)
     if (!has("loehne") && o.get("appUser") !== uid) {
       for (const f of ["monatslohn", "lohnVerlauf", "lohnIban", "dreizehnterLohn", "ahvSatz", "alvSatz", "bvgSatz", "nbuSatz", "ktgSatz",
-        "quellensteuerPflichtig", "quellensteuerSatz", "pkBeitragAN", "pkBeitragAG", "pkAgSatz", "familienzulagen", "ahvRentner", "ahvNr"]) {
+        "quellensteuerPflichtig", "quellensteuerSatz", "pkBeitragAN", "pkBeitragAG", "pkAgSatz", "familienzulagen", "ahvRentner", "ahvNr", "lohnVorsystem", "dreizehnterModus"]) {
         const nv = r.getString(f).trim();
         if ((nv === "" || nv === "0" || nv === "false" || nv === "[]" || nv === "null" || nv === "{}") && JSON.stringify(r.get(f)) !== JSON.stringify(o.get(f))) r.set(f, o.get(f));
       }
@@ -108,7 +108,7 @@ onRecordUpdateRequest((e) => {
     }
     if (!has("loehne")) {
       const SAL = ["monatslohn", "lohnVerlauf", "lohnIban", "dreizehnterLohn", "ahvSatz", "alvSatz", "bvgSatz", "nbuSatz", "ktgSatz",
-        "quellensteuerPflichtig", "quellensteuerSatz", "pkBeitragAN", "pkBeitragAG", "pkAgSatz", "familienzulagen", "ahvRentner", "ahvNr"];
+        "quellensteuerPflichtig", "quellensteuerSatz", "pkBeitragAN", "pkBeitragAG", "pkAgSatz", "familienzulagen", "ahvRentner", "ahvNr", "lohnVorsystem", "dreizehnterModus"];
       for (const f of SAL) if (JSON.stringify(r.get(f)) !== JSON.stringify(o.get(f))) throw new ForbiddenError("Lohnangaben ändern braucht das Recht Löhne (" + f + ").");
     }
     return e.next();
@@ -254,7 +254,7 @@ onRecordEnrich((e) => {
   const full = perms.indexOf("|*|") >= 0;
   if (!full && perms.indexOf("|loehne|") < 0) {
     r.hide("monatslohn", "lohnVerlauf", "lohnIban", "dreizehnterLohn", "ahvSatz", "alvSatz", "bvgSatz", "nbuSatz", "ktgSatz",
-      "quellensteuerPflichtig", "quellensteuerSatz", "pkBeitragAN", "pkBeitragAG", "pkAgSatz", "familienzulagen", "ahvRentner", "ahvNr");
+      "quellensteuerPflichtig", "quellensteuerSatz", "pkBeitragAN", "pkBeitragAG", "pkAgSatz", "familienzulagen", "ahvRentner", "ahvNr", "lohnVorsystem", "dreizehnterModus");
   }
   // ohne «mitarbeiter» (seit 1787980000_absences_visible.js lesen alle Mitglieder): nur Name, Funktion, Pensum, Ein-/Austritt
   if (!full && perms.indexOf("|mitarbeiter|") < 0) {
@@ -315,7 +315,7 @@ onRecordsListRequest((e) => {
   if (e.hasSuperuserAuth()) return e.next();
   const q = e.requestInfo().query || {};
   const text = String(q.filter || "") + " " + String(q.sort || "");
-  if (!/(monatslohn|lohnverlauf|lohniban|ahvnr|pkbeitrag|familienzulagen|quellensteuer|dreizehnterlohn|ahvrentner|(ahv|alv|bvg|nbu|ktg|pkag)satz|auszahlungbetrag|stundenlohn)/i.test(text)) return e.next();
+  if (!/(monatslohn|lohnverlauf|lohniban|ahvnr|pkbeitrag|familienzulagen|quellensteuer|dreizehnterlohn|dreizehntermodus|lohnvorsystem|ahvrentner|(ahv|alv|bvg|nbu|ktg|pkag)satz|auszahlungbetrag|stundenlohn)/i.test(text)) return e.next();
   const uid = e.auth ? e.auth.id : "";
   // immer ALLE aktiven Mitgliedschaften: «studio = "<Büro mit Recht>" || note ~ …» lief sonst über die Datensätze eines
   // zweiten Büros, in dem das Recht fehlt (Review 26.11.2026; die App filtert nie nach diesen Feldern)

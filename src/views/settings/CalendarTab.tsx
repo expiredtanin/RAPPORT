@@ -10,7 +10,7 @@ import { useConfirm } from "../../hooks/useConfirm";
 import { showToast } from "../../toast";
 import { changeWithUndo, removeWithUndo } from "../../undo";
 import { FormField, Modal, DateInput } from "../../components/UI";
-import type { AbsenzType, Feiertag, Kanton, Settings, ViewProps } from "../../types";
+import type { AbsenzType, Feiertag, Kanton, Settings, ViewProps, VortagModus } from "../../types";
 
 /** Feiertage und Absenztypen bearbeiten; `onSettingsSaved` hält den Einstellungs-Entwurf mit der Kantonswahl gleich. */
 export function CalendarTab({ data, update, onSettingsSaved }: Pick<ViewProps, "data" | "update"> & { onSettingsSaved?: (changes: Partial<Settings>) => void }) {
@@ -18,6 +18,7 @@ export function CalendarTab({ data, update, onSettingsSaved }: Pick<ViewProps, "
   const kanton: Kanton = data.settings.kanton && KANTON_FEIERTAGE[data.settings.kanton] ? data.settings.kanton : "ZH";
   const kantonName = KANTON_FEIERTAGE[kanton].name;
   const vortagStunden = data.settings.vortagStunden ?? 1;
+  const vortagModus: VortagModus = data.settings.vortagModus ?? "direkt";
   const [ftForm, setFtForm] = useState<Partial<Feiertag>>({ date: "", label: "", stundenDelta: 0, repeatsYearly: true });
   const [absenzTypeForm, setAbsenzTypeForm] = useState<Partial<AbsenzType>>({ label: "", color: "#555" });
   const [kalModal, setKalModal] = useState<"ft" | "absenztype" | null>(null);
@@ -134,9 +135,24 @@ export function CalendarTab({ data, update, onSettingsSaved }: Pick<ViewProps, "
               onChange={e => { const v = Math.max(0, +e.target.value || 0); update("settings", prev => ({ ...prev, vortagStunden: v })); onSettingsSaved?.({ vortagStunden: v }); }} />
             <div style={{ fontSize: 10, color: "var(--text5)", marginTop: 3 }}>Büro-Usanz, gesetzlich nicht vorgeschrieben (allenfalls Arbeitsvertrag oder GAV). Gilt für 100 %, bei Teilzeit anteilig; 0 = aus.</div>
           </FormField>
+          {vortagStunden > 0 && (
+            <FormField label="Welcher Tag gilt als Vortag?">
+              <select value={vortagModus} style={{ maxWidth: 560 }}
+                onChange={e => { const v = e.target.value as VortagModus; update("settings", prev => ({ ...prev, vortagModus: v })); onSettingsSaved?.({ vortagModus: v }); }}>
+                <option value="direkt">Werktag direkt vor dem Feiertag (Standard)</option>
+                <option value="werktag">Nur wenn der Feiertag auf einen Werktag fällt</option>
+                <option value="letzter">Letzter Arbeitstag vor dem Feiertag (auch Freitag vor Montagsfeiertag)</option>
+              </select>
+              <div style={{ fontSize: 10, color: "var(--text5)", marginTop: 3 }}>
+                {vortagModus === "werktag" ? "Fällt der Feiertag auf einen Samstag oder Sonntag, wird kein Vortag gekürzt."
+                  : vortagModus === "letzter" ? "Vor einem Montagsfeiertag zählt der Freitag, vor einem Wochenend-Feiertag ebenfalls der Freitag."
+                  : "Auch der Freitag vor einem Samstag-Feiertag; der Freitag vor einem Montagsfeiertag bleibt ungekürzt."}
+              </div>
+            </FormField>
+          )}
           <div style={{ fontSize: 11, color: "var(--text5)", marginBottom: 14, lineHeight: 1.6 }}>
             Vorlage: gesetzliche bzw. üblicherweise arbeitsfreie Tage des Kantons (bei Unterschieden nach Gemeinde oder Konfession die Regel des Hauptorts) — eigene Tage ergänzen oder streichen.
-            Gelten für alle Mitarbeiter. Jährlich wiederkehrende werden automatisch übertragen. Mit «Stunden-Delta» lassen sich Halbfeiertage definieren (z.B. −3.5h für den 24.12.; gilt für 100 %, bei Teilzeit anteilig). Am Werktag direkt vor einem ganzen Feiertag (auch Freitag vor einem Samstag-Feiertag) zählt das Soll {vortagStunden > 0 ? `${vortagStunden} h weniger` : "normal"}.
+            Gelten für alle Mitarbeiter. Jährlich wiederkehrende werden automatisch übertragen. Mit «Stunden-Delta» lassen sich Halbfeiertage definieren (z.B. −3.5h für den 24.12.; gilt für 100 %, bei Teilzeit anteilig). Am Vortag eines ganzen Feiertags (Auswahl oben) zählt das Soll {vortagStunden > 0 ? `${vortagStunden} h weniger` : "normal"}.
           </div>
           <div className="card" style={{ padding: 0, marginBottom: feiertage.length === 0 ? 12 : 0 }}>
             <table>

@@ -35,4 +35,15 @@ describe("LohnPrint", () => {
     expect(out).not.toContain("keine Pflicht");
     expect(out).not.toContain("beitragsfrei");
   });
+  it("Nachzahlung (mit Differenz je Monat), 13. im Auszahlungsmonat und Rundung sind im Druck sichtbar", () => {
+    const emp = { id: "n", name: "Nora", monatslohn: 7500, pensum: 100, dreizehnterLohn: true, geburtsdatum: "1990-01-01", eintrittsdatum: "2024-01-01" } as Employee;
+    const entry = { id: "L2", employeeId: emp.id, monat: "2026-11", createdAt: "2026-11-30T10:00:00Z",
+      nachzahlungBeschrieb: "Nachzahlung Lohn 08.2026–09.2026", nachzahlungMonate: [{ monat: "2026-08", betrag: 500 }, { monat: "2026-09", betrag: 500 }],
+      ...calcLohn(emp, "2026-11", [{ amount: 12.34 }], 0, undefined, undefined, 0, { dreizehnterModus: "november", nachzahlung: 1000, runden5: true }) } as LohnEntry;
+    const out = renderToStaticMarkup(<LohnPrint entry={entry} emp={emp} data={data} monatLabel="November 2026" settings={settings} />);
+    expect(out).toContain("Nachzahlung Lohn 08.2026–09.2026");
+    expect(out).toContain("Differenz 08.2026");
+    expect(out).toContain("13. Monatslohn (Auszahlung, 1/12 der Monatslöhne)");
+    expect(out).toContain("Rundung auf 5 Rappen");
+  });
 });

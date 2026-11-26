@@ -52,7 +52,7 @@ export function InvoiceEditModal({ modal, setModal, form, setForm, data, clients
   removeItem: (idx: number) => void;
   updateItem: (idx: number, key: keyof InvoiceItem, val: unknown) => void;
 }) {
-  const { sub, globalDisc, subAfterDisc, tax, total } = calcTotal(form.items, form.mwst, form.mwstRate ?? data.settings.mwstRate, form.discountType, form.discountValue);
+  const { sub, globalDisc, subAfterDisc, tax, total, rundung } = calcTotal(form.items, form.mwst, form.mwstRate ?? data.settings.mwstRate, form.discountType, form.discountValue, !!data.settings.rechnungRunden5);
   const rate = form.mwstRate ?? data.settings.mwstRate;
   const [discountOpen, setDiscountOpen] = useState(false);
   // Bezahlte Rechnung: gesperrt, bis sie bewusst entsperrt wird (vorher liess sich z.B. der Betrag einer bezahlten
@@ -73,7 +73,7 @@ export function InvoiceEditModal({ modal, setModal, form, setForm, data, clients
   const footer = (
     <div className="num" style={{ lineHeight: 1.3, minWidth: 0 }}>
       <div style={{ fontSize: 11, color: "var(--text4)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-        {globalDisc !== 0 ? `Zwischentotal ${formatCHF(sub)} · ${form.discountLabel || "Rabatt"} ${globalDisc > 0 ? "−" : "+"}${formatCHF(Math.abs(globalDisc))} · ` : ""}Netto {formatCHF(subAfterDisc)}{form.mwst ? ` · MWST ${rate} % ${formatCHF(tax)}` : " · ohne MWST"}
+        {globalDisc !== 0 ? `Zwischentotal ${formatCHF(sub)} · ${form.discountLabel || "Rabatt"} ${globalDisc > 0 ? "−" : "+"}${formatCHF(Math.abs(globalDisc))} · ` : ""}Netto {formatCHF(subAfterDisc)}{form.mwst ? ` · MWST ${rate} % ${formatCHF(tax)}` : " · ohne MWST"}{rundung !== 0 ? ` · Rundung ${rundung > 0 ? "+" : "−"}${formatCHF(Math.abs(rundung))}` : ""}
       </div>
       <div style={{ fontSize: 13, color: "var(--text3)", whiteSpace: "nowrap" }}>Total <b style={{ color: "var(--text)", fontSize: 15 }}>{formatCHF(total)}</b></div>
     </div>

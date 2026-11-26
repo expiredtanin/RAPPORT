@@ -2,7 +2,7 @@
 // Der Zahlteil kommt als SVG von swissqrbill (lazy geladen) und ist pixelgenau — Änderungen im Druck prüfen.
 
 import { useState, useEffect } from "react";
-import { formatCHF, formatDate, formatIban, formatSenderAddress, invoiceNet, lineAmount, paymentReference } from "../../utils";
+import { formatCHF, formatDate, formatIban, formatSenderAddress, invoiceNet, lineAmount, paymentReference, rundungsDifferenz } from "../../utils";
 import { StudioLogo } from "../../components/UI";
 import type { Data } from "swissqrbill/types";
 import type { Invoice, InvoiceBillingSummary, Settings } from "../../types";
@@ -13,6 +13,8 @@ import { PrintText } from "./PrintText";
 export function InvoicePrint({ inv, client, settings }: { inv: Invoice; client: Client; settings: Settings }) {
   // Gutschrift (Total < 0): als solche betiteln, ohne Fälligkeit und Zahlungsangaben (Runde 34)
   const isCredit = (inv.total || 0) < 0;
+  // Rundung auf 5 Rappen (Büro-Einstellung): Differenz aus den gespeicherten Summen
+  const rundung = rundungsDifferenz(inv.total, invoiceNet(inv), inv.mwst ? inv.tax : 0);
   return (
     <>
       <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 60 }}>
@@ -88,6 +90,7 @@ export function InvoicePrint({ inv, client, settings }: { inv: Invoice; client: 
             <div style={{ display: "flex", justifyContent: "space-between", padding: "4px 0" }}><span style={{ color: "#666" }}>Netto</span><span>{formatCHF(invoiceNet(inv))}</span></div>
             <div style={{ display: "flex", justifyContent: "space-between", padding: "4px 0" }}><span style={{ color: "#666" }}>MWST {inv.mwstRate ?? settings.mwstRate}%</span><span>{formatCHF(inv.tax)}</span></div>
           </>}
+          {rundung !== 0 && <div style={{ display: "flex", justifyContent: "space-between", padding: "4px 0" }}><span style={{ color: "#666" }}>Rundung</span><span>{rundung > 0 ? formatCHF(rundung) : `−${formatCHF(-rundung)}`}</span></div>}
           <div className="doc-heading" style={{ display: "flex", justifyContent: "space-between", padding: "10px 0", borderTop: "2px solid var(--doc-accent)", marginTop: 6, ...HEADING, fontSize: 16, fontWeight: 700 }}>
             <span>Total</span><span>{formatCHF(inv.total)}</span>
           </div>

@@ -39,7 +39,7 @@ export function NewInvoiceModal({ ni, setNi, data, invoices, openEntriesForProje
   const number = nextInvoiceNumber(invoices, data.settings.invoiceNumberFormat);
   const previewForm = ni.tab !== "frei" && (proj || q) ? buildNewInvoiceForm(ni, data, invoices, number, openEntriesForProject)?.form : null;
   const previewRate = previewForm?.mwstRate ?? data.settings.mwstRate;
-  const preview = previewForm ? calcTotal(previewForm.items, previewForm.mwst, previewRate, previewForm.discountType, previewForm.discountValue) : null;
+  const preview = previewForm ? calcTotal(previewForm.items, previewForm.mwst, previewRate, previewForm.discountType, previewForm.discountValue, !!data.settings.rechnungRunden5) : null;
   // Teil-/Akontorechnung nach SIA-Phase braucht eine gewählte Phase, sonst entstünde eine Rechnung über 0
   const needsPhase = ni.tab === "projekt" && (ni.mode === "phase" || ni.mode === "akonto-phase") && !ni.phaseId;
   const canConfirm = ni.tab === "frei" || (ni.tab === "projekt" && !!ni.projectId && !needsPhase) || (ni.tab === "offerte" && !!ni.quoteId);

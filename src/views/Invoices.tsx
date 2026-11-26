@@ -33,6 +33,7 @@ import { changeWithUndo } from "../undo";
 import { useConfirm } from "../hooks/useConfirm";
 import { showToast } from "../toast";
 import { applyEdit } from "../storage/merge";
+import { conflictMessage, editConflict } from "../storage/pocketbase-conflict";
 import { MahnModal } from "../components/MahnModal";
 import type { Invoice, InvoiceItem, PrintContent, TimeEntry, ViewProps } from "../types";
 import { AkontoPlanModal } from "./invoices/AkontoPlanModal";
@@ -148,7 +149,7 @@ function Invoices({ data, update, saveAll, modal, setModal, setPrintContent }: P
     if (form.dueDate && form.date && form.dueDate < form.date) { showToast("Die Fälligkeit liegt vor dem Rechnungsdatum."); return; }
     if ((form.discountType === "percent" && !(Number(form.discountValue || 0) >= 0 && Number(form.discountValue || 0) <= 100))
       || form.items.some(it => !(Number(it.discount || 0) >= 0 && Number(it.discount || 0) <= 100))) { showToast("Rabatte zwischen 0 und 100 %."); return; }
-    const { sub, globalDisc, subAfterDisc, tax, total } = calcTotal(form.items, form.mwst, form.mwstRate ?? data.settings.mwstRate, form.discountType, form.discountValue);
+    const { sub, globalDisc, subAfterDisc, tax, total } = calcTotal(form.items, form.mwst, form.mwstRate ?? data.settings.mwstRate, form.discountType, form.discountValue, !!data.settings.rechnungRunden5);
     const invoiceId = editingId || generateId();
     const status = statusOverride || form.status || "entwurf";
     // Verrechnete Minuten je Zeiteintrag bleiben an der Rechnung (entrySelections), damit beim Bearbeiten
@@ -184,8 +185,11 @@ function Invoices({ data, update, saveAll, modal, setModal, setPrintContent }: P
     let saved: Invoice = inv;
     if (current) {
       const original = editOriginal.current?.id === editingId ? editOriginal.current : current;
-      saved = applyEdit<Invoice>(original, { ...original, ...inv }, current);
-      const t = calcTotal(saved.items, saved.mwst, saved.mwstRate ?? data.settings.mwstRate, saved.discountType, saved.discountValue);
+      const clash: string[] = [];
+      saved = applyEdit<Invoice>(original, { ...original, ...inv }, current, p => clash.push(p));
+      // dieselbe Stelle inzwischen von jemand anderem geändert: meine Fassung gilt, aber darauf hinweisen
+      if (editConflict("invoices", clash)) showToast(conflictMessage("invoices", { number: saved.number }), { timeout: 12000 });
+      const t = calcTotal(saved.items, saved.mwst, saved.mwstRate ?? data.settings.mwstRate, saved.discountType, saved.discountValue, !!data.settings.rechnungRunden5);
       saved = { ...saved, sub: t.sub, globalDisc: t.globalDisc, subAfterDisc: t.subAfterDisc, tax: t.tax, total: t.total };
       saved.billingSummary = invoiceBillingSummary(saved, data);
     }

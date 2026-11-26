@@ -11,7 +11,9 @@
 //     Rechnungsdatum, Standard) oder vereinnahmt (bezahlte Rechnungen nach Zahlungsdatum).
 //     Akonto-Rechnungen sind Vorauszahlungen: ihre MWST wird mit der Akontorechnung abgerechnet
 //     (Art. 40 Abs. 1 MWSTG); die Schlussrechnung belastet MWST nur auf dem Rest.
-//   - Spesen: ALLE Spesen der Periode mit Netto und Vorsteuer, auch die über den Lohn ausbezahlten.
+//   - Spesen: nur genehmigte («genehmigt», «auf nächsten Lohn») und ausbezahlte (auch über den Lohn) zählen als
+//     Aufwand und Vorsteuer (`spesenZaehlen`); offene erscheinen separat als «noch nicht genehmigt», abgelehnte nie.
+//     Die gezählten mit Netto und Vorsteuer, auch die über den Lohn ausbezahlten.
 //     Der Personalaufwand enthält deshalb KEINE Spesen (vorher steckten sie brutto in
 //     `lohn.auszahlung`, ihre Vorsteuer ging verloren).
 //   - Personalaufwand = Bruttolohn Total + Arbeitgeberbeiträge (AHV/IV/EO und ALV paritätisch
@@ -21,8 +23,8 @@
 //     `recurringUntil`) aufgelöst (`expandInternalExpenses`) — jede Zahlung zählt in ihrem Monat.
 //   - Spesen im Lohn: nur genehmigte («genehmigt», «auf nächsten Lohn»), nie «offen».
 
-import { csvCell, invoiceNet, roundCHF, type LohnVorperioden } from "./utils";
-import type { AppData, Expense, InternalExpense, Invoice, LohnEntry, LohnResult, OvertimeClosing } from "./types";
+import { csvCell, hoechstlohnKumuliert, invoiceNet, lohnImMonat, monatsAnteilNachEintritt, roundCHF, type LohnVorperioden } from "./utils";
+import type { AppData, DreizehnterModus, Employee, Expense, InternalExpense, Invoice, LohnEntry, LohnResult, LohnVorsystem, NachzahlungMonat, OvertimeClosing } from "./types";
 
 /**
  * Liegt ein Datum in der Periode? `""` = alle, `YYYY` = Jahr, `YYYY-MM` = Monat,
@@ -90,6 +92,47 @@ export function mwstPerioden(year: number, methode: "effektiv" | "saldo" | undef
 
 const INTERVAL_MONTHS: Record<string, number> = { monatlich: 1, quartalsweise: 3, "jährlich": 12 };
 
+/** Gültige Einträge des Betragsverlaufs, nach Monat aufsteigend. */
+function amountHistorySorted(e: Pick<InternalExpense, "amountHistory">): { before: string; amount: number }[] {
+  return (e.amountHistory || []).filter(h => h && /^\d{4}-\d{2}$/.test(h.before) && Number.isFinite(h.amount)).sort((a, b) => a.before.localeCompare(b.before));
+}
+
+/** Betrag einer wiederkehrenden Ausgabe im Monat `ym` («YYYY-MM»): der Verlauf bis zur letzten Änderung, danach `amount`. */
+export function recurringAmountFor(e: Pick<InternalExpense, "amount" | "amountHistory">, ym: string): number {
+  const hit = amountHistorySorted(e).find(h => ym < h.before);
+  return hit ? hit.amount : e.amount;
+}
+
+/**
+ * Betragsänderung einer wiederkehrenden Ausgabe ab dem Monat `fromMonth` («YYYY-MM»): frühere Monate behalten den
+ * alten Betrag (Eintrag im Verlauf), ab dem Monat gilt der neue. Spätere Änderungen werden dabei überschrieben.
+ * Ohne Änderung des Betrags kommt dieselbe Ausgabe zurück.
+ */
+export function changeRecurringAmount(e: InternalExpense, amount: number, fromMonth: string): InternalExpense {
+  if (amount === e.amount) return e;
+  const start = (e.date || "").slice(0, 7);
+  const hist = amountHistorySorted(e);
+  const next = hist.filter(h => h.before <= fromMonth);
+  if (!next.some(h => h.before === fromMonth)) {
+    // Monate bis fromMonth: Betrag der Stufe, die sie bisher abdeckte (bzw. der bisherige aktuelle Betrag)
+    const covering = hist.find(h => h.before > fromMonth);
+    next.push({ before: fromMonth, amount: covering ? covering.amount : e.amount });
+  }
+  const amountHistory = next.filter(h => h.before > start);   // Stufen vor dem Beginn der Serie sind wirkungslos
+  const { amountHistory: _old, ...rest } = e;
+  return { ...rest, amount, ...(amountHistory.length ? { amountHistory } : {}) };
+}
+
+/**
+ * Frühester Monat («YYYY-MM»), ab dem eine Betragsänderung gelten darf: Beginn der laufenden MWST-Periode
+ * (Quartal bzw. bei Saldosteuersatz Halbjahr). Abgeschlossene Perioden und ihre Buchungen bleiben unverändert.
+ */
+export function earliestAmountChangeMonth(today: string, methode: "effektiv" | "saldo" | undefined): string {
+  const ym = today.slice(0, 7);
+  const per = mwstPerioden(Number(today.slice(0, 4)), methode).find(p => p.start <= ym && ym <= p.end);
+  return per ? per.start : ym;
+}
+
 /**
  * Wiederkehrende interne Ausgaben als einzelne Buchungen: vom ersten Datum im Intervall bis heute
  * (keine künftigen Buchungen) bzw. bis zum Monat `recurringUntil`. Einmalige bleiben, wie sie sind.
@@ -109,7 +152,10 @@ export function expandInternalExpenses(list: InternalExpense[], today: string): 
       // erste Buchung immer (wie eine einmalige Ausgabe mit Datum in der Zukunft) — sonst war eine Serie mit
       // Startdatum nach heute in der Liste unsichtbar und liess sich weder bearbeiten noch löschen
       if (k > 0 && (d > today || (untilMonth && d.slice(0, 7) > untilMonth))) break;
-      out.push(k === 0 ? e : { ...e, id: `${e.id}@${d}`, date: d, occurrenceOf: e.id, receiptData: null, receiptName: null });
+      // Betrag des Monats aus dem Verlauf (Betragsänderung «gültig ab»); die erste Buchung behält die id der Serie
+      const amount = recurringAmountFor(e, d.slice(0, 7));
+      if (k === 0) out.push(amount === e.amount ? e : { ...e, amount, occurrenceOf: e.id });
+      else out.push({ ...e, id: `${e.id}@${d}`, date: d, amount, occurrenceOf: e.id, receiptData: null, receiptName: null });
     }
   }
   return out;
@@ -168,18 +214,86 @@ export function lohnPersonalaufwand(l: LohnAGFelder & Pick<LohnResult, "bruttoTo
 /**
  * Frühere Abrechnungen desselben Mitarbeiters im selben Jahr vor `monat` (für den kumulierten
  * ALV-/UVG-Höchstlohn in `calcLohn`). Ältere Abrechnungen ohne `alvBasis` zählen voll.
+ *
+ * Umstieg mitten im Jahr: `vorsystem` (Summen aus dem alten System) gilt für Abrechnungen nach `bisMonat` und ersetzt
+ * die Monate bis und mit `bisMonat` (eigene Abrechnungen davor zählen dann nicht zusätzlich). Fehlt die ALV-Basis,
+ * gilt der AHV-Lohn, höchstens der anteilige Höchstlohn bis `bisMonat`.
  */
-export function lohnVorperioden(lohnEntries: Pick<LohnEntry, "employeeId" | "monat" | "bruttoTotal" | "alvBasis" | "brutto" | "dreizehnter">[], employeeId: string, monat: string): LohnVorperioden {
+export function lohnVorperioden(lohnEntries: Pick<LohnEntry, "employeeId" | "monat" | "bruttoTotal" | "alvBasis" | "brutto" | "dreizehnter" | "nachzahlungBasis">[], employeeId: string, monat: string, vorsystem?: LohnVorsystem[]): LohnVorperioden {
   const year = monat.slice(0, 4);
+  const vs = (vorsystem || []).find(v => String(v.jahr) === year && /^\d{4}-\d{2}$/.test(v.bisMonat || "") && v.bisMonat.slice(0, 4) === year && monat > v.bisMonat);
+  const start: LohnVorperioden = { bruttoBisher: 0, alvBasisBisher: 0, dreizehnterBasisBisher: 0, dreizehnterBisher: 0, bruttoMonatslohnBisher: 0 };
+  if (vs) {
+    const brutto = roundCHF(vs.brutto || 0);
+    const dz = roundCHF(vs.dreizehnter || 0);
+    const alv = vs.alvBasis != null ? roundCHF(vs.alvBasis) : Math.min(brutto, hoechstlohnKumuliert(undefined, vs.bisMonat));
+    const monatslohn = vs.monatslohnSumme != null ? roundCHF(vs.monatslohnSumme) : roundCHF(Math.max(0, brutto - dz));
+    start.bruttoBisher = brutto; start.alvBasisBisher = alv; start.dreizehnterBisher = dz;
+    start.dreizehnterBasisBisher = dz > 0 ? monatslohn : 0;
+    start.bruttoMonatslohnBisher = monatslohn;
+    start.vorsystem = { bisMonat: vs.bisMonat, brutto, alvBasis: alv };
+  }
   return lohnEntries
-    .filter(l => l.employeeId === employeeId && l.monat.startsWith(year) && l.monat < monat)
+    .filter(l => l.employeeId === employeeId && l.monat.startsWith(year) && l.monat < monat && !(vs && l.monat <= vs.bisMonat))
     .reduce((s, l) => ({
+      ...s,
       bruttoBisher: s.bruttoBisher + (l.bruttoTotal || 0),
       alvBasisBisher: s.alvBasisBisher + (l.alvBasis ?? l.bruttoTotal ?? 0),
       // nur Monate mit 13. Monatslohn (wurde er erst im Lauf des Jahres vereinbart, kein Nachzahlen im Dezember)
-      dreizehnterBasisBisher: s.dreizehnterBasisBisher + ((l.dreizehnter || 0) > 0 ? l.brutto || 0 : 0),
-      dreizehnterBisher: s.dreizehnterBisher + (l.dreizehnter || 0),
-    }), { bruttoBisher: 0, alvBasisBisher: 0, dreizehnterBasisBisher: 0, dreizehnterBisher: 0 });
+      dreizehnterBasisBisher: s.dreizehnterBasisBisher! + ((l.dreizehnter || 0) > 0 ? l.brutto || 0 : 0),
+      dreizehnterBisher: s.dreizehnterBisher! + (l.dreizehnter || 0),
+      bruttoMonatslohnBisher: s.bruttoMonatslohnBisher! + (l.brutto || 0) + (l.nachzahlungBasis || 0),
+    }), start);
+}
+
+/** Ergebnis von `lohnNachzahlungOffen`. */
+export interface LohnNachzahlung {
+  /** Differenz je Monat (neuer Monatslohn − abgerechnet − schon nachbezahlt), älteste zuerst */
+  monate: NachzahlungMonat[];
+  /** Betrag der Zeile «Nachzahlung Lohn …» (Differenzen samt 13.-Anteil); negativ = Rückforderung */
+  betrag: number;
+  /** Differenz der Monatslöhne, die erst den 13. (Auszahlung November/Dezember, gleiches Jahr) erhöht */
+  basis: number;
+  /** «Nachzahlung Lohn 03.2026–05.2026» */
+  beschrieb: string;
+}
+
+/**
+ * Rückwirkende Lohnänderung: Differenz zwischen dem heutigen Monatslohn laut Stammdaten (`lohnImMonat` × Anteil) und
+ * dem abgerechneten Bruttolohn jedes früheren, abgeschlossenen Monats. Gespeicherte Abrechnungen bleiben
+ * unverändert; was schon mit einer früheren Abrechnung nachbezahlt wurde (`nachzahlungMonate`), zählt nicht
+ * nochmals. Abrechnungen mit im Lauf übersteuertem Lohn oder Pensum werden nicht verglichen.
+ *
+ * 13. Monatslohn: Wird er monatlich bezahlt (oder liegt der Monat in einem früheren Jahr), kommt 1/12 der Differenz
+ * in die Zeile; bei Auszahlung im November/Dezember im gleichen Jahr erhöht die Differenz erst den 13. (`basis`).
+ * @param monat Monat des Lohnlaufs (`YYYY-MM`); verglichen werden nur frühere Monate
+ */
+export function lohnNachzahlungOffen(emp: Employee, lohnEntries: LohnEntry[], monat: string, modus: DreizehnterModus): LohnNachzahlung | null {
+  const eigene = lohnEntries.filter(l => l.employeeId === emp.id);
+  const bezahlt = new Map<string, number>();
+  for (const l of eigene) for (const n of l.nachzahlungMonate || []) bezahlt.set(n.monat, roundCHF((bezahlt.get(n.monat) || 0) + n.betrag));
+  const jahr = monat.slice(0, 4);
+  const monate: NachzahlungMonat[] = [];
+  let basis = 0;
+  for (const e of eigene.filter(l => l.monat < monat && !l.bruttoWasOverridden && !l.pensumWasOverridden).sort((a, b) => a.monat.localeCompare(b.monat))) {
+    const soll = roundCHF(lohnImMonat(emp, e.monat) * monatsAnteilNachEintritt(emp.eintrittsdatum, e.monat, emp.austrittsdatum));
+    const diff = roundCHF(soll - (e.brutto || 0) - (bezahlt.get(e.monat) || 0));
+    if (Math.abs(diff) < 0.005) continue;
+    const gleichesJahr = e.monat.slice(0, 4) === jahr;
+    let dz = 0;
+    if (gleichesJahr && modus !== "monatlich") basis = roundCHF(basis + diff);
+    else if (gleichesJahr ? (e.dreizehnter || 0) > 0 : !!(e.saetzeSnapshot?.dreizehnterLohn ?? (e.dreizehnter || 0) > 0)) dz = roundCHF(diff / 12);
+    monate.push({ monat: e.monat, betrag: diff, ...(dz ? { dreizehnter: dz } : {}) });
+  }
+  if (monate.length === 0) return null;
+  const label = (m: string) => `${m.slice(5)}.${m.slice(0, 4)}`;
+  const von = monate[0].monat, bis = monate[monate.length - 1].monat;
+  return {
+    monate,
+    betrag: roundCHF(monate.reduce((t, m) => t + m.betrag + (m.dreizehnter || 0), 0)),
+    basis,
+    beschrieb: von === bis ? `Nachzahlung Lohn ${label(von)}` : `Nachzahlung Lohn ${label(von)}–${label(bis)}`,
+  };
 }
 
 /**
@@ -212,6 +326,15 @@ export function ueberstundenFuerLohn(abschluesse: OvertimeClosing[], lohnEntries
   const verrechnet = new Set(lohnEntries.flatMap(l => l.ueberstundenIds || []));
   return abschluesse.filter(a => a.empId === empId && a.type === "payout" && (a.auszahlungBetrag || 0) > 0
     && !verrechnet.has(a.id) && !!a.imLohn && (a.date || "").slice(0, 7) <= bisMonat);
+}
+
+/**
+ * Zählt eine Spese in der Buchhaltung (Aufwand und Vorsteuer)? Genehmigte und ausbezahlte, ebenso jede, die schon in
+ * einer Lohnabrechnung steckt. «offen» (auch ohne Status) wartet noch auf die Genehmigung, «abgelehnt» zählt nie.
+ */
+export function spesenZaehlen(e: Pick<Expense, "status" | "lohnEntryId">): boolean {
+  if (e.status === "abgelehnt") return false;
+  return !!e.lohnEntryId || (e.status || "offen") !== "offen";
 }
 
 /** Noch nicht genehmigte Spesen einer Person bis und mit `monat` (Hinweis im Lohnlauf). */
@@ -248,6 +371,9 @@ export interface AccountingSummary {
   expCount: number;
   /** davon über eine Lohnabrechnung ausbezahlt */
   expViaLohnCount: number;
+  /** Spesen der Periode, die noch nicht genehmigt sind: zählen nicht in Aufwand und Vorsteuer (abgelehnte nie) */
+  expPendingCount: number;
+  expPendingGross: number;
   intNet: number;
   intTax: number;
   intGross: number;
@@ -281,14 +407,16 @@ const todayISO = () => { const d = new Date(); return `${d.getFullYear()}-${Stri
 
 /** Gefilterte Datensätze einer Periode (gleiche Filter für Ansicht, PDF und CSV). */
 export function accountingRows(data: SummaryData, period: string, today = todayISO()): {
-  invoices: Invoice[]; issued: Invoice[]; expenses: Expense[]; internalExpenses: InternalExpense[]; lohnEntries: LohnEntry[];
+  invoices: Invoice[]; issued: Invoice[]; expenses: Expense[]; expensesPending: Expense[]; internalExpenses: InternalExpense[]; lohnEntries: LohnEntry[];
 } {
   const byDate = <T extends { date?: string }>(a: T, b: T) => (a.date || "").localeCompare(b.date || "");
   const invoices = (data.invoices || []).filter(i => inPeriod(i.date, period)).sort(byDate);
+  const expensesInPeriod = (data.expenses || []).filter(e => inPeriod(e.date, period)).sort(byDate);
   return {
     invoices,
     issued: invoices.filter(i => i.status !== "entwurf"),
-    expenses: (data.expenses || []).filter(e => inPeriod(e.date, period)).sort(byDate),
+    expenses: expensesInPeriod.filter(spesenZaehlen),
+    expensesPending: expensesInPeriod.filter(e => !spesenZaehlen(e) && e.status !== "abgelehnt"),
     internalExpenses: expandInternalExpenses(data.internalExpenses || [], today).filter(e => inPeriod(e.date, period)).sort(byDate),
     lohnEntries: (data.lohnEntries || []).filter(l => inPeriod(`${l.monat}-01`, period)).sort((a, b) => a.monat.localeCompare(b.monat)),
   };
@@ -301,7 +429,7 @@ export function accountingRows(data: SummaryData, period: string, today = todayI
 export function accountingSummary(data: SummaryData, period: string, today = todayISO()): AccountingSummary {
   const rows = accountingRows(data, period, today);
   const sum = <T>(list: T[], f: (x: T) => number) => list.reduce((s, x) => s + f(x), 0);
-  const { invoices, issued, expenses, internalExpenses, lohnEntries } = rows;
+  const { invoices, issued, expenses, expensesPending, internalExpenses, lohnEntries } = rows;
 
   const revenueNet = roundCHF(sum(issued, invoiceNet));
   const taxTotal = roundCHF(sum(issued, i => i.tax || 0));
@@ -354,6 +482,7 @@ export function accountingSummary(data: SummaryData, period: string, today = tod
     openTotal: roundCHF(sum(invoices.filter(i => i.status === "gesendet"), i => i.total || 0)),
     overdueTotal: roundCHF(sum(invoices.filter(i => i.status === "überfällig"), i => i.total || 0)),
     expNet, expTax, expGross, expCount: expenses.length, expViaLohnCount: expenses.filter(e => e.lohnEntryId).length,
+    expPendingCount: expensesPending.length, expPendingGross: roundCHF(sum(expensesPending, e => e.amount || 0)),
     intNet, intTax, intGross,
     lohnBrutto, lohnAG, lohnAGParts, personalaufwand, lohnCount: lohnEntries.length,
     vorsteuer,
@@ -401,6 +530,7 @@ export function buildBuchhaltungCSV(data: AppData, period = ""): string {
     rows.push(line([exp.date, exp.category, proj?.name || "", exp.description, f(expenseNet(exp)), exp.inclMwst ? (exp.mwstRate || 0) : 0, f(expenseTax(exp)), f(exp.amount || 0), lohn ? lohn.monat : exp.lohnEntryId ? "ja" : ""]));
   });
   rows.push(line(["", "", "", "TOTAL", f(s.expNet), "", f(s.expTax), f(s.expGross), ""]));
+  if (s.expPendingCount > 0) rows.push(line(["", "", "", `Noch nicht genehmigt (${s.expPendingCount}), nicht im Total`, "", "", "", f(s.expPendingGross), ""]));
   rows.push("");
 
   rows.push(line(["INTERNE AUSGABEN", "", "", "", "", "", "", ""]));

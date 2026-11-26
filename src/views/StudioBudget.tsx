@@ -18,7 +18,7 @@
 // `settings.studioBudgetVersions` ab (auch Grundlage des PDFs).
 
 import React, { useState } from "react";
-import { arbeitszeitAm, generateId, formatCHF, lohnAGSaetze } from "../utils";
+import { arbeitszeitAm, generateId, formatCHF, lohnAGSaetze, lohnOptionen } from "../utils";
 import { budgetEinnahmen, budgetFixkosten, jahresLohnkosten, mergeBudgetRows } from "../budget";
 import { Header, ShareButton } from "../components/UI";
 import type { Employee, StudioBudgetState, StudioBudgetVersion, ViewProps } from "../types";
@@ -74,7 +74,7 @@ function StudioBudget({ data, update, setPrintContent, userPermissions = null }:
   const calcEmpAuto = (emp: Employee) => {
     // Pensum zur Jahresmitte des Budgetjahrs (Pensumwechsel); Lohnkosten rechnen je Monat (calcLohn)
     const pensum = arbeitszeitAm(emp, `${currentYear}-07-01`).pensum / 100;
-    const lk = jahresLohnkosten(emp, currentYear, agSaetze);
+    const lk = jahresLohnkosten(emp, currentYear, agSaetze, lohnOptionen(data.settings));
     const ferienWochen = emp.ferienWochen || data.settings.defaultFerienWochen || 5;
     const wochenstunden = (emp.wochenstunden || data.settings.defaultWochenstunden || 35) * pensum;
     const nettoWochen = 52 - ferienWochen - 1.5;

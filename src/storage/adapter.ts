@@ -180,6 +180,14 @@ const _isTauri = typeof window !== "undefined" && !!window.__TAURI_INTERNALS__;
 export const isServerMode = import.meta.env.VITE_SERVER_MODE === "1" && !_isTauri;
 
 /**
+ * Server-Adresse im Server-Modus: die beim Build eingebaute URL, sonst die Herkunft der Seite (`origin`, Container-
+ * Betrieb mit /api-Weiterleitung). Ohne Schrägstrich am Ende; leer, wenn beides fehlt.
+ */
+export function serverModeUrl(envUrl: string | null | undefined, origin: string): string {
+  return (String(envUrl || "").trim() || origin || "").replace(/\/+$/, "");
+}
+
+/**
  * Wählt den Adapter anhand von Build-Flags und localStorage (siehe Kopfkommentar).
  * Enthält auch zwei einmalige Aufräum-/Default-Regeln für Upgrades (Kommentare unten).
  */
@@ -191,8 +199,11 @@ function createAdapter(): LocalStorageAdapter | PocketBaseAdapter | FileStorageA
 
   // ── Server-Modus: fest auf diesen Server, ohne Wahlmöglichkeit ───────────
   if (isServerMode) {
-    if (!envUrl) {
-      console.error("VITE_SERVER_MODE=1, aber VITE_POCKETBASE_URL fehlt — Fehlkonfiguration des Web-Builds.");
+    // Ohne eingebaute URL: dieselbe Herkunft wie die Seite (Container-Betrieb: nginx leitet /api/ an PocketBase,
+    // server/container/nginx.conf). So läuft das fertige Image aus der Registry ohne Neubau unter jeder Adresse.
+    const url = serverModeUrl(envUrl, typeof window !== "undefined" ? window.location.origin : "");
+    if (!url) {
+      console.error("VITE_SERVER_MODE=1, aber keine Server-Adresse — Fehlkonfiguration des Web-Builds.");
       return new LocalStorageAdapter();
     }
     // localStorage konsistent halten (Login liest cloud_url für listStudios),
@@ -200,9 +211,9 @@ function createAdapter(): LocalStorageAdapter | PocketBaseAdapter | FileStorageA
     if (typeof localStorage !== "undefined") {
       localStorage.setItem("rapport_backend", "cloud");
       localStorage.setItem("rapport_backend_chosen", "1");
-      localStorage.setItem("rapport_cloud_url", envUrl.replace(/\/+$/, ""));
+      localStorage.setItem("rapport_cloud_url", url);
     }
-    return new PocketBaseAdapter(envUrl);
+    return new PocketBaseAdapter(url);
   }
 
   if (typeof localStorage !== "undefined") {

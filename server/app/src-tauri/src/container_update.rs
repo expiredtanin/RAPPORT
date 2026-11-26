@@ -11,6 +11,14 @@
 //! Scheduler tickt `CONTAINER_AUTOUPDATE_INTERVAL_HOURS` (Default 24h).
 //! `CONTAINER_AUTOUPDATE_ENABLED=false` schaltet den Auto-Teil ab — manuelles
 //! `check_now` / `apply_now` geht trotzdem.
+//!
+//! Regel (26.11.2026): Neue Images werden nur ueber `apply()` aktiv — mit Backup
+//! davor. Sonst wird nie automatisch gepullt (kein Pre-Pull beim App-Start). Das
+//! blosse Pruefen (`check()`) muss zwar pullen, um neue Versionen zu sehen, setzt
+//! danach aber die Image-Referenzen auf die bisherigen Images zurueck: ein
+//! spaeteres `compose up -d` (Auto-Start, Neustart, Erste Hilfe) stellt so nicht
+//! still und ohne Backup um. `apply()` pullt erneut (Schichten liegen schon im
+//! Cache) und stellt erst nach dem Backup um.
 
 use crate::{backup, services};
 use chrono::Local;
@@ -172,10 +180,55 @@ async fn compose_up() -> Result<String, String> {
     Ok(log)
 }
 
+/// Image-Referenzen aller Compose-Services (auch ohne Container, z.B. nach `down`).
+async fn compose_image_refs() -> Vec<String> {
+    docker(&["compose", "config", "--images"])
+        .await
+        .map(|s| parse_image_list(&s))
+        .unwrap_or_default()
+}
+
+/// Ausgabe von `compose config --images`: eine Referenz pro Zeile, ohne Doppelte.
+fn parse_image_list(s: &str) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for l in s.lines().map(str::trim).filter(|l| !l.is_empty()) {
+        if !out.iter().any(|x| x == l) {
+            out.push(l.to_string());
+        }
+    }
+    out
+}
+
+/// Referenzen, die der Pull auf ein anderes Image umgestellt hat: (Referenz, bisherige ID).
+fn moved_refs(before: &HashMap<String, String>, after: &HashMap<String, String>) -> Vec<(String, String)> {
+    let mut out: Vec<(String, String)> = before
+        .iter()
+        .filter(|(r, old)| after.get(*r).is_some_and(|new| new != *old))
+        .map(|(r, old)| (r.clone(), old.clone()))
+        .collect();
+    out.sort();
+    out
+}
+
 /// Prueft auf Image-Updates ohne sie anzuwenden: `docker compose pull`,
 /// danach laufende Container-Image-IDs mit den lokal getaggten vergleichen.
-/// Mehrfach aufrufbar — ein vorheriger Pull versteckt keine Updates.
+/// Mehrfach aufrufbar — ein vorheriger Pull versteckt keine Updates. Die
+/// Referenzen zeigen danach wieder auf die bisherigen Images (siehe Modulkopf).
 pub async fn check() -> Result<CheckResult, String> {
+    check_inner(true).await
+}
+
+/// `restore` = Referenzen nach dem Pull auf die bisherigen Images zuruecksetzen
+/// (nur Pruefen); `apply()` laesst die neuen stehen, um danach umzustellen.
+async fn check_inner(restore: bool) -> Result<CheckResult, String> {
+    let mut before = HashMap::new();
+    if restore {
+        for r in compose_image_refs().await {
+            if let Some(id) = local_image_id(&r).await {
+                before.insert(r, id);
+            }
+        }
+    }
     compose_pull().await?;
     let containers = container_images().await?;
     let mut local_ids = HashMap::new();
@@ -186,16 +239,30 @@ pub async fn check() -> Result<CheckResult, String> {
             }
         }
     }
+    let updates = diff_updates(&containers, &local_ids);
+    if restore {
+        let mut after = HashMap::new();
+        for r in before.keys() {
+            if let Some(id) = local_image_id(r).await {
+                after.insert(r.clone(), id);
+            }
+        }
+        for (r, old) in moved_refs(&before, &after) {
+            if let Err(e) = docker(&["tag", &old, &r]).await {
+                log::warn!("Container-Update: Referenz {r} nicht zurueckgesetzt: {e}");
+            }
+        }
+    }
     Ok(CheckResult {
         checked_at_iso: Local::now().to_rfc3339(),
-        updates: diff_updates(&containers, &local_ids),
+        updates,
     })
 }
 
 /// Pullt + (falls Updates da) Backup + Compose-Up. Liefert was wirklich
 /// passiert ist — empty `updated_services` = nichts zu tun.
 pub async fn apply() -> Result<ApplyResult, String> {
-    let check_res = check().await?;
+    let check_res = check_inner(false).await?;
     if check_res.updates.is_empty() {
         return Ok(ApplyResult {
             applied_at_iso: Local::now().to_rfc3339(),
@@ -289,6 +356,19 @@ mod tests {
 
     fn c(svc: &str, r: &str, id: &str) -> ContainerImage {
         ContainerImage { service: svc.into(), image_ref: r.into(), running_id: id.into() }
+    }
+
+    #[test]
+    fn image_list_and_moved_refs() {
+        assert_eq!(parse_image_list("reg/pb:main\n\nreg/app:main\nreg/pb:main\n"), vec!["reg/pb:main", "reg/app:main"]);
+        let mut before = HashMap::new();
+        before.insert("reg/pb:main".to_string(), "sha256:old".to_string());
+        before.insert("reg/app:main".to_string(), "sha256:same".to_string());
+        before.insert("reg/gone:main".to_string(), "sha256:x".to_string());
+        let mut after = HashMap::new();
+        after.insert("reg/pb:main".to_string(), "sha256:new".to_string());
+        after.insert("reg/app:main".to_string(), "sha256:same".to_string());
+        assert_eq!(moved_refs(&before, &after), vec![("reg/pb:main".to_string(), "sha256:old".to_string())]);
     }
 
     #[test]

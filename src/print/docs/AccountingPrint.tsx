@@ -178,6 +178,11 @@ export function BuchhaltungPrint({ data, filterYear, settings }: { data: AppData
             </tr>
           </tfoot>
         </table>
+        {sum.expPendingCount > 0 && (
+          <div style={{ fontSize: 9, color: "#888", marginTop: 6 }}>
+            Noch nicht genehmigt, nicht im Total: {sum.expPendingCount} {sum.expPendingCount === 1 ? "Spese" : "Spesen"} über {formatCHF(sum.expPendingGross)} brutto.
+          </div>
+        )}
       </div>
 
       {/* Interne Ausgaben */}

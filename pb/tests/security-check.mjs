@@ -547,16 +547,18 @@ check("M2: keinen Kontakt in Büro A anlegen", r.status >= 400, `HTTP ${r.status
   check("N: Rolle Mitarbeiter ohne Recht «mitarbeiter»", nMem && !nMem.perms.includes("|mitarbeiter|") && !nMem.perms.includes("|*|"), nMem && nMem.perms);
   const empN = rid("empn"), empV = rid("empv"), absV = rid("absv"), absN = rid("absn");
   must(await api("POST", "/api/collections/employees/records", tA, { id: empN, studio: sid, name: "Mitarbeiterin N", appUser: nUser.id, adresse: "Eigene Strasse 1" }), "employee N");
-  must(await api("POST", "/api/collections/employees/records", tA, { id: empV, studio: sid, name: "Viktor Sichtbar", role: "Zeichner", pensum: 80,
+  must(await api("POST", "/api/collections/employees/records", tA, { id: empV, studio: sid, name: "Viktor Sichtbar", role: "Zeichner", pensum: 80, lohnVorsystem: [{ jahr: 2026, bisMonat: 5, ahvLohn: 77777 }],
     adresse: "Geheimweg 7", ort: "GEHEIMORT", geburtsdatum: "1980-01-02 00:00:00.000Z", email: "geheim@example.ch", personalNr: "PN-GEHEIM", ahvNr: "756.1111.2222.33", monatslohn: 8765 }), "employee V");
   must(await api("POST", "/api/collections/absences/records", tA, { id: absV, studio: sid, employee: empV, typeId: "krank", dateFrom: "2026-12-01", dateTo: "2026-12-03", note: "ARZTGEHEIM", status: "approved" }), "absence V");
   must(await api("POST", "/api/collections/absences/records", tA, { id: absN, studio: sid, employee: empN, typeId: "arzt", dateFrom: "2026-12-04", dateTo: "2026-12-04", note: "EIGENENOTIZ", status: "approved" }), "absence N");
   r = await api("GET", `/api/collections/employees/records?filter=${enc(`studio = "${sid}"`)}&perPage=200`, tN);
   const vRow = r.json && r.json.items ? r.json.items.find(x => x.id === empV) : null;
   check("N: sieht andere Mitarbeitende (Name, Funktion, Pensum)", r.status === 200 && vRow && vRow.name === "Viktor Sichtbar" && vRow.role === "Zeichner" && vRow.pensum === 80, `HTTP ${r.status}`);
-  check("N: keine Personalien/Lohn fremder Mitarbeitender", r.status === 200 && !leaks(r, "Geheimweg", "GEHEIMORT", "1980-01-02", "geheim@example.ch", "PN-GEHEIM", "756.1111", "8765"), `HTTP ${r.status}`);
+  check("N: keine Personalien/Lohn fremder Mitarbeitender", r.status === 200 && !leaks(r, "Geheimweg", "GEHEIMORT", "1980-01-02", "geheim@example.ch", "PN-GEHEIM", "756.1111", "8765", "77777"), `HTTP ${r.status}`);
   const nRow = r.json && r.json.items ? r.json.items.find(x => x.id === empN) : null;
   check("N: eigene Adresse sichtbar", nRow && nRow.adresse === "Eigene Strasse 1", JSON.stringify(nRow && nRow.adresse));
+  r = await api("GET", `/api/collections/employees/records?filter=${enc(`studio = "${sid}" && lohnVorsystem ~ "77777"`)}`, tN);
+  check("N: Filter-Orakel Vorsystem-Lohn gesperrt", r.status === 400 || (r.status === 200 && r.json.items.length === 0), `HTTP ${r.status}`);
   r = await api("GET", `/api/collections/employees/records/${empV}`, tN);
   check("N: fremder Mitarbeiter direkt ohne Personalien", r.status === 200 && !leaks(r, "Geheimweg", "1980-01-02", "geheim@example.ch"), `HTTP ${r.status}`);
   r = await api("GET", `/api/collections/absences/records?filter=${enc(`studio = "${sid}"`)}&perPage=200`, tN);
@@ -631,6 +633,52 @@ check("M2: keinen Kontakt in Büro A anlegen", r.status >= 400, `HTTP ${r.status
   check("N: fremden Mitarbeiter nicht änderbar", r.status >= 400, `HTTP ${r.status}`);
   r = await api("GET", `/api/collections/absences/records?filter=${enc(`studio = "${sid}"`)}`, await imp((await api("GET", `/api/collections/users/records?filter=${enc(`email="x-${run}@test.local"`)}`, su)).json.items[0].id));
   check("X (fremdes Büro): keine Absenzen", r.status !== 200 || !r.json.items.some(x => x.id === absV), `HTTP ${r.status}`);
+}
+
+// ── Optimistische Sperre (pb_hooks/concurrency.pb.js, Migration 1787990000) ─────────────────────────────────────
+// Update mit veraltetem `updated` (Header X-Rapport-If-Updated) → 409, ohne Header wie bisher; auch im Batch.
+{
+  const apiH = async (method, path, token, body, headers) => {
+    const res = await fetch(PB + path, { method, headers: { "content-type": "application/json", ...(token ? { Authorization: token } : {}), ...headers }, body: body ? JSON.stringify(body) : undefined });
+    let json = null;
+    try { json = await res.json(); } catch { /* leer */ }
+    return { status: res.status, json };
+  };
+  const H = (v) => ({ "X-Rapport-If-Updated": v });
+  const invL = rid("invl");
+  const v0 = must(await api("POST", "/api/collections/invoices/records", tA, { id: invL, studio: sid, number: "SPERRE-1", items: [{ id: "i1", desc: "Eins", qty: 1, price: 100 }], total: 100 }), "Rechnung Sperre").updated;
+  r = await apiH("PATCH", `/api/collections/invoices/records/${invL}`, tA, { notes: "erste" }, H(v0));
+  check("Sperre: Update mit aktuellem Stand erlaubt", r.status === 200 && r.json.updated !== v0, `HTTP ${r.status}`);
+  const v1 = r.json && r.json.updated;
+  r = await apiH("PATCH", `/api/collections/invoices/records/${invL}`, tA, { notes: "veraltet", total: 1 }, H(v0));
+  check("Sperre: Update mit veraltetem Stand → 409", r.status === 409, `HTTP ${r.status}`);
+  r = await api("GET", `/api/collections/invoices/records/${invL}`, tA);
+  check("Sperre: abgelehntes Update hat nichts geschrieben", r.json && r.json.notes === "erste" && r.json.total === 100, `notes=${r.json && r.json.notes}`);
+  r = await apiH("POST", "/api/batch", tA, { requests: [{ method: "PATCH", url: `/api/collections/invoices/records/${invL}`, headers: H(v0), body: { notes: "batch veraltet" } }] }, {});
+  check("Sperre: im Batch mit veraltetem Stand abgelehnt", r.status >= 400 && JSON.stringify(r.json || "").includes("409"), `HTTP ${r.status}`);
+  r = await apiH("POST", "/api/batch", tA, { requests: [{ method: "PATCH", url: `/api/collections/invoices/records/${invL}`, headers: H(v1), body: { notes: "batch aktuell" } }] }, {});
+  check("Sperre: im Batch mit aktuellem Stand erlaubt", r.status === 200, `HTTP ${r.status} ${r.status !== 200 ? JSON.stringify(r.json).slice(0, 200) : ""}`);
+  r = await api("PATCH", `/api/collections/invoices/records/${invL}`, tA, { notes: "ohne Header" });
+  check("Sperre: Update ohne Stand (ältere App) wie bisher erlaubt", r.status === 200 && r.json.notes === "ohne Header", `HTTP ${r.status}`);
+  // Kontakte und Projekte haben jetzt `updated` (vorher ohne, keine Prüfung möglich)
+  const prL = rid("prl"), peL = rid("pel");
+  const pv0 = must(await api("POST", "/api/collections/projects/records", tA, { id: prL, studio: sid, number: "SP-1", name: "Sperrprojekt" }), "Projekt Sperre").updated;
+  check("Sperre: Projekte haben «updated»", !!pv0, `updated=${pv0}`);
+  must(await api("PATCH", `/api/collections/projects/records/${prL}`, tA, { name: "Sperrprojekt 2" }), "Projekt ändern");
+  r = await apiH("PATCH", `/api/collections/projects/records/${prL}`, tA, { name: "veraltet" }, H(pv0));
+  check("Sperre: Projekt mit veraltetem Stand → 409", r.status === 409, `HTTP ${r.status}`);
+  const ev0 = must(await api("POST", "/api/collections/persons/records", tA, { id: peL, studio: sid, name: "Sperrkontakt" }), "Kontakt Sperre").updated;
+  check("Sperre: Kontakte haben «updated»", !!ev0, `updated=${ev0}`);
+  must(await api("PATCH", `/api/collections/persons/records/${peL}`, tA, { city: "Bern" }), "Kontakt ändern");
+  r = await apiH("PATCH", `/api/collections/persons/records/${peL}`, tA, { city: "veraltet" }, H(ev0));
+  check("Sperre: Kontakt mit veraltetem Stand → 409", r.status === 409, `HTTP ${r.status}`);
+  // Aussenstehende erfahren über die Sperre nichts (kein 409 statt «nicht gefunden»/«keine Berechtigung»)
+  const xUser = (await api("GET", `/api/collections/users/records?filter=${enc(`email="x-${run}@test.local"`)}`, su)).json.items[0];
+  const tXi = must(await api("POST", `/api/collections/users/impersonate/${xUser.id}`, su, { duration: 600 }), "impersonate X").token;
+  r = await apiH("PATCH", `/api/collections/invoices/records/${invL}`, tXi, { notes: "fremd" }, H(v0));
+  check("Sperre: Aussenstehender mit veraltetem Stand bekommt kein 409", r.status === 403 || r.status === 404, `HTTP ${r.status}`);
+  r = await apiH("PATCH", `/api/collections/invoices/records/${invL}`, tM, { notes: "ohne Recht" }, H(v0));
+  check("Sperre: Mitglied ohne Recht Rechnungen bekommt kein 409", r.status === 403 || r.status === 404, `HTTP ${r.status}`);
 }
 
 // ── Deaktiviert und Mengenlimits (am Schluss, ändert den Zustand) ─────────────────────────────────────────────

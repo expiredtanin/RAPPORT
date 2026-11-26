@@ -14,14 +14,19 @@
 // (`lohnVorperioden`); Eintritt im Monat anteilig (calcLohn). «Stornieren» löscht die Abrechnung,
 // gibt die Spesen wieder frei («auf nächsten Lohn») und stellt die Overrides wieder her.
 // Fachliche Details der Abzüge: utils.ts `calcLohn`, docs/FACHLOGIK.md.
+//
+// Lohn-Optionen (Stand 26.11): Umstieg mitten im Jahr (`employee.lohnVorsystem` fliesst über `lohnVorperioden` in
+// Höchstlohn und 13. ein), 13. Monatslohn monatlich/November/Dezember (Einstellung, pro Person übersteuerbar),
+// rückwirkende Lohnänderung (`lohnNachzahlungOffen`: Differenz je Monat, «Nachzahlung übernehmen» als eigene Zeile;
+// gespeicherte Abrechnungen bleiben unverändert; Rückforderung nur nach Bestätigung) und Auszahlung auf 5 Rappen.
 
 import React, { useState } from "react";
-import { generateId, formatCHF, calcLohn, lohnAGSaetze, pensumImMonat, monatslohnImMonat } from "../utils";
-import { lohnAGBeitraege, lohnPersonalaufwand, lohnVorperioden, lohnlaufBisMonat, spesenFuerLohn, spesenWartend, ueberstundenFuerLohn } from "../accounting";
+import { generateId, formatCHF, calcLohn, lohnAGSaetze, lohnOptionen, pensumImMonat, monatslohnImMonat } from "../utils";
+import { lohnAGBeitraege, lohnNachzahlungOffen, lohnPersonalaufwand, lohnVorperioden, lohnlaufBisMonat, spesenFuerLohn, spesenWartend, ueberstundenFuerLohn } from "../accounting";
 import { Header, NavArrows, ShareButton, EmptyState } from "../components/UI";
 import { showToast } from "../toast";
 import { useConfirm } from "../hooks/useConfirm";
-import type { Employee, LohnEntry, LohnResult, SaetzeSnapshot, ViewProps } from "../types";
+import type { DreizehnterModus, Employee, LohnEntry, LohnResult, NachzahlungMonat, SaetzeSnapshot, ViewProps } from "../types";
 
 
 export default
@@ -36,10 +41,12 @@ function Payroll({ data, saveAll, setPrintContent, setView }: Pick<ViewProps, "d
   const [pensumOverride, setPensumOverride] = useState<Record<string, number>>({});
   // Bonus in CHF unter `empId`, der Beschrieb unter `${empId}_beschrieb` (gleiche Map, daher string | number).
   const [bonusOverride, setBonusOverride] = useState<Record<string, number | string>>({});
+  // Nachzahlung für rückwirkende Lohnänderungen übernehmen (Schlüssel = Mitarbeiter-Id), gilt nur für diesen Lauf
+  const [nachzahlungOn, setNachzahlungOn] = useState<Record<string, boolean>>({});
   const [overrideMonth, setOverrideMonth] = useState(`${selYear}-${selMonth}`);
   if (overrideMonth !== `${selYear}-${selMonth}`) {
     setOverrideMonth(`${selYear}-${selMonth}`);
-    setBruttoOverride({}); setPensumOverride({}); setBonusOverride({});
+    setBruttoOverride({}); setPensumOverride({}); setBonusOverride({}); setNachzahlungOn({});
   }
   const { askConfirm, ConfirmModalEl } = useConfirm();
 
@@ -89,9 +96,25 @@ function Payroll({ data, saveAll, setPrintContent, setView }: Pick<ViewProps, "d
   const offeneUeberstunden = (empId: string) => ueberstundenFuerLohn(data.uberstundenAbschluss || [], lohnEntries, empId, bisMonat(empId));
   const ueberstundenSumme = (empId: string) => offeneUeberstunden(empId).reduce((t, a) => t + (a.auszahlungBetrag || 0), 0);
   const findEntry = (empId: string) => lohnEntries.find(l => l.monat === monatStr && l.employeeId === empId);
+  const modusFor = (emp: Employee): DreizehnterModus => emp.dreizehnterModus ?? data.settings.dreizehnterModus ?? "monatlich";
+  /** Rückwirkende Lohnänderung: Differenz je abgeschlossenem Monat (null = nichts offen oder Abrechnung schon abgeschlossen) */
+  const nachzahlungFor = (emp: Employee) => findEntry(emp.id) ? null : lohnNachzahlungOffen(emp, lohnEntries, monatStr, modusFor(emp));
+  const nachzahlungAktiv = (emp: Employee) => {
+    const nz = nachzahlungOn[emp.id] ? nachzahlungFor(emp) : null;
+    return nz && Math.abs(nz.betrag) >= 0.005 ? nz : null;
+  };
   /** Vorschau/Abschluss mit den Overrides dieses Laufs und den früheren Abrechnungen des Jahres. */
-  const calcFor = (emp: Employee, spesen: { amount?: number }[]) =>
-    calcLohn({ ...emp, ...(bruttoOverride[emp.id] != null ? { monatslohn: bruttoOverride[emp.id], lohnVerlauf: undefined } : {}), ...(pensumOverride[emp.id] != null ? { pensum: pensumOverride[emp.id], pensumVerlauf: undefined } : {}) }, monatStr, spesen, (bonusOverride[emp.id] as number) || 0, lohnVorperioden(lohnEntries, emp.id, monatStr), lohnAGSaetze(data.settings), ueberstundenSumme(emp.id));
+  const calcFor = (emp: Employee, spesen: { amount?: number }[]) => {
+    const nz = nachzahlungAktiv(emp);
+    return calcLohn({ ...emp, ...(bruttoOverride[emp.id] != null ? { monatslohn: bruttoOverride[emp.id], lohnVerlauf: undefined } : {}), ...(pensumOverride[emp.id] != null ? { pensum: pensumOverride[emp.id], pensumVerlauf: undefined } : {}) }, monatStr, spesen, (bonusOverride[emp.id] as number) || 0, lohnVorperioden(lohnEntries, emp.id, monatStr, emp.lohnVorsystem), lohnAGSaetze(data.settings), ueberstundenSumme(emp.id),
+      { ...lohnOptionen(data.settings), ...(nz ? { nachzahlung: nz.betrag, nachzahlungBasis: nz.basis } : {}) });
+  };
+  const nachzahlungUmschalten = async (emp: Employee) => {
+    const nz = nachzahlungFor(emp);
+    if (!nz) return;
+    if (!nachzahlungOn[emp.id] && nz.betrag < 0 && !(await askConfirm(`Rückforderung von ${formatCHF(-nz.betrag)} für ${emp.name} mit dieser Abrechnung verrechnen? Der Lohn wurde rückwirkend gesenkt; der Betrag wird vom Lohn abgezogen.`, "Rückforderung übernehmen"))) return;
+    setNachzahlungOn(o => ({ ...o, [emp.id]: !o[emp.id] }));
+  };
 
   // Höchstlohn (ALV/UVG) wird über die FRÜHEREN Monate des Jahres kumuliert: ein Monat vor einem schon abgeschlossenen
   // späteren rechnete ohne diesen und überschritt den Höchstlohn (Dezember vor November, Runde 37)
@@ -105,6 +128,7 @@ function Payroll({ data, saveAll, setPrintContent, setView }: Pick<ViewProps, "d
     const spesen = offeneSpesen(emp.id);
     const effPensum = getEffPensum(emp);
     const calc = calcFor(emp, spesen);
+    const nz = nachzahlungAktiv(emp);
     // Alle Sätze statisch festhalten — unabhängig von späteren Änderungen
     const saetzeSnapshot: SaetzeSnapshot = {
       ahvSatz:  emp.ahvSatz  ?? 5.3,
@@ -129,7 +153,9 @@ function Payroll({ data, saveAll, setPrintContent, setView }: Pick<ViewProps, "d
       empSnapshot: { name: emp.name, role: emp.role, adresse: emp.adresse, ort: emp.ort, ahvNr: emp.ahvNr, personalNr: emp.personalNr, lohnIban: emp.lohnIban },
       saetzeSnapshot,
       bruttoWasOverridden: bruttoOverride[emp.id] != null,
+      ...(pensumOverride[emp.id] != null && pensumOverride[emp.id] !== monthPensum(emp) ? { pensumWasOverridden: true } : {}),
       bonusBeschrieb: (bonusOverride[`${emp.id}_beschrieb`] as string) || "",
+      ...(nz ? { nachzahlungBeschrieb: nz.beschrieb, nachzahlungMonate: nz.monate as NachzahlungMonat[] } : {}),
       ...calc, spesenIds: spesen.map(s => s.id), ueberstundenIds: offeneUeberstunden(emp.id).map(a => a.id),
       createdAt: new Date().toISOString(),
     };
@@ -146,6 +172,7 @@ function Payroll({ data, saveAll, setPrintContent, setView }: Pick<ViewProps, "d
     setBruttoOverride(o => { const n = { ...o }; delete n[emp.id]; return n; });
     setPensumOverride(o => { const n = { ...o }; delete n[emp.id]; return n; });
     setBonusOverride(o => { const n = { ...o }; delete n[emp.id]; delete n[`${emp.id}_beschrieb`]; return n; });
+    setNachzahlungOn(o => { const n = { ...o }; delete n[emp.id]; return n; });
   };
 
   const stornieren = async (id: string) => {
@@ -169,6 +196,7 @@ function Payroll({ data, saveAll, setPrintContent, setView }: Pick<ViewProps, "d
       const snapP = entry.saetzeSnapshot?.pensum;
       if (snapP != null && (!emp || Math.abs(snapP - monthPensum(emp)) > 0.001)) setPensumOverride(o => ({ ...o, [entry.employeeId]: snapP }));
       if (entry.bonusBetrag > 0) setBonusOverride(o => ({ ...o, [entry.employeeId]: entry.bonusBetrag, [`${entry.employeeId}_beschrieb`]: entry.bonusBeschrieb || "" }));
+      if (entry.nachzahlung) setNachzahlungOn(o => ({ ...o, [entry.employeeId]: true }));
     }
   };
 
@@ -200,8 +228,32 @@ function Payroll({ data, saveAll, setPrintContent, setView }: Pick<ViewProps, "d
    * `emp` der Mitarbeiter (bei gespeicherten Einträgen mit `saetzeSnapshot`, dann
    * gelten dessen Sätze statt der aktuellen Stammdaten).
    */
-  const renderCalc = (calc: LohnResult & { bonusBeschrieb?: string }, emp: Employee & { saetzeSnapshot?: SaetzeSnapshot }, isPreview: boolean, displayPensum: number) => (
+  const renderCalc = (calc: LohnResult & { bonusBeschrieb?: string; nachzahlungBeschrieb?: string; nachzahlungMonate?: NachzahlungMonat[] }, emp: Employee & { saetzeSnapshot?: SaetzeSnapshot }, isPreview: boolean, displayPensum: number) => (
     <div>
+      {isPreview && (() => {
+        // Rückwirkende Lohnänderung: Differenz je abgeschlossenem Monat, Nachzahlung auf Wunsch übernehmen
+        const nz = nachzahlungFor(emp);
+        if (!nz) return null;
+        const an = !!nachzahlungOn[emp.id];
+        return (
+          <div style={{ marginBottom: 12, padding: "8px 10px", background: "var(--surface2)", border: `1px solid ${an ? "var(--positive)" : "var(--warning)"}`, borderRadius: 4 }}>
+            <div style={{ fontSize: 10, letterSpacing: "0.08em", color: "var(--text4)", marginBottom: 6 }}>RÜCKWIRKENDE LOHNÄNDERUNG</div>
+            <div style={{ fontSize: 11, color: "var(--text3)", marginBottom: 6 }}>Der Lohn laut Stammdaten weicht von bereits abgeschlossenen Abrechnungen ab. Diese bleiben unverändert; die Differenz kann hier nachbezahlt werden{nz.betrag < 0 ? " (Rückforderung)" : ""}.</div>
+            {nz.monate.map(m => (
+              <div key={m.monat} style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "var(--text4)", padding: "1px 0" }}>
+                <span>{m.monat.slice(5)}.{m.monat.slice(0, 4)}{m.dreizehnter ? " (inkl. 13. Monatslohn)" : ""}</span>
+                <span className="num">{m.betrag + (m.dreizehnter || 0) < 0 ? `− ${formatCHF(-(m.betrag + (m.dreizehnter || 0)))}` : formatCHF(m.betrag + (m.dreizehnter || 0))}</span>
+              </div>
+            ))}
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 6, gap: 8 }}>
+              <strong style={{ fontSize: 12 }} className="num">{nz.betrag < 0 ? `− ${formatCHF(-nz.betrag)}` : formatCHF(nz.betrag)}</strong>
+              <button type="button" className={an ? "btn btn-ghost" : "btn btn-primary"} style={{ fontSize: 11, padding: "3px 10px" }} onClick={() => nachzahlungUmschalten(emp)}>
+                {an ? "Nicht übernehmen" : nz.betrag < 0 ? "Rückforderung übernehmen…" : "Nachzahlung übernehmen"}
+              </button>
+            </div>
+          </div>
+        );
+      })()}
       {isPreview && (
         <div style={{ marginBottom: 12, padding: "8px 10px", background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 4 }}>
           <div style={{ fontSize: 10, letterSpacing: "0.08em", color: "var(--text4)", marginBottom: 6 }}>MONATSLOHN (100% BASIS) — für diesen Lohnlauf anpassbar</div>
@@ -263,9 +315,10 @@ function Payroll({ data, saveAll, setPrintContent, setView }: Pick<ViewProps, "d
           {calc.hinweise.map(h => <div key={h}>{h}</div>)}
         </div>
       )}
-      {calc.dreizehnter > 0 && <LohnRow label="13. Monatslohn (1/12)" value={calc.dreizehnter} indent />}
+      {calc.dreizehnter !== 0 && <LohnRow label={calc.dreizehnterArt === "austritt" ? "13. Monatslohn (anteilig bei Austritt)" : calc.dreizehnterArt === "einmal" ? "13. Monatslohn (Auszahlung, 1/12 der Monatslöhne)" : "13. Monatslohn (1/12)"} value={calc.dreizehnter} indent />}
       {(calc.ueberstundenBetrag || 0) > 0 && <LohnRow label="Überstunden-Auszahlung (Jahresabschluss)" value={calc.ueberstundenBetrag || 0} indent />}
       {calc.bonusBetrag > 0 && <LohnRow label={emp.saetzeSnapshot ? (calc.bonusBeschrieb || "Einmalzahlung / Bonus") : ((bonusOverride[`${emp.id}_beschrieb`] as string) || "Einmalzahlung / Bonus")} value={calc.bonusBetrag} indent />}
+      {(calc.nachzahlung || 0) !== 0 && <LohnRow label={calc.nachzahlungBeschrieb || (isPreview ? nachzahlungAktiv(emp)?.beschrieb : undefined) || "Nachzahlung Lohn"} value={calc.nachzahlung || 0} indent />}
       <LohnRow label="Bruttolohn Total" value={calc.bruttoTotal} bold />
       <div style={{ marginTop: 10, marginBottom: 4, fontSize: 10, letterSpacing: "0.08em", color: "var(--text4)" }}>ABZÜGE ARBEITNEHMER</div>
       {(() => {
@@ -288,6 +341,7 @@ function Payroll({ data, saveAll, setPrintContent, setView }: Pick<ViewProps, "d
         <LohnRow label="Spesen" value={calc.spesenTotal} indent />
       </>}
       <div style={{ borderTop: "1.5px solid var(--text)", marginTop: 8, paddingTop: 8 }}>
+        {(calc.rundung || 0) !== 0 && <LohnRow label="Rundung auf 5 Rappen" value={calc.rundung || 0} indent />}
         <LohnRow label="Auszahlung Total" value={calc.auszahlung} bold color="var(--positive)" />
       </div>
       {calc.bruttoTotal > 0 && (() => {

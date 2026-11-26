@@ -9,7 +9,7 @@
 
 import React, { useState } from "react";
 import { formatCHF, formatDate, localISODate, invoiceNet } from "../utils";
-import { accountingSummary, exportBuchhaltungCSV, inPeriod, mwstPerioden, periodLabel } from "../accounting";
+import { accountingRows, accountingSummary, exportBuchhaltungCSV, inPeriod, mwstPerioden, periodLabel } from "../accounting";
 import { Header, StatusBadge, ShareButton } from "../components/UI";
 import { MahnModal } from "../components/MahnModal";
 import { addDays } from "../schedule";
@@ -32,7 +32,8 @@ function Accounting({ data, update, setView, setModal, setPrintContent }: Pick<V
   if (!availableYears.includes(currentYear)) availableYears.unshift(currentYear);
 
   // Gefilterte Daten und Summen — eine Quelle für Ansicht, PDF und CSV (accounting.ts)
-  const expenses = (data.expenses || []).filter(e => inPeriod(e.date, period));
+  // Spesen: nur genehmigte/ausbezahlte zählen (Aufwand, Vorsteuer); offene erscheinen als Hinweis darunter
+  const expenses = accountingRows(data, period).expenses;
   const sum = accountingSummary(data, period);
 
   // Einnahmen
@@ -309,7 +310,7 @@ function Accounting({ data, update, setView, setModal, setPrintContent }: Pick<V
       </div>
 
       {/* Spesen & Belege */}
-      {expenses.length > 0 && (
+      {(expenses.length > 0 || sum.expPendingCount > 0) && (
         <div className="card" style={{ marginTop: 28 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
             <div className="section-label" style={{ marginBottom: 0 }}>
@@ -376,6 +377,18 @@ function Accounting({ data, update, setView, setModal, setPrintContent }: Pick<V
                 <td style={{ textAlign: "right", fontWeight: 700 }}>{formatCHF(totalExpBrutto)}</td>
                 <td colSpan={2}></td>
               </tr>
+              {sum.expPendingCount > 0 && (
+                <tr data-testid="spesen-offen">
+                  <td colSpan={4} style={{ color: "var(--warning)", fontSize: 12 }}>
+                    <span className="msr" style={{ fontSize: 14, verticalAlign: "-2px", marginRight: 4 }}>hourglass_empty</span>
+                    Noch nicht genehmigt ({sum.expPendingCount}) — nicht in Aufwand und Vorsteuer
+                  </td>
+                  <td style={{ textAlign: "right", color: "var(--text3)" }}>{formatCHF(sum.expPendingGross)}</td>
+                  <td colSpan={2}>
+                    <button className="btn btn-ghost btn-sm" style={{ fontSize: 11 }} onClick={() => setView && setView("expenses")}>Genehmigen →</button>
+                  </td>
+                </tr>
+              )}
             </tfoot>
           </table>
         </div>

@@ -4,6 +4,7 @@
 //   "manual" – Stunden pro Phase und Rolle × Stundensatz der Rolle (`calcManualHours`);
 //              optional vorgeschlagen aus eigenen abgeschlossenen Projekten
 //              (quotes/EffortEstimatePanel, Grundlage in `quote.estimate`);
+import { copyQuote } from "./quoteCopy";
 //   "free"   – freie Positionen (Menge × Preis), keine Stunden.
 // Die Summen (sub/tax/total/totalHours) werden beim Speichern EINMAL berechnet und
 // mitgespeichert (Netto und MWST auf Rappen, Total = Summe); die Liste zeigt nur diese
@@ -22,6 +23,7 @@
 // Nummern: «O<Jahr>-NNN» (laufend pro Jahr, kein konfigurierbares Format).
 
 import { applyEdit, jsonEqual } from "../storage/merge";
+import { conflictMessage, editConflict } from "../storage/pocketbase-conflict";
 import React, { useState, useEffect, useRef } from "react";
 import { nextRoleId, renameQuoteRole } from "./quoteRoles";
 import { SIA_PHASES, SIA_PHASE_WEIGHTS } from "../constants";
@@ -103,6 +105,15 @@ function Quotes({ data, update, saveAll, modal, setModal, setPrintContent, setVi
     const vd = new Date(); vd.setDate(vd.getDate()+60);
     setForm({ ...emptyForm, number: nextNum(), validUntil: localISODate(vd), manualPhases: emptyManualPhases(), quoteRoles: defaultQuoteRoles(), sia: { ...emptyForm.sia, phases: emptySIAPhases() } });
     setModal({ type: "quote" });
+  };
+  // Kopieren: neue Offerte (Entwurf, neue Nummer, Datum heute, neue Gültigkeit) mit dem Inhalt der gewählten, ohne
+  // Verknüpfung zu Projekt/Rechnung; öffnet im Editor wie «Neue Offerte»
+  const openCopy = (q: Quote) => {
+    const c = copyQuote(q, { number: nextNum(), today: localISODate(), validDays: 60, projectName: data.projects.find(p => p.id === q.projectId)?.name });
+    editOriginal.current = null;
+    setForm({ ...emptyForm, ...c, manualPhases: c.manualPhases || emptyManualPhases(), quoteRoles: c.quoteRoles || defaultQuoteRoles(), sia: c.sia || emptyForm.sia, freeItems: c.freeItems || [{ id: generateId(), desc: "", qty: 1, price: 0 }] });
+    setModal({ type: "quote" });
+    showToast(`Kopie von ${q.number || "Offerte"} als ${c.number} angelegt — bitte prüfen und speichern.`);
   };
   // Einstieg aus der CRM-Pipeline («Offerte erstellen»): neues Formular mit vorbelegtem Kunden.
   useEffect(() => {
@@ -224,7 +235,7 @@ function Quotes({ data, update, saveAll, modal, setModal, setPrintContent, setVi
   // von openEdit aus der Offerte geladen) — sonst würde reines Öffnen+Speichern
   // einer alten Offerte ihren MWST-Satz rückwirkend auf den aktuellen Studio-
   // Default überschreiben, selbst wenn der gespeicherte Satz bewusst 0 war.
-  const { sub: subTotal, totalHours, taxRate, tax, total } = quoteTotals(form, roles, data.settings.mwstRate);
+  const { sub: subTotal, totalHours, taxRate, tax, total } = quoteTotals(form, roles, data.settings.mwstRate, !!data.settings.rechnungRunden5);
 
   const editOriginal = useRef<Quote | null>(null);
   const save = () => {
@@ -264,9 +275,12 @@ function Quotes({ data, update, saveAll, modal, setModal, setPrintContent, setVi
       const CONTENT: (keyof Quote)[] = ["mode", "sia", "manualPhases", "freeItems", "quoteRoles", "estimate", "mwst", "mwstRate", "sub", "totalHours", "tax", "total"];
       const changedIn = (x: Quote) => CONTENT.some(k => k !== "sub" && k !== "totalHours" && k !== "tax" && k !== "total" && !jsonEqual(x[k], original[k]) && !(x[k] == null && original[k] == null));
       const mineContent = changedIn(q);
-      saved = applyEdit<Quote>(original, { ...original, ...q }, current);
+      const clash: string[] = [];
+      saved = applyEdit<Quote>(original, { ...original, ...q }, current, p => clash.push(p));
+      // dieselbe Stelle inzwischen von jemand anderem geändert: meine Fassung gilt, aber darauf hinweisen
+      if (editConflict("quotes", clash)) showToast(conflictMessage("quotes", { number: saved.number }), { timeout: 12000 });
       if (mineContent && changedIn(current)) {
-        const t = quoteTotals(saved, roles, data.settings.mwstRate);
+        const t = quoteTotals(saved, roles, data.settings.mwstRate, !!data.settings.rechnungRunden5);
         saved = { ...saved, sub: t.sub, totalHours: t.totalHours, tax: t.tax, total: t.total, mwstRate: t.taxRate };
       } else {
         const src = mineContent ? q : current;
@@ -458,6 +472,7 @@ function Quotes({ data, update, saveAll, modal, setModal, setPrintContent, setVi
                           {linkedProj && <button className="btn-icon" title={`Mit Projekt ${linkedProj.number || linkedProj.name} verknüpft`} aria-label="Projekt-Verknüpfung" onClick={openProjectModal}><span className="msr" style={{ fontSize: 16 }}>work</span></button>}
                           <RowMenu items={[
                             { label: "Bearbeiten", icon: "edit", onClick: () => openEdit(q) },
+                            { label: "Kopieren", icon: "content_copy", onClick: () => openCopy(q) },
                             { label: "PDF", icon: "picture_as_pdf", onClick: () => setPrintContent({ type: "quote", quote: q, client: cl, settings: data.settings }) },
                             { label: "Rechnung erstellen", icon: "receipt_long", hidden: !!q.convertedToInvoiceId || !canInv, onClick: () => convertToInvoice(q) },
                             { label: "Vertrag erstellen", icon: "handshake", onClick: () => convertToVertrag(q) },
@@ -616,7 +631,10 @@ function Quotes({ data, update, saveAll, modal, setModal, setPrintContent, setVi
       })()}
       {modal?.type === "quote" && (
         <Modal title={modal.id ? "Offerte bearbeiten" : "Neue Offerte"} onClose={() => setModal(null)} onSave={save} wide
-          footerStart={<span className="num" style={{ fontSize: 13, color: "var(--text3)" }}>Total <b style={{ color: "var(--text)", fontSize: 15 }}>{formatCHF(total)}</b></span>}
+          footerStart={<span style={{ display: "inline-flex", alignItems: "center", gap: 12 }}>
+            <span className="num" style={{ fontSize: 13, color: "var(--text3)" }}>Total <b style={{ color: "var(--text)", fontSize: 15 }}>{formatCHF(total)}</b></span>
+            {(() => { const saved = modal.id ? (data.quotes || []).find(x => x.id === modal.id) : undefined; return saved ? <button type="button" className="btn btn-ghost btn-sm" onClick={() => openCopy(saved)}><span className="msr" style={{ fontSize: 15, verticalAlign: "-3px", marginRight: 4 }}>content_copy</span>Kopieren</button> : null; })()}
+          </span>}
           preview={<LivePreview settings={data.settings} assets={data.docAssets} content={{ type: "quote", quote: { ...form, estimate: form.mode === "manual" ? form.estimate ?? null : null, sub: subTotal, totalHours, tax, total, mwstRate: taxRate, id: (modal?.id as string | undefined) || "vorschau" } as Quote, client: clients.find(c => c.id === form.clientId) }} />}>
           <div className="form-row">
             <FormField label="Nr."><input value={form.number} onChange={e => setForm({...form, number: e.target.value})} /></FormField>

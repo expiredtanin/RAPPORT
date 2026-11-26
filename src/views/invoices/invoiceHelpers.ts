@@ -2,7 +2,7 @@
 // und die Erzeugung der Akonto-Plan-Rechnungen. Keine React-Abhängigkeiten.
 
 import { SIA_PHASES } from "../../constants";
-import { deriveQuoteBudget, generateId, invoiceNet, invoicesForQuote, lineAmount, localISODate, migrateLinkedQuotes, projectFee, roundCHF } from "../../utils";
+import { deriveQuoteBudget, generateId, invoiceNet, invoicesForQuote, lineAmount, localISODate, migrateLinkedQuotes, projectFee, roundCHF, runden5Rappen } from "../../utils";
 import type { AppData, Invoice, InvoiceBillingSummary, InvoiceItem, PrintContent, Project, Quote, Role, TimeEntry } from "../../types";
 
 /**
@@ -27,9 +27,10 @@ export type EntrySelections = NonNullable<Invoice["entrySelections"]>;
 /**
  * Summen einer Rechnung: Zwischentotal, Gesamtrabatt, Netto nach Rabatt, MWST und Total. Alle Beträge auf
  * Rappen gerundet; das Total ist die Summe aus gerundetem Netto und gerundeter MWST, damit Netto + MWST auf
- * Rechnung, PDF und QR-Zahlteil genau das Total ergeben.
+ * Rechnung, PDF und QR-Zahlteil genau das Total ergeben. Mit `runden5` (Büro-Einstellung `rechnungRunden5`) wird das
+ * Total NACH der MWST kaufmännisch auf 5 Rappen gerundet (MWST bleibt rappengenau); `rundung` = Differenz dazu.
  */
-export const calcTotal = (items: InvoiceItem[] | undefined, mwst: boolean | undefined, rate: number, discountType?: string, discountValue?: number) => {
+export const calcTotal = (items: InvoiceItem[] | undefined, mwst: boolean | undefined, rate: number, discountType?: string, discountValue?: number, runden5?: boolean) => {
   // Jede Position auf Rappen (wie gedruckt), das Zwischentotal ist ihre Summe
   const sub = roundCHF((items || []).reduce((s, i) => s + lineAmount(i.qty, i.price, i.discount), 0));
   // Betragsrabatt auf einer Gutschrift (negatives Zwischentotal) verkleinert sie, statt sie zu vergrössern
@@ -37,8 +38,9 @@ export const calcTotal = (items: InvoiceItem[] | undefined, mwst: boolean | unde
     : discountType === "amount" ? (discountValue || 0) * (sub < 0 ? -1 : 1) : 0);
   const subAfterDisc = roundCHF(sub - globalDisc);
   const tax = mwst ? roundCHF(subAfterDisc * (rate / 100)) : 0;
-  const total = roundCHF(subAfterDisc + tax);
-  return { sub, globalDisc, subAfterDisc, tax, total };
+  const exact = roundCHF(subAfterDisc + tax);
+  const total = runden5 ? runden5Rappen(exact) : exact;
+  return { sub, globalDisc, subAfterDisc, tax, total, rundung: roundCHF(total - exact) };
 };
 
 /** Zeilentotal einer Position inklusive Zeilenrabatt, auf Rappen (`lineAmount`). */
@@ -181,7 +183,7 @@ export const buildAkontoInvoices = (rows: AkontoPlanRow[], ap: AkontoPlan, data:
     const desc = row.desc || `Akontorechnung${rows.length > 1 ? ` ${i + 1}/${rows.length}` : ""} – ${proj?.name || ""}`;
     const { sub, tax, total, subAfterDisc, globalDisc } = calcTotal(
       [{ id: generateId(), desc, qty: 1, price: row.amt, discount: 0 }],
-      mwst, data.settings.mwstRate, "none", 0
+      mwst, data.settings.mwstRate, "none", 0, !!data.settings.rechnungRunden5
     );
     return {
       id: generateId(), number: numbers[i], date: row.date,

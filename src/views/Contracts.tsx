@@ -16,6 +16,7 @@ import { Header, Modal, FormField, StatusSelect, DateInput, SortTh, RowMenu, Emp
 import { removeWithUndo } from "../undo";
 import { showToast } from "../toast";
 import { applyEdit } from "../storage/merge";
+import { conflictMessage, editConflict } from "../storage/pocketbase-conflict";
 import { isInvoiceNumberTaken } from "./invoices/invoiceHelpers";
 import type { Contract, ViewProps } from "../types";
 
@@ -79,9 +80,12 @@ function Contracts({ data, saveAll, modal, setModal, setPrintContent }: Pick<Vie
     if (isInvoiceNumberTaken(contracts, form.number, isNew ? null : formModal)) { showToast(`Die Vertragsnummer ${(form.number || "").trim()} ist schon vergeben.`); return; }
     const entry: Contract = { ...form, id: isNew ? generateId() : (formModal as string) };
     // auf den aktuellen Stand; Bearbeiten mit applyEdit (sonst setzte das Fenster z.B. einen inzwischen geänderten Status zurück)
+    const clash: string[] = [];
     saveAll(prev => ({ ...prev, contracts: isNew
       ? [...(prev.contracts || []), { ...entry, createdAt: new Date().toISOString() }]
-      : (prev.contracts || []).map(v => v.id === entry.id ? (editBase?.id === entry.id ? applyEdit(editBase, entry, v) : entry) : v) }));
+      : (prev.contracts || []).map(v => v.id === entry.id ? (editBase?.id === entry.id ? applyEdit(editBase, entry, v, p => clash.push(p)) : entry) : v) }));
+    // dieselbe Stelle inzwischen von jemand anderem geändert: meine Fassung gilt, aber darauf hinweisen
+    if (editConflict("contracts", clash)) showToast(conflictMessage("contracts", { number: entry.number }), { timeout: 12000 });
     closeFormModal();
   };
 

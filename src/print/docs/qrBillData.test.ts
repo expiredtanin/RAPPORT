@@ -81,3 +81,19 @@ describe("qrDebtor", () => {
     expect(qrDebtor(old)).toEqual({ name: "Familie Keller", address: "Seestrasse 118", zip: "8700", city: "Küsnacht", country: "CH" });
   });
 });
+
+describe("QR-Zahlteil: Land des Zahlungspflichtigen aus dem Feld «Land» (Regel 26.11.2026)", () => {
+  const base = { id: "c9", name: "Muster GmbH", street: "Hauptstrasse 1", zip: "80331", city: "München", contacts: [] };
+  it("ISO-Code des Kontakts", () => {
+    expect(qrDebtor({ ...base, country: "DE" } as unknown as Person)?.country).toBe("DE");
+    expect(qrDebtor({ ...base, country: "li" } as unknown as Person)?.country).toBe("LI");
+  });
+  it("ausgeschriebenes Land wird zum Code statt still CH", () => {
+    expect(qrDebtor({ ...base, country: "Deutschland" } as unknown as Person)?.country).toBe("DE");
+  });
+  it("ohne Land → CH; die Freitext-Adresse bestimmt das Land nicht", () => {
+    expect(qrDebtor({ ...base } as unknown as Person)?.country).toBe("CH");
+    const old = { id: "c3", name: "Hans", address: "Hauptstrasse 1\nD-80331 München", contacts: [] } as unknown as Person;
+    expect(qrDebtor(old)?.country).toBe("CH");
+  });
+});

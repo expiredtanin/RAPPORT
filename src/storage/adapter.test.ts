@@ -1,7 +1,7 @@
 // Tests für den LocalStorageAdapter (entprelltes Speichern, voller Speicher). localStorage wird nachgebildet.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { LocalStorageAdapter } from "./adapter";
+import { LocalStorageAdapter, serverModeUrl } from "./adapter";
 import { STORAGE_KEY, defaultData } from "../constants";
 import type { AppData } from "../types";
 
@@ -120,3 +120,16 @@ describe("LocalStorageAdapter: zwei Fenster", () => {
   });
 });
 
+
+describe("serverModeUrl: Server-Adresse der gehosteten Web-App", () => {
+  it("ohne eingebaute URL dieselbe Herkunft (Container-Image mit /api-Weiterleitung)", () => {
+    expect(serverModeUrl("", "https://rapport.buero.ch")).toBe("https://rapport.buero.ch");
+    expect(serverModeUrl(undefined, "http://192.168.1.50:18080")).toBe("http://192.168.1.50:18080");
+  });
+  it("eingebaute URL hat Vorrang, ohne Schrägstrich am Ende", () => {
+    expect(serverModeUrl("https://api.buero.ch/", "https://rapport.buero.ch")).toBe("https://api.buero.ch");
+  });
+  it("beides leer → leer", () => {
+    expect(serverModeUrl("", "")).toBe("");
+  });
+});

@@ -25,10 +25,10 @@
 //    des 20. Geburtstags 5 Wochen (OR 329a Abs. 1).
 
 import { arbeitszeitAm, monatsAnteilNachEintritt, monatslohnAm, roundCHF } from "./utils";
-import type { AppData, DateStr, Employee, Feiertag, FerienEntry, Kanton, Settings } from "./types";
+import type { AppData, DateStr, Employee, Feiertag, FerienEntry, Kanton, Settings, VortagModus } from "./types";
 
 /** Datenausschnitt, den die Rechnung braucht. */
-export type WorkData = Pick<AppData, "feiertage" | "ferienEntries" | "absences" | "timeEntries"> & Partial<Pick<AppData, "uberstundenAbschluss">> & { settings?: Partial<Pick<Settings, "vortagStunden">> };
+export type WorkData = Pick<AppData, "feiertage" | "ferienEntries" | "absences" | "timeEntries"> & Partial<Pick<AppData, "uberstundenAbschluss">> & { settings?: Partial<Pick<Settings, "vortagStunden" | "vortagModus">> };
 /** Felder eines Mitarbeiters, die die Rechnung braucht. */
 export type WorkEmployee = Pick<Employee, "id"> & Partial<Pick<Employee, "pensum" | "wochenstunden" | "ferienWochen" | "eintrittsdatum" | "austrittsdatum" | "geburtsdatum" | "ferienUebertragVorjahr" | "pensumVerlauf" | "saldoStichtag" | "saldoUebertragStunden" | "lohnVerlauf" | "monatslohn">>;
 
@@ -253,8 +253,10 @@ function holidaysOfYear(feiertage: Feiertag[] | undefined, year: number): Feiert
  * Feiertage eines Jahres inklusive der automatischen Vortage (−`vortagStunden` h × Pensum, Standard 1, 0 = keine;
  * `id` «vortag-…»): der Werktag direkt vor einem ganzen Feiertag, der selbst kein Feiertag ist — auch der
  * Freitag vor einem Feiertag am Samstag. Büro-Usanz, gesetzlich nicht vorgeschrieben (Einstellungen → Feiertage). Feiertage am 1./2. Januar des Folgejahrs zählen mit.
+ * `vortagModus` (Standard «direkt», wie beschrieben): «werktag» kürzt nur vor Feiertagen an einem Werktag (Mo–Fr),
+ * «letzter» den letzten Arbeitstag vor dem Feiertag — auch den Freitag vor einem Montags- oder Wochenendfeiertag.
  */
-export function resolveHolidays(feiertage: Feiertag[] | undefined, year: number | string, vortagStunden = 1): Feiertag[] {
+export function resolveHolidays(feiertage: Feiertag[] | undefined, year: number | string, vortagStunden = 1, vortagModus: VortagModus = "direkt"): Feiertag[] {
   const y = Number(year);
   const fts = holidaysOfYear(feiertage, y);
   const all = [...fts, ...holidaysOfYear(feiertage, y + 1).filter(f => (f.date || "").slice(5, 10) <= "01-07")];
@@ -263,7 +265,19 @@ export function resolveHolidays(feiertage: Feiertag[] | undefined, year: number 
   if (!(vortagStunden > 0)) return fts;
   for (const f of all) {
     if (!isFullHoliday(f)) continue;
-    const ds = shiftDate(f.date, -1);
+    // werktag: nur Feiertage an einem Werktag (Mo–Fr) kürzen den Vortag; letzter: der letzte Arbeitstag davor
+    // (über Wochenende und ganze Feiertage hinweg); direkt: der Kalendertag davor, falls Werktag
+    const fdow = weekday(f.date);
+    if (vortagModus === "werktag" && (fdow === 0 || fdow === 6)) continue;
+    let ds = shiftDate(f.date, -1);
+    if (vortagModus === "letzter") {
+      for (let i = 0; i < 14; i++) {
+        const w = weekday(ds);
+        const ganzerFeiertag = all.some(x => x.date === ds && isFullHoliday(x));
+        if (w !== 0 && w !== 6 && !ganzerFeiertag) break;
+        ds = shiftDate(ds, -1);
+      }
+    }
     const dow = weekday(ds);
     if (!ds.startsWith(String(y)) || dow === 0 || dow === 6 || taken.has(ds)) continue;
     taken.add(ds);
@@ -365,7 +379,7 @@ export function createWorktime(data: WorkData, today: DateStr) {
     let m = ftCache.get(year);
     if (!m) {
       m = new Map();
-      for (const f of resolveHolidays(data.feiertage, year, data.settings?.vortagStunden ?? 1)) if (!m.has(f.date)) m.set(f.date, f);
+      for (const f of resolveHolidays(data.feiertage, year, data.settings?.vortagStunden ?? 1, data.settings?.vortagModus)) if (!m.has(f.date)) m.set(f.date, f);
       ftCache.set(year, m);
     }
     return m;

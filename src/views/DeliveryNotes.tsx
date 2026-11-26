@@ -11,6 +11,7 @@ import { Header, Modal, FormField, DateInput, SortTh, RowMenu, EmptyState } from
 import { removeWithUndo } from "../undo";
 import { showToast } from "../toast";
 import { applyEdit } from "../storage/merge";
+import { conflictMessage, editConflict } from "../storage/pocketbase-conflict";
 import { isInvoiceNumberTaken } from "./invoices/invoiceHelpers";
 import type { DeliveryNote, ViewProps } from "../types";
 
@@ -70,11 +71,14 @@ function DeliveryNotes({ data, saveAll, setPrintContent }: Pick<ViewProps, "data
     if (items.some(it => !(Number(it.qty) > 0))) { showToast("Die Menge jeder Position muss grösser als 0 sein."); return; }
     const entry: DeliveryNote = { ...form, items, id: isNew ? generateId() : (modal as string) };
     // auf den aktuellen Stand (prev), nicht den beim Öffnen: sonst gingen inzwischen gespeicherte Lieferscheine verloren
+    const clash: string[] = [];
     saveAll(prev => ({ ...prev, deliveryNotes: isNew
       ? [...(prev.deliveryNotes || []), { ...entry, createdAt: new Date().toISOString() }]
       // Bearbeiten: nur die eigenen Änderungen (applyEdit gegen den Stand beim Öffnen) — sonst überschrieb ein länger
       // offenes Fenster die Bemerkung, die jemand anderes inzwischen gespeichert hatte (Cloud-Test Runde 21)
-      : (prev.deliveryNotes || []).map(n => n.id === modal ? (editBase ? applyEdit(editBase, entry, n) : entry) : n) }));
+      : (prev.deliveryNotes || []).map(n => n.id === modal ? (editBase ? applyEdit(editBase, entry, n, p => clash.push(p)) : entry) : n) }));
+    // dieselbe Stelle inzwischen von jemand anderem geändert: meine Fassung gilt, aber darauf hinweisen
+    if (editConflict("deliveryNotes", clash)) showToast(conflictMessage("deliveryNotes", { number: entry.number }), { timeout: 12000 });
     closeModal();
   };
 

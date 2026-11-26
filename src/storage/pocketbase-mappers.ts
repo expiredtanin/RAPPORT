@@ -214,6 +214,9 @@ export const fromDB = {
       pensumVerlauf: Array.isArray(row.pensumVerlauf) ? row.pensumVerlauf : [],
       // Lohnänderungen über die Zeit (PB-Migration lohn_verlauf)
       lohnVerlauf: Array.isArray(row.lohnVerlauf) ? row.lohnVerlauf : [],
+      // 13. Monatslohn je Person und Vorsystem-Summen beim Umstieg im Jahr (PB-Migration payroll_options)
+      ...(row.dreizehnterModus ? { dreizehnterModus: row.dreizehnterModus } : {}),
+      lohnVorsystem: Array.isArray(row.lohnVorsystem) ? row.lohnVorsystem : [],
       appUserId: row.appUser || null,
       active: row.active !== false,
     };
@@ -356,6 +359,7 @@ export const fromDB = {
       recurring: !!row.recurring,
       recurringInterval: row.recurringInterval || "",
       recurringUntil: row.recurringUntil ? row.recurringUntil.slice(0, 10) : null,
+      ...(Array.isArray(row.amountHistory) && row.amountHistory.length ? { amountHistory: row.amountHistory } : {}),
       // Wie expense.receiptData: Verweis auf das Dateifeld receiptFile.
       receiptData: pbFileRef("internalExpenses", row.id, row.receiptFile),
       receiptName: row.receiptName || "",
@@ -567,7 +571,7 @@ export const toDB = {
         // Protokoll-Genehmigung: ohne eigene Spalte im ui-Blob (fromDB übernimmt ...row.ui)
         protokollApproval: rest.protokollApproval, protokollApprovalHours: rest.protokollApprovalHours,
         // Familienzulagen im Ein-/Austrittsmonat anteilig, Vortag vor Feiertagen — ohne eigene Spalte
-        familienzulagenAnteilig: rest.familienzulagenAnteilig, vortagStunden: rest.vortagStunden,
+        familienzulagenAnteilig: rest.familienzulagenAnteilig, vortagStunden: rest.vortagStunden, vortagModus: rest.vortagModus,
         // Mahnwesen (Verzugszins, Mahngebühren) — ohne eigene Spalte
         verzugszinsAktiv: rest.verzugszinsAktiv, verzugszinsSatz: rest.verzugszinsSatz, mahngebuehrAktiv: rest.mahngebuehrAktiv, mahngebuehren: rest.mahngebuehren,
         // Dokument-Design (Schriften/Farben/eigenes CSS) — Dateien liegen separat in docAssets
@@ -577,6 +581,10 @@ export const toDB = {
         lohnFakSatz: rest.lohnFakSatz, lohnVkSatz: rest.lohnVkSatz, lohnBuSatz: rest.lohnBuSatz, lohnKtgAGSatz: rest.lohnKtgAGSatz,
         // Kanton der Feiertags-Vorlage — ohne eigene Spalte
         kanton: rest.kanton,
+        // 13. Monatslohn (monatlich/November/Dezember) und Auszahlung auf 5 Rappen — ohne eigene Spalte
+        dreizehnterModus: rest.dreizehnterModus, lohnAuszahlungRunden5: rest.lohnAuszahlungRunden5,
+        // Rechnungs-/Offert-Total auf 5 Rappen — ohne eigene Spalte
+        rechnungRunden5: rest.rechnungRunden5,
       },
       protokollTypeAbbr: rest.protokollTypeAbbreviations || {},
     };
@@ -640,6 +648,8 @@ export const toDB = {
       saldoUebertragStunden: e.saldoUebertragStunden ?? null,
       pensumVerlauf: e.pensumVerlauf || [],
       lohnVerlauf: e.lohnVerlauf || [],
+      dreizehnterModus: e.dreizehnterModus || "",
+      lohnVorsystem: e.lohnVorsystem || [],
       appUser: e.appUserId || null,
       active: e.active !== false,
     };
@@ -714,6 +724,7 @@ export const toDB = {
       date: e.date, category: e.category, description: e.description, amount: e.amount,
       mwstRate: e.mwstRate, inclMwst: e.inclMwst !== false,
       recurring: !!e.recurring, recurringInterval: e.recurringInterval || null, recurringUntil: e.recurringUntil || null,
+      amountHistory: e.amountHistory?.length ? e.amountHistory : null,
       receiptFile: e.receiptData || "", receiptName: e.receiptName || "",
     };
   },

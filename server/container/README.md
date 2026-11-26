@@ -50,7 +50,7 @@ cp .env.example .env
 In `.env` mindestens ersetzen:
 - `PB_SUPERUSER_EMAIL` / `PB_SUPERUSER_PASSWORD` — Admin-Zugang für die PocketBase-Dashboard-UI (`/_/`) — Passwort mindestens 12 Zeichen; mit dem Platzhalter aus `.env.example` startet der Container nicht
 - `RAPPORT_SETUP_TOKEN` (optional) — Einrichtungscode für das erste Konto und Büro. Leer lassen: der Container erzeugt beim ersten Start einen und schreibt ihn einmal ins Log (`docker compose logs pb | grep Einrichtungscode`; später: `docker compose exec pb cat /pb/pb_data/.setup-token`); die App fragt bei der Ersteinrichtung danach. So kann niemand den frisch gestarteten Server vor Ihnen übernehmen
-- `API_EXTERNAL_URL` — die öffentliche URL, unter der PocketBase erreichbar sein wird (z.B. `https://api.rapport.studio.ch`) — wird zur Build-Zeit ins Frontend eingebrannt
+- `API_EXTERNAL_URL` — die öffentliche URL, unter der PocketBase erreichbar sein wird (z.B. `https://api.rapport.studio.ch`) — für den Admin-Zugang und die Desktop-App; die Web-App im Container braucht sie nicht (siehe [Web-App und PocketBase-Adresse](#web-app-und-pocketbase-adresse))
 - `APP_URL` — die öffentliche URL des Frontends (z.B. `https://rapport.studio.ch`) — wird beim Start automatisch als PocketBase-Einstellung `meta.appURL` gesetzt, damit Passwort-Reset-Mails auf die richtige Seite verlinken (siehe [Passwort-Reset](#passwort-reset--smtp))
 
 ### 3. Stack starten
@@ -75,6 +75,24 @@ Frontend ist erreichbar auf `http://localhost:8080`, PocketBase-Admin-UI auf
 `http://localhost:8090/_/` — direkt im Browser öffnen oder über deinen
 Reverse-Proxy auf eine Domain mappen.
 
+### Web-App und PocketBase-Adresse
+
+Regel: Das fertige App-Image (`rapport-app`, aus der Registry) funktioniert ohne Neubau. Die Web-App
+spricht PocketBase standardmässig unter **ihrer eigenen Adresse** an: nginx im app-Container leitet
+`/api/` an den pb-Container weiter ([nginx.conf](nginx.conf), Realtime ungepuffert, komprimiert), die
+Content-Security-Policy erlaubt nur die eigene Adresse. Es ist also egal, ob die App unter
+`http://192.168.1.50:8080`, `http://mac-mini.local:18080` oder `https://rapport.studio.ch` läuft — es
+gibt nichts einzubrennen. Die Web-App ist fest auf diesen Server eingestellt (keine Wahl «Lokal»).
+
+Das Image wird deshalb **ohne** Build-Argument gebaut (`docker build -f server/container/Dockerfile.app .`
+aus der Repo-Wurzel; `POCKETBASE_URL` leer). Nur wer die App auf eine eigene API-Domain zeigen lassen
+will, baut selbst: `APP_POCKETBASE_URL=https://api.rapport.studio.ch` in `.env`, dann
+`docker compose --profile build build app` — die URL kommt dann in den Build und in die CSP.
+
+Hinweis Rate-Limits: Über die Weiterleitung sieht PocketBase alle Anfragen von der IP des app-Containers
+(Login 2 pro 3 s, Batch 3 pro s gelten dann für alle zusammen). Für den Bürobetrieb deshalb
+`PB_TRUSTED_PROXY_HEADER=X-Forwarded-For` und `PB_BIND=127.0.0.1:` setzen (siehe unten).
+
 ---
 
 ## Reverse-Proxy + HTTPS
@@ -93,17 +111,18 @@ api.rapport.studio.ch {
 }
 ```
 
-In `.env` dann `API_EXTERNAL_URL=https://api.rapport.studio.ch` setzen (bestimmt,
-welche URL beim Frontend-Build als `VITE_POCKETBASE_URL` eingebrannt wird).
+In `.env` dann `API_EXTERNAL_URL=https://api.rapport.studio.ch` setzen. Die Web-App unter
+`app.rapport.studio.ch` nutzt PocketBase trotzdem über ihre eigene Adresse (`/api/`, siehe oben); soll sie
+direkt `api.rapport.studio.ch` ansprechen, `APP_POCKETBASE_URL` setzen und das App-Image selbst bauen.
 
 Hinter einem Proxy sieht PocketBase nur dessen IP; die Rate-Limits (z.B. Login 2 pro 3 s)
 gelten dann für alle Nutzer zusammen. Deshalb zusätzlich `PB_TRUSTED_PROXY_HEADER=X-Forwarded-For`
 und `PB_BIND=127.0.0.1:` setzen (Port 8090 nur lokal, sonst liesse sich der Header fälschen).
 
-Einfachere Variante mit nur einer Adresse: der app-Container reicht `/api/` an PocketBase
-weiter (komprimiert, Realtime ungepuffert). Dafür `API_EXTERNAL_URL` = Adresse des
-Frontends setzen (z.B. `https://rapport.studio.ch`), App-Image neu bauen und dieselben
-zwei Variablen wie oben setzen. PocketBase wertet den rechtesten Eintrag im Header aus:
+Einfachere Variante mit nur einer Adresse (Standard der Web-App): der app-Container reicht `/api/`
+an PocketBase weiter (komprimiert, Realtime ungepuffert). Dafür nur das Frontend veröffentlichen
+(z.B. `https://rapport.studio.ch` → Port 8080) und dieselben zwei Variablen wie oben setzen; ein
+Neubau des App-Images ist nicht nötig. PocketBase wertet den rechtesten Eintrag im Header aus:
 das passt, solange vor PocketBase genau ein Proxy steht (Caddy → 8090 oder Browser → app-Container).
 Bei zwei Proxys hintereinander (Caddy → app-Container → PocketBase) sähe es wieder nur Caddy.
 

@@ -3,7 +3,9 @@
 
 import React, { useState } from "react";
 import { SIA_PHASES, PROJECT_TYPES, NON_BILLING_CATEGORIES, PROJECT_USAGES } from "../constants";
-import { calcSIAHours, calcManualHours, deriveQuoteBudget, hasQuoteBudget, migrateLinkedQuotes, generateId, formatCHF } from "../utils";
+import { calcSIAHours, calcManualHours, deriveQuoteBudget, hasQuoteBudget, migrateLinkedQuotes, generateId, formatCHF, formatHours } from "../utils";
+import { useConfirm } from "../hooks/useConfirm";
+import { phaseBookedMinutes, renameCustomPhase } from "./project-detail/helpers";
 import { FormField, DateInput } from "../components/UI";
 import type { Project, ProjectPosition, ProjectUsage, ViewProps } from "../types";
 
@@ -20,6 +22,20 @@ export function ProjectEditForm({ form, setForm, data, canMoney = true, canQuote
   canQuotes?: boolean;
 }) {
   const [newPhaseLabel, setNewPhaseLabel] = useState("");
+  // eigene Phase umbenennen (id bleibt, Zeiteinträge zählen weiter dazu) bzw. mit Rückfrage löschen, wenn Stunden gebucht sind
+  const [renaming, setRenaming] = useState<{ id: string; text: string } | null>(null);
+  const { askConfirm, ConfirmModalEl } = useConfirm();
+  const commitRename = () => {
+    if (!renaming) return;
+    const { id, text } = renaming;
+    setRenaming(null);
+    setForm(f => ({ ...f, customPhases: renameCustomPhase(f.customPhases || [], id, text) }));
+  };
+  const removeCustomPhase = async (cp: { id: string; label: string }) => {
+    const mins = phaseBookedMinutes(data.timeEntries || [], form.id, cp.id);
+    if (mins > 0 && !(await askConfirm(`Auf die Phase «${cp.label}» sind ${formatHours(mins)} gebucht. Diese Zeiteinträge bleiben erhalten, gehören dann aber zu keiner Phase mehr. Phase trotzdem löschen?`, "Phase löschen"))) return;
+    setForm(f => ({ ...f, customPhases: (f.customPhases || []).filter(c => c.id !== cp.id) }));
+  };
   const togglePhase = (phaseId: string) => {
     setForm(prev => {
       const phases = prev.enabledPhases || [];
@@ -28,6 +44,7 @@ export function ProjectEditForm({ form, setForm, data, canMoney = true, canQuote
   };
   return (
     <>
+      {ConfirmModalEl}
       <div className="form-row">
         <FormField label="Projektnummer">
           <input value={form.number} onChange={e => setForm({ ...form, number: e.target.value })} placeholder={`z.B. ${new Date().getFullYear()}/01`} style={{ maxWidth: 140 }} />
@@ -222,8 +239,15 @@ export function ProjectEditForm({ form, setForm, data, canMoney = true, canQuote
         <div style={{ padding: "8px 10px", background: "var(--surface2)", borderRadius: 6, border: "1px solid var(--border2)" }}>
           {(form.customPhases || []).map(cp => (
             <div key={cp.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "3px 0", borderBottom: "1px solid var(--border2)" }}>
-              <span style={{ fontSize: 12 }}>{cp.label}</span>
-              <button onClick={() => setForm(f => ({ ...f, customPhases: (f.customPhases || []).filter(c => c.id !== cp.id) }))} style={{ background: "none", border: "none", color: "var(--text5)", cursor: "pointer", fontSize: 15, padding: "0 2px", lineHeight: 1 }}>×</button>
+              {renaming?.id === cp.id ? (
+                <input autoFocus value={renaming.text} aria-label="Phase umbenennen" style={{ flex: 1, height: 26, fontSize: 12, marginRight: 8 }}
+                  onChange={e => setRenaming({ id: cp.id, text: e.target.value })} onBlur={commitRename}
+                  onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); e.stopPropagation(); commitRename(); } else if (e.key === "Escape") { e.stopPropagation(); setRenaming(null); } }} />
+              ) : (
+                <span style={{ fontSize: 12, flex: 1 }}>{cp.label}</span>
+              )}
+              <button type="button" title="Umbenennen" aria-label={`Phase «${cp.label}» umbenennen`} onClick={() => setRenaming({ id: cp.id, text: cp.label })} style={{ background: "none", border: "none", color: "var(--text5)", cursor: "pointer", padding: "0 4px", lineHeight: 1 }}><span className="msr" style={{ fontSize: 15 }}>edit</span></button>
+              <button type="button" title="Löschen" aria-label={`Phase «${cp.label}» löschen`} onClick={() => removeCustomPhase(cp)} style={{ background: "none", border: "none", color: "var(--text5)", cursor: "pointer", fontSize: 15, padding: "0 2px", lineHeight: 1 }}>×</button>
             </div>
           ))}
           <div style={{ display: "flex", gap: 6, alignItems: "center", marginTop: (form.customPhases || []).length > 0 ? 7 : 0 }}>
