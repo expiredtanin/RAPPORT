@@ -5,7 +5,8 @@
 
 import { createWorktime, type WorkData, type WorkEmployee } from "./worktime";
 import { addDays } from "./schedule";
-import type { DateStr } from "./types";
+import { applyEdit } from "./storage/merge";
+import type { DateStr, ResourceEntry } from "./types";
 
 /** Auslastung einer Woche. */
 export interface WeekLoad {
@@ -52,4 +53,16 @@ export function weeklyLoad(data: WorkData, emp: WorkEmployee, entries: { dateFro
     const ist = week <= today ? wt.period(emp, week, sunday, today).ist : 0;
     return { week, past: sunday < today, available, ist, planned, overbooked };
   });
+}
+
+/**
+ * Einsatz aus dem Bearbeiten-Fenster in den Ressourcenplan übernehmen. Bestehender Einsatz: nur was im Fenster gegenüber
+ * `opened` (Stand beim Öffnen) geändert wurde, überschreibt den aktuellen Stand — sonst setzte ein länger offenes
+ * Fenster die Änderung einer anderen Person zurück (Cloud, E2E 26.11.2026). Inzwischen gelöscht → wieder angelegt
+ * (wie merge.ts: Löschen verliert gegen Ändern).
+ */
+export function upsertResourceEntry(list: ResourceEntry[] | undefined, entry: ResourceEntry, opened: ResourceEntry | null): ResourceEntry[] {
+  const prev = list || [];
+  if (!prev.some(x => x.id === entry.id)) return [...prev, entry];
+  return prev.map(x => x.id === entry.id ? (opened ? applyEdit(opened, entry, x) : entry) : x);
 }

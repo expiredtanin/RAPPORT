@@ -43,7 +43,7 @@ import { PageTabs } from "./components/UI";
 import { useNavigation } from "./hooks/useNavigation";
 import { useStudioData } from "./hooks/useStudioData";
 import { useAppearance } from "./hooks/useAppearance";
-import { getUserPermissions, getUserInitials, getVisibleNavItems } from "./auth";
+import { getUserPermissions, getUserInitials, getVisibleNavItems, syncCloudUser } from "./auth";
 import { ChangelogModal, AboutModal } from "./components/InfoModals";
 import { LATEST_VERSION, versionLabel } from "./changelog";
 import { LoginError } from "./storage/login-error";
@@ -106,7 +106,10 @@ export default function App() {
   // lässt sich bearbeiten; vorher wurde man so mit «role: admin» zum Admin). Konto gelöscht → keine Rechte.
   // Cloud: die Sitzung kommt vom Server, die Rechte setzt dort ohnehin der Server durch (pb_migrations/*role_rules*).
   const currentUser = useMemo<CurrentUser | null>(() => {
-    if (!sessionUser || isCloudBackend || loading) return sessionUser;
+    if (!sessionUser || loading) return sessionUser;
+    // Cloud: Rolle und Verknüpfung mit dem Mitarbeitenden aus den Daten nachführen — Einstellungen → Team ändert sie
+    // nach dem Login (vorher galten sie bis zum Ab- und Anmelden, E2E 26.11.2026). Rechte setzt ohnehin der Server durch.
+    if (isCloudBackend) return syncCloudUser(sessionUser, data.users, data.employees);
     const u = (data.users || []).find(x => x.id === sessionUser.id);
     if (!u) return { ...sessionUser, role: "user", appRoleId: "__ohne_konto__", permissions: [] };
     // auch die Verknüpfung zum Mitarbeitenden aus den Daten (Konto bzw. employees.appUserId), nicht aus der Sitzung
@@ -352,7 +355,12 @@ export default function App() {
     const onKey = (e: KeyboardEvent) => {
       // nicht unter der Druckansicht (App ausgeblendet)
       if ((document.querySelector(".app-wrapper") as HTMLElement | null)?.style.display === "none") return;
-      if ((e.metaKey || e.ctrlKey) && !e.altKey && e.key.toLowerCase() === "k") { e.preventDefault(); setPaletteOpen(o => !o); }
+      if ((e.metaKey || e.ctrlKey) && !e.altKey && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        // Bei offenem Dialog nicht öffnen: ein Treffer ersetzte den Dialog und verwürfe getippte Eingaben ohne Rückfrage
+        const dialogOpen = [...document.querySelectorAll<HTMLElement>(".modal-overlay")].some(el => el.getClientRects().length > 0);
+        setPaletteOpen(o => (o ? false : !dialogOpen));
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);

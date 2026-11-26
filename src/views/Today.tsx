@@ -131,7 +131,7 @@ export default function Today({ data, currentUser, userPermissions, run, onOpenP
   const yearPaid = yearRevenue(data.invoices || [], today.slice(0, 4));
   // wie Übersicht/Akquise: ohne Wiedervorlagen abgeschlossener Leads und gelöschter Kontakte (Review R32)
   const followUps = dueFollowUps(data, today).filter(a => (a.followUpDate as string) <= today).length;
-  const monthMins = (data.timeEntries || []).filter(e => e.date.startsWith(today.slice(0, 7))).reduce((s, e) => s + (e.minutes || 0), 0);
+  const monthMins = (data.timeEntries || []).filter(e => (e.date || "").startsWith(today.slice(0, 7))).reduce((s, e) => s + (e.minutes || 0), 0);
 
   const startForm = (
     <div className="today-form">

@@ -125,13 +125,13 @@ export default function UpdatesSupport({ fallbackVersion }: { fallbackVersion?: 
           </button>
 
           {state === "no-update" && (
-            <div style={{ marginTop: 6, padding: "10px 12px", background: "#f0f7f0", border: "1px solid #c8e0c8", borderRadius: 8, fontSize: 12, color: "var(--positive)", lineHeight: 1.5 }}>
+            <div style={{ marginTop: 6, padding: "10px 12px", background: "var(--positive-bg)", border: "1px solid var(--positive)", borderRadius: 8, fontSize: 12, color: "var(--positive)", lineHeight: 1.5 }}>
               ✓ Rapport ist auf dem neuesten Stand.
             </div>
           )}
 
           {state === "available" && update && (
-            <div style={{ marginTop: 10, padding: "14px 14px 12px", background: "#fbf6ef", border: "1px solid #e6d4b3", borderRadius: 8 }}>
+            <div style={{ marginTop: 10, padding: "14px 14px 12px", background: "var(--warning-bg)", border: "1px solid var(--border)", borderRadius: 8 }}>
               <div style={{ fontSize: 10, letterSpacing: "0.12em", color: "var(--accent)", fontWeight: 600, marginBottom: 4 }}>UPDATE VERFÜGBAR</div>
               <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text)", marginBottom: 6 }}>Rapport {versionLabel(update.version)}</div>
               {update.body && (
@@ -155,7 +155,7 @@ export default function UpdatesSupport({ fallbackVersion }: { fallbackVersion?: 
                   ? (pct !== null ? `Wird heruntergeladen … ${pct}%` : "Wird heruntergeladen …")
                   : "Wird installiert …"}
               </div>
-              <div style={{ height: 4, background: "#eee", borderRadius: 2, overflow: "hidden" }}>
+              <div style={{ height: 4, background: "var(--border)", borderRadius: 2, overflow: "hidden" }}>
                 <div style={{
                   height: "100%",
                   width: pct !== null ? `${pct}%` : "100%",
@@ -169,7 +169,7 @@ export default function UpdatesSupport({ fallbackVersion }: { fallbackVersion?: 
           )}
 
           {state === "not-tauri" && (
-            <div style={{ marginTop: 6, padding: "10px 12px", background: "#f5f5f0", border: "1px solid #e0dbd4", borderRadius: 8, fontSize: 12, color: "var(--text3)" }}>
+            <div style={{ marginTop: 6, padding: "10px 12px", background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 12, color: "var(--text3)" }}>
               Updates sind nur in der Desktop-App verfügbar.
             </div>
           )}

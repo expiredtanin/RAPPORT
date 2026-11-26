@@ -317,12 +317,12 @@ export default function Persons({ data, update, modal, setModal, userPermissions
       if (![p.name, p.type, p.email, addr, contactNames].some(v => v?.toLowerCase().includes(q))) return false;
     }
     return true;
-  }).sort((a, b) => a.name.localeCompare(b.name, "de"));
+  }).sort((a, b) => (a.name || "").localeCompare(b.name || "", "de"));
 
   const filteredPersons = allPersonsFlat.filter(c => {
     if (!q) return true;
     return [c.name, c.position, c.email, c.phone, c._firmaName].some(v => v?.toLowerCase().includes(q));
-  }).sort((a, b) => a.name.localeCompare(b.name, "de"));
+  }).sort((a, b) => (a.name || "").localeCompare(b.name || "", "de"));
 
   const showPersonsView = ansicht === "personen";
 
@@ -331,7 +331,7 @@ export default function Persons({ data, update, modal, setModal, userPermissions
     if (groupBy === "none") return [{ key: "_all", label: null, items: filteredFirmen }];
     if (groupBy === "alpha") {
       const g: Record<string, Person[]> = Object.create(null);
-      filteredFirmen.forEach(p => { const k = p.name[0]?.toUpperCase() || "#"; (g[k] = g[k] || []).push(p); });
+      filteredFirmen.forEach(p => { const k = (p.name || "")[0]?.toUpperCase() || "#"; (g[k] = g[k] || []).push(p); });
       return Object.entries(g).sort((a, b) => a[0].localeCompare(b[0])).map(([k, items]) => ({ key: k, label: k, items }));
     }
     if (groupBy === "type") {
@@ -359,7 +359,7 @@ export default function Persons({ data, update, modal, setModal, userPermissions
     if (groupBy === "none") return [{ key: "_all", label: null, items: filteredPersons }];
     if (groupBy === "alpha") {
       const g: Record<string, FlatContact[]> = Object.create(null);
-      filteredPersons.forEach(c => { const k = c.name[0]?.toUpperCase() || "#"; (g[k] = g[k] || []).push(c); });
+      filteredPersons.forEach(c => { const k = (c.name || "")[0]?.toUpperCase() || "#"; (g[k] = g[k] || []).push(c); });
       return Object.entries(g).sort((a, b) => a[0].localeCompare(b[0])).map(([k, items]) => ({ key: k, label: k, items }));
     }
     if (groupBy === "firma") {
@@ -529,7 +529,7 @@ export default function Persons({ data, update, modal, setModal, userPermissions
           <FormField label="Empfohlen von">
             <select value={firmForm.referredById || ""} onChange={e => setFirmForm({ ...firmForm, referredById: e.target.value || undefined })}>
               <option value="">—</option>
-              {[...persons].filter(p => p.id !== firmModal?.id).sort((a, b) => a.name.localeCompare(b.name)).map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+              {[...persons].filter(p => p.id !== firmModal?.id).sort((a, b) => (a.name || "").localeCompare(b.name || "")).map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
             </select>
           </FormField>
         </div>
@@ -596,7 +596,7 @@ export default function Persons({ data, update, modal, setModal, userPermissions
           <select value={personForm.firmaId || ""} onChange={e => setPersonForm({ ...personForm, firmaId: e.target.value })}
             style={!personForm.firmaId ? { borderColor: "var(--warning)" } : {}} disabled={!!personModal.personId}>
             <option value="">— Firma auswählen —</option>
-            {[...persons].sort((a, b) => a.name.localeCompare(b.name, "de")).map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+            {[...persons].sort((a, b) => (a.name || "").localeCompare(b.name || "", "de")).map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
           </select>
         </FormField>
         <FormField label="Name *">

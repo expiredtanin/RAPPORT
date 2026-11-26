@@ -165,7 +165,7 @@ export default function DocDesignSettings({ s, setField, data, update }: {
           Einstellungen werden mit «Speichern» übernommen; hochgeladene Dateien sind sofort gespeichert.
         </div>
         {msg && (
-          <div style={{ fontSize: 12, lineHeight: 1.5, padding: "10px 12px", borderRadius: 6, border: `1px solid ${msg.error ? "#e8b0b0" : "#b8dcc8"}`, background: msg.error ? "var(--negative-bg)" : "#f0f8f4", color: msg.error ? "var(--negative)" : "var(--positive)" }}>{msg.text}</div>
+          <div style={{ fontSize: 12, lineHeight: 1.5, padding: "10px 12px", borderRadius: 6, border: `1px solid ${msg.error ? "var(--negative)" : "var(--positive)"}`, background: msg.error ? "var(--negative-bg)" : "var(--positive-bg)", color: msg.error ? "var(--negative)" : "var(--positive)" }}>{msg.text}</div>
         )}
 
         {/* Schriften */}

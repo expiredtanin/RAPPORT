@@ -206,7 +206,8 @@ export const STATUS_BG_DARK: Record<string, string> = {
 
 /** CSS-tauglicher Schlüssel für einen Status ("überfällig" → "uberfallig"), Teil der Variablennamen `--st-c-*`/`--st-bg-*`. */
 export const statusVar = (status: string): string =>
-  status.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "-");
+  // Status kann in kaputten/fremden Daten fehlen (null) — die Pille wird dann grau statt die ganze Liste abzustürzen
+  String(status ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "-");
 
 /** CSS-Variablen `--st-c-*`/`--st-bg-*` für alle Status; Dark Mode überschreibt mit den *_DARK-Tabellen. Wird in App.tsx ins <style> eingebettet. */
 export const statusCssVars = (): string => {

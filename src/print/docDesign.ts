@@ -166,11 +166,35 @@ export function buildDocCss(r: ResolvedDocDesign, scope?: string): { imports: st
  * überzähliges «}» schlösse sonst den @scope-Block und das eigene CSS wirkte auf die ganze App.
  */
 export function cssBalanced(css: string): boolean {
-  // ein Durchgang: Escapes, Kommentare und Zeichenketten überspringen (ein «/*» in einem String ist kein Kommentar)
+  // ein Durchgang: Escapes, Kommentare, Zeichenketten und unquotierte url(…) überspringen (ein «/*» in einem String ist kein Kommentar)
   let depth = 0;
+  let ident = "";   // Name des laufenden Bezeichners (Escapes aufgelöst), um «url(» auch als «\75rl(» zu erkennen
   for (let i = 0; i < css.length; i++) {
     const ch = css[i];
-    if (ch === "\\") { i++; continue; }
+    if (ch === "\\") {
+      const hex = /^[0-9a-f]{1,6}/i.exec(css.slice(i + 1, i + 7));
+      if (hex) {
+        const cp = parseInt(hex[0], 16);
+        ident += cp > 0 && cp <= 0x10ffff ? String.fromCodePoint(cp) : "\ufffd";
+        i += hex[0].length;
+        if (/\s/.test(css[i + 1] ?? "")) i++;   // ein Leerzeichen schliesst das Hex-Escape ab
+      } else { ident += css[i + 1] ?? ""; i++; }
+      continue;
+    }
+    if (/[\w-]/.test(ch) || ch.charCodeAt(0) > 0x7f) { ident += ch; continue; }
+    const name = ident.toLowerCase();
+    ident = "";
+    if (ch === "(" && name === "url") {
+      // unquotierte URL ist ein einziges Token: «{» und «}» darin zählen für den Browser nicht (bis zur ersten «)»)
+      let j = i + 1;
+      while (j < css.length && /\s/.test(css[j])) j++;
+      if (css[j] !== '"' && css[j] !== "'") {
+        for (; j < css.length && css[j] !== ")"; j++) if (css[j] === "\\") j++;
+        if (j >= css.length) return false;   // offene URL
+        i = j; continue;
+      }
+      continue;
+    }
     if (ch === "/" && css[i + 1] === "*") {
       const end = css.indexOf("*/", i + 2);
       if (end < 0) return false;   // offener Kommentar

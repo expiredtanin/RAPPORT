@@ -50,6 +50,11 @@ export async function fontAssetFromFile(file: File): Promise<Omit<DocAsset, "id"
   const ext = file.name.split(".").pop()!.toLowerCase();
   const mime = { woff2: "font/woff2", woff: "font/woff", otf: "font/otf", ttf: "font/ttf" }[ext] || "font/woff2";
   data = data.replace(/^data:[^;,]*/, `data:${mime}`);
+  // eine beschädigte oder umbenannte Datei sähe sonst wie eine Schrift aus und fiele beim Drucken still auf die Ersatzschrift zurück
+  if (typeof FontFace !== "undefined") {
+    try { await new FontFace("probe", `url("${data}")`).load(); }
+    catch { throw new Error(`«${file.name}» ist keine lesbare Schriftdatei.`); }
+  }
   return { kind: "font", name: file.name, family: face.family, weight: face.weight, style: face.style, data };
 }
 

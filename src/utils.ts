@@ -1164,6 +1164,7 @@ export function htmlToText(html: string): string {
  */
 export function getFeiertageForYear(feiertage: Feiertag[] | undefined, year: number | string): Feiertag[] {
   return (feiertage || []).filter(f => {
+    if (!f.date) return false;   // Eintrag ohne Datum (kaputte Daten) überspringen statt die Ansicht abzustürzen
     if (f.repeatsYearly) return true;
     return f.date.startsWith(String(year));
   }).map(f => {

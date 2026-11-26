@@ -20,7 +20,7 @@ import { SIA_PHASES, DASHBOARD_WIDGETS, LEAD_STAGES } from "../constants";
 import { dueFollowUps, isOpenLead, pipelineValue } from "../crm";
 import { formatCHF, formatDate, formatHours, migrateDashboardLayout, widgetsToRows, generateId, getFeiertageForYear, localISODate, invoiceNet, yearRevenue, getWeekNumber, arbeitszeitAm } from "../utils";
 import { createWorktime, baseDailySoll } from "../worktime";
-import { KpiCard } from "../components/UI";
+import { KpiCard, EmptyState } from "../components/UI";
 import { isCloudBackend } from "../storage/adapter";
 import type { AppData, DashboardRow, DashboardTemplate, TimeEntry, ViewProps } from "../types";
 
@@ -244,7 +244,7 @@ export default function Dashboard({ data, setView, currentUser, userPermissions,
       if (!editMode&&!has) return null;
       return has ? (
         <div style={{display:"flex",gap:12,flexWrap:"wrap",height:"100%",alignItems:"stretch"}}>
-          {showOverdue&&<div onClick={!editMode?()=>setView("invoices"):undefined} style={{flex:1,minWidth:180,padding:"12px 16px",background:"#fff3f3",border:"1.5px solid #e0b0b0",borderRadius:8,cursor:editMode?"default":"pointer",display:"flex",alignItems:"center",gap:12}}>
+          {showOverdue&&<div onClick={!editMode?()=>setView("invoices"):undefined} style={{flex:1,minWidth:180,padding:"12px 16px",background:"var(--negative-bg)",border:"1.5px solid var(--negative)",borderRadius:8,cursor:editMode?"default":"pointer",display:"flex",alignItems:"center",gap:12}}>
             <span className="msr" style={{fontSize:18}}>warning</span>
             <div><div style={{fontSize:12,fontWeight:600,color:"var(--negative)"}}>{overdueInvoices.length} überfällige Rechnung{overdueInvoices.length>1?"en":""}</div><div style={{fontSize:11,color:"var(--warning)",marginTop:2}}>{formatCHF(overdueInvoices.reduce((s,i)=>s+i.total,0))} ausstehend</div></div>
           </div>}
@@ -824,6 +824,13 @@ export default function Dashboard({ data, setView, currentUser, userPermissions,
 
       {/* Rows */}
       {(activeLayout || []).map((row,idx) => renderRow(row,idx))}
+
+      {/* Nichts anzuzeigen (alle Kacheln entfernt oder für die Rolle gesperrt): Hinweis statt leerer Seite */}
+      {!editMode && !(activeLayout || []).some(r => (r.widgets || []).some(w => wContent[w] && visibleWidgetIds.has(w))) && (
+        <EmptyState icon="grid_view" title="Keine Kacheln auf der Übersicht"
+          text="Mit «Anpassen» lassen sich Kacheln hinzufügen oder eine Vorlage laden."
+          action={<button onClick={enterEdit} className="btn btn-primary">Anpassen</button>} />
+      )}
 
       {/* Edit mode: add first row / add row at bottom */}
       {editMode&&(

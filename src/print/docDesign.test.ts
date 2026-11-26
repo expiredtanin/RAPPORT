@@ -19,4 +19,16 @@ describe("cssBalanced", () => {
     expect(cssBalanced(".a { color: red } /* offen")).toBe(false);
     expect(cssBalanced('.a { content: "offen }')).toBe(false);
   });
+  it("unquotierte url(…) mit Klammern lässt «}» nicht aus dem Bereich ausbrechen", () => {
+    // der Browser liest «url(x{)» als ein Token: das zweite «}» schlösse sonst den @scope-Block
+    expect(cssBalanced("p{background:url(x{)}} body{display:none} p{}")).toBe(false);
+    expect(cssBalanced("p{background:u\\72l(x{)}} body{display:none} p{}")).toBe(false);
+    expect(cssBalanced("p{background:URL( x{ )}} body{display:none} p{}")).toBe(false);
+    expect(cssBalanced("p{background:url(x{")).toBe(false);
+    // gewöhnliche Verwendung bleibt gültig
+    expect(cssBalanced("p{background:url(data:image/png;base64,AAA=) no-repeat}")).toBe(true);
+    expect(cssBalanced('p{background:url("a}b")}')).toBe(true);
+    expect(cssBalanced("p{background:url( 'a{b' )}")).toBe(true);
+    expect(cssBalanced(".a{ b: curl(c) } .d{}")).toBe(true);
+  });
 });

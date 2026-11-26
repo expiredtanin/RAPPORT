@@ -35,4 +35,15 @@ describe("Befehlspalette", () => {
     expect(r.every(e => e.group === "Aktionen" || e.group === "Gehe zu")).toBe(true);
     expect(r.some(e => e.label === "Neue Rechnung")).toBe(true);
   });
+  it("verträgt Datensätze ohne Namen (kaputte/importierte Daten) statt die ganze App abzuschiessen", () => {
+    const broken = {
+      projects: [{ id: "p1" }], invoices: [{ id: "i1" }], quotes: [], protocols: [{ id: "pr1" }],
+      persons: [{ id: "c1", contacts: [{ id: "k1" }] }, { id: "c2", email: "a@b.ch" }],
+    } as unknown as AppData;
+    const nav2 = [...nav, { id: "personen", label: "Kontakte", icon: "group" }, { id: "protokolle", label: "Protokolle", icon: "description" }] as NavItem[];
+    const e = buildPaletteEntries(broken, nav2);
+    expect(() => searchPalette(e, "")).not.toThrow();
+    expect(() => searchPalette(e, "ohne")).not.toThrow();
+    expect(searchPalette(e, "a@b.ch").some(x => x.key === "c:c2")).toBe(true);
+  });
 });

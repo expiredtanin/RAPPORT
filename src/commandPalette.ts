@@ -29,7 +29,7 @@ export interface PaletteEntry {
   target: PaletteTarget;
 }
 
-const norm = (s: string) => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+const norm = (s?: string | null) => String(s ?? "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
 
 /** Baut alle Einträge aus den Daten und den für den Nutzer sichtbaren Ansichten. */
 export function buildPaletteEntries(data: AppData, navItems: NavItem[]): PaletteEntry[] {
@@ -44,7 +44,7 @@ export function buildPaletteEntries(data: AppData, navItems: NavItem[]): Palette
   if (can("protokolle")) out.push({ key: "a:pr", group: "Aktionen", icon: "add", label: "Neues Protokoll", target: { kind: "action", action: "newProtocol" } });
   out.push({ key: "a:dark", group: "Aktionen", icon: "contrast", label: "Hell/Dunkel umschalten", terms: "dark mode dunkelmodus theme", target: { kind: "action", action: "toggleDark" } });
   if (can("projects")) for (const p of data.projects || [])
-    out.push({ key: `p:${p.id}`, group: "Projekte", icon: "work", label: p.name, hint: [p.number, personName(p.clientId)].filter(Boolean).join(" · "), terms: p.description, target: { kind: "project", id: p.id } });
+    out.push({ key: `p:${p.id}`, group: "Projekte", icon: "work", label: p.name || "Projekt ohne Namen", hint: [p.number, personName(p.clientId)].filter(Boolean).join(" · "), terms: p.description, target: { kind: "project", id: p.id } });
   if (can("invoices")) for (const i of data.invoices || [])
     out.push({ key: `i:${i.id}`, group: "Rechnungen", icon: "receipt_long", label: `Rechnung ${i.number || ""}`.trim(), hint: [personName(i.clientId), i.status].filter(Boolean).join(" · "), target: { kind: "invoice", id: i.id } });
   if (can("quotes")) for (const q of data.quotes || [])
@@ -53,9 +53,9 @@ export function buildPaletteEntries(data: AppData, navItems: NavItem[]): Palette
     out.push({ key: `pr:${p.id}`, group: "Protokolle", icon: "description", label: p.title || "Protokoll", hint: [p.nummer, p.date].filter(Boolean).join(" · "), target: { kind: "protocol", id: p.id } });
   if (can("personen")) for (const p of data.persons || [])
   {
-    out.push({ key: `c:${p.id}`, group: "Kontakte", icon: "person", label: p.name, hint: p.email || undefined, target: { kind: "person", id: p.id } });
+    out.push({ key: `c:${p.id}`, group: "Kontakte", icon: "person", label: p.name || p.email || "Kontakt ohne Namen", hint: p.name ? p.email || undefined : undefined, target: { kind: "person", id: p.id } });
     for (const c of p.contacts || [])
-      out.push({ key: `c:${p.id}:${c.id}`, group: "Kontakte", icon: "badge", label: c.name, hint: [c.position, p.name].filter(Boolean).join(" · "), terms: c.email, target: { kind: "person", id: p.id } });
+      out.push({ key: `c:${p.id}:${c.id}`, group: "Kontakte", icon: "badge", label: c.name || c.email || "Ansprechperson ohne Namen", hint: [c.position, p.name].filter(Boolean).join(" · "), terms: c.email, target: { kind: "person", id: p.id } });
   }
   return out;
 }

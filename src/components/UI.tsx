@@ -49,10 +49,10 @@ export function StatusBadge({ status, label }: { status: string; label?: string 
  */
 export function StatusSelect({ value, options, onChange }: { value: string; options: string[]; onChange: (value: string) => void }) {
   const { color, bg, border } = statusStyle(value);
-  const longest = Math.max(value.length, ...options.map(o => o.length));
+  const longest = Math.max((value || "").length, ...options.map(o => o.length));
   return (
     <select
-      value={value}
+      value={value ?? ""}
       onChange={e => onChange(e.target.value)}
       onClick={e => e.stopPropagation()}
       aria-label="Status"

@@ -600,8 +600,8 @@ export function matchEmployee(responsible: string | undefined, employees: Pick<E
   const r = (responsible || "").trim().toLowerCase();
   if (!r) return undefined;
   const initials = (n: string) => n.split(/\s+/).filter(Boolean).map(w => w[0]).join("").toLowerCase();
-  return employees.find(e => e.name.toLowerCase() === r || initials(e.name) === r.replace(/[^a-zäöü]/g, "")
-    || e.name.toLowerCase().split(/\s+/).includes(r))?.id;
+  return employees.find(e => (e.name || "").toLowerCase() === r || initials(e.name || "") === r.replace(/[^a-zäöü]/g, "")
+    || (e.name || "").toLowerCase().split(/\s+/).includes(r))?.id;
 }
 
 /**

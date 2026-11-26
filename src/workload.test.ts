@@ -1,6 +1,6 @@
 // Tests für workload.ts: Wochen-Auslastung (verfügbar, erfasst, verplant, doppelt belegt).
 import { describe, it, expect } from "vitest";
-import { mondayOf, weeklyLoad } from "./workload";
+import { mondayOf, upsertResourceEntry, weeklyLoad } from "./workload";
 
 const emp = { id: "e1", pensum: 100, wochenstunden: 40, eintrittsdatum: "2020-01-01" };
 const base = { feiertage: [], ferienEntries: [], absences: [], timeEntries: [] };
@@ -38,5 +38,18 @@ describe("weeklyLoad", () => {
     expect(w.ist).toBe(5);
     expect(w.planned).toBe(0);
     expect(w.available).toBe(40);
+  });
+});
+
+describe("upsertResourceEntry", () => {
+  const e = { id: "r1", employeeId: "e1", label: "Werkplanung", projectId: null, dateFrom: "2026-11-30", dateTo: "2026-12-18", pensum: 80 };
+  it("offenes Fenster setzt eine fremde Änderung nicht zurück (nur eigene Felder)", () => {
+    const current = [{ ...e, pensum: 70 }];
+    const out = upsertResourceEntry(current, { ...e, note: "neu" }, e);
+    expect(out).toEqual([{ ...e, pensum: 70, note: "neu" }]);
+  });
+  it("gleiches Feld: eigener Wert gewinnt; neuer Einsatz wird angehängt", () => {
+    expect(upsertResourceEntry([{ ...e, pensum: 70 }], { ...e, pensum: 50 }, e)[0].pensum).toBe(50);
+    expect(upsertResourceEntry([e], { ...e, id: "r2" }, null).map(x => x.id)).toEqual(["r1", "r2"]);
   });
 });

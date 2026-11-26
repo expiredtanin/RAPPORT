@@ -49,3 +49,23 @@ export function defaultAppRoleId(roles: AppData["appRoles"] | undefined): string
   if (cand.some(r => r.id === "r-mitarbeiter")) return "r-mitarbeiter";
   return [...cand].sort((a, b) => (a.permissions || []).length - (b.permissions || []).length)[0]?.id || "";
 }
+
+/**
+ * Cloud: Rolle und Verknüpfung mit dem Mitarbeitenden aus den geladenen Daten statt nur aus der Sitzung — Einstellungen
+ * → Team ändert beides nach dem Login (vorher galten Menüs und «nicht verknüpft» bis zum Ab- und Anmelden; eine
+ * entzogene Rolle zeigte weiter Menüs, deren Speichern der Server ablehnte). `users` kommt aus den Mitgliedschaften
+ * (voller Reload, auch bei Tab-Fokus), `employees.appUserId` aus der Realtime. Ohne eigenen Eintrag bleibt die Sitzung;
+ * ein inzwischen anders verknüpfter Mitarbeiter-Datensatz wird gelöst. Unverändert → dasselbe Objekt.
+ */
+export function syncCloudUser(user: CurrentUser, users: AppData["users"] | undefined, employees: AppData["employees"] | undefined): CurrentUser {
+  const list = employees || [];
+  const linked = list.find(e => e.appUserId === user.id)?.id;
+  let employeeId = user.employeeId ?? null;
+  if (linked) employeeId = linked;
+  else if (employeeId && list.some(e => e.id === employeeId && e.appUserId !== user.id)) employeeId = null;
+  const member = (users || []).find(u => u.id === user.id);
+  const appRoleId = member?.appRoleId || user.appRoleId;
+  const role = member?.appRoleId ? (member.appRoleId === "r-admin" ? "admin" : "user") : user.role;
+  if (employeeId === (user.employeeId ?? null) && appRoleId === user.appRoleId && role === user.role) return user;
+  return { ...user, employeeId, appRoleId, role };
+}

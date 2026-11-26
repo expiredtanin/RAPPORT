@@ -333,7 +333,7 @@ export default function Pinboard({ data, update, currentUser }: Pick<ViewProps, 
     })
     .sort((a, b) => {
       if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
-      return b.createdAt.localeCompare(a.createdAt);
+      return (b.createdAt || "").localeCompare(a.createdAt || "");
     });
 
   const savePost = (form: PostForm, draft = false) => {

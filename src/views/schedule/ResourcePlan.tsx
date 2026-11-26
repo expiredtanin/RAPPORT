@@ -3,11 +3,11 @@
 // «wer ist wie ausgelastet» (workload.ts). Bearbeiten und alle Personen sehen: Recht «mitarbeiter» (sonst nur die
 // eigene Zeile, nur lesen).
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Modal, FormField, DateInput, EmptyState } from "../../components/UI";
 import { GanttChart } from "./GanttChart";
 import { projectColor } from "../time/projectColor";
-import { mondayOf, weeklyLoad } from "../../workload";
+import { mondayOf, upsertResourceEntry, weeklyLoad } from "../../workload";
 import { createWorktime } from "../../worktime";
 import { addDays } from "../../schedule";
 import { generateId, getWeekNumber } from "../../utils";
@@ -30,6 +30,8 @@ export function ResourcePlan({ data, update, userPermissions, myEmployeeId, toda
 }) {
   const canEdit = !userPermissions || userPermissions.includes("mitarbeiter");
   const [draft, setDraft] = useState<Draft | null>(null);
+  // Stand beim Öffnen (gleich aufbereitet wie beim Speichern): gespeichert wird nur, was im Fenster geändert wurde
+  const openedAs = useRef<ResourceEntry | null>(null);
   const thisMonday = mondayOf(today);
   const weeks = Array.from({ length: 13 }, (_, i) => addDays(thisMonday, (i - 4) * 7));
   const employees = (data.employees || []).filter(e => e.active !== false && !(e.austrittsdatum && e.austrittsdatum < weeks[0]))
@@ -51,11 +53,17 @@ export function ResourcePlan({ data, update, userPermissions, myEmployeeId, toda
   const h = (n: number) => `${Math.round(n)}`;
   const tone = (pct: number) => pct > 1.05 ? "var(--negative)" : pct >= 0.7 ? "var(--positive)" : pct > 0 ? "var(--warning)" : "var(--text5)";
 
-  const openNew = () => setDraft({ employeeId: employees[0]?.id || "", label: "", projectId: "", dateFrom: today, dateTo: addDays(today, 13), pensum: 100, note: "" });
+  const toEntry = (d: Draft): ResourceEntry => ({
+    id: d.id || generateId(), employeeId: d.employeeId || "", label: (d.label || "").trim(), projectId: d.projectId || null,
+    dateFrom: d.dateFrom || "", dateTo: d.dateTo || "", pensum: Math.round(Number(d.pensum)), note: (d.note || "").trim() || undefined,
+  });
+  const openNew = () => { openedAs.current = null; setDraft({ employeeId: employees[0]?.id || "", label: "", projectId: "", dateFrom: today, dateTo: addDays(today, 13), pensum: 100, note: "" }); };
   const openEdit = (id: string) => {
     if (!id.startsWith("rp|") || !canEdit) return;
     const r = plan.find(x => x.id === id.slice(3));
-    if (r) setDraft({ ...r, projectId: r.projectId || "" });
+    if (!r) return;
+    openedAs.current = toEntry(r);
+    setDraft({ ...r, projectId: r.projectId || "" });
   };
   const save = () => {
     if (!draft) return;
@@ -64,11 +72,9 @@ export function ResourcePlan({ data, update, userPermissions, myEmployeeId, toda
     if (!(draft.label || "").trim() && !draft.projectId) { showToast("Bitte angeben, an was gearbeitet wird (Text oder Projekt)."); return; }
     if (!draft.dateFrom || !draft.dateTo || draft.dateTo < draft.dateFrom) { showToast("Bitte Von und Bis angeben (Bis nicht vor Von)."); return; }
     if (!(pensum >= 1 && pensum <= 100)) { showToast("Prozent zwischen 1 und 100."); return; }
-    const entry: ResourceEntry = {
-      id: draft.id || generateId(), employeeId: draft.employeeId, label: (draft.label || "").trim(), projectId: draft.projectId || null,
-      dateFrom: draft.dateFrom, dateTo: draft.dateTo, pensum: Math.round(pensum), note: (draft.note || "").trim() || undefined,
-    };
-    update("resourcePlan", prev => (prev || []).some(x => x.id === entry.id) ? (prev || []).map(x => x.id === entry.id ? entry : x) : [...(prev || []), entry]);
+    const entry = toEntry(draft);
+    const opened = draft.id ? openedAs.current : null;
+    update("resourcePlan", prev => upsertResourceEntry(prev, entry, opened));
     setDraft(null);
   };
   const remove = () => {

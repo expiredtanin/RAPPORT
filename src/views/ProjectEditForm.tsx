@@ -178,7 +178,7 @@ export function ProjectEditForm({ form, setForm, data, canMoney = true, canQuote
                         <input value={pos.label || ""} onChange={e => updateNachtragPos(lq.quoteId, { label: e.target.value })} placeholder="z.B. Nachtrag Fassade" style={{ flex: 1, minWidth: 100, fontSize: 12, height: 26, padding: "0 6px" }} />
                       </>
                     ) : lq.role === "Referenz" ? (
-                      <span style={{ fontSize: 10, fontWeight: 700, background: "#f0f0ee", color: "var(--text4)", padding: "2px 8px", borderRadius: 20 }}>⬡ REF</span>
+                      <span style={{ fontSize: 10, fontWeight: 700, background: "var(--surface3)", color: "var(--text4)", padding: "2px 8px", borderRadius: 20 }}>⬡ REF</span>
                     ) : (
                       <span style={{ fontSize: 10, fontWeight: 700, background: "var(--positive-bg)", color: accentColor, padding: "2px 8px", borderRadius: 20 }}>⬡ HO</span>
                     )}

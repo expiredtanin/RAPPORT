@@ -453,6 +453,9 @@ export function DocPreview({ settings, assets, sample, width, content }: {
     </div>
   );
   return (
+    // Umhüllung mit `contain: layout`: eigenes CSS (`:scope { position: fixed; … }`) kann die Vorschau sonst über die
+    // ganze Oberfläche legen und die Einstellungen unbedienbar machen; so bleibt es im eigenen Kasten
+    <div style={{ contain: "layout", isolation: "isolate" }}>
     <div className="doc-preview" style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
       {docCss.imports && <style>{docCss.imports}</style>}
       {fontFaces && <style>{fontFaces}</style>}
@@ -492,6 +495,7 @@ export function DocPreview({ settings, assets, sample, width, content }: {
         </div>,
         "Folgeseiten"
       )}
+    </div>
     </div>
   );
 }

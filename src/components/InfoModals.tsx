@@ -80,7 +80,7 @@ export function AboutModal({ onClose }: { onClose: () => void }) {
               <div style={{ fontSize: 12, color: "var(--text5)" }}>{desc}</div>
             </div>
           ))}
-          <div style={{ marginTop: 20, padding: "12px 14px", background: "#f7f5f2", borderRadius: 8 }}>
+          <div style={{ marginTop: 20, padding: "12px 14px", background: "var(--surface2)", borderRadius: 8 }}>
             <div style={{ fontSize: 11, color: "var(--text4)", lineHeight: 1.6 }}>
               Entwickelt von <span style={{ color: "var(--text)", fontWeight: 600 }}>Karim Gabriele Varano</span><br />
               <a href="https://rapport.gabrielevarano.ch/" target="_blank" rel="noreferrer" style={{ color: "#b07848", textDecoration: "none" }}>rapport.gabrielevarano.ch ↗</a>

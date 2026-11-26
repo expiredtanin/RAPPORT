@@ -202,8 +202,8 @@ function cantonHolidays(kanton: Kanton): HolidayDef[] {
 export function swissHolidayTemplate(existing: Feiertag[] | undefined, fromYear: number, toYear: number, kanton: Kanton = "ZH"): Feiertag[] {
   const list = existing || [];
   const defs = cantonHolidays(kanton);
-  const hasRepeating = (md: string) => list.some(f => f.repeatsYearly && f.date.slice(5, 10) === md);
-  const hasDate = (ds: string) => list.some(f => f.date === ds || (f.repeatsYearly && f.date.slice(5, 10) === ds.slice(5, 10)));
+  const hasRepeating = (md: string) => list.some(f => f.repeatsYearly && (f.date || "").slice(5, 10) === md);
+  const hasDate = (ds: string) => list.some(f => f.date === ds || (f.repeatsYearly && (f.date || "").slice(5, 10) === ds.slice(5, 10)));
   const out: Feiertag[] = defs.filter(d => d.md && !d.onlyIf && !hasRepeating(d.md))
     .sort((a, b) => a.md!.localeCompare(b.md!))
     .map(d => ({ label: d.label, date: `2000-${d.md}`, stundenDelta: d.stundenDelta, repeatsYearly: true }));
@@ -255,7 +255,7 @@ function holidaysOfYear(feiertage: Feiertag[] | undefined, year: number): Feiert
 export function resolveHolidays(feiertage: Feiertag[] | undefined, year: number | string, vortagStunden = 1): Feiertag[] {
   const y = Number(year);
   const fts = holidaysOfYear(feiertage, y);
-  const all = [...fts, ...holidaysOfYear(feiertage, y + 1).filter(f => f.date.slice(5, 10) <= "01-07")];
+  const all = [...fts, ...holidaysOfYear(feiertage, y + 1).filter(f => (f.date || "").slice(5, 10) <= "01-07")];
   const taken = new Set(all.map(f => f.date));
   const vortage: Feiertag[] = [];
   if (!(vortagStunden > 0)) return fts;

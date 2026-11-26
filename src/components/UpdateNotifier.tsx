@@ -94,7 +94,7 @@ export default function UpdateNotifier() {
 
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", zIndex: 300, display: "flex", alignItems: "center", justifyContent: "center", padding: 24, backdropFilter: "blur(4px)" }}>
-      <div style={{ background: "#fff", borderRadius: 10, width: "100%", maxWidth: 460, boxShadow: "0 8px 40px rgba(0,0,0,0.18)", overflow: "hidden" }}>
+      <div style={{ background: "var(--surface)", borderRadius: 10, width: "100%", maxWidth: 460, boxShadow: "0 8px 40px rgba(0,0,0,0.18)", overflow: "hidden" }}>
         <div style={{ background: "#1a1a18", padding: "28px 32px 20px" }}>
           <div style={{ fontSize: 10, letterSpacing: "0.18em", color: "#b07848", marginBottom: 8, fontWeight: 600 }}>UPDATE VERFÜGBAR</div>
           <div style={{ display: "flex", alignItems: "baseline", gap: 12 }}>
@@ -111,24 +111,24 @@ export default function UpdateNotifier() {
           {update.body && (
             <div style={{ display: "flex", gap: 14, marginBottom: 14 }}>
               <div style={{ width: 4, flexShrink: 0, background: "#b07848", borderRadius: 2, marginTop: 2 }} />
-              <div style={{ fontSize: 12, color: "#555", lineHeight: 1.55, whiteSpace: "pre-wrap" }}>{update.body}</div>
+              <div style={{ fontSize: 12, color: "var(--text3)", lineHeight: 1.55, whiteSpace: "pre-wrap" }}>{update.body}</div>
             </div>
           )}
 
           {error && (
-            <div style={{ marginTop: 8, padding: "10px 12px", background: "#fdf0f0", border: "1px solid #f3c4c4", borderRadius: 6, fontSize: 12, color: "#8a1a1a" }}>
+            <div style={{ marginTop: 8, padding: "10px 12px", background: "var(--negative-bg)", border: "1px solid var(--negative)", borderRadius: 6, fontSize: 12, color: "var(--negative)" }}>
               {error}
             </div>
           )}
 
           {isBusy && (
             <div style={{ marginTop: 12 }}>
-              <div style={{ fontSize: 11, color: "#888", marginBottom: 6, letterSpacing: "0.04em" }}>
+              <div style={{ fontSize: 11, color: "var(--text4)", marginBottom: 6, letterSpacing: "0.04em" }}>
                 {state === "downloading"
                   ? (pct !== null ? `Wird heruntergeladen … ${pct}%` : "Wird heruntergeladen …")
                   : "Wird installiert …"}
               </div>
-              <div style={{ height: 4, background: "#eee", borderRadius: 2, overflow: "hidden" }}>
+              <div style={{ height: 4, background: "var(--border)", borderRadius: 2, overflow: "hidden" }}>
                 <div style={{
                   height: "100%",
                   width: pct !== null ? `${pct}%` : "100%",

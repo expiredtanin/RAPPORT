@@ -73,7 +73,7 @@ export function BudgetModal({ data, projectId, budgetForm, setBudgetForm, addLin
                   <input value={pos.label || ""} onChange={e => setBudgetForm(f => ({ ...f, positions: f.positions.map(p => p.quoteId === lq.quoteId ? { ...p, label: e.target.value } : p) }))} placeholder="z.B. Nachtrag Fassade" style={{ flex: 1, minWidth: 80, fontSize: 12, height: 26, padding: "0 6px" }} />
                 </>
               ) : lq.role === "Referenz" ? (
-                <span style={{ fontSize: 10, fontWeight: 700, background: "#f0f0ee", color: "var(--text4)", padding: "2px 8px", borderRadius: 20 }}>⬡ REF</span>
+                <span style={{ fontSize: 10, fontWeight: 700, background: "var(--surface3)", color: "var(--text4)", padding: "2px 8px", borderRadius: 20 }}>⬡ REF</span>
               ) : (
                 <span style={{ fontSize: 10, fontWeight: 700, background: "var(--positive-bg)", color: accentColor, padding: "2px 8px", borderRadius: 20 }}>⬡ HO</span>
               )}
