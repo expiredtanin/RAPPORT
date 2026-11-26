@@ -328,7 +328,7 @@ export function PrintView({ content, onClose, settings, assets }: { content: Con
           {content.type === "lieferschein" && <LieferscheinPrint note={content.note} client={content.client} data={content.data} settings={settings} />}
           {content.type === "studioBudget" && <StudioBudgetPrint snapshot={content.snapshot} settings={settings} />}
           {content.type === "protokoll" && <ProtokollPrint protokoll={content.protokoll} data={content.data} settings={settings} />}
-          {content.type === "mitarbeiterOverview" && <MitarbeiterOverviewPrint employees={content.employees} settings={settings} />}
+          {content.type === "mitarbeiterOverview" && <MitarbeiterOverviewPrint employees={content.employees} settings={settings} showLohn={content.showLohn !== false} />}
           {content.type === "schedule" && (
             <div ref={schedFitRef} style={schedFit < 1 ? { transform: `scale(${schedFit})`, transformOrigin: "0 0" } : undefined}>
               <SchedulePrint content={content} settings={settings} layout={sched!} pan={schedPan} viewScale={viewScale} />

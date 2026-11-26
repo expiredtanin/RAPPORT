@@ -16,10 +16,12 @@ interface EmployeeModalProps {
   onSave: () => void;
   /** false = Lohnfelder nur lesen (ohne Recht «Löhne»; der Server lehnt Änderungen ab, pb_hooks/integrity.pb.js) */
   canEditLohn?: boolean;
+  /** App-Zugang (Konto, Passwort, Rolle) anlegen/ändern — nur Admins (lokal/Datenordner) */
+  canManageAccounts?: boolean;
 }
 
 /** Formular-Modal zum Anlegen/Bearbeiten eines Mitarbeiters. */
-export default function EmployeeModal({ data, empForm, setEmpForm, nextPersonalNr, onClose, onSave, canEditLohn = true }: EmployeeModalProps) {
+export default function EmployeeModal({ data, empForm, setEmpForm, nextPersonalNr, onClose, onSave, canEditLohn = true, canManageAccounts = true }: EmployeeModalProps) {
   const verlauf = empForm.pensumVerlauf || [];
   const setVerlauf = (list: PensumWechsel[]) => setEmpForm({ ...empForm, pensumVerlauf: list });
   const heute = arbeitszeitAm(empForm, localISODate());
@@ -119,9 +121,10 @@ export default function EmployeeModal({ data, empForm, setEmpForm, nextPersonalN
         </FormField>
       </div>
 
-      <fieldset disabled={!canEditLohn} style={{ border: "none", padding: 0, margin: 0, minWidth: 0 }}>
+      {/* ohne Recht «Löhne» ganz ausgeblendet (vorher nur gesperrt — Lohn, IBAN, AHV-Nr. blieben lesbar, Runde 37) */}
+      {!canEditLohn && <div style={{ ...hint, margin: "14px 0 0", paddingTop: 12, borderTop: "1px solid var(--border2)" }}>Lohn und Auszahlung sieht und ändert, wer das Recht «Löhne» hat.</div>}
+      <fieldset disabled={!canEditLohn} style={{ border: "none", padding: 0, margin: 0, minWidth: 0, display: canEditLohn ? undefined : "none" }}>
       <div style={{ fontSize: 11, letterSpacing: "0.08em", color: "var(--text4)", margin: "14px 0 10px", paddingTop: 12, borderTop: "1px solid var(--border2)" }}>LOHN & AUSZAHLUNG</div>
-      {!canEditLohn && <div style={{ ...hint, marginBottom: 10 }}>Lohnangaben ändert, wer das Recht «Löhne» hat.</div>}
       <div className="form-row">
         <FormField label={lohnVerlauf.length ? "Monatslohn CHF (100 %, ab Eintritt)" : "Monatslohn Brutto CHF (100% Basis)"}>
           <input type="number" min={0} step={100} value={empForm.monatslohn || ""} onChange={e => setEmpForm({ ...empForm, monatslohn: +e.target.value })} placeholder="z.B. 7000" />
@@ -227,7 +230,11 @@ export default function EmployeeModal({ data, empForm, setEmpForm, nextPersonalN
 
       {/* APP-ZUGANG */}
       <div style={{ fontSize: 11, letterSpacing: "0.08em", color: "var(--text4)", margin: "18px 0 12px", paddingTop: 14, borderTop: "1px solid var(--border2)" }}>APP-ZUGANG</div>
-      {isCloudBackend ? (
+      {!canManageAccounts && !isCloudBackend ? (
+        <div style={{ fontSize: 12, color: "var(--text3)", lineHeight: 1.6 }}>
+          {empForm._appAccess ? "Mit einem Konto verknüpft." : "Kein App-Zugang."} Konten und Rollen verwaltet ein Admin.
+        </div>
+      ) : isCloudBackend ? (
         <div style={{ fontSize: 12, color: "var(--text3)", lineHeight: 1.6 }}>
           {empForm.appUserId ? "Mit einem Konto verknüpft." : "Noch kein Konto verknüpft."} Konten, Passwörter und Rollen verwaltet
           der Server: einladen und Rolle ändern unter Einstellungen → Team.

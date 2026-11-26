@@ -80,6 +80,13 @@ function Employees({ data, update, saveAll, setPrintContent, userPermissions, cu
     // Stundenlohn per Ende des Abschlussjahrs (bzw. heute, solange es läuft), wie im Formular angezeigt
     const stundenlohn = overtimeHourlyRate(emp, [`${abschlussYear}-12-31`, localISODate()].sort()[0]);
     if (!stundenlohn || !(form.ubHours > 0)) return;
+    // Nach dem Austritt gibt es keinen Lohnlauf mehr: ist der Austrittsmonat schon abgerechnet, bliebe die Auszahlung
+    // in keiner Abrechnung hängen (Runde 37) → erst die Abrechnung des Austrittsmonats stornieren
+    const exitMonth = (emp.austrittsdatum || "").slice(0, 7);
+    if (exitMonth && exitMonth < localISODate().slice(0, 7) && (data.lohnEntries || []).some(l => l.employeeId === emp.id && l.monat === exitMonth)) {
+      showToast(`Austritt ${emp.austrittsdatum!.split("-").reverse().join(".")}: die Lohnabrechnung ${exitMonth.slice(5)}.${exitMonth.slice(0, 4)} ist schon abgeschlossen. Sie zuerst stornieren, dann die Überstunden erfassen und neu abschliessen.`);
+      return;
+    }
     const auszahlungBetrag = roundCHF(form.ubHours * stundenlohn * (1 + form.ubZuschlag / 100));
     const entry: OvertimeClosing = {
       id: generateId(),
@@ -93,8 +100,14 @@ function Employees({ data, update, saveAll, setPrintContent, userPermissions, cu
       auszahlungBetrag,
       imLohn: true,
     };
-    update("uberstundenAbschluss", [...(data.uberstundenAbschluss || []), entry]);
+    update("uberstundenAbschluss", prev => [...(prev || []), entry]);
     setAbschlussForm(prev => ({ ...prev, [emp.id]: { ...form, ubHours: 0 } }));
+  };
+  /** Versehentlich erfasste Überstunden-Auszahlung entfernen (mit Rückgängig), solange sie in keiner Lohnabrechnung steckt. */
+  const removeUbAbschluss = (id: string) => {
+    if (userPermissions && !userPermissions.includes("loehne")) { showToast("Überstunden-Auszahlungen ändert, wer das Recht Löhne hat."); return; }
+    if ((data.lohnEntries || []).some(l => (l.ueberstundenIds || []).includes(id))) { showToast("Diese Auszahlung steckt in einer Lohnabrechnung — zuerst die Abrechnung stornieren."); return; }
+    removeWithUndo("Überstunden-Auszahlung entfernt", "uberstundenAbschluss", a => a.id === id);
   };
 
   // ── Handlers ──
@@ -158,7 +171,9 @@ function Employees({ data, update, saveAll, setPrintContent, userPermissions, cu
       wochenstunden: rawBase.wochenstunden || data.settings.defaultWochenstunden || 35, ferienWochen: rawBase.ferienWochen || data.settings.defaultFerienWochen || 5,
       ...(rawBase.saldoStichtag ? {} : { saldoUebertragStunden: 0 }) } as Employee);
     const mergeEmp = (list: Employee[], next: Employee) => isNew ? [...list, next] : list.map(e => e.id === next.id ? (base ? applyEdit(base, next, e) : next) : e);
-    if (isCloudBackend) {
+    // Cloud: Konten verwaltet der Server; lokal ohne Vollzugriff: Konto/Rolle unverändert (ein Projektleiter konnte sich
+    // sonst einen Admin-Zugang anlegen — Runde 37)
+    if (isCloudBackend || userPermissions !== null) {
       const kept = isNew ? emp : { ...emp, appUserId: employees.find(e => e.id === emp.id)?.appUserId };
       saveAll(prev => ({ ...prev, employees: mergeEmp(prev.employees || [], kept) }));
       if (isNew) setSelectedEmpId(empId);
@@ -311,7 +326,7 @@ function Employees({ data, update, saveAll, setPrintContent, userPermissions, cu
       {ConfirmModalEl}
       <Header title="Personal" action={
         <div style={{ display: "flex", gap: 8 }}>
-          <ShareButton options={[{ label: "PDF Übersicht", onClick: () => setPrintContent({ type: "mitarbeiterOverview", employees, settings: data.settings }) }]} />
+          <ShareButton options={[{ label: "PDF Übersicht", onClick: () => setPrintContent({ type: "mitarbeiterOverview", employees, settings: data.settings, showLohn: !userPermissions || userPermissions.includes("loehne") }) }]} />
           <button className="btn btn-primary" onClick={() => { setEmpForm({ pensum: 100, wochenstunden: data.settings.defaultWochenstunden || 35, ferienWochen: data.settings.defaultFerienWochen || 5, pkAGSatz: data.settings.defaultPkAGSatz ?? 8.0, ferienUebertragVorjahr: {}, personalNr: nextPersonalNr(), _appAccess: false, _appUsername: "", _appPassword: "", _appRoleId: defaultAppRoleId(data.appRoles), _appUserId: undefined }); setModal("emp"); }}>+ Mitarbeiter</button>
         </div>
       } tabs={<PageTabs tabs={TABS} value={tab} onChange={setTab} />} />
@@ -339,12 +354,12 @@ function Employees({ data, update, saveAll, setPrintContent, userPermissions, cu
 
       {/* ── JAHRESABSCHLUSS ── */}
       {tab === "jahresabschluss" && (
-        <YearCloseTab data={data} employees={employees} abschlussYear={abschlussYear} setAbschlussYear={setAbschlussYear} abschlussForm={abschlussForm} setAbschlussForm={setAbschlussForm} saveFerienUebertrag={saveFerienUebertrag} saveUbAbschluss={saveUbAbschluss} calc={calc} />
+        <YearCloseTab data={data} employees={employees} abschlussYear={abschlussYear} setAbschlussYear={setAbschlussYear} abschlussForm={abschlussForm} setAbschlussForm={setAbschlussForm} saveFerienUebertrag={saveFerienUebertrag} saveUbAbschluss={saveUbAbschluss} removeUbAbschluss={removeUbAbschluss} canLohn={!userPermissions || userPermissions.includes("loehne")} calc={calc} />
       )}
 
       {/* ── MODALS ── */}
       {modal === "emp" && (
-        <EmployeeModal data={data} empForm={empForm} setEmpForm={setEmpForm} nextPersonalNr={nextPersonalNr} onClose={() => setModal(null)} onSave={saveEmp} canEditLohn={!userPermissions || userPermissions.includes("loehne")} />
+        <EmployeeModal data={data} empForm={empForm} setEmpForm={setEmpForm} nextPersonalNr={nextPersonalNr} onClose={() => setModal(null)} onSave={saveEmp} canEditLohn={!userPermissions || userPermissions.includes("loehne")} canManageAccounts={userPermissions === null} />
       )}
 
       {modal === "abs" && (

@@ -19,6 +19,7 @@ import React, { useState } from "react";
 import { generateId, formatCHF, calcLohn, lohnAGSaetze, pensumImMonat, monatslohnImMonat } from "../utils";
 import { lohnAGBeitraege, lohnPersonalaufwand, lohnVorperioden, spesenFuerLohn, spesenWartend } from "../accounting";
 import { Header, NavArrows, ShareButton, EmptyState } from "../components/UI";
+import { showToast } from "../toast";
 import { useConfirm } from "../hooks/useConfirm";
 import type { Employee, LohnEntry, LohnResult, SaetzeSnapshot, ViewProps } from "../types";
 
@@ -94,8 +95,15 @@ function Payroll({ data, saveAll, setPrintContent, setView }: Pick<ViewProps, "d
   const calcFor = (emp: Employee, spesen: { amount?: number }[]) =>
     calcLohn({ ...emp, ...(bruttoOverride[emp.id] != null ? { monatslohn: bruttoOverride[emp.id], lohnVerlauf: undefined } : {}), ...(pensumOverride[emp.id] != null ? { pensum: pensumOverride[emp.id], pensumVerlauf: undefined } : {}) }, monatStr, spesen, (bonusOverride[emp.id] as number) || 0, lohnVorperioden(lohnEntries, emp.id, monatStr), lohnAGSaetze(data.settings), ueberstundenSumme(emp.id));
 
+  // Höchstlohn (ALV/UVG) wird über die FRÜHEREN Monate des Jahres kumuliert: ein Monat vor einem schon abgeschlossenen
+  // späteren rechnete ohne diesen und überschritt den Höchstlohn (Dezember vor November, Runde 37)
+  const laterClosed = (empId: string, monat: string) => lohnEntries
+    .filter(l => l.employeeId === empId && l.monat.slice(0, 4) === monat.slice(0, 4) && l.monat > monat)
+    .map(l => `${l.monat.slice(5)}.${l.monat.slice(0, 4)}`).sort();
   const abschliessen = (emp: Employee) => {
     if (findEntry(emp.id)) return;
+    const later = laterClosed(emp.id, monatStr);
+    if (later.length) { showToast(`Für ${emp.name} ist schon ${later.join(", ")} abgeschlossen. Monate der Reihe nach abschliessen — zuerst die späteren stornieren (Höchstlohn wird über das Jahr kumuliert).`); return; }
     const spesen = offeneSpesen(emp.id);
     const effPensum = getEffPensum(emp);
     const calc = calcFor(emp, spesen);
@@ -141,6 +149,9 @@ function Payroll({ data, saveAll, setPrintContent, setView }: Pick<ViewProps, "d
   };
 
   const stornieren = async (id: string) => {
+    const pre = lohnEntries.find(l => l.id === id);
+    const later = pre ? laterClosed(pre.employeeId, pre.monat) : [];
+    if (later.length) { showToast(`Zuerst die späteren Abrechnungen stornieren (${later.join(", ")}) — sie bauen auf dieser auf (Höchstlohn).`); return; }
     if (!(await askConfirm("Lohnabrechnung stornieren? Spesen werden wieder freigegeben.", "Stornieren"))) return;
     const entry = lohnEntries.find(l => l.id === id);
     // auf den aktuellen Stand (nach der Rückfrage): sonst setzte das Storno alles zurück, was andere inzwischen

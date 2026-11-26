@@ -5,7 +5,7 @@ import { StudioLogo } from "../../components/UI";
 import type { AppData, Employee, Project, Settings, TimeEntry } from "../../types";
 import { HEADING } from "./shared";
 
-export function MitarbeiterOverviewPrint({ employees, settings }: { employees: Employee[]; settings: Settings }) {
+export function MitarbeiterOverviewPrint({ employees, settings, showLohn = true }: { employees: Employee[]; settings: Settings; /** Monatslohn nur mit Recht «Löhne» (Runde 37) */ showLohn?: boolean }) {
   const Row = ({ label, value }: { label: string; value?: string | null }) => value ? (
     <div style={{ display: "flex", gap: 8, fontSize: 10, borderBottom: "1px solid #f0ece6", padding: "3px 0" }}>
       <span style={{ color: "#888", minWidth: 120 }}>{label}</span>
@@ -26,7 +26,7 @@ export function MitarbeiterOverviewPrint({ employees, settings }: { employees: E
       <Row label="Wochenstunden" value={emp.wochenstunden ? `${emp.wochenstunden} h` : null} />
       <Row label="Ferien" value={emp.ferienWochen ? `${emp.ferienWochen} Wochen` : null} />
       <Row label="Eintrittsdatum" value={emp.eintrittsdatum ? formatDate(emp.eintrittsdatum) : null} />
-      <Row label="Monatslohn" value={monatslohnAm(emp, localISODate()) ? formatCHF(monatslohnAm(emp, localISODate())) : null} />
+      {showLohn && <Row label="Monatslohn" value={monatslohnAm(emp, localISODate()) ? formatCHF(monatslohnAm(emp, localISODate())) : null} />}
     </div>
   );
 

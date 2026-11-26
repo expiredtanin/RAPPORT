@@ -16,11 +16,15 @@ interface YearCloseTabProps {
   setAbschlussForm: React.Dispatch<React.SetStateAction<Record<string, AbschlussForm>>>;
   saveFerienUebertrag: (emp: Employee, hours: number | string) => void;
   saveUbAbschluss: (emp: Employee, form: AbschlussForm) => void;
+  /** Überstunden-Auszahlung entfernen, solange sie in keiner Lohnabrechnung steckt (Runde 37) */
+  removeUbAbschluss?: (id: string) => void;
+  /** Recht «Löhne»: Beträge und Auszahlung nur damit (Runde 37) */
+  canLohn?: boolean;
   calc: EmployeeCalc;
 }
 
 /** Reiter «Jahresabschluss» der Mitarbeiter-Ansicht. */
-export default function YearCloseTab({ data, employees, abschlussYear, setAbschlussYear, abschlussForm, setAbschlussForm, saveFerienUebertrag, saveUbAbschluss, calc }: YearCloseTabProps) {
+export default function YearCloseTab({ data, employees, abschlussYear, setAbschlussYear, abschlussForm, setAbschlussForm, saveFerienUebertrag, saveUbAbschluss, removeUbAbschluss, canLohn = true, calc }: YearCloseTabProps) {
   const { calcFerienYear, calcEffectiveUbSaldo } = calc;
   return (
     <div>
@@ -121,16 +125,21 @@ export default function YearCloseTab({ data, employees, abschlussYear, setAbschl
                   <div style={{ marginBottom: 12 }}>
                     {existingPayouts.map(p => (
                       <div key={p.id} style={{ fontSize: 11, color: "var(--st-c-bezahlt)", background: "var(--st-bg-bezahlt)", border: `1px solid color-mix(in srgb, var(--st-c-bezahlt) 30%, transparent)`, borderRadius: 20, padding: "4px 12px", marginBottom: 4 }}>
-                        ✓ {p.hoursSettled}h ausbezahlt — {formatCHF(p.auszahlungBetrag)} ({p.zuschlagPercent}% Zuschlag){(() => {
+                        ✓ {p.hoursSettled}h ausbezahlt{canLohn ? <> — {formatCHF(p.auszahlungBetrag)} ({p.zuschlagPercent}% Zuschlag)</> : null}{(() => {
                           const l = (data.lohnEntries || []).find(x => (x.ueberstundenIds || []).includes(p.id));
                           return l ? ` · mit Lohn ${l.monat.slice(5)}.${l.monat.slice(0, 4)} abgerechnet` : p.imLohn ? " · kommt in den nächsten Lohnlauf" : "";
                         })()}
+                        {canLohn && removeUbAbschluss && !(data.lohnEntries || []).some(x => (x.ueberstundenIds || []).includes(p.id)) && (
+                          <button type="button" className="btn btn-quiet btn-sm" style={{ marginLeft: 8, padding: "0 6px", height: 20, fontSize: 11 }} onClick={() => removeUbAbschluss(p.id)}>Entfernen</button>
+                        )}
                       </div>
                     ))}
                   </div>
                 )}
 
-                {ubSaldo > 0 ? (
+                {ubSaldo > 0 && !canLohn ? (
+                  <div style={{ fontSize: 12, color: "var(--text4)" }}>Überstunden auszahlen kann, wer das Recht «Löhne» hat.</div>
+                ) : ubSaldo > 0 ? (
                   <>
                     <div style={{ fontSize: 11, color: "var(--text4)", marginBottom: 6 }}>Stunden ausbezahlen</div>
                     <div style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 6 }}>
