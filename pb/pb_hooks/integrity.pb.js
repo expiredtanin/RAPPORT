@@ -251,11 +251,50 @@ onRecordEnrich((e) => {
   if (r.get("appUser") === auth.id) return e.next();
   let perms = "";
   try { perms = e.app.findFirstRecordByFilter("studioMembers", "studio = {:s} && user = {:u} && active = true", { s: r.get("studio"), u: auth.id }).getString("perms"); } catch { perms = ""; }
-  if (perms.indexOf("|*|") >= 0 || perms.indexOf("|loehne|") >= 0) return e.next();
-  r.hide("monatslohn", "lohnVerlauf", "lohnIban", "dreizehnterLohn", "ahvSatz", "alvSatz", "bvgSatz", "nbuSatz", "ktgSatz",
-    "quellensteuerPflichtig", "quellensteuerSatz", "pkBeitragAN", "pkBeitragAG", "pkAgSatz", "familienzulagen", "ahvRentner", "ahvNr");
+  const full = perms.indexOf("|*|") >= 0;
+  if (!full && perms.indexOf("|loehne|") < 0) {
+    r.hide("monatslohn", "lohnVerlauf", "lohnIban", "dreizehnterLohn", "ahvSatz", "alvSatz", "bvgSatz", "nbuSatz", "ktgSatz",
+      "quellensteuerPflichtig", "quellensteuerSatz", "pkBeitragAN", "pkBeitragAG", "pkAgSatz", "familienzulagen", "ahvRentner", "ahvNr");
+  }
+  // ohne «mitarbeiter» (seit 1787980000_absences_visible.js lesen alle Mitglieder): nur Name, Funktion, Pensum, Ein-/Austritt
+  if (!full && perms.indexOf("|mitarbeiter|") < 0) {
+    r.hide("personalNr", "adresse", "ort", "geburtsdatum", "email", "ferienWochen", "ferienUebertragVorjahr", "saldoStichtag", "saldoUebertragStunden");
+  }
   e.next();
 }, "employees");
+// Absenz-Notiz fremder Personen nur mit «mitarbeiter»/Vollzugriff (die Art, z.B. Krankheit, sehen alle: Entscheid 26.11.2026)
+onRecordEnrich((e) => {
+  const auth = e.requestInfo && e.requestInfo.auth;
+  if (!auth || (auth.collection && auth.collection().name === "_superusers")) return e.next();
+  const r = e.record;
+  let own = false;
+  try { own = e.app.findRecordById("employees", r.get("employee")).get("appUser") === auth.id; } catch { own = false; }
+  if (own) return e.next();
+  let perms = "";
+  try { perms = e.app.findFirstRecordByFilter("studioMembers", "studio = {:s} && user = {:u} && active = true", { s: r.get("studio"), u: auth.id }).getString("perms"); } catch { perms = ""; }
+  if (perms.indexOf("|*|") >= 0 || perms.indexOf("|mitarbeiter|") >= 0) return e.next();
+  r.hide("note");
+  e.next();
+}, "absences");
+// Filter/Sortierung über ausgeblendete Personalien/Absenz-Notizen ohne «mitarbeiter» ablehnen (Orakel). Eindeutige
+// Feldnamen überall, allgemeine (email, ort, note) direkt auf employees/absences oder über deren Relationen.
+onRecordsListRequest((e) => {
+  if (e.hasSuperuserAuth()) return e.next();
+  const q = e.requestInfo().query || {};
+  const text = String(q.filter || "") + " " + String(q.sort || "");
+  const direct = e.collection.name === "employees" || e.collection.name === "absences";
+  const hit = /(personalnr|adresse|geburtsdatum|ferienwochen|ferienuebertrag|saldostichtag|saldouebertrag)/i.test(text)
+    || /(employee|employees_via_\w+|absences_via_\w+)\.(email|ort|note)\b/i.test(text)
+    || (direct && /(^|[^\w.])-?(email|ort|note)\b/i.test(text));
+  if (!hit) return e.next();
+  const uid = e.auth ? e.auth.id : "";
+  const m = String(q.filter || "").match(/studio\s*=\s*["']([a-zA-Z0-9_-]+)["']/);
+  let mems = [];
+  try { mems = m ? [e.app.findFirstRecordByFilter("studioMembers", "studio = {:s} && user = {:u} && active = true", { s: m[1], u: uid })] : e.app.findRecordsByFilter("studioMembers", "user = {:u} && active = true", "", 0, 0, { u: uid }); } catch { mems = []; }
+  const ok = mems.length > 0 && mems.every((x) => { const p = x.getString("perms"); return p.indexOf("|*|") >= 0 || p.indexOf("|mitarbeiter|") >= 0; });
+  if (!ok) throw new BadRequestError("Filter oder Sortierung über Personalangaben braucht das Recht Mitarbeitende.");
+  e.next();
+});
 onRecordEnrich((e) => {
   const auth = e.requestInfo && e.requestInfo.auth;
   if (!auth || (auth.collection && auth.collection().name === "_superusers")) return e.next();

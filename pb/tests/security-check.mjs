@@ -208,7 +208,8 @@ check("Rolle zurückgenommen: M wieder gesperrt", !leaks(r, "GEHEIM-001"), `HTTP
 }
 // ── eigene Datensätze ohne Personal-/Spesenrecht (1787880000_own_records.js) ─────────────────────────────────
 r = await api("GET", `/api/collections/employees/records?filter=${enc(`studio="${sid}"`)}`, tM);
-check("M: eigenen Mitarbeiter-Datensatz lesen, fremde nicht", r.status === 200 && r.json.items.length === 1 && r.json.items[0].id === empM, `HTTP ${r.status}, ${r.json && r.json.items ? r.json.items.length : "?"} Datensätze`);
+// seit 1787980000_absences_visible.js sehen alle Mitglieder die Kolleginnen (Name/Pensum), aber ohne Lohn/AHV/Personalien
+check("M: eigenen Mitarbeiter-Datensatz lesen, fremde nur ohne Lohn/AHV", r.status === 200 && r.json.items.some(x => x.id === empM) && r.json.items.some(x => x.id === empOther) && !leaks(r, SECRET_AHV, String(SECRET_LOHN)), `HTTP ${r.status}, ${r.json && r.json.items ? r.json.items.length : "?"} Datensätze`);
 const vac = rid("vac"), vac2 = rid("vacx");
 r = await api("POST", "/api/collections/vacationEntries/records", tM, { id: vac, studio: sid, employee: empM, dateFrom: "2026-12-21", dateTo: "2026-12-24", status: "pending" });
 check("M: eigene Ferien beantragen (pending)", r.status === 200, `HTTP ${r.status} ${r.status !== 200 ? JSON.stringify(r.json) : ""}`);
@@ -531,6 +532,66 @@ r = await api("PATCH", `/api/collections/persons/records/${shared}`, tM2, { name
 check("M2 mit Kontakte-Recht in Büro B: geteilten Kontakt ändern", r.status === 200, `HTTP ${r.status}`);
 r = await api("POST", "/api/collections/persons/records", tM2, { id: rid("pb2"), studio: sid, name: "In fremdes Büro" });
 check("M2: keinen Kontakt in Büro A anlegen", r.status >= 400, `HTTP ${r.status}`);
+
+// ── Absenzen/Mitarbeitende für alle lesbar, ohne Notiz/Personalien (Entscheid 26.11.2026, Migration 1787980000) ──
+{
+  const nEmail = `n-${run}@test.local`;
+  const nUser = must(await api("POST", "/api/collections/users/records", su, { email: nEmail, username: `n${run}`, password: pw, passwordConfirm: pw, displayName: "Mitarbeiterin N" }), "User N");
+  must(await api("POST", "/api/rapport/invite-member", tA, { userId: nUser.id, studioId: sid, appRoleId: "r-mitarbeiter" }), "invite N");
+  // per Superuser-Impersonation statt Passwort-Login (Login-Mengenlimit)
+  const imp = async (id) => must(await api("POST", `/api/collections/users/impersonate/${id}`, su, { duration: 600 }), "impersonate").token;
+  const tN = await imp(nUser.id);
+  const nMem = (await api("GET", `/api/collections/studioMembers/records?filter=${enc(`user="${nUser.id}"`)}`, tN)).json.items[0];
+  check("N: Rolle Mitarbeiter ohne Recht «mitarbeiter»", nMem && !nMem.perms.includes("|mitarbeiter|") && !nMem.perms.includes("|*|"), nMem && nMem.perms);
+  const empN = rid("empn"), empV = rid("empv"), absV = rid("absv"), absN = rid("absn");
+  must(await api("POST", "/api/collections/employees/records", tA, { id: empN, studio: sid, name: "Mitarbeiterin N", appUser: nUser.id, adresse: "Eigene Strasse 1" }), "employee N");
+  must(await api("POST", "/api/collections/employees/records", tA, { id: empV, studio: sid, name: "Viktor Sichtbar", role: "Zeichner", pensum: 80,
+    adresse: "Geheimweg 7", ort: "GEHEIMORT", geburtsdatum: "1980-01-02 00:00:00.000Z", email: "geheim@example.ch", personalNr: "PN-GEHEIM", ahvNr: "756.1111.2222.33", monatslohn: 8765 }), "employee V");
+  must(await api("POST", "/api/collections/absences/records", tA, { id: absV, studio: sid, employee: empV, typeId: "krank", dateFrom: "2026-12-01", dateTo: "2026-12-03", note: "ARZTGEHEIM", status: "approved" }), "absence V");
+  must(await api("POST", "/api/collections/absences/records", tA, { id: absN, studio: sid, employee: empN, typeId: "arzt", dateFrom: "2026-12-04", dateTo: "2026-12-04", note: "EIGENENOTIZ", status: "approved" }), "absence N");
+  r = await api("GET", `/api/collections/employees/records?filter=${enc(`studio = "${sid}"`)}&perPage=200`, tN);
+  const vRow = r.json && r.json.items ? r.json.items.find(x => x.id === empV) : null;
+  check("N: sieht andere Mitarbeitende (Name, Funktion, Pensum)", r.status === 200 && vRow && vRow.name === "Viktor Sichtbar" && vRow.role === "Zeichner" && vRow.pensum === 80, `HTTP ${r.status}`);
+  check("N: keine Personalien/Lohn fremder Mitarbeitender", r.status === 200 && !leaks(r, "Geheimweg", "GEHEIMORT", "1980-01-02", "geheim@example.ch", "PN-GEHEIM", "756.1111", "8765"), `HTTP ${r.status}`);
+  const nRow = r.json && r.json.items ? r.json.items.find(x => x.id === empN) : null;
+  check("N: eigene Adresse sichtbar", nRow && nRow.adresse === "Eigene Strasse 1", JSON.stringify(nRow && nRow.adresse));
+  r = await api("GET", `/api/collections/employees/records/${empV}`, tN);
+  check("N: fremder Mitarbeiter direkt ohne Personalien", r.status === 200 && !leaks(r, "Geheimweg", "1980-01-02", "geheim@example.ch"), `HTTP ${r.status}`);
+  r = await api("GET", `/api/collections/absences/records?filter=${enc(`studio = "${sid}"`)}&perPage=200`, tN);
+  const aRow = r.json && r.json.items ? r.json.items.find(x => x.id === absV) : null;
+  check("N: sieht fremde Absenz mit Art (Krankheit)", r.status === 200 && aRow && aRow.typeId === "krank", `HTTP ${r.status}`);
+  check("N: fremde Absenz-Notiz ausgeblendet", r.status === 200 && !leaks(r, "ARZTGEHEIM"), `HTTP ${r.status}`);
+  check("N: eigene Absenz-Notiz sichtbar", r.status === 200 && leaks(r, "EIGENENOTIZ"), `HTTP ${r.status}`);
+  r = await api("GET", `/api/collections/absences/records/${absV}?expand=employee`, tN);
+  check("N: Absenz direkt + expand ohne Notiz/Personalien", r.status === 200 && !leaks(r, "ARZTGEHEIM", "Geheimweg", "1980-01-02"), `HTTP ${r.status}`);
+  r = await api("GET", `/api/collections/timeEntries/records?filter=${enc(`studio = "${sid}"`)}&expand=employee`, tN);
+  check("N: Zeiteinträge expand Mitarbeiter ohne Personalien", !leaks(r, "Geheimweg", "1980-01-02", "geheim@example.ch"), `HTTP ${r.status}`);
+  for (const [what, coll, f] of [
+    ["Absenz-Notiz", "absences", `studio = "${sid}" && note ~ "ARZT"`],
+    ["Geburtsdatum", "employees", `studio = "${sid}" && geburtsdatum < "1981-01-01"`],
+    ["E-Mail", "employees", `studio = "${sid}" && email ~ "geheim"`],
+    ["Ort über Absenz→Mitarbeiter", "absences", `studio = "${sid}" && employee.ort = "GEHEIMORT"`],
+    ["Notiz über Studio→Absenzen", "studios", `absences_via_studio.note ~ "ARZT"`],
+    ["Adresse über Zeiteintrag", "timeEntries", `studio = "${sid}" && employee.adresse ~ "Geheim"`],
+  ]) {
+    r = await api("GET", `/api/collections/${coll}/records?filter=${enc(f)}`, tN);
+    check(`N: Filter-Orakel ${what} gesperrt`, r.status === 400 || (r.status === 200 && r.json.items.length === 0), `HTTP ${r.status}, ${r.json && r.json.items ? r.json.items.length : "-"}`);
+  }
+  r = await api("GET", `/api/collections/absences/records?filter=${enc(`studio = "${sid}"`)}&sort=note`, tN);
+  check("N: Sortierung nach Notiz gesperrt", r.status === 400, `HTTP ${r.status}`);
+  r = await api("GET", `/api/collections/absences/records?filter=${enc(`studio = "${sid}" && note ~ "ARZT"`)}`, tA);
+  check("A: Filter nach Notiz erlaubt (Gegenprobe)", r.status === 200 && r.json.items.length === 1, `HTTP ${r.status}`);
+  r = await api("GET", `/api/collections/absences/records/${absV}`, tA);
+  check("A: sieht fremde Notiz", r.status === 200 && leaks(r, "ARZTGEHEIM"), `HTTP ${r.status}`);
+  r = await api("PATCH", `/api/collections/absences/records/${absV}`, tN, { typeId: "ferien" });
+  check("N: fremde Absenz nicht änderbar", r.status >= 400, `HTTP ${r.status}`);
+  r = await api("DELETE", `/api/collections/absences/records/${absV}`, tN);
+  check("N: fremde Absenz nicht löschbar", r.status >= 400, `HTTP ${r.status}`);
+  r = await api("PATCH", `/api/collections/employees/records/${empV}`, tN, { name: "X" });
+  check("N: fremden Mitarbeiter nicht änderbar", r.status >= 400, `HTTP ${r.status}`);
+  r = await api("GET", `/api/collections/absences/records?filter=${enc(`studio = "${sid}"`)}`, await imp((await api("GET", `/api/collections/users/records?filter=${enc(`email="x-${run}@test.local"`)}`, su)).json.items[0].id));
+  check("X (fremdes Büro): keine Absenzen", r.status !== 200 || !r.json.items.some(x => x.id === absV), `HTTP ${r.status}`);
+}
 
 // ── Deaktiviert und Mengenlimits (am Schluss, ändert den Zustand) ─────────────────────────────────────────────
 r = await api("GET", "/api/collections/users/records", tM);

@@ -53,7 +53,9 @@ onRecordsListRequest((e) => {
     internalExpenses: "internal-expenses", payrollEntries: "loehne", employees: "mitarbeiter",
     absences: "mitarbeiter", vacationEntries: "mitarbeiter", overtimeClosings: "mitarbeiter",
   };
-  const permId = GATE[e.collection.name];
+  // Mitarbeitende und Absenzen lesen alle aktiven Mitglieder (Migration 1787980000_absences_visible.js; die Regel
+  // prüft die Mitgliedschaft, integrity.pb.js blendet Notiz/Personalien/Lohn aus)
+  const permId = (e.collection.name === "employees" || e.collection.name === "absences") ? null : GATE[e.collection.name];
   if (permId && !e.hasSuperuserAuth()) {
     const raw = (e.requestInfo().query && e.requestInfo().query.filter) || "";
     const m = raw.match(/studio\s*=\s*["']([a-zA-Z0-9_-]+)["']/);
@@ -117,7 +119,8 @@ onRecordViewRequest((e) => {
     internalExpenses: "internal-expenses", payrollEntries: "loehne", employees: "mitarbeiter",
     absences: "mitarbeiter", vacationEntries: "mitarbeiter", overtimeClosings: "mitarbeiter",
   };
-  const permId = GATE[e.collection.name];
+  // Mitarbeitende und Absenzen lesen alle aktiven Mitglieder (Migration 1787980000_absences_visible.js)
+  const permId = (e.collection.name === "employees" || e.collection.name === "absences") ? null : GATE[e.collection.name];
   if (permId && !e.hasSuperuserAuth()) {
     const studioId = e.record.get("studio");
     const authId = e.auth ? e.auth.id : "";

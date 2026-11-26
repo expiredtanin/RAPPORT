@@ -94,7 +94,8 @@ onRecordsListRequest((e) => {
 });
 onRealtimeSubscribeRequest((e) => {
   // auch Lohnfelder (Filter in Abos verrieten sie per Bisektion; die App filtert nie danach)
-  if (!e.hasSuperuserAuth() && (e.subscriptions || []).some((t) => /studiobudget|monatslohn|lohnverlauf|lohniban|ahvnr|pkbeitrag|familienzulagen|quellensteuer|auszahlungbetrag|stundenlohn/i.test(String(t)))) throw new BadRequestError("Filter über Budget oder Lohnangaben ist nicht erlaubt.");
+  if (!e.hasSuperuserAuth() && (e.subscriptions || []).some((t) => /studiobudget|monatslohn|lohnverlauf|lohniban|ahvnr|pkbeitrag|familienzulagen|quellensteuer|auszahlungbetrag|stundenlohn|personalnr|adresse|geburtsdatum|ferienwochen|ferienuebertrag|saldostichtag|saldouebertrag/i.test(String(t))
+    || /^(employees|absences)\//.test(String(t)) && /(email|ort|note)/i.test(decodeURIComponent(String(t).split("?options=")[1] || "")))) throw new BadRequestError("Filter über Budget, Lohn- oder Personalangaben ist nicht erlaubt.");
   e.next();
 });
 
