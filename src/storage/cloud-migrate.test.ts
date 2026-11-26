@@ -1,7 +1,7 @@
 // Tests für den Umzug in die Cloud (cloud-migrate.ts) gegen ein gemocktes Ziel.
 
 import { describe, expect, it, vi } from "vitest";
-import { checkTarget, describeError, planBlocked, planMigration, prepareForCloud, runMigration, type AreaKey, type CloudTarget } from "./cloud-migrate";
+import { checkTarget, cloudFileProblem, describeError, planBlocked, planMigration, prepareForCloud, runMigration, type AreaKey, type CloudTarget } from "./cloud-migrate";
 import type { AppData } from "../types";
 
 const KEYS: AreaKey[] = ["settings", "persons", "employees", "projects", "expenses", "appRoles"];
@@ -89,6 +89,65 @@ describe("prepareForCloud", () => {
     const out = prepareForCloud(d, { admin: "cloud-1" }, ["u-cleo"]);
     expect(out.employees.map(e => e.appUserId)).toEqual(["cloud-1", "u-cleo"]);
   });
+
+  it("biegt weitere Verweise auf lokale Benutzer um (Pinnwand-Autor, Umfrage, private Dashboard-Vorlage)", () => {
+    // Live-Test 26.11.2026: blogPosts.author/dashboardTemplates.createdBy sind Relationen auf users — eine lokale Id
+    // lehnte PocketBase ab, der Umzug hielt bei «Pinnwand» an und übersprang alle späteren Bereiche
+    const d = sample();
+    d.blogPosts = [
+      { id: "b-1", authorId: "admin", authorName: "Anna", poll: { question: "?", options: [{ id: "o", label: "Ja" }], votes: { admin: "o", "u-ben": "o" } } },
+      { id: "b-2", authorId: "u-ben", authorName: "Ben" },
+    ] as AppData["blogPosts"];
+    d.dashboardTemplates = [{ id: "t-1", name: "Meins", isPublic: false, layout: [], createdBy: "admin" }, { id: "t-2", name: "Ben", isPublic: false, layout: [], createdBy: "u-ben" }, { id: "t-3", name: "Alle", isPublic: true, layout: [] }];
+    const out = prepareForCloud(d, { admin: "cloud-1" });
+    expect(out.blogPosts.map(b => b.authorId)).toEqual(["cloud-1", null]);
+    expect(out.blogPosts.map(b => b.authorName)).toEqual(["Anna", "Ben"]);
+    expect(out.blogPosts[0].poll?.votes).toEqual({ "cloud-1": "o", "u-ben": "o" });
+    expect(out.dashboardTemplates.map(t => t.createdBy)).toEqual(["cloud-1", null, undefined]);
+  });
+
+  it("zerlegt die alte Freitext-Adresse von Kontakten (keine Cloud-Spalte), nicht zerlegbare meldet der Plan", () => {
+    const d = sample();
+    d.persons = [
+      { id: "p-1", name: "Alt", address: "Bauherr AG\nWeg 3\n8000 Zürich" },
+      { id: "p-2", name: "Neu", street: "Gasse 1", zip: "3000", city: "Bern", address: "veraltet" },
+      { id: "p-3", name: "Ohne PLZ", address: "irgendwo" },
+    ] as AppData["persons"];
+    const out = prepareForCloud(d, {});
+    expect(out.persons[0]).toMatchObject({ street: "Weg 3", zip: "8000", city: "Zürich" });
+    expect(out.persons[1]).toMatchObject({ street: "Gasse 1", zip: "3000", city: "Bern" });
+    expect(out.persons[2].street).toBeUndefined();
+    expect(planMigration(out, KEYS).localOnlyFields).toEqual(["alte Freitext-Adresse ohne PLZ/Ort bei Kontakten (1)"]);
+  });
+});
+
+describe("Anhänge, die der Server ablehnt", () => {
+  it("prüft Typ und Grösse wie die Dateifelder des Servers", () => {
+    const rule = { mime: ["application/pdf", "image/png"], max: 10 };
+    expect(cloudFileProblem("data:image/png;base64,AAAA", rule)).toBeNull();
+    expect(cloudFileProblem("data:image/bmp;base64,AAAA", rule)).toBe("Dateityp image/bmp");
+    expect(cloudFileProblem("data:application/octet-stream;base64,AAAA", rule)).toBeNull();   // entscheidet der Server
+    expect(cloudFileProblem("data:image/png;base64," + "A".repeat(20), rule)).toMatch(/grösser/);
+    expect(cloudFileProblem("rapport-pb:expenses/x/a.pdf", rule)).toBeNull();
+  });
+
+  it("meldet sie im Plan und überträgt die Zeile ohne Datei (statt den Umzug bei «Spesen» anzuhalten)", () => {
+    // Live-Test 26.11.2026: ein BMP-Beleg liess «Spesen» scheitern, alle späteren Bereiche wurden übersprungen
+    const d = sample();
+    d.expenses = [
+      { id: "x-1", date: "2026-01-02", description: "Scan", receiptData: "data:image/bmp;base64,Qk0=", receiptName: "scan.bmp" },
+      { id: "x-2", receiptData: "data:application/pdf;base64,JVBERi0=" },
+    ] as AppData["expenses"];
+    d.docAssets = [{ id: "da-1", kind: "font", name: "x.pfb", data: "data:application/x-font-type1;base64,AA==" }];
+    expect(planMigration(d, [...KEYS, "docAssets"]).rejectedFiles).toEqual([
+      "Spesen: 2026-01-02 · Scan · scan.bmp (Dateityp image/bmp)",
+      "Dokument-Design (Schriften, Briefpapier): x.pfb (Dateityp application/x-font-type1)",
+    ]);
+    const out = prepareForCloud(d, {});
+    expect(out.expenses.map(e => e.receiptData)).toEqual([null, "data:application/pdf;base64,JVBERi0="]);
+    expect(out.expenses[0].receiptName).toBe("scan.bmp");
+    expect(out.docAssets).toEqual([]);
+  });
 });
 
 describe("checkTarget", () => {
@@ -166,6 +225,11 @@ describe("describeError", () => {
   it("nennt Batch-Fehler mit Feld", () => {
     const e = err(400, { data: { message: "Batch transaction failed.", data: { requests: { "2": { code: "batch_request_failed", response: { data: { note: { message: "Too long." } } } } } } } });
     expect(describeError(e)).toBe("Batch transaction failed. (HTTP 400) — requests.2.note: Too long.");
+  });
+
+  it("erklärt eine serverweit schon vergebene Id (Daten liegen in einem anderen Büro)", () => {
+    const e = err(400, { data: { message: "Failed to create record.", data: { id: { code: "validation_invalid_id", message: "The record primary key is invalid or already exists." } } } });
+    expect(describeError(e)).toMatch(/^Failed to create record\. \(HTTP 400\) — id: The record primary key .* anderen Büro/);
   });
 });
 

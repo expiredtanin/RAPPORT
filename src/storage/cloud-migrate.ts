@@ -25,7 +25,7 @@
 
 import type { AppData, Id } from "../types";
 import { collectFileRefs } from "./file-assets";
-import { withDefaultRates } from "../utils";
+import { splitAddress, withDefaultRates } from "../utils";
 
 /** Ein Bereich = ein Top-Level-Schlüssel von `AppData`. */
 export type AreaKey = keyof AppData;
@@ -109,10 +109,60 @@ export interface MigrationPlan {
   badIds: { key: AreaKey; label: string; ids: string[] }[];
   /** Anhänge, die nicht als Datei gelesen werden konnten (Datenordner) — fehlen danach in der Cloud. */
   unresolvedFiles: string[];
+  /** Anhänge, die der Server nicht annimmt (Dateityp/Grösse) — werden ohne Datei übertragen, bleiben in der Sicherung. */
+  rejectedFiles: string[];
   /** Lokal gefüllte Felder, die die Cloud (noch) nicht speichert (Kontakt-Tags/Herkunft …) — Runde 29. */
   localOnlyFields: string[];
   /** Lokale Benutzer ohne Cloud-Konto (ohne den, der umzieht). */
   invites: InviteCandidate[];
+}
+
+// Dateifelder des Servers (pb/pb_migrations/1787820000_file_fields.js): erlaubte Typen und Höchstgrösse. Eine Datei,
+// die der Server ablehnt, liess den ganzen Bereich scheitern — der Umzug hielt z.B. bei «Spesen» an und übersprang alles
+// Spätere (Live-Test 26.11.2026 mit einem BMP-Beleg). Geprüft wird der Typ aus der data:-URL; ohne Angabe
+// (application/octet-stream) entscheidet der Server anhand des Inhalts.
+const MB = 1024 * 1024;
+const RECEIPT_MIME = ["application/pdf", "image/jpeg", "image/png", "image/gif", "image/webp", "image/heic", "image/heif", "image/tiff"];
+const IMAGE_MIME = ["image/jpeg", "image/png", "image/gif", "image/webp", "image/svg+xml"];
+const DOC_ASSET_MIME = ["font/woff2", "font/woff", "font/ttf", "font/otf", "application/font-woff", "application/x-font-ttf", "application/vnd.ms-opentype", "image/png", "image/jpeg", "image/svg+xml"];
+const FILE_RULES: Partial<Record<AreaKey, { field: string; mime: string[]; max: number }>> = {
+  expenses: { field: "receiptData", mime: RECEIPT_MIME, max: 20 * MB },
+  internalExpenses: { field: "receiptData", mime: RECEIPT_MIME, max: 20 * MB },
+  blogPosts: { field: "image", mime: IMAGE_MIME, max: 10 * MB },
+  docAssets: { field: "data", mime: DOC_ASSET_MIME, max: 10 * MB },
+};
+const LOGO_RULE = { mime: IMAGE_MIME, max: 10 * MB };
+
+/** Grund, warum der Server diese data:-URL ablehnen würde; null = passt (oder kein data:-Wert). */
+export function cloudFileProblem(value: unknown, rule: { mime: string[]; max: number }): string | null {
+  if (typeof value !== "string" || !value.startsWith("data:")) return null;
+  const comma = value.indexOf(",");
+  const head = value.slice(5, comma < 0 ? undefined : comma);
+  const mime = (head.split(";")[0] || "").toLowerCase();
+  const bytes = comma < 0 ? 0 : Math.floor((value.length - comma - 1) * (head.includes(";base64") ? 0.75 : 1));
+  if (bytes > rule.max) return `grösser als ${Math.round(rule.max / MB)} MB`;
+  if (mime && mime !== "application/octet-stream" && !rule.mime.includes(mime)) return `Dateityp ${mime}`;
+  return null;
+}
+
+/** Bezeichnung einer Zeile für Meldungen (Datum, Beschreibung bzw. Name). */
+const rowLabel = (row: Record<string, unknown>) =>
+  [row.date, row.description || row.title || row.name, row.receiptName].filter(x => typeof x === "string" && x).join(" · ") || String(row.id ?? "");
+
+/** Anhänge, die der Server nicht annimmt: [Bereich, Zeilen-Index (-1 = Logo), Meldung]. */
+function rejectedFileList(data: AppData): { key: AreaKey; index: number; text: string }[] {
+  const out: { key: AreaKey; index: number; text: string }[] = [];
+  const logo = cloudFileProblem(data.settings?.logo, LOGO_RULE);
+  if (logo) out.push({ key: "settings", index: -1, text: `Logo (${logo})` });
+  for (const [key, rule] of Object.entries(FILE_RULES) as [AreaKey, NonNullable<(typeof FILE_RULES)[AreaKey]>][]) {
+    const list = data[key];
+    if (!Array.isArray(list)) continue;
+    (list as unknown as Record<string, unknown>[]).forEach((row, index) => {
+      const why = cloudFileProblem(row?.[rule.field], rule);
+      if (why) out.push({ key, index, text: `${AREA_LABELS[key]}: ${rowLabel(row)} (${why})` });
+    });
+  }
+  return out;
 }
 
 /**
@@ -160,11 +210,17 @@ export function planMigration(data: AppData, cloudKeys: readonly AreaKey[], self
     n(p => p.source) && `Kontakt-Herkunft (${n(p => p.source)})`,
     n(p => p.referredById) && `«Vermittelt durch» (${n(p => p.referredById)})`,
     n(p => p.company) && `Firma bei Personen (${n(p => p.company)})`,
+    n(p => legacyAddressOnly(p) && !splitAddress(p.address).zip) && `alte Freitext-Adresse ohne PLZ/Ort bei Kontakten (${n(p => legacyAddressOnly(p) && !splitAddress(p.address).zip)})`,
     (data.settings?.leadSources || []).length > 0 && "eigene Lead-Quellen",
   ].filter((x): x is string => !!x);
 
-  return { areas, localOnly, localOnlyFields, badIds, unresolvedFiles: [...unresolved].map(r => r.slice(r.lastIndexOf("/") + 1)), invites };
+  const rejectedFiles = rejectedFileList(data).map(f => f.text);
+  return { areas, localOnly, localOnlyFields, badIds, rejectedFiles, unresolvedFiles: [...unresolved].map(r => r.slice(r.lastIndexOf("/") + 1)), invites };
 }
+
+/** Kontakt hat nur das alte Freitextfeld `address` (die Cloud speichert nur Strasse/PLZ/Ort). */
+const legacyAddressOnly = (p: { address?: string; street?: string; zip?: string; city?: string }) =>
+  !!p.address?.trim() && !p.street && !p.zip && !p.city;
 
 /** true, wenn der Plan den Umzug nicht zulässt (ungültige Ids). */
 export const planBlocked = (plan: MigrationPlan) => plan.badIds.length > 0;
@@ -185,7 +241,34 @@ export function prepareForCloud(data: AppData, userMap: Record<Id, Id>, cloudUse
     // Standardsätze ausdrücklich setzen: leere Satzfelder würden in der Cloud zu 0 % (Lohn ohne Abzüge)
     return { ...withDefaultRates(e, data.settings?.defaultPkAGSatz), appUserId: cloudUser };
   });
-  return { ...data, employees, users: [] };
+  // Weitere Relationen auf users (blogPosts.author, dashboardTemplates.createdBy): eine lokale Benutzer-Id lehnt
+  // PocketBase ab («Failed to find all relation records») — der Umzug hielt sonst bei «Pinnwand» an.
+  const toCloud = (id: Id | null | undefined): Id | null => id ? (userMap[id] ?? (keep.has(id) ? id : null)) : null;
+  const blogPosts = (data.blogPosts || []).map(b => {
+    const poll = b.poll?.votes
+      ? { ...b.poll, votes: Object.fromEntries(Object.entries(b.poll.votes).map(([u, o]) => [userMap[u] ?? u, o])) }
+      : b.poll;
+    return { ...b, authorId: toCloud(b.authorId), ...(poll !== undefined ? { poll } : {}) };
+  });
+  const dashboardTemplates = (data.dashboardTemplates || []).map(t => t.createdBy ? { ...t, createdBy: toCloud(t.createdBy) } : t);
+  // Altes Freitextfeld `address` (Kontakte vor Strasse/PLZ/Ort) hat in der Cloud keine Spalte: zerlegen, sonst
+  // fehlte die Adresse danach auf Rechnung, QR-Teil und Briefen (nicht zerlegbare meldet planMigration)
+  const persons = (data.persons || []).map(p => {
+    if (!legacyAddressOnly(p)) return p;
+    const a = splitAddress(p.address);
+    return a.zip ? { ...p, ...a } : p;
+  });
+  const out: AppData = { ...data, persons, employees, blogPosts, dashboardTemplates, users: [] };
+  // Anhänge, die der Server ablehnt, ohne Datei übertragen (planMigration meldet sie; Schrift ohne Datei entfällt)
+  const rejected = rejectedFileList(out);
+  if (rejected.some(f => f.key === "settings")) out.settings = { ...out.settings, logo: null };
+  const drop = (key: AreaKey) => new Set(rejected.filter(f => f.key === key).map(f => f.index));
+  const exp = drop("expenses"), iexp = drop("internalExpenses"), blog = drop("blogPosts"), assets = drop("docAssets");
+  if (exp.size) out.expenses = out.expenses.map((e, i) => exp.has(i) ? { ...e, receiptData: null } : e);
+  if (iexp.size) out.internalExpenses = out.internalExpenses.map((e, i) => iexp.has(i) ? { ...e, receiptData: null } : e);
+  if (blog.size) out.blogPosts = out.blogPosts.map((b, i) => blog.has(i) ? { ...b, image: "" } : b);
+  if (assets.size) out.docAssets = out.docAssets.filter((_, i) => !assets.has(i));
+  return out;
 }
 
 /** Bereiche, die im Ziel-Büro schon Daten haben (ohne Vorgaben eines neuen Büros, `SEEDED_AREAS`). */
@@ -257,7 +340,11 @@ export function describeError(e: unknown): string {
   };
   walk(err.data?.data, "", 0);
   const status = err.status ? ` (HTTP ${err.status})` : "";
-  return fields.length ? `${base}${status} — ${fields.join("; ")}` : `${base}${status}`;
+  // Ids gelten serverweit: dieselben Daten liegen schon in einem anderen Büro (früherer, abgebrochener Umzug)
+  const dupId = fields.some(f => /(^|\.)id: /.test(f))
+    ? " Diese Einträge gibt es auf dem Server schon in einem anderen Büro (z.B. von einem früheren Umzug) — bitte jenes Büro als Ziel wählen."
+    : "";
+  return (fields.length ? `${base}${status} — ${fields.join("; ")}` : `${base}${status}`) + dupId;
 }
 
 const defaultSleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms));

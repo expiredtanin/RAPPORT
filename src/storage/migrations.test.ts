@@ -1,7 +1,7 @@
 // Tests für applyMigrations: alte Datenstände bis zur aktuellen Form und Idempotenz (läuft bei jedem Laden).
 
 import { describe, expect, it } from "vitest";
-import { applyMigrations, type RawData } from "./migrations";
+import { applyMigrations, needsLegacySetup, type RawData } from "./migrations";
 import { defaultData } from "../constants";
 
 /** Speichern und wieder laden wie im Betrieb: JSON-Rundreise, dann erneut migrieren. */
@@ -74,5 +74,15 @@ describe("Konten ohne Rolle", () => {
     const out = applyMigrations({ users: [{ id: "a", username: "admin", role: "admin" }, { id: "m", username: "m", role: "mitarbeiter", appRoleId: "" }] } as never, defaultData);
     expect(out.users.find(u => u.id === "m")?.appRoleId).toBe("r-mitarbeiter");
     expect(out.users.find(u => u.id === "a")?.appRoleId).toBeUndefined();
+  });
+});
+
+describe("needsLegacySetup", () => {
+  it("zeigt den Umstieg (mit Neu-Einrichtung) nur für nie eingerichtete Daten", () => {
+    // zweites Gerät öffnet einen bestehenden Datenordner: Gerätemerkmal fehlt, Daten sind eingerichtet → kein Setup
+    expect(needsLegacySetup({ setupCompleted: true }, false)).toBe(false);
+    expect(needsLegacySetup({ setupCompleted: false }, false)).toBe(true);
+    expect(needsLegacySetup(applyMigrations({ settings: { name: "Alt" } } as RawData, defaultData).settings, false)).toBe(true);
+    expect(needsLegacySetup({ setupCompleted: false }, true)).toBe(false);
   });
 });

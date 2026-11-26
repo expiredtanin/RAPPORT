@@ -42,6 +42,16 @@ type Merged = Omit<AppData, "projects" | "protocols"> & Pick<RawData, "projects"
 };
 
 /**
+ * true = Umstiegsbildschirm von sehr alten Datenständen (MigrationScreen → Setup, das alles durch einen neuen
+ * Startzustand ersetzt) zeigen. Nur für Daten, die nie eingerichtet wurden (`setupCompleted` fehlt). Das Gerätemerkmal
+ * `rapport_v0_5_migrated` allein genügt nicht: ein zweites Gerät, das einen bestehenden Datenordner öffnet, hat es
+ * nie gesetzt — dort hätte die Einrichtung den gemeinsamen Datenbestand überschrieben.
+ */
+export function needsLegacySetup(settings: Pick<AppData["settings"], "setupCompleted"> | undefined, deviceMigrated: boolean): boolean {
+  return !deviceMigrated && !settings?.setupCompleted;
+}
+
+/**
  * Bringt geladene Daten auf den aktuellen Stand des Datenmodells.
  *
  * @param raw Rohdaten aus localStorage, Datenordner bzw. Cloud (beliebig alt, evtl. beschädigt).

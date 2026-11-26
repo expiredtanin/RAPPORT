@@ -330,6 +330,11 @@ export function CloudMigration({ mode, data, currentUser, resolveFiles, onBackup
               Diese Einträge bleiben in der Sicherung und in den bisherigen Daten erhalten.
             </div>
           )}
+          {plan.rejectedFiles.length > 0 && (
+            <div style={box("warn")}>
+              {plan.rejectedFiles.length} Anhänge nimmt der Server nicht an (Dateityp oder Grösse) und werden ohne Datei übertragen; sie bleiben in der Sicherung: {plan.rejectedFiles.slice(0, 3).join(", ")}{plan.rejectedFiles.length > 3 ? " …" : ""}.
+            </div>
+          )}
           {plan.unresolvedFiles.length > 0 && (
             <div style={box("warn")}>
               {plan.unresolvedFiles.length} Anhänge liegen nicht im Datenordner (z.B. noch nicht aus iCloud geladen) und fehlen danach in der Cloud: {plan.unresolvedFiles.slice(0, 3).join(", ")}{plan.unresolvedFiles.length > 3 ? " …" : ""}.

@@ -24,7 +24,7 @@ import { defaultData, statusCssVars } from "./constants";
 import { hashPassword, verifyPassword, withHashedPassword, stripCredentials, needsPasswordUpgrade } from "./utils";
 import { storage, cloudStorage, flushStorage, isCloudBackend, isServerMode } from "./storage/adapter";
 import { pickAndActivateDataFolder } from "./storage/data-folder";
-import { applyMigrations } from "./storage/migrations";
+import { applyMigrations, needsLegacySetup } from "./storage/migrations";
 import type { AppData, CurrentUser, ModalState, PrintContent, User } from "./types";
 import Login from "./views/Login";
 import Setup from "./views/Setup";
@@ -109,8 +109,10 @@ export default function App() {
     if (!sessionUser || isCloudBackend || loading) return sessionUser;
     const u = (data.users || []).find(x => x.id === sessionUser.id);
     if (!u) return { ...sessionUser, role: "user", appRoleId: "__ohne_konto__", permissions: [] };
-    return { ...sessionUser, role: u.role, appRoleId: u.appRoleId, permissions: undefined, employeeId: u.employeeId ?? sessionUser.employeeId };
-  }, [sessionUser, data.users, loading]);
+    // auch die Verknüpfung zum Mitarbeitenden aus den Daten (Konto bzw. employees.appUserId), nicht aus der Sitzung
+    const employeeId = u.employeeId ?? (data.employees || []).find(e => e.appUserId === u.id)?.id ?? null;
+    return { ...sessionUser, role: u.role, appRoleId: u.appRoleId, permissions: undefined, employeeId };
+  }, [sessionUser, data.users, data.employees, loading]);
   const handleLogin = (user: User | CurrentUser) => {
     const safe = stripCredentials(user);
     sessionStorage.setItem("rapport_user", JSON.stringify(safe));
@@ -412,7 +414,7 @@ export default function App() {
     return <><Setup onComplete={handleSetupComplete} /><UpdateNotifier /></>;
   }
 
-  if (!isCloudBackend && !localStorage.getItem("rapport_v0_5_migrated")) {
+  if (!isCloudBackend && needsLegacySetup(data.settings, !!localStorage.getItem("rapport_v0_5_migrated"))) {
     return <><MigrationScreen data={data} onComplete={handleSetupComplete} /><UpdateNotifier /><Toaster /></>;
   }
 
