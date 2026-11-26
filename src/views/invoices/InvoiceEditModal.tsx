@@ -11,6 +11,7 @@ import type { AppData, Invoice, InvoiceItem, ModalState, Person, TimeEntry } fro
 import { calcLineTotal, calcTotal, invoiceBillingSummary, nextInvoiceNumber } from "./invoiceHelpers";
 import type { EntrySelections, InvoiceForm } from "./invoiceHelpers";
 import { TimeEntriesPicker } from "./TimeEntriesPicker";
+import { useConfirm } from "../../hooks/useConfirm";
 
 /** Spalten einer Positionszeile: Beschreibung wächst, Zahlenfelder fest und breit genug für 6-stellige Beträge. */
 const ITEM_GRID: React.CSSProperties = { display: "grid", gridTemplateColumns: "minmax(0, 1fr) 64px 112px 62px 104px 28px", gap: 8 };
@@ -54,6 +55,15 @@ export function InvoiceEditModal({ modal, setModal, form, setForm, data, clients
   const { sub, globalDisc, subAfterDisc, tax, total } = calcTotal(form.items, form.mwst, form.mwstRate ?? data.settings.mwstRate, form.discountType, form.discountValue);
   const rate = form.mwstRate ?? data.settings.mwstRate;
   const [discountOpen, setDiscountOpen] = useState(false);
+  // Bezahlte Rechnung: gesperrt, bis sie bewusst entsperrt wird (vorher liess sich z.B. der Betrag einer bezahlten
+  // Rechnung still auf 1.08 ändern, Buchhaltung und QR folgten — Entscheid 26.11.2026)
+  const { askConfirm, ConfirmModalEl } = useConfirm();
+  const paid = !!editingId && (data.invoices || []).find(i => i.id === editingId)?.status === "bezahlt";
+  const [unlocked, setUnlocked] = useState(false);
+  const locked = paid && !unlocked;
+  const unlock = async () => {
+    if (await askConfirm("Diese Rechnung ist bezahlt. Trotzdem bearbeiten? Änderungen wirken auf Buchhaltung und MWST-Abrechnung.", "Entsperren")) setUnlocked(true);
+  };
   const showDiscount = discountOpen || (!!form.discountType && form.discountType !== "none");
   // Vorschau mit dem Abrechnungsblock, wie er beim Speichern festgehalten wird
   const previewInv = { ...form, id: editingId || undefined, sub, globalDisc, subAfterDisc, tax, total, mwstRate: rate } as Invoice;
@@ -70,9 +80,18 @@ export function InvoiceEditModal({ modal, setModal, form, setForm, data, clients
   );
 
   return (
+    <>
+    {ConfirmModalEl}
     <Modal title={modal.id ? "Rechnung bearbeiten" : "Neue Rechnung"} onClose={() => setModal(null)} onSave={() => save()} wide
-      footerStart={footer}
+      footerStart={footer} hideSave={locked}
       preview={<LivePreview settings={data.settings} assets={data.docAssets} content={{ type: "invoice", inv: previewInv, client: clients.find(c => c.id === form.clientId) }} />}>
+      {locked && (
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: "10px 12px", marginBottom: 14, border: "1px solid var(--border)", borderRadius: 6, background: "var(--surface2)", fontSize: 12 }}>
+          <span><span className="msr" style={{ fontSize: 16, verticalAlign: "-3px", marginRight: 6 }}>lock</span>Bezahlt — gesperrt. Zum Korrigieren entsperren.</span>
+          <button type="button" className="btn btn-ghost btn-sm" onClick={unlock}>Entsperren</button>
+        </div>
+      )}
+      <fieldset disabled={locked} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
       <div className="form-row">
         <FormField label="Nr."><input value={form.number} onChange={e => setForm({ ...form, number: e.target.value })} /></FormField>
         <FormField label="Datum"><DateInput value={form.date} onChange={e => {
@@ -193,6 +212,8 @@ export function InvoiceEditModal({ modal, setModal, form, setForm, data, clients
       </div>
 
       <FormField label="Bemerkungen"><textarea rows={2} value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} style={{ resize: "vertical" }} /></FormField>
+      </fieldset>
     </Modal>
+    </>
   );
 }
