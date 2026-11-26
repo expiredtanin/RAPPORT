@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { budgetEinnahmen, budgetFixkosten, jahresLohnkosten } from "./budget";
+import { budgetEinnahmen, budgetFixkosten, jahresLohnkosten, mergeBudgetRows } from "./budget";
 import { lohnAGSaetze } from "./utils";
 import type { AppData, Employee, InternalExpense, Invoice, Quote } from "./types";
 
@@ -41,5 +41,14 @@ describe("Budget: Einnahmen ohne Doppelzählung", () => {
     const e = budgetEinnahmen(data, 2026, { rechnungen: true, rechnungsEntwuerfe: false, offerten: true, offertEntwuerfe: false });
     expect(e.quotesAccepted).toBe(30000);
     expect(e.total).toBe(50000); // vorher 70'000 (Rechnung + ganze Offerte)
+  });
+});
+
+describe("Budget: Version laden", () => {
+  it("Zeilen neuer Personen/Ausgaben bleiben, bekannte übernehmen die Werte der Version", () => {
+    const now = [{ id: "a", aktiv: true }, { id: "neu", aktiv: true }];
+    const alt = [{ id: "a", aktiv: false }, { id: "geloescht", aktiv: true }];
+    expect(mergeBudgetRows(now, alt)).toEqual([{ id: "a", aktiv: false }, { id: "neu", aktiv: true }]);
+    expect(mergeBudgetRows(now, undefined)).toEqual(now);
   });
 });

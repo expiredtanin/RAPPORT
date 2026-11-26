@@ -19,7 +19,7 @@
 
 import React, { useState } from "react";
 import { arbeitszeitAm, generateId, formatCHF, lohnAGSaetze } from "../utils";
-import { budgetEinnahmen, budgetFixkosten, jahresLohnkosten } from "../budget";
+import { budgetEinnahmen, budgetFixkosten, jahresLohnkosten, mergeBudgetRows } from "../budget";
 import { Header, ShareButton } from "../components/UI";
 import type { Employee, StudioBudgetState, StudioBudgetVersion, ViewProps } from "../types";
 
@@ -291,7 +291,8 @@ function StudioBudget({ data, update, setPrintContent, userPermissions = null }:
   };
 
   const loadVersion = (v: StudioBudgetVersion) => {
-    setB(prev => ({ ...prev, ...v.b }));
+    // Zeilen von Personen/Ausgaben, die nach dem Speichern der Version dazukamen, bleiben erhalten (mergeBudgetRows)
+    setB(prev => ({ ...prev, ...v.b, empRows: mergeBudgetRows(prev.empRows, v.b.empRows), fixRows: mergeBudgetRows(prev.fixRows, v.b.fixRows), extraRows: v.b.extraRows ?? prev.extraRows, extraIncome: v.b.extraIncome ?? prev.extraIncome }));
     setShowVersions(false);
   };
 
@@ -394,8 +395,9 @@ function StudioBudget({ data, update, setPrintContent, userPermissions = null }:
         <div><small>Selbstkostensatz</small><strong className="num">{formatCHF(Math.round(selbstkosten))}</strong><em>pro produktive Stunde</em></div>
         <div><small>Ziel-Honorar</small><strong className="num">{formatCHF(Math.round(zielHonorar))}</strong><em>inkl. {margePct} % Marge</em></div>
         <div><small>Gesamtkosten / Jahr</small><strong className="num">{formatCHF(gesamtKosten)}</strong><em>{produktivStunden} h produktiv von {jahresStundenFallback} h</em></div>
-        {gesamtKosten <= 0 ? (
-          <div><small>Aktueller Ansatz</small><strong className="warn">noch offen</strong><em>{personalKosten <= 0 ? "Löhne bei den Mitarbeitenden erfassen oder unten übersteuern" : "keine Kosten erfasst"}</em></div>
+        {gesamtKosten <= 0 || produktivStunden <= 0 ? (
+          // ohne Kosten oder ohne produktive Stunden gibt es kein Ziel-Honorar (sonst «CHF 120 über Ziel» bei Ziel 0)
+          <div><small>Aktueller Ansatz</small><strong className="warn">noch offen</strong><em>{gesamtKosten > 0 ? "keine produktiven Stunden: Personen aktivieren oder Stunden übersteuern" : personalKosten <= 0 ? "Löhne bei den Mitarbeitenden erfassen oder unten übersteuern" : "keine Kosten erfasst"}</em></div>
         ) : (
           <div title={`Break-even bei ${Math.ceil(gesamtKosten / currentRate)} h zum aktuellen Ansatz`}>
             <small>Aktueller Ansatz</small>

@@ -4,7 +4,7 @@
 
 import React, { useState, useRef } from "react";
 import { INTERNAL_EXPENSE_CATEGORIES } from "../constants";
-import { generateId, formatCHF, formatDate, receiptToDataUrl, checkLocalBudget, localISODate } from "../utils";
+import { generateId, formatCHF, formatDate, receiptToDataUrl, checkLocalBudget, localISODate, roundCHF } from "../utils";
 import { isLocalBackend } from "../storage/adapter";
 import { ExpenseFigures } from "../components/ExpenseFigures";
 import { TableToolbar, Header, Modal, FormField, DateInput, SortTh, RowMenu, EmptyState } from "../components/UI";
@@ -48,7 +48,8 @@ function InternalExpenses({ data, update }: Pick<ViewProps, "data" | "update" | 
   const items = data.internalExpenses || [];
   // Wiederkehrende als einzelne Buchungen bis heute (wie die Buchhaltung, accounting.ts)
   const bookings = expandInternalExpenses(items, localISODate());
-  const years = Array.from(new Set(bookings.map(e => (e.date || "").slice(0, 4)).filter(Boolean))).sort().reverse();
+  // laufendes und gewähltes Jahr immer in der Auswahl (sonst zeigte sie «Alle Jahre», gefiltert war aber leer — wie bei den Spesen)
+  const years = Array.from(new Set([currentYear, filter.year, ...bookings.map(e => (e.date || "").slice(0, 4))].filter(Boolean))).sort().reverse();
 
   const openNew = () => { setForm(emptyItem); setModal("new"); };
   const openEdit = (e: InternalExpense & { occurrenceOf?: string }) => {
@@ -66,7 +67,8 @@ function InternalExpenses({ data, update }: Pick<ViewProps, "data" | "update" | 
     if (!(Number(form.mwstRate ?? 0) >= 0 && Number(form.mwstRate ?? 0) <= 30)) { showToast("MWST-Satz zwischen 0 und 30 %."); return; }
     const isNew = modal === "new";
     // Bearbeiten: nur eigene Änderungen auf den aktuellen Stand (applyEdit)
-    const next = { ...form, id: isNew ? generateId() : modal } as InternalExpense;
+    // Betrag auf Rappen (wie bei Spesen): sonst weicht die angezeigte Zeile von der gerundeten Summe ab
+    const next = { ...form, amount: roundCHF(Number(form.amount)), id: isNew ? generateId() : modal } as InternalExpense;
     update("internalExpenses", prev => isNew ? [...(prev || []), next]
       : (prev || []).map(e => e.id === next.id ? (editBase?.id === next.id ? applyEdit(editBase, next, e) : next) : e));
     closeModal();

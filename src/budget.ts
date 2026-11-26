@@ -47,6 +47,17 @@ export function jahresLohnkosten(emp: Employee, year: number, ag: LohnAGSaetze):
   return { brutto: roundCHF(brutto), ag: roundCHF(agSum), total: roundCHF(brutto + agSum), monate };
 }
 
+/**
+ * Zeilen einer geladenen Budgetversion auf die heutigen Zeilen abbilden: Werte der Version, wo sie die Zeile
+ * kennt; Personen/Ausgaben, die nach dem Speichern der Version dazukamen, behalten ihre aktuelle Zeile. Ohne
+ * Zeile im Stand liessen sich sonst Häkchen und Übersteuerung dieser Zeilen nicht mehr ändern (die
+ * Änderung läuft über die Zeile mit gleicher id).
+ */
+export function mergeBudgetRows<T extends { id: string }>(current: T[], loaded: T[] | undefined): T[] {
+  const byId = new Map((loaded || []).map(r => [r.id, r]));
+  return current.map(r => byId.get(r.id) ?? r);
+}
+
 /** Eine Zeile der Fixkosten. */
 export interface BudgetFixRow { id: string; label: string; cat: string; amount: number }
 
