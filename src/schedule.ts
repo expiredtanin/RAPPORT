@@ -226,14 +226,20 @@ export const trackItems = (schedule: ProjectSchedule, track: ScheduleTrack): Sch
 /**
  * Rückt Nachfolger nach, deren Abhängigkeit verletzt ist (Start vor dem Ende des Vorgängers + Abstand).
  * Nur nach hinten, Dauer bleibt; Abhängigkeiten mit `auto === false` werden nicht nachgeführt.
- * Wirkt über ganze Ketten; bei einem (eigentlich verhinderten) Kreis bricht sie nach endlich vielen Schritten ab.
+ * Wirkt über ganze Ketten. Pfeile in einem Kreis werden nicht nachgeführt: einen Kreis verhindert der Editor
+ * (`wouldCreateCycle`), er entsteht aber, wenn zwei Personen gleichzeitig entgegengesetzte Pfeile ziehen und die
+ * Programme zusammengeführt werden — vorher schoben sich die Elemente dann gegenseitig um Jahre nach hinten
+ * (Abbruch erst nach n² Schritten), und das wurde gespeichert.
  *
  * @returns neue Liste (unveränderte Elemente behalten ihre Identität)
  */
 export function shiftSuccessors(items: ScheduleItem[]): ScheduleItem[] {
   const byId = new Map(items.map(it => [it.id, it]));
   const succs = new Map<Id, ScheduleItem[]>();
+  const cyclic = new Set<string>();
+  for (const it of items) for (const d of it.deps || []) if (wouldCreateCycle(items, d.fromId, it.id)) cyclic.add(`${d.fromId}>${it.id}`);
   for (const it of items) for (const d of it.deps || []) {
+    if (cyclic.has(`${d.fromId}>${it.id}`)) continue;
     if (!succs.has(d.fromId)) succs.set(d.fromId, []);
     succs.get(d.fromId)!.push(it);
   }
@@ -245,7 +251,7 @@ export function shiftSuccessors(items: ScheduleItem[]): ScheduleItem[] {
       const succ = byId.get(s.id)!;
       let need = -Infinity;
       for (const d of succ.deps || []) {
-        if (d.auto === false) continue;
+        if (d.auto === false || cyclic.has(`${d.fromId}>${succ.id}`)) continue;
         const pred = byId.get(d.fromId);
         // Vorgänger ohne Datum (leere Zeile) ergibt NaN und hob sonst die ganze Verschiebung auf (Runde 30)
         const after = pred ? earliestAfter(pred, d.lagDays) : NaN;

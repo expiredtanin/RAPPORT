@@ -68,6 +68,17 @@ describe("shiftSuccessors", () => {
     ]);
     expect(out[2]).toMatchObject({ start: "2026-01-21", end: "2026-01-22" });
   });
+
+  it("Kreis aus dem Zusammenführen (zwei Personen ziehen entgegengesetzte Pfeile): kein Verschieben um Jahre", () => {
+    const out = shiftSuccessors([
+      task("a", "2026-01-05", "2026-01-16", [{ fromId: "b" }]),
+      task("b", "2026-01-19", "2026-01-30", [{ fromId: "a" }]),
+      task("c", "2026-01-20", "2026-01-21", [{ fromId: "b" }]),   // ausserhalb des Kreises: rückt weiter nach
+    ]);
+    expect(out[0]).toMatchObject({ start: "2026-01-05", end: "2026-01-16" });
+    expect(out[1]).toMatchObject({ start: "2026-01-19", end: "2026-01-30" });
+    expect(out[2]).toMatchObject({ start: "2026-01-31", end: "2026-02-01" });
+  });
 });
 
 describe("wouldCreateCycle", () => {
