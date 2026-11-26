@@ -65,6 +65,10 @@ function Protokolle({ data, saveAll, setPrintContent, modal, setModal }: Pick<Vi
 
   /** Neues Protokoll (optional gleich einem Projekt zugeordnet, z.B. aus dem Projekt-Arbeitsraum) und öffnen. */
   const newProtokoll = (projectId = "") => {
+    // offenes Protokoll zuerst verlassen (speichern bzw. unberührtes entfernen) — ein entferntes zählt dann bei der
+    // Nummer nicht mit (sonst Lücke …-01 fehlt, Review R32)
+    const removedId = leaveDetailRef.current();
+    const protokolle = (data.protocols || []).filter(x => x.id !== removedId);
     const proj = projectId ? data.projects.find(x => x.id === projectId) : undefined;
     const defaultType = PROTOKOLL_TYPES[0];
     const abbr = data.settings.protokollTypeAbbreviations || {};
@@ -90,7 +94,6 @@ function Protokolle({ data, saveAll, setPrintContent, modal, setModal }: Pick<Vi
       createdAt: new Date().toISOString(),
     };
     freshRef.current.set(p.id, p);
-    leaveDetailRef.current();   // offenes Protokoll erst verlassen (speichern bzw. unberührtes entfernen) — Review R31
     saveAll(prev => ({ ...prev, protocols: [...(prev.protocols || []), p] }));
     setDetailId(p.id);
   };
@@ -103,9 +106,10 @@ function Protokolle({ data, saveAll, setPrintContent, modal, setModal }: Pick<Vi
   const draftRef = useRef<{ p: Protocol; dirty: boolean; base: Protocol } | null>(null);
   // in dieser Ansicht neu angelegte Protokolle mit Anfangsstand (nur sie werden unberührt wieder entfernt)
   const freshRef = useRef(new Map<string, Protocol>());
-  const leaveDetail = () => {
+  /** Offenes Protokoll verlassen; liefert die id, wenn es als unberührt entfernt wurde. */
+  const leaveDetail = (): string | null => {
     const { detailId: id, data: d, saveAll: save } = leaveRef.current;
-    if (!id) return;
+    if (!id) return null;
     const list = d.protocols || [];
     const draft = draftRef.current?.p.id === id ? draftRef.current : null;
     draftRef.current = null;
@@ -114,22 +118,24 @@ function Protokolle({ data, saveAll, setPrintContent, modal, setModal }: Pick<Vi
     // zählten Projekt, Verteiler, nächste Sitzung u.a. nicht als Eingabe und gingen mit dem Protokoll verloren (Runde 30)
     const fresh = freshRef.current.get(id);
     freshRef.current.delete(id);
-    if (cur && fresh && !draft?.dirty && jsonEqual(list.find(x => x.id === id), fresh)) save(prev => ({ ...prev, protocols: (prev.protocols || []).filter(x => x.id !== id) }));
-    else if (draft?.dirty) save(prev => ({ ...prev, protocols: (prev.protocols || []).map(x => x.id === id ? applyEdit(draft.base, draft.p, x) : x) }));
+    if (cur && fresh && !draft?.dirty && jsonEqual(list.find(x => x.id === id), fresh)) {
+      save(prev => ({ ...prev, protocols: (prev.protocols || []).filter(x => x.id !== id) }));
+      return id;
+    }
+    if (draft?.dirty) save(prev => ({ ...prev, protocols: (prev.protocols || []).map(x => x.id === id ? applyEdit(draft.base, draft.p, x) : x) }));
+    return null;
   };
   const leaveDetailRef = useRef(leaveDetail);
   useEffect(() => { leaveDetailRef.current = leaveDetail; });
-  useEffect(() => () => leaveDetailRef.current(), []);
+  useEffect(() => () => { leaveDetailRef.current(); }, []);
 
   // Befehlspalette (App.tsx): «Neues Protokoll»
-  /* eslint-disable react-hooks/set-state-in-effect -- einmalige Übergabe aus der Befehlspalette */
   useEffect(() => {
     if (modal?.type !== "newProtocol") return;
     setModal?.(null);
     newProtokoll((modal.projectId as string) || "");
   // eslint-disable-next-line react-hooks/exhaustive-deps -- nur auf neue Aufträge reagieren
   }, [modal?.type]);
-  /* eslint-enable react-hooks/set-state-in-effect */
 
   // Protokoll öffnen, während diese Ansicht schon offen ist (Befehlspalette, «Heute», Projekt): App.tsx wechselt
   // nur die Ansicht, die hier schon gemountet ist — ohne diesen Empfänger bliebe die Liste bzw. das alte Protokoll.

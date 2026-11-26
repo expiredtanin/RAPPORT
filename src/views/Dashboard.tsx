@@ -594,11 +594,13 @@ export default function Dashboard({ data, setView, currentUser, userPermissions,
       // Toggle dazukommt.
       const monthFrom=`${thisMonth}-01`;
       const activeEmps=(data.employees||[]).filter(e=>e.active!==false&&!(e.austrittsdatum&&e.austrittsdatum.slice(0,10)<monthFrom));
-      // Soll wie in der Kachel «Stundensaldo» (worktime.ts): Feiertage, Ferien, Absenzen, Ein-/Austritt, Pensumwechsel
+      // Wie «Stundensaldo» (worktime.ts): Ist nur im Anstellungszeitraum, verfügbares Soll ohne Ferien und Absenzen
+      // (Feiertage, Ein-/Austritt, Pensumwechsel) — sonst stand wer Ferien hatte mit tiefer Auslastung da (Review R32)
       const wt=createWorktime(data, today);
       const empData=activeEmps.map(e=>{
-        const istMin=data.timeEntries.filter(t=>t.employeeId===e.id&&(t.date||"").startsWith(thisMonth)).reduce((s,t)=>s+(t.minutes||0),0);
-        const sollMin=Math.round(wt.period(e, monthFrom, today).sollBrutto*60);
+        const p=wt.period(e, monthFrom, today);
+        const istMin=Math.round(p.ist*60);
+        const sollMin=Math.round(Math.max(0, p.soll-p.absenz)*60);
         const pct=sollMin>0?Math.min(istMin/sollMin,1.5):0;
         return{...e,istMin,sollMin,pct};
       }).sort((a,b)=>b.istMin-a.istMin);

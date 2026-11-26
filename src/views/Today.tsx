@@ -17,6 +17,7 @@ import { getSollForDay } from "./time/timeUtils";
 import { changeWithUndo } from "../undo";
 import { showToast } from "../toast";
 import { EmptyState } from "../components/UI";
+import { dueFollowUps } from "../crm";
 
 /** Betrag ohne Rappen und ohne «CHF» (kompakt für Kennzahlen). */
 const chf0 = (n: number) => formatCHF(Math.round(n)).replace(/^(−?)CHF\s*/u, "$1").replace(/\.00$/, "");
@@ -125,7 +126,8 @@ export default function Today({ data, currentUser, userPermissions, run, onOpenP
   const overdue = open.filter(i => i.status === "überfällig").length;
   // Umsatz wie Übersicht und Buchhaltung: gestellte Rechnungen (ohne Entwürfe) nach Rechnungsdatum, netto
   const yearPaid = yearRevenue(data.invoices || [], today.slice(0, 4));
-  const followUps = (data.activities || []).filter(a => a.followUpDate && !a.followUpDone && a.followUpDate <= today).length;
+  // wie Übersicht/Akquise: ohne Wiedervorlagen abgeschlossener Leads und gelöschter Kontakte (Review R32)
+  const followUps = dueFollowUps(data, today).filter(a => (a.followUpDate as string) <= today).length;
   const monthMins = (data.timeEntries || []).filter(e => e.date.startsWith(today.slice(0, 7))).reduce((s, e) => s + (e.minutes || 0), 0);
 
   const startForm = (

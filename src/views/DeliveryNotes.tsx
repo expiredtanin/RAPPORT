@@ -210,7 +210,7 @@ function DeliveryNotes({ data, saveAll, setPrintContent }: Pick<ViewProps, "data
           <div style={{ fontSize: 11, letterSpacing: "0.08em", color: "var(--text4)", margin: "14px 0 10px", paddingTop: 12, borderTop: "1px solid var(--border2)" }}>EMPFÄNGER</div>
           <div className="form-row">
             <FormField label="Kunde (verknüpft)">
-              <select value={form.clientId || ""} onChange={e => setForm({ ...form, clientId: e.target.value, clientManual: "" })}>
+              <select value={form.clientId || ""} onChange={e => setForm({ ...form, clientId: e.target.value, clientManual: "", deliveryAddress: "" })}   /* Kundenwechsel: alte Lieferadresse nicht zum neuen Kunden drucken (Review R32) */>
                 <option value="">— manuell eingeben —</option>
                 {((data.persons||[])).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
