@@ -6,7 +6,7 @@ import { generateId, formatCHF, formatDate, projectFee, roundCHF } from "../../u
 import { DateInput } from "../../components/UI";
 import { useGuardedClose } from "../../hooks/useGuardedClose";
 import type { AppData, Person } from "../../types";
-import { AKONTO_MAX_RATES, akontoPhasePlan, billedNetForProject } from "./invoiceHelpers";
+import { AKONTO_MAX_RATES, akontoPhasePlan, billedNetForProject, projectMwst } from "./invoiceHelpers";
 import type { AkontoPlan, AkontoPlanRow } from "./invoiceHelpers";
 
 /** Planer für mehrere Akonto-Rechnungen; «Entwürfe erstellen» ruft `onCreate` mit den Raten `apRows`. */
@@ -32,7 +32,9 @@ export function AkontoPlanModal({ ap, setAp, apRows, data, clients, onClose, onC
   const hasPhases = !!apProj && (apProj.phasesBudget || []).some(p => p.hours > 0);
   const phasePlan = ap.mode === "phase" && apProj ? akontoPhasePlan(apProj, data.quotes || [], data.settings.roles, data.invoices || [], ap) : null;
   const drafts = apProj ? roundCHF((data.invoices || []).filter(i => i.projectId === apProj.id && i.status === "entwurf").reduce((s, i) => s + (i.sub || 0) - (i.globalDisc || 0), 0)) : 0;
-  const mwstRate = data.settings.mwstRate || 0;
+  // Wie die erzeugten Entwürfe: MWST-Pflicht aus den verknüpften Offerten (ohne MWST → Brutto = Netto)
+  const mwstRate = projectMwst(apProj, data.quotes || []) ? (data.settings.mwstRate || 0) : 0;
+  const withMwst = mwstRate > 0;
   return (
     <div className="modal-overlay" {...guard.overlayProps}>
       {guard.ConfirmModalEl}
@@ -191,7 +193,7 @@ export function AkontoPlanModal({ ap, setAp, apRows, data, clients, onClose, onC
                 </tbody>
                 <tfoot>
                   <tr style={{ borderTop: "1.5px solid var(--border3)", background: "var(--surface2)" }}>
-                    <td colSpan={3} style={{ padding: "7px 8px", fontSize: 11, color: "var(--text4)" }}>Total · inkl. MWST {formatCHF(roundCHF(apTotal * (1 + mwstRate / 100)))}</td>
+                    <td colSpan={3} style={{ padding: "7px 8px", fontSize: 11, color: "var(--text4)" }}>Total{withMwst ? " · inkl. MWST" : ""} {formatCHF(roundCHF(apTotal * (1 + mwstRate / 100)))}</td>
                     <td className="num" style={{ padding: "7px 8px", textAlign: "right", fontWeight: 700, whiteSpace: "nowrap" }}>{formatCHF(apTotal)}</td>
                   </tr>
                 </tfoot>
@@ -219,13 +221,13 @@ export function AkontoPlanModal({ ap, setAp, apRows, data, clients, onClose, onC
                   <th style={{ width: 28, padding: "6px 8px", textAlign: "center", color: "var(--text4)", fontWeight: 500 }}>#</th>
                   <th style={{ padding: "6px 8px", color: "var(--text4)", fontWeight: 500 }}>Datum</th>
                   <th style={{ padding: "6px 8px", textAlign: "right", color: "var(--text4)", fontWeight: 500 }}>Betrag netto</th>
-                  <th style={{ padding: "6px 8px", textAlign: "right", color: "var(--text4)", fontWeight: 500 }}>Total inkl. MWST</th>
+                  <th style={{ padding: "6px 8px", textAlign: "right", color: "var(--text4)", fontWeight: 500 }}>{withMwst ? "Total inkl. MWST" : "Total (ohne MWST)"}</th>
                   {ap.mode === "manual" && <th style={{ width: 28 }}></th>}
                 </tr>
               </thead>
               <tbody>
                 {apRows.map((row, i) => {
-                  const mwstAmt = row.amt * (data.settings.mwstRate / 100);
+                  const mwstAmt = row.amt * (mwstRate / 100);
                   return (
                     <tr key={row.id} style={{ borderTop: "1px solid var(--border2)" }}>
                       <td style={{ padding: "6px 8px", textAlign: "center", color: "var(--text4)" }}>{i + 1}</td>
@@ -256,7 +258,7 @@ export function AkontoPlanModal({ ap, setAp, apRows, data, clients, onClose, onC
                 <tr style={{ borderTop: "1.5px solid var(--border3)", background: "var(--surface2)" }}>
                   <td colSpan={2} style={{ padding: "7px 8px", fontSize: 11, color: "var(--text4)" }}>Total</td>
                   <td style={{ padding: "7px 8px", textAlign: "right", fontWeight: 700 }}>{formatCHF(apTotal)}</td>
-                  <td style={{ padding: "7px 8px", textAlign: "right", fontWeight: 700 }}>{formatCHF(roundCHF(apTotal * (1 + (data.settings.mwstRate || 0) / 100)))}</td>
+                  <td style={{ padding: "7px 8px", textAlign: "right", fontWeight: 700 }}>{formatCHF(roundCHF(apTotal * (1 + mwstRate / 100)))}</td>
                   {ap.mode === "manual" && <td></td>}
                 </tr>
               </tfoot>

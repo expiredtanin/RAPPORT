@@ -6,7 +6,7 @@
 import { SIA_PHASES } from "../../constants";
 import { generateId, invoiceNet, localISODate, projectFee, roundCHF } from "../../utils";
 import type { AppData, Invoice, InvoiceItem, TimeEntry } from "../../types";
-import { invoicesForQuote, phaseInvoiceAmount, selectAllEntries } from "./invoiceHelpers";
+import { formatPct, invoicesForQuote, phaseInvoiceAmount, projectMwst, selectAllEntries } from "./invoiceHelpers";
 import type { InvoiceForm, NewInvoiceState } from "./invoiceHelpers";
 
 /** Abzugszeile und Notiz für bisherige Akonto-/Teilrechnungen einer Schlussrechnung (leer, wenn nichts abzuziehen ist). */
@@ -54,7 +54,7 @@ export const buildNewInvoiceForm = (
     if (!proj) return null;
     const bType = proj.billingType || proj.type;
     const fee = projectFee(proj);
-    const head = { ...base, clientId: proj.clientId || "", projectId: proj.id, entrySelections: {} };
+    const head = { ...base, mwst: projectMwst(proj, data.quotes || []), clientId: proj.clientId || "", projectId: proj.id, entrySelections: {} };
     /** Formular nach Stunden: alle offenen Einträge (bis heute, falls `untilToday`) gewählt, Zeile 1 folgt der Auswahl. */
     const fromHours = (kind: string, desc: string, untilToday: boolean): InvoiceForm => {
       const entries = openEntriesForProject(proj.id).filter(e => !untilToday || (e.date || "") <= todayStr);
@@ -69,11 +69,11 @@ export const buildNewInvoiceForm = (
     if (ni.mode === "teilrechnung") {
       form = fromHours("teilrechnung", `Teilrechnung – Architektur-/Grafikleistungen – ${proj.name}`, false);
     } else if (ni.mode === "teilrechnung-percent") {
-      form = single("teilrechnung", `Teilrechnung – ${proj.name} (${ni.pct.toFixed(1)}%)`, fee * (ni.pct / 100));
+      form = single("teilrechnung", `Teilrechnung – ${proj.name} (${formatPct(ni.pct)} %)`, fee * (ni.pct / 100));
     } else if (ni.mode === "teilrechnung-amount") {
       form = single("teilrechnung", `Teilrechnung – ${proj.name}`, ni.amt);
     } else if (ni.mode === "akonto-percent") {
-      form = single("akonto", `Akontorechnung – ${proj.name} (${ni.pct.toFixed(1)}%)`, fee * (ni.pct / 100));
+      form = single("akonto", `Akontorechnung – ${proj.name} (${formatPct(ni.pct)} %)`, fee * (ni.pct / 100));
     } else if (ni.mode === "akonto-amount") {
       form = single("akonto", `Akontorechnung – ${proj.name}`, ni.amt);
     } else if (ni.mode === "akonto-stunden") {
@@ -116,12 +116,12 @@ export const buildNewInvoiceForm = (
       if (d.items.length) notes = d.notes;
     } else if (ni.mode === "teilrechnung-percent") {
       invoiceKind = "teilrechnung";
-      items = [{ id: generateId(), desc: `Teilrechnung gemäss Offerte ${q.number} (${ni.pct.toFixed(1)}%)`, qty: 1, price: pctAmt, discount: 0 }];
+      items = [{ id: generateId(), desc: `Teilrechnung gemäss Offerte ${q.number} (${formatPct(ni.pct)} %)`, qty: 1, price: pctAmt, discount: 0 }];
     } else if (ni.mode === "teilrechnung-amount") {
       invoiceKind = "teilrechnung";
       items = [{ id: generateId(), desc: `Teilrechnung gemäss Offerte ${q.number}`, qty: 1, price: ni.amt, discount: 0 }];
     } else if (ni.mode === "akonto-percent") {
-      items = [{ id: generateId(), desc: `Akontorechnung gemäss Offerte ${q.number} (${ni.pct.toFixed(1)}%)`, qty: 1, price: pctAmt, discount: 0 }];
+      items = [{ id: generateId(), desc: `Akontorechnung gemäss Offerte ${q.number} (${formatPct(ni.pct)} %)`, qty: 1, price: pctAmt, discount: 0 }];
     } else {
       items = [{ id: generateId(), desc: `Akontorechnung gemäss Offerte ${q.number}`, qty: 1, price: ni.amt, discount: 0 }];
     }

@@ -3,7 +3,8 @@
 // Erwartete Werte von Hand nachgerechnet (Rechenweg jeweils im Kommentar).
 
 import { describe, expect, it } from "vitest";
-import { akontoPhasePlan, akontoPlanRows, buildAkontoInvoices, invoiceBillingSummary, invoiceForPrint, nextInvoiceNumber, calcTotal } from "./invoiceHelpers";
+import { akontoPhasePlan, akontoPlanRows, buildAkontoInvoices, invoiceBillingSummary, invoiceForPrint, nextInvoiceNumber, calcTotal, projectMwst, formatPct } from "./invoiceHelpers";
+import { buildNewInvoiceForm } from "./newInvoiceForm";
 import type { AkontoPlan } from "./invoiceHelpers";
 import type { AppData, Invoice, Project, Quote } from "../../types";
 
@@ -168,5 +169,28 @@ describe("calcTotal: Gutschrift mit Betragsrabatt", () => {
     const t = calcTotal([{ id: "a", desc: "", qty: 1, price: -1000, discount: 0 }], true, 8.1, "amount", 100);
     expect(t.subAfterDisc).toBe(-900);
     expect(t.total).toBe(-972.9);
+  });
+});
+
+describe("projectMwst / formatPct / Projekt-Reiter ohne MWST", () => {
+  const proj = { id: "p1", name: "P", clientId: "c", type: "pauschal", budget: 185550.5, linkedQuotes: [{ quoteId: "q1" }] } as never;
+  const q = (mwst: boolean) => [{ id: "q1", mwst, number: "O-1" }] as never;
+  it("leitet die MWST-Pflicht aus den verknüpften Offerten ab", () => {
+    expect(projectMwst(proj, q(false))).toBe(false);
+    expect(projectMwst(proj, q(true))).toBe(true);
+    expect(projectMwst(proj, [])).toBe(true);
+    expect(projectMwst(undefined, q(false))).toBe(true);
+  });
+  it("formatiert Prozent ohne Rundungsverlust", () => {
+    expect(formatPct(33.33)).toBe("33.33");
+    expect(formatPct(30)).toBe("30");
+    expect(formatPct(12.5)).toBe("12.5");
+  });
+  it("Akonto im Projekt-Reiter folgt der Offerte ohne MWST und zeigt 33.33 %", () => {
+    const data = { settings: { mwstRate: 8.1 }, quotes: q(false), projects: [proj], timeEntries: [], invoices: [] } as never;
+    const ni = { tab: "projekt", projectId: "p1", mode: "akonto-percent", pct: 33.33, amt: 0 } as never;
+    const r = buildNewInvoiceForm(ni, data, [], "R-1", () => [])!;
+    expect(r.form!.mwst).toBe(false);
+    expect(r.form!.items[0].desc).toContain("(33.33 %)");
   });
 });

@@ -23,6 +23,7 @@
 
 import { applyEdit, jsonEqual } from "../storage/merge";
 import React, { useState, useEffect, useRef } from "react";
+import { nextRoleId, renameQuoteRole } from "./quoteRoles";
 import { SIA_PHASES, SIA_PHASE_WEIGHTS } from "../constants";
 import { calcSIAHours, calcManualHours, generateId, formatCHF, formatDate, formatHours, roundCHF, lineAmount, applyProjectNumberFormat, nextProjectSeq, migrateLinkedQuotes, localISODate, invoiceNet, quoteBudgetFields } from "../utils";
 import { invoicesForQuote } from "./invoices/invoiceHelpers";
@@ -82,6 +83,8 @@ function Quotes({ data, update, saveAll, modal, setModal, setPrintContent, setVi
   };
   const [form, setForm] = useState<QuoteForm>(emptyForm);
   const [filter, setFilter] = useState(() => { const cid = window.__navClientId || ""; window.__navClientId = null; return { status: "", search: "", clientId: cid, year: "" }; });
+  /** Eingabe im Rollen-Kürzel, solange sie (leer/doppelt) nicht übernommen werden kann; das gespeicherte Kürzel bleibt stabil. */
+  const [roleDraft, setRoleDraft] = useState<{ idx: number; text: string } | null>(null);
   const [groupBy, setGroupBy] = useState("none");
   const [sort, setSort] = useState({ col: "date", dir: -1 });
   const compact = true;
@@ -765,8 +768,7 @@ function Quotes({ data, update, saveAll, modal, setModal, setPrintContent, setVi
                     </button>
                     <button className="btn btn-ghost" style={{ fontSize: 11, padding: "3px 10px" }}
                       onClick={() => {
-                        const newId = "R" + (form.quoteRoles.length + 1);
-                        setForm(f => ({ ...f, quoteRoles: [...f.quoteRoles, { id: newId, label: "Neue Rolle", rate: 120 }] }));
+                        setForm(f => ({ ...f, quoteRoles: [...f.quoteRoles, { id: nextRoleId(f.quoteRoles), label: "Neue Rolle", rate: 120 }] }));
                       }}>
                       + Rolle
                     </button>
@@ -786,8 +788,17 @@ function Quotes({ data, update, saveAll, modal, setModal, setPrintContent, setVi
                       <tr key={idx} style={{ borderBottom: "1px solid #f0e8d8" }}>
                         <td style={{ padding: "3px 6px" }}>
                           <input
-                            value={r.id}
-                            onChange={e => setForm(f => ({ ...f, quoteRoles: f.quoteRoles.map((x, i) => i === idx ? { ...x, id: e.target.value.toUpperCase().slice(0,4) } : x) }))}
+                            value={roleDraft?.idx === idx ? roleDraft.text : r.id}
+                            onChange={e => {
+                              const text = e.target.value.toUpperCase().slice(0, 4);
+                              setRoleDraft({ idx, text });
+                              // Kürzel nur übernehmen, wenn nicht leer und eindeutig; die Stunden wandern mit
+                              setForm(f => {
+                                const res = renameQuoteRole(f.quoteRoles, f.manualPhases, idx, text);
+                                return res ? { ...f, ...res } : f;
+                              });
+                            }}
+                            onBlur={() => setRoleDraft(null)}
                             style={{ width: 52, height: 26, fontSize: 12, fontWeight: 600, textAlign: "center", border: "1px solid var(--border)", background: "var(--surface)" }}
                             maxLength={4}
                           />

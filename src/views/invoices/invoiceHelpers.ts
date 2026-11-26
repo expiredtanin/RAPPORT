@@ -157,12 +157,23 @@ export const projectBillingStatus = (invoices: Invoice[], projectId: string, fee
   };
 };
 
+/**
+ * MWST-Pflicht der Rechnungen eines Projekts: wie die verknüpften Offerten — sind sie alle ohne MWST
+ * (z.B. Ausland), auch die Rechnungen ohne; ohne verknüpfte Offerte (oder ohne Projekt) mit MWST.
+ */
+export const projectMwst = (proj: Project | undefined | null, quotes: Quote[]): boolean => {
+  const linkedQ = proj ? migrateLinkedQuotes(proj).map(lq => quotes.find(q => q.id === lq.quoteId)).filter((q): q is Quote => !!q) : [];
+  return !(linkedQ.length > 0 && linkedQ.every(q => q.mwst === false));
+};
+
+/** Prozentwert für Positionstexte: bis 2 Nachkommastellen, ohne nachgestellte Nullen, de-CH (33.33 → «33.33», 30 → «30»). */
+export const formatPct = (pct: number) =>
+  (Math.round((pct || 0) * 100) / 100).toLocaleString("de-CH", { maximumFractionDigits: 2 });
+
 /** Baut aus den Raten des Akonto-Plans die Entwurfs-Rechnungen (Akonto, 30 Tage Zahlungsfrist). */
 export const buildAkontoInvoices = (rows: AkontoPlanRow[], ap: AkontoPlan, data: AppData, invoices: Invoice[]) => {
   const proj = data.projects.find(p => p.id === ap.projectId);
-  // MWST wie die verknüpften Offerten: sind sie alle ohne MWST (z.B. Ausland), auch die Raten ohne
-  const linkedQ = proj ? migrateLinkedQuotes(proj).map(lq => (data.quotes || []).find(q => q.id === lq.quoteId)).filter(Boolean) : [];
-  const mwst = !(linkedQ.length > 0 && linkedQ.every(q => q!.mwst === false));
+  const mwst = projectMwst(proj, data.quotes || []);
   const numbers = generateSequentialNumbers(invoices, data.settings.invoiceNumberFormat, rows.map(r => r.date));
   return rows.map((row, i) => {
     const due = new Date(`${row.date}T00:00:00Z`); due.setUTCDate(due.getUTCDate() + 30);
