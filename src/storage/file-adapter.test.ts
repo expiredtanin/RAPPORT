@@ -306,3 +306,31 @@ describe("Datenordner: Zeitdatei von iCloud ausgelagert", () => {
     await expect(new FileStorageAdapter(dir, nodeFs, "C").load()).rejects.toThrow(/beschädigt/);
   });
 });
+
+describe("Datenordner: Robustheit (Runde 37)", () => {
+  it("ungültiges Base64 in einem Anhang blockiert das Speichern nicht", async () => {
+    const a = new FileStorageAdapter(dir, nodeFs, "test");
+    const d = sampleData();
+    const bad = "data:application/pdf;base64," + "%%%".repeat(1000);
+    await a.save({ ...d, expenses: [{ ...d.expenses[0], receiptData: bad }] });
+    const studio = JSON.parse(await readFile(join(dir, "studio.json"), "utf8"));
+    expect(studio.data.expenses[0].receiptData).toBe(bad);
+    await a.save({ ...d, settings: { ...d.settings, name: "Weiter speicherbar" }, expenses: [{ ...d.expenses[0], receiptData: bad }] });
+    expect(JSON.parse(await readFile(join(dir, "studio.json"), "utf8")).data.settings.name).toBe("Weiter speicherbar");
+  });
+
+  it("Zurücksetzen sichert auch, was das andere Gerät inzwischen schrieb, und entfernt alle Zeitdateien", async () => {
+    const a = new FileStorageAdapter(dir, nodeFs, "A");
+    await a.save(sampleData());
+    const b = new FileStorageAdapter(dir, nodeFs, "B");
+    const loaded = (await b.load())!;
+    await b.save({ ...(loaded as AppData), timeEntries: [...(loaded.timeEntries || []), { id: "t2", date: "2026-11-03", employeeId: "e2", minutes: 30 } as never] });
+    await a.clear();
+    const backups = (await readdir(join(dir, "backups"))).filter(n => n.startsWith("vor-zuruecksetzen-"));
+    expect(backups).toHaveLength(1);
+    const snap = await readFile(join(dir, "backups", backups[0]), "utf8");
+    expect(snap).toContain("t2");
+    const time = await readdir(join(dir, "time")).catch(() => [] as string[]);
+    expect(time.filter(n => n.endsWith(".json"))).toHaveLength(0);
+  });
+});

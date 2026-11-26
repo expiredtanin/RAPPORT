@@ -316,12 +316,17 @@ export class FileStorageAdapter implements StorageAdapter {
   /** Sichert den aktuellen Stand nach backups/ und entfernt danach die Datendateien (Zurücksetzen). */
   async clear() {
     await this.flush();
+    // erst fremde Änderungen einlesen — sonst fehlte im Backup, was das andere Gerät inzwischen geschrieben hat
+    // (Datenordner-Test Runde 36); ein Lesefehler verhindert das Zurücksetzen nicht
+    await this.checkExternal().catch(() => {});
     const data = this.snapshot();
     if (data) {
       await this.fs.mkdir(this.path("backups"));
       await this.writeAtomic(this.path(`backups/vor-zuruecksetzen-${new Date().toISOString().replace(/[:.]/g, "-")}.json`), JSON.stringify(data));
     }
-    for (const name of this.known.keys()) await this.fs.remove(this.path(name)).catch(() => {});
+    // alle Datendateien entfernen, auch hier unbekannte (sonst tauchten deren Stunden nach dem Zurücksetzen wieder auf)
+    const names = new Set([...this.known.keys(), ...(await this.dataNames().catch(() => ({ names: [] as string[] }))).names]);
+    for (const name of names) await this.fs.remove(this.path(name)).catch(() => {});
     this.known.clear();
   }
 

@@ -229,7 +229,9 @@ export class FileAssetStore {
     if (cached) return cached;
     const m = DATA_URL_RE.exec(url)!;
     const mime = (m[1] || "application/octet-stream").toLowerCase();
-    const bytes = base64ToBytes(url.slice(m[0].length));
+    // ungültiges Base64 (fehlerhafter Import) blockierte sonst jedes weitere Speichern → Wert unverändert lassen
+    let bytes: Uint8Array;
+    try { bytes = base64ToBytes(url.slice(m[0].length)); } catch { return url; }
     const hash = (await sha256Hex(bytes)).slice(0, 12);
     const name = originalName(parent);
     const hint = name ? safeName(name) : "";
