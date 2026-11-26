@@ -21,11 +21,10 @@ type Mode = "projekte" | "mitarbeitende" | "auslastung";
 
 export default function Schedules({ data, update, setView, onSelectProject, userPermissions = null, myEmployeeId = "" }: Pick<ViewProps, "data" | "update" | "setView"> & {
   onSelectProject: (projectId: string) => void;
-  /** Rechte (null = alle): Absenzart fremder Personen nur mit Recht «mitarbeiter» (Gesundheitsdaten, Runde 38) */
+  /** Rechte (null = alle); Absenzart (auch Krankheit) sehen alle (Entscheid 26.11.2026), Notizen erscheinen hier nicht */
   userPermissions?: string[] | null;
   myEmployeeId?: string;
 }) {
-  const seeAbsType = (empId: string) => !userPermissions || userPermissions.includes("mitarbeiter") || (!!myEmployeeId && empId === myEmployeeId);
   const today = localISODate();
   const [mode, setMode] = useState<Mode>("projekte");
   const [tracks, setTracks] = useState<ScheduleTrack[]>(["planung", "bau"]);
@@ -82,15 +81,14 @@ export default function Schedules({ data, update, setView, onSelectProject, user
         if (a.employeeId !== emp.id || a.status === "rejected") continue;
         const start = a.dateFrom || a.date, end = a.dateTo || a.date;
         if (!start || !end || end < addDays(today, -60)) continue;
-        off.push({ id: `abs|${a.id}`, label: seeAbsType(emp.id) ? (absenzTypes.find(t => t.id === a.type)?.label || a.type || "Absenz") : "Abwesend", kind: "task", track: "planung", group: emp.name, start, end });
+        off.push({ id: `abs|${a.id}`, label: absenzTypes.find(t => t.id === a.type)?.label || a.type || "Absenz", kind: "task", track: "planung", group: emp.name, start, end });
       }
       // Nur eigene Arbeit zählt: Terminserien (z.B. Bausitzung über Monate), Leistungen Dritter und Reserven
       // würden sonst jeden Tag als belegt melden.
       const ranges = tasks.filter(t => t.kind === "task" && !t.variant);
       return { emp, tasks, off, overlap: overlapDays(ranges), blocked: blockedDays(ranges, off) };
     });
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- seeAbsType hängt nur an userPermissions/myEmployeeId
-  }, [data, onlyActive, tracks, today, absenzTypes, userPermissions, myEmployeeId]);
+  }, [data, onlyActive, tracks, today, absenzTypes]);
 
   const personItems = people.flatMap(p => [...p.tasks, ...p.off].sort((a, b) => a.start.localeCompare(b.start)));
   for (const it of [...projectItems, ...personItems]) {
