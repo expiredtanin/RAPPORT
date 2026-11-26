@@ -543,6 +543,18 @@ export function isoWeekMonday(year: number, kw: number): DateStr {
   return numToDate(Math.round(jan4 / DAY) - dow + (kw - 1) * 7);
 }
 
+/**
+ * Jahr zu einer eingegebenen KW, bezogen auf ein Datum (Protokolldatum): liegt die KW mehr als 8 Wochen vor der
+ * KW des Datums, ist das nächste Jahr gemeint (im Dezember «KW 2»). Rechnet mit dem ISO-Wochenjahr (1.1.2027 = KW 53/2026).
+ */
+export function kwDueYear(kw: number, refDate: DateStr): number {
+  const d = dayNum(refDate);
+  const thursday = d - ((new Date(d * DAY).getUTCDay() + 6) % 7) + 3;
+  const isoYear = new Date(thursday * DAY).getUTCFullYear();
+  const refKW = Math.floor((thursday - dayNum(isoWeekMonday(isoYear, 1))) / 7) + 1;
+  return kw < refKW - 8 ? isoYear + 1 : isoYear;
+}
+
 /** Frist einer Protokoll-Aufgabe: Datum oder Freitag der KW; null = keine Frist. */
 export function entryDue(e: Pick<ProtocolEntry, "dueDateType" | "dueDate" | "dueKW" | "dueYear">, fallbackYear: number): DateStr | null {
   if ((e.dueDateType || "kw") === "datum") return e.dueDate ? e.dueDate.slice(0, 10) : null;

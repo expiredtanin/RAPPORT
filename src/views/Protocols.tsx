@@ -19,13 +19,13 @@
 
 import React, { useState, useEffect, useRef } from "react";
 import { PROTOKOLL_TYPES } from "../constants";
-import { generateId, formatDate, htmlToText, initialsOf, participantKuerzel, responsibleLabel, protocolApproval, nextProtoNumber, protoScopeKey, protoSeqOf, applyProtoNumberFormat, localISODate, getWeekNumber } from "../utils";
+import { generateId, formatDate, htmlToText, initialsOf, participantKuerzel, responsibleLabel, protocolApproval, nextProtoNumber, protoScopeKey, protoSeqOf, applyProtoNumberFormat, localISODate } from "../utils";
 import { TableToolbar, Header, Modal, FormField, RichEditor, DateInput, ShareButton, SortTh, RowMenu, EmptyState } from "../components/UI";
 import { useConfirm } from "../hooks/useConfirm";
 import { applyEdit, jsonEqual } from "../storage/merge";
 import { changeWithUndo, removeWithUndo } from "../undo";
 import { openTasks, type OpenTask } from "../today";
-import { setLinkedStatus, baselineChanges, entryDue, glyphOf, scheduleOf, TRACK_LABELS, trackItems, upcomingItems } from "../schedule";
+import { setLinkedStatus, baselineChanges, entryDue, kwDueYear, glyphOf, scheduleOf, TRACK_LABELS, trackItems, upcomingItems } from "../schedule";
 import type { AppData, Protocol, ProtocolApproval, ProtocolEntry, ProtocolParticipant, ProtocolTraktandum, ViewProps } from "../types";
 
 /** Auswahl im Dialog «Folgesitzung erstellen»: pro Traktandum, welche Einträge übernommen werden. */
@@ -90,32 +90,10 @@ function Protokolle({ data, saveAll, setPrintContent, modal, setModal }: Pick<Vi
       createdAt: new Date().toISOString(),
     };
     freshRef.current.set(p.id, p);
-    saveAll({ ...data, protocols: [...protokolle, p] });
+    leaveDetailRef.current();   // offenes Protokoll erst verlassen (speichern bzw. unberührtes entfernen) — Review R31
+    saveAll(prev => ({ ...prev, protocols: [...(prev.protocols || []), p] }));
     setDetailId(p.id);
   };
-
-  // Protokoll öffnen, während diese Ansicht schon offen ist (Befehlspalette, «Heute», Projekt): App.tsx wechselt
-  // nur die Ansicht, die hier schon gemountet ist — ohne diesen Empfänger bliebe die Liste bzw. das alte Protokoll.
-  useEffect(() => {
-    const onOpen = (e: Event) => {
-      const id = (e as CustomEvent<{ id?: string }>).detail?.id;
-      if (!id) return;
-      setDetailId(id);
-      setTimeout(() => { if (window.__openProtokoll === id) window.__openProtokoll = null; });
-    };
-    window.addEventListener("openProtokoll", onOpen);
-    return () => window.removeEventListener("openProtokoll", onOpen);
-  }, []);
-
-  // Befehlspalette (App.tsx): «Neues Protokoll»
-  /* eslint-disable react-hooks/set-state-in-effect -- einmalige Übergabe aus der Befehlspalette */
-  useEffect(() => {
-    if (modal?.type !== "newProtocol") return;
-    setModal?.(null);
-    newProtokoll((modal.projectId as string) || "");
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- nur auf neue Aufträge reagieren
-  }, [modal?.type]);
-  /* eslint-enable react-hooks/set-state-in-effect */
 
   // Ansicht verlassen (Seitenleiste, Befehlspalette): ein unberührtes neues Protokoll ebenfalls entfernen
   const leaveRef = useRef({ detailId, data, saveAll });
@@ -142,6 +120,30 @@ function Protokolle({ data, saveAll, setPrintContent, modal, setModal }: Pick<Vi
   const leaveDetailRef = useRef(leaveDetail);
   useEffect(() => { leaveDetailRef.current = leaveDetail; });
   useEffect(() => () => leaveDetailRef.current(), []);
+
+  // Befehlspalette (App.tsx): «Neues Protokoll»
+  /* eslint-disable react-hooks/set-state-in-effect -- einmalige Übergabe aus der Befehlspalette */
+  useEffect(() => {
+    if (modal?.type !== "newProtocol") return;
+    setModal?.(null);
+    newProtokoll((modal.projectId as string) || "");
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- nur auf neue Aufträge reagieren
+  }, [modal?.type]);
+  /* eslint-enable react-hooks/set-state-in-effect */
+
+  // Protokoll öffnen, während diese Ansicht schon offen ist (Befehlspalette, «Heute», Projekt): App.tsx wechselt
+  // nur die Ansicht, die hier schon gemountet ist — ohne diesen Empfänger bliebe die Liste bzw. das alte Protokoll.
+  useEffect(() => {
+    const onOpen = (e: Event) => {
+      const id = (e as CustomEvent<{ id?: string }>).detail?.id;
+      if (!id) return;
+      if (leaveRef.current.detailId && leaveRef.current.detailId !== id) leaveDetailRef.current();
+      setDetailId(id);
+      setTimeout(() => { if (window.__openProtokoll === id) window.__openProtokoll = null; });
+    };
+    window.addEventListener("openProtokoll", onOpen);
+    return () => window.removeEventListener("openProtokoll", onOpen);
+  }, []);
 
   // «Protokolle» in der Seitenleiste, während ein Protokoll offen ist: zurück zur Liste (wie der Zurück-Pfeil)
   useEffect(() => {
@@ -171,7 +173,7 @@ function Protokolle({ data, saveAll, setPrintContent, modal, setModal }: Pick<Vi
       // länger offenes Protokoll die ganze alte Kopie zurück und verwarf Änderungen anderer (Cloud-Test Runde 21)
       onSave={(p, base) => { saveAll(prev => ({ ...prev, protocols: (prev.protocols || []).map(x => x.id === p.id ? applyEdit(base, p, x) : x) })); }}
       onDelete={id => { saveAll(prev => ({ ...prev, protocols: (prev.protocols || []).filter(x => x.id !== id) })); setDetailId(null); }}
-      onOpen={setDetailId}
+      onOpen={id => { if (id !== detail.id) leaveDetail(); setDetailId(id); }}
       setPrintContent={setPrintContent}
       saveAll={saveAll}
     />;
@@ -309,8 +311,10 @@ function Protokolle({ data, saveAll, setPrintContent, modal, setModal }: Pick<Vi
 
 
 export
-function ItemEditor({ item, pos, handle, today, whoListId, onUpdate, onRemove }: {
+function ItemEditor({ item, pos, handle, today, refDate, whoListId, onUpdate, onRemove }: {
   tId?: string; item: ProtocolEntry; pos: string; handle: React.ReactNode; today: string;
+  /** Protokolldatum: Bezug für das Jahr einer eingegebenen KW */
+  refDate?: string;
   /** id der <datalist> mit den Teilnehmer-Kürzeln für das Feld «Wer» */
   whoListId?: string;
   onUpdate: (changes: Partial<ProtocolEntry>) => void; onRemove: () => void;
@@ -318,6 +322,8 @@ function ItemEditor({ item, pos, handle, today, whoListId, onUpdate, onRemove }:
   // Art der Position als Buchstabe (wie im gedruckten Protokoll): I = Information, B = Beschluss, A = Aufgabe.
   const kinds = [["info", "I", "Information"], ["beschluss", "B", "Beschluss"], ["aufgabe", "A", "Aufgabe"]] as const;
   const year = new Date().getFullYear();
+  // Jahr von Hand gesetzt → die KW-Eingabe ändert es nicht mehr
+  const yearTouched = useRef(false);
   const changeKind = (type: string) => {
     if (type === item.type) return;
     // Felder der neuen Art vorbelegen, vorhandene Werte (z.B. beim Zurückwechseln) bleiben erhalten
@@ -364,12 +370,11 @@ function ItemEditor({ item, pos, handle, today, whoListId, onUpdate, onRemove }:
               <>
                 <input type="number" min={1} max={53} value={item.dueKW || ""} onChange={e => {
                   const kw = e.target.value === "" ? "" : String(Math.max(1, Math.min(53, Math.round(+e.target.value) || 1)));
-                  // KW weit vor der aktuellen (im Dezember «KW 2») meint das nächste Jahr — sonst sofort «überfällig» (Runde 30)
-                  const nowKW = getWeekNumber(localISODate());
-                  const yr = item.dueYear || year;
-                  onUpdate({ dueKW: kw, ...(kw && yr === year && +kw < nowKW - 8 ? { dueYear: year + 1 } : {}) });
+                  // Jahr aus KW und Protokolldatum (im Dezember «KW 2» = nächstes Jahr), bei jedem Tastendruck neu —
+                  // «5» → «50» springt so wieder zurück; ein von Hand gesetztes Jahr bleibt (Review R31)
+                  onUpdate({ dueKW: kw, ...(kw && !yearTouched.current ? { dueYear: kwDueYear(+kw, refDate || today) } : {}) });
                 }} placeholder="KW" style={{ ...small, width: 60 }} />
-                <input type="number" min={2024} max={2035} value={item.dueYear || year} onChange={e => onUpdate({ dueYear: +e.target.value })} style={{ ...small, width: 72 }} />
+                <input type="number" min={2024} max={2035} value={item.dueYear || year} onChange={e => { yearTouched.current = true; onUpdate({ dueYear: +e.target.value }); }} style={{ ...small, width: 72 }} />
               </>
             ) : (
               <DateInput value={item.dueDate || ""} onChange={e => onUpdate({ dueDate: e.target.value })} style={{ ...small, width: 140 }} />
@@ -798,6 +803,7 @@ function ProtokollDetail({ protokoll, data, onBack, onSave, onDelete, onOpen, se
                               onMouseDown={e => { e.preventDefault(); startDragItem(t.id, ii); }}>⠿</div>
                           }
                           today={today}
+                          refDate={p.date || today}
                           whoListId={`wer-${p.id}`}
                           onUpdate={changes => setItem(t.id, item.id, changes)}
                           onRemove={() => removeItem(t.id, item.id)}

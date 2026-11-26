@@ -3,7 +3,7 @@
 import { describe, expect, it } from "vitest";
 import {
   addDays, formatDuration, constructionTemplate, criticalPath, dayNum, dependencyConflicts, durationDays, groupSpans,
-  phaseProgress, planningTemplate, scheduleOf, shiftSuccessors, wouldCreateCycle, baselineDelta, overlapDays, blockedDays,
+  phaseProgress, planningTemplate, scheduleOf, shiftSuccessors, kwDueYear, wouldCreateCycle, baselineDelta, overlapDays, blockedDays,
   markerOf, glyphOf, seriesDates, breaksOf,
   emptyRow, isPlaced, moveRow, stepRow, displayOrder, rowDropTarget, drawnSpan, dayAtX, removeScheduleItem, restoreScheduleItem, scheduleRange,
   entryDue, isoWeekMonday, protocolSuggestions, suggestionToItem, linkedEntry, isDone, setLinkedStatus, seriesSessions, upcomingItems, baselineChanges,
@@ -326,5 +326,19 @@ describe("Zeilen bearbeiten (Editor)", () => {
     expect(ids(restored)).toEqual(["a", "b", "c", "d"]);
     expect(restored[2]).toMatchObject({ label: "C neu", deps: [{ fromId: "b" }] });
     expect(restoreScheduleItem(restored, before, "b")).toBe(restored); // schon da
+  });
+});
+
+describe("kwDueYear (Review R31)", () => {
+  it("KW weit vor dem Protokolldatum = nächstes Jahr", () => {
+    expect(kwDueYear(2, "2026-12-10")).toBe(2027);
+    expect(kwDueYear(5, "2026-11-26")).toBe(2027);
+    expect(kwDueYear(50, "2026-11-26")).toBe(2026);
+    expect(kwDueYear(45, "2026-11-26")).toBe(2026);
+  });
+  it("Bezug ist das Protokolldatum, nicht heute; ISO-Wochenjahr um Neujahr", () => {
+    expect(kwDueYear(12, "2026-03-10")).toBe(2026);
+    expect(kwDueYear(2, "2027-01-01")).toBe(2027);   // 1.1.2027 = KW 53/2026
+    expect(kwDueYear(3, "2026-01-05")).toBe(2026);
   });
 });
