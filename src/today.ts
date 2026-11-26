@@ -62,6 +62,24 @@ export function timerToEntry(t: RunningTimer, now: Date, id: Id): TimeEntry | nu
   };
 }
 
+/**
+ * Wie `timerToEntry`, aber über Mitternacht in zwei Einträge geteilt (Vortag bis 23:59, heute ab 00:00 — vorher fehlte
+ * der Rest still, Runde 30). Lief die Stoppuhr über mehr als einen Tageswechsel (vergessen), bleibt es beim ersten
+ * Tag und `truncated` meldet das.
+ */
+export function timerToEntries(t: RunningTimer, now: Date, newId: () => Id): { entries: TimeEntry[]; truncated: boolean } {
+  const first = timerToEntry(t, now, newId());
+  const start = new Date(t.start);
+  if (Number.isNaN(start.getTime())) return { entries: [], truncated: false };
+  const startDay = new Date(start.getFullYear(), start.getMonth(), start.getDate());
+  const nowDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const nextDay = new Date(startDay.getFullYear(), startDay.getMonth(), startDay.getDate() + 1);
+  if (nowDay.getTime() === startDay.getTime()) return { entries: first ? [first] : [], truncated: false };
+  if (nowDay.getTime() !== nextDay.getTime()) return { entries: first ? [first] : [], truncated: true };
+  const second = timerToEntry({ ...t, start: nowDay.toISOString() }, now, newId());
+  return { entries: [first, second].filter((e): e is TimeEntry => !!e), truncated: false };
+}
+
 /** localStorage-Schlüssel der Stoppuhr (pro Gerät, ARCHITECTURE §4). */
 export const TIMER_KEY = "rapport_timer";
 

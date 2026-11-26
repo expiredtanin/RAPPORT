@@ -42,6 +42,12 @@ describe("shiftSuccessors", () => {
     expect(out[3]).toMatchObject({ start: "2026-02-05", end: "2026-02-09" }); // m + 7 Tage
   });
 
+  it("Vorgänger ohne Datum hebt die Verschiebung durch einen echten nicht auf (Runde 30)", () => {
+    const items = [task("a", "2026-03-01", "2026-03-10"), task("leer", "", ""), task("b", "2026-03-05", "2026-03-06", [{ fromId: "a" }, { fromId: "leer" }])];
+    const out = shiftSuccessors(items);
+    expect(out[2].start > "2026-03-10").toBe(true);
+  });
+
   it("zieht nie nach vorne und lässt auto=false stehen", () => {
     const items = [
       task("a", "2026-01-05", "2026-01-09"),

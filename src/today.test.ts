@@ -1,6 +1,6 @@
 // Tests für «Heute»: Stoppuhr → Zeiteintrag, offene Pendenzen, Agenda, Phasenleiste.
 import { describe, expect, it } from "vitest";
-import { formatElapsed, openTasks, parseTimer, phaseStrip, timerToEntry, weekAgenda } from "./today";
+import { formatElapsed, openTasks, parseTimer, phaseStrip, timerToEntries, timerToEntry, weekAgenda } from "./today";
 import { setLinkedStatus } from "./schedule";
 import type { AppData, Protocol } from "./types";
 
@@ -91,5 +91,23 @@ describe("phaseStrip", () => {
   it("aktuelle Phase = Phase des neuesten Eintrags", () => {
     const r = phaseStrip({ enabledPhases: ["31", "32", "33"], status: "aktiv" }, [{ phaseId: "31", date: "2026-01-01" }, { phaseId: "32", date: "2026-03-01" }]);
     expect(r.map(p => p.state)).toEqual(["done", "current", "open"]);
+  });
+});
+
+describe("timerToEntries (Runde 30)", () => {
+  const t = { employeeId: "e1", projectId: "p1", start: new Date(2026, 10, 19, 22, 51).toISOString() };
+  let n = 0; const id = () => `id${++n}`;
+  it("über Mitternacht in zwei Einträge geteilt", () => {
+    const r = timerToEntries(t, new Date(2026, 10, 20, 0, 21), id);
+    expect(r.truncated).toBe(false);
+    expect(r.entries.map(e => [e.date, e.startTime, e.endTime])).toEqual([["2026-11-19", "22:51", "23:59"], ["2026-11-20", "00:00", "00:21"]]);
+  });
+  it("am selben Tag ein Eintrag", () => {
+    expect(timerToEntries(t, new Date(2026, 10, 19, 23, 30), id).entries).toHaveLength(1);
+  });
+  it("mehrere Tage: nur der erste, als abgeschnitten gemeldet", () => {
+    const r = timerToEntries(t, new Date(2026, 10, 22, 9, 0), id);
+    expect(r.entries).toHaveLength(1);
+    expect(r.truncated).toBe(true);
   });
 });

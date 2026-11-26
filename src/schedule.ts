@@ -247,7 +247,9 @@ export function shiftSuccessors(items: ScheduleItem[]): ScheduleItem[] {
       for (const d of succ.deps || []) {
         if (d.auto === false) continue;
         const pred = byId.get(d.fromId);
-        if (pred) need = Math.max(need, earliestAfter(pred, d.lagDays));
+        // Vorgänger ohne Datum (leere Zeile) ergibt NaN und hob sonst die ganze Verschiebung auf (Runde 30)
+        const after = pred ? earliestAfter(pred, d.lagDays) : NaN;
+        if (Number.isFinite(after)) need = Math.max(need, after);
       }
       const delta = need - dayNum(succ.start);
       if (delta > 0) {

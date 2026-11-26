@@ -19,7 +19,7 @@
 
 import React, { useState, useEffect, useRef } from "react";
 import { PROTOKOLL_TYPES } from "../constants";
-import { generateId, formatDate, htmlToText, initialsOf, participantKuerzel, responsibleLabel, protocolApproval, nextProtoNumber, protoScopeKey, protoSeqOf, applyProtoNumberFormat, localISODate } from "../utils";
+import { generateId, formatDate, htmlToText, initialsOf, participantKuerzel, responsibleLabel, protocolApproval, nextProtoNumber, protoScopeKey, protoSeqOf, applyProtoNumberFormat, localISODate, getWeekNumber } from "../utils";
 import { TableToolbar, Header, Modal, FormField, RichEditor, DateInput, ShareButton, SortTh, RowMenu, EmptyState } from "../components/UI";
 import { useConfirm } from "../hooks/useConfirm";
 import { applyEdit, jsonEqual } from "../storage/merge";
@@ -42,11 +42,6 @@ declare global {
 }
 
 
-/** Neues Protokoll, an dem noch nichts eingetragen wurde (kein Titel, Ort, Teilnehmer, Traktandum, Eintrag). */
-function isUntouchedProtocol(p: Protocol | undefined): boolean {
-  return !!p && !p.title?.trim() && !(p.participants || []).length && !(p.location || "").trim()
-    && (p.traktanden || []).every(t => !t.title?.trim() && !(t.items || []).length);
-}
 export default
 function Protokolle({ data, saveAll, setPrintContent, modal, setModal }: Pick<ViewProps, "data" | "update" | "saveAll" | "setPrintContent"> & Partial<Pick<ViewProps, "modal" | "setModal">>) {
   const today = localISODate();
@@ -94,6 +89,7 @@ function Protokolle({ data, saveAll, setPrintContent, modal, setModal }: Pick<Vi
       verteiler: "",
       createdAt: new Date().toISOString(),
     };
+    freshRef.current.set(p.id, p);
     saveAll({ ...data, protocols: [...protokolle, p] });
     setDetailId(p.id);
   };
@@ -127,6 +123,8 @@ function Protokolle({ data, saveAll, setPrintContent, modal, setModal }: Pick<Vi
   // Entwurf des offenen Protokolls (vom Detail gemeldet): beim Verlassen wird Ungespeichertes gespeichert statt
   // verworfen (vorher war ein geänderter Titel nach Zurück/Seitenleiste weg), Unberührtes entfernt
   const draftRef = useRef<{ p: Protocol; dirty: boolean; base: Protocol } | null>(null);
+  // in dieser Ansicht neu angelegte Protokolle mit Anfangsstand (nur sie werden unberührt wieder entfernt)
+  const freshRef = useRef(new Map<string, Protocol>());
   const leaveDetail = () => {
     const { detailId: id, data: d, saveAll: save } = leaveRef.current;
     if (!id) return;
@@ -134,9 +132,11 @@ function Protokolle({ data, saveAll, setPrintContent, modal, setModal }: Pick<Vi
     const draft = draftRef.current?.p.id === id ? draftRef.current : null;
     draftRef.current = null;
     const cur = draft ? draft.p : list.find(x => x.id === id);
-    // entfernen nur, wenn auch der gespeicherte Stand unberührt ist (ein bestehendes Protokoll mit geleertem Titel
-    // verschwand sonst ohne Rückfrage)
-    if (isUntouchedProtocol(cur) && isUntouchedProtocol(list.find(x => x.id === id))) save(prev => ({ ...prev, protocols: (prev.protocols || []).filter(x => x.id !== id) }));
+    // entfernen nur ein hier neu angelegtes Protokoll, das seither weder bearbeitet noch gespeichert wurde — vorher
+    // zählten Projekt, Verteiler, nächste Sitzung u.a. nicht als Eingabe und gingen mit dem Protokoll verloren (Runde 30)
+    const fresh = freshRef.current.get(id);
+    freshRef.current.delete(id);
+    if (cur && fresh && !draft?.dirty && jsonEqual(list.find(x => x.id === id), fresh)) save(prev => ({ ...prev, protocols: (prev.protocols || []).filter(x => x.id !== id) }));
     else if (draft?.dirty) save(prev => ({ ...prev, protocols: (prev.protocols || []).map(x => x.id === id ? applyEdit(draft.base, draft.p, x) : x) }));
   };
   const leaveDetailRef = useRef(leaveDetail);
@@ -362,7 +362,13 @@ function ItemEditor({ item, pos, handle, today, whoListId, onUpdate, onRemove }:
             </select>
             {(item.dueDateType || "kw") === "kw" ? (
               <>
-                <input type="number" min={1} max={53} value={item.dueKW || ""} onChange={e => onUpdate({ dueKW: e.target.value === "" ? "" : String(Math.max(1, Math.min(53, Math.round(+e.target.value) || 1))) })} placeholder="KW" style={{ ...small, width: 60 }} />
+                <input type="number" min={1} max={53} value={item.dueKW || ""} onChange={e => {
+                  const kw = e.target.value === "" ? "" : String(Math.max(1, Math.min(53, Math.round(+e.target.value) || 1)));
+                  // KW weit vor der aktuellen (im Dezember «KW 2») meint das nächste Jahr — sonst sofort «überfällig» (Runde 30)
+                  const nowKW = getWeekNumber(localISODate());
+                  const yr = item.dueYear || year;
+                  onUpdate({ dueKW: kw, ...(kw && yr === year && +kw < nowKW - 8 ? { dueYear: year + 1 } : {}) });
+                }} placeholder="KW" style={{ ...small, width: 60 }} />
                 <input type="number" min={2024} max={2035} value={item.dueYear || year} onChange={e => onUpdate({ dueYear: +e.target.value })} style={{ ...small, width: 72 }} />
               </>
             ) : (

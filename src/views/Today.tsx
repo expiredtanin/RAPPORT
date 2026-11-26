@@ -12,7 +12,7 @@ import { NON_BILLING_CATEGORIES, SIA_PHASES } from "../constants";
 import { formatCHF, formatHours, generateId, getKW, localISODate, yearRevenue } from "../utils";
 import { addDays, setLinkedStatus } from "../schedule";
 import { getFirstPhaseForProject } from "./time/timeUtils";
-import { formatElapsed, openTasks, readTimer, timerElapsedMs, timerToEntry, weekAgenda, writeTimer, type RunningTimer } from "../today";
+import { formatElapsed, openTasks, readTimer, timerElapsedMs, timerToEntries, weekAgenda, writeTimer, TIMER_KEY, type RunningTimer } from "../today";
 import { getSollForDay } from "./time/timeUtils";
 import { changeWithUndo } from "../undo";
 import { showToast } from "../toast";
@@ -49,6 +49,12 @@ export default function Today({ data, currentUser, userPermissions, run, onOpenP
   const [switching, setSwitching] = useState(false);
 
   const setTimer = (t: RunningTimer | null) => { writeTimer(t); setTimerState(t); };
+  // Stoppuhr in einem anderen Fenster gestartet/gestoppt (wie die Zeiterfassung) — sonst lief sie hier weiter
+  useEffect(() => {
+    const onStorage = (e: StorageEvent) => { if (e.key === TIMER_KEY) setTimerState(readTimer()); };
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, []);
   useEffect(() => {
     if (!timer) return;
     const iv = setInterval(() => setNow(new Date()), 1000);
@@ -60,22 +66,26 @@ export default function Today({ data, currentUser, userPermissions, run, onOpenP
   const phaseLabel = (pid: string, ph?: string) => projectPhases(data, pid).find(x => x.id === ph)?.label || "";
   const closed = data.settings.closedMonths || [];
 
-  /** Stoppt die Stoppuhr und schreibt den Eintrag (mit Rückgängig). */
-  const stop = (t: RunningTimer) => {
-    const raw = timerToEntry(t, new Date(), generateId());
+  /** Stoppt die Stoppuhr und schreibt den Eintrag (mit Rückgängig). false = Stoppuhr läuft weiter (Monat abgeschlossen). */
+  const stop = (t: RunningTimer): boolean => {
+    const { entries: raws, truncated } = timerToEntries(t, new Date(), generateId);
     // abgeschlossener Monat: Stoppuhr weiterlaufen lassen statt die Zeit zu verwerfen
-    if (raw && closed.includes(raw.date.slice(0, 7))) { showToast("Monat ist abgeschlossen — Eintrag nicht gespeichert, Stoppuhr läuft weiter (oben «Verwerfen»)"); return; }
+    if (raws.some(r => closed.includes(r.date.slice(0, 7)))) { showToast("Monat ist abgeschlossen — Eintrag nicht gespeichert, Stoppuhr läuft weiter (oben «Verwerfen»)"); return false; }
     setTimer(null);
-    if (!raw) { showToast("Weniger als eine Minute — nichts erfasst"); return; }
+    if (!raws.length) { showToast("Weniger als eine Minute — nichts erfasst"); return true; }
     // Ohne gewählte Phase die erste des Projekts (wie «+ Eintrag» in der Zeiterfassung) — sonst fehlte der Eintrag
     // in der Phasenauswertung und im Wochenraster war die Phase leer
-    const entry = raw.phaseId ? raw : { ...raw, ...getFirstPhaseForProject(data.projects.find(p => p.id === raw.projectId)) };
-    if (closed.includes(entry.date.slice(0, 7))) { showToast("Monat ist abgeschlossen — Eintrag nicht gespeichert"); return; }
-    changeWithUndo(`${formatHours(entry.minutes)} auf ${projectName(entry.projectId)} erfasst`, prev => ({ ...prev, timeEntries: [...(prev.timeEntries || []), entry] }));
+    const phase = getFirstPhaseForProject(data.projects.find(p => p.id === t.projectId));
+    const entries = raws.map(raw => raw.phaseId ? raw : { ...raw, ...phase });
+    const mins = entries.reduce((sum, e) => sum + e.minutes, 0);
+    changeWithUndo(`${formatHours(mins)} auf ${projectName(t.projectId)} erfasst${entries.length > 1 ? " (über Mitternacht geteilt)" : ""}${truncated ? " — nur bis Mitternacht des Starttags, Rest bitte nachtragen" : ""}`,
+      prev => ({ ...prev, timeEntries: [...(prev.timeEntries || []), ...entries] }));
+    return true;
   };
   const start = () => {
     if (!me || !form.projectId) return;
-    if (timer) stop(timer);
+    // Wechseln: scheitert das Stoppen (abgeschlossener Monat), bleibt die alte Stoppuhr — vorher war ihre Zeit weg (Runde 30)
+    if (timer && !stop(timer)) return;
     setTimer({ employeeId: me.id, projectId: form.projectId, phaseId: form.phaseId || undefined, description: form.description.trim() || undefined, start: new Date().toISOString() });
     setForm({ projectId: "", phaseId: "", description: "" });
     setSwitching(false);
