@@ -167,6 +167,8 @@ export function SystemTab({ s, setField, data, setView, isAdmin, currentUser }: 
         showToast(`Backup konnte nicht gespeichert werden: ${(err as Error).message || err}`, { timeout: 10000 });
       }
     };
+    // zu grosse oder nicht lesbare Datei: Meldung statt stillem Nichts (bisherige Daten bleiben unberührt)
+    reader.onerror = () => showToast("Die Datei konnte nicht gelesen werden (zu gross oder nicht lesbar).", { timeout: 10000 });
     reader.readAsText(file);
   };
 

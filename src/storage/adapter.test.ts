@@ -59,3 +59,57 @@ describe("LocalStorageAdapter", () => {
     expect(await new LocalStorageAdapter().load()).toBeNull();
   });
 });
+
+describe("LocalStorageAdapter: zwei Fenster", () => {
+  const inv = (id: string, note = "") => ({ id, note } as never);
+  const withInvoices = (...ids: string[]): AppData => ({ ...defaultData, invoices: ids.map(i => inv(i)) });
+  const write = async (a: LocalStorageAdapter, d: AppData) => { const p = a.save(d); await a.flush(); await p; };
+  const stored = () => JSON.parse(ls.getItem(STORAGE_KEY)!) as AppData;
+
+  it("Fenster B speichert mit altem Stand: Änderung von Fenster A bleibt erhalten und wird an B gemeldet", async () => {
+    await write(new LocalStorageAdapter(), withInvoices("a"));
+    const A = new LocalStorageAdapter(), B = new LocalStorageAdapter();
+    await A.load(); await B.load();
+    await write(A, withInvoices("a", "von-A"));
+    const seen: AppData[] = [];
+    B.onExternalChange(d => seen.push(d as AppData));
+    await write(B, withInvoices("a", "von-B"));   // B kennt «von-A» nicht
+    expect(stored().invoices.map(i => i.id).sort()).toEqual(["a", "von-A", "von-B"]);
+    expect(seen).toHaveLength(1);
+    expect(seen[0].invoices.map(i => i.id).sort()).toEqual(["a", "von-A", "von-B"]);
+    // danach ohne weitere Fremdänderung: kein erneutes Melden, nichts geht verloren
+    await write(B, { ...seen[0], settings: { ...defaultData.settings, name: "neu" } });
+    expect(seen).toHaveLength(1);
+    expect(stored().invoices).toHaveLength(3);
+  });
+
+  it("von A gelöschter Eintrag kommt durch B (alter Stand) nicht zurück", async () => {
+    await write(new LocalStorageAdapter(), withInvoices("a", "b"));
+    const A = new LocalStorageAdapter(), B = new LocalStorageAdapter();
+    await A.load(); await B.load();
+    await write(A, withInvoices("a"));
+    await write(B, { ...withInvoices("a", "b"), settings: { ...defaultData.settings, name: "B" } });
+    expect(stored().invoices.map(i => i.id)).toEqual(["a"]);
+    expect(stored().settings.name).toBe("B");
+  });
+
+  it("storage-Ereignis ohne eigene ausstehende Änderung wird gemeldet, mit ausstehender nicht", async () => {
+    const handlers: ((e: StorageEvent) => void)[] = [];
+    vi.stubGlobal("window", { addEventListener: (_: string, h: (e: StorageEvent) => void) => handlers.push(h), removeEventListener: () => {} });
+    await write(new LocalStorageAdapter(), withInvoices("a"));
+    const B = new LocalStorageAdapter();
+    await B.load();
+    const seen: AppData[] = [];
+    B.onExternalChange(d => seen.push(d as AppData));
+    handlers[0]({ key: STORAGE_KEY, newValue: JSON.stringify(withInvoices("a", "x")) } as StorageEvent);
+    expect(seen).toHaveLength(1);
+    // eigene Änderung ausstehend: nicht melden (das Speichern verrechnet)
+    const p = B.save(withInvoices("a", "y"));
+    handlers[0]({ key: STORAGE_KEY, newValue: JSON.stringify(withInvoices("a", "x")) } as StorageEvent);
+    expect(seen).toHaveLength(1);
+    await B.flush(); await p;
+    handlers[0]({ key: "anderer-key", newValue: "{}" } as StorageEvent);
+    expect(seen).toHaveLength(1);
+  });
+});
+

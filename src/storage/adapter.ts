@@ -31,6 +31,7 @@ import type { RawData } from "./migrations";
 import { PocketBaseAdapter } from "./pocketbase-adapter";
 import { FileStorageAdapter, tauriFs } from "./file-adapter";
 import { getDeviceId, getDataDir } from "./data-folder";
+import { jsonEqual, mergeValue } from "./merge";
 
 /** Entprellung für localStorage: kurz genug, dass beim Wechseln/Schliessen nichts offen bleibt (flush). */
 const LOCAL_SAVE_DELAY_MS = 250;
@@ -62,11 +63,20 @@ declare global {
  * Speichert alles als ein JSON-Blob unter `localStorage["studio_data_v1"]`.
  * `save()` ist entprellt (wie im Datenordner): bei schnellen Änderungen wird nur der letzte Stand
  * serialisiert, statt bei jeder Änderung den ganzen Datenbestand. `flush()` schreibt sofort.
+ *
+ * Zwei Fenster/Tabs mit demselben localStorage: Vor dem Schreiben wird geprüft, ob der Inhalt seit dem letzten
+ * Lesen/Schreiben von aussen geändert wurde; dann Drei-Wege-Merge (merge.ts) statt Überschreiben, und der
+ * gemeinsame Stand geht über `onExternalChange` an die App. Das `storage`-Ereignis des anderen Fensters wird
+ * ebenfalls dorthin gemeldet (vorher überschrieb das Fenster mit dem älteren Stand still die Änderungen des anderen).
  */
 export class LocalStorageAdapter implements StorageAdapter {
   private pending: AppData | null = null;
   private timer: ReturnType<typeof setTimeout> | null = null;
   private waiters: { resolve: () => void; reject: (e: unknown) => void }[] = [];
+  /** Inhalt von `studio_data_v1`, wie wir ihn zuletzt gelesen oder geschrieben haben (null = unbekannt). */
+  private knownRaw: string | null = null;
+  private listeners = new Set<(data: RawData) => void>();
+  private onStorageEvent: ((e: StorageEvent) => void) | null = null;
 
   async hasExistingData() {
     return !!localStorage.getItem(STORAGE_KEY);
@@ -76,11 +86,36 @@ export class LocalStorageAdapter implements StorageAdapter {
   async load(): Promise<RawData | null> {
     try {
       const stored = localStorage.getItem(STORAGE_KEY);
+      this.knownRaw = null;
       if (!stored) return null;
-      return JSON.parse(stored);
+      const parsed = JSON.parse(stored);
+      this.knownRaw = stored;
+      return parsed;
     } catch {
       return null;
     }
+  }
+
+  /** Registriert `cb`, das mit dem neuen Gesamtstand aufgerufen wird, wenn ein anderes Fenster geschrieben hat. */
+  onExternalChange(cb: (data: RawData) => void): () => void {
+    this.listeners.add(cb);
+    if (!this.onStorageEvent && typeof window !== "undefined") {
+      this.onStorageEvent = e => {
+        if (e.key !== STORAGE_KEY || e.newValue === null) return;
+        // Eigene Änderung ausstehend: das Speichern verrechnet beide Stände (flush) und meldet das Ergebnis
+        if (this.pending) return;
+        try {
+          const parsed = JSON.parse(e.newValue);
+          this.knownRaw = e.newValue;
+          this.listeners.forEach(l => l(parsed));
+        } catch { /* unlesbarer Inhalt: ignorieren, der nächste Schreibvorgang des anderen Fensters kommt */ }
+      };
+      window.addEventListener("storage", this.onStorageEvent);
+    }
+    return () => {
+      this.listeners.delete(cb);
+      if (!this.listeners.size && this.onStorageEvent) { window.removeEventListener("storage", this.onStorageEvent); this.onStorageEvent = null; }
+    };
   }
 
   /** Wirft (über das Promise) z.B. bei vollem Speicher (QuotaExceededError). */
@@ -94,14 +129,26 @@ export class LocalStorageAdapter implements StorageAdapter {
   /** Ausstehenden Stand sofort schreiben (Fenster wird ausgeblendet/geschlossen). */
   async flush(): Promise<void> {
     if (this.timer) { clearTimeout(this.timer); this.timer = null; }
-    const data = this.pending;
+    let data = this.pending;
     const waiters = this.waiters;
     this.pending = null;
     this.waiters = [];
     if (!data) return;
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+      // Hat ein anderes Fenster seit unserem letzten Lesen/Schreiben geschrieben → verrechnen statt überschreiben
+      let pulled = false;
+      const cur = localStorage.getItem(STORAGE_KEY);
+      if (this.knownRaw !== null && cur !== null && cur !== this.knownRaw) {
+        try {
+          const merged = mergeValue(JSON.parse(this.knownRaw), data, JSON.parse(cur)) as AppData;
+          if (!jsonEqual(merged, data)) { pulled = true; data = merged; }
+        } catch { /* fremder Inhalt unlesbar: eigener Stand gilt wie bisher */ }
+      }
+      const text = JSON.stringify(data);
+      localStorage.setItem(STORAGE_KEY, text);
+      this.knownRaw = text;
       waiters.forEach(w => w.resolve());
+      if (pulled) this.listeners.forEach(l => l(data as RawData));
     } catch (e) {
       console.error("LocalStorage save failed:", e);
       waiters.forEach(w => w.reject(e));
@@ -113,6 +160,7 @@ export class LocalStorageAdapter implements StorageAdapter {
     if (this.timer) clearTimeout(this.timer);
     this.timer = null;
     this.pending = null;
+    this.knownRaw = null;
     localStorage.removeItem(STORAGE_KEY);
   }
 }
@@ -218,6 +266,8 @@ export const cloudStorage = storage as unknown as PocketBaseAdapter;
 
 /** true = Daten liegen in einem Ordner (Desktop-App); dann gibt es `fileStorage.onExternalChange` etc. */
 export const isFileBackend = storage instanceof FileStorageAdapter;
+/** Der aktive Adapter als LocalStorageAdapter. Nur verwenden, wenn `isLocalBackend` true ist. */
+export const localStorageStore = storage as unknown as LocalStorageAdapter;
 /** Der aktive Adapter als FileStorageAdapter. Nur verwenden, wenn `isFileBackend` true ist. */
 export const fileStorage = storage as unknown as FileStorageAdapter;
 

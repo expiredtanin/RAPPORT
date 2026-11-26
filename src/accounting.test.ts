@@ -115,6 +115,18 @@ describe("calcLohn — Schweizer Lohnabrechnung", () => {
     expect(ahvStatus("1970-01-01", "2026-03", true)).toBe("rentner");
   });
 
+  it("Unter 18 (Jahr des 17. Geburtstags): keine BVG-Pflicht, auch über der Eintrittsschwelle (Art. 7 BVG)", () => {
+    // 2'000 × 13 = 26'000 > 22'680, aber BVG erst ab 1.1. nach dem 17. Geburtstag
+    const r = calcLohn(emp({ geburtsdatum: "2009-02-01", monatslohn: 2000, dreizehnterLohn: true }), "2026-03");
+    expect(r.ahv).toBe(0);
+    expect(r.bvg).toBe(0);
+    expect(r.bvgAG).toBe(0);
+    // Beträge laut PK-Ausweis (überobligatorisch versichert) gelten weiterhin
+    expect(calcLohn(emp({ geburtsdatum: "2009-02-01", monatslohn: 2000, pkBeitragAN: 50, pkBeitragAG: 60 }), "2026-03").bvg).toBe(50);
+    // im Folgejahr (18) normal
+    expect(calcLohn(emp({ geburtsdatum: "2009-02-01", monatslohn: 2000, dreizehnterLohn: true }), "2027-03").bvg).toBe(173.33);
+  });
+
   it("BVG: unter der Eintrittsschwelle keine PK, Beträge laut PK-Ausweis haben Vorrang", () => {
     const klein = calcLohn(emp({ monatslohn: 1800 }), "2026-03"); // 21'600 < 22'680
     expect(klein.bvg).toBe(0);

@@ -19,7 +19,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { defaultData } from "../constants";
-import { storage, cloudStorage, isCloudBackend, isFileBackend, fileStorage } from "../storage/adapter";
+import { storage, cloudStorage, isCloudBackend, isFileBackend, fileStorage, isLocalBackend, localStorageStore } from "../storage/adapter";
 import { applyMigrations, type RawData } from "../storage/migrations";
 import { jsonEqual, mergeValue } from "../storage/merge";
 import { RejectedSaveError } from "../storage/pocketbase-adapter";
@@ -238,6 +238,12 @@ export function useStudioData(currentUser: CurrentUser | null) {
   useEffect(() => {
     if (!isFileBackend || loading || loadError) return;
     return fileStorage.onExternalChange(raw => setData(migrate(raw)));
+  }, [loading, loadError, setData, migrate]);
+
+  // localStorage: Änderungen eines zweiten Fensters/Tabs übernehmen (verrechnet mit unseren, siehe LocalStorageAdapter)
+  useEffect(() => {
+    if (!isLocalBackend || loading || loadError) return;
+    return localStorageStore.onExternalChange(raw => setData(migrate(raw)));
   }, [loading, loadError, setData, migrate]);
 
   // Cloud: Realtime-Subscription + Refresh bei Tab-Focus / Visibility-Change.

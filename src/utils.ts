@@ -1501,7 +1501,7 @@ export function calcLohn(
   const qst    = emp.quellensteuerPflichtig ? r2((bruttoTotal + familienzulagen) * ((emp.quellensteuerSatz ?? 10) / 100)) : 0;
 
   // Pensionskasse: Beträge laut PK-Ausweis haben Vorrang; sonst % vom Bruttolohn. Unter der
-  // BVG-Eintrittsschwelle und für Rentner keine Pflicht (dann 0, ausser PK-Ausweis-Beträge).
+  // BVG-Eintrittsschwelle, unter 18 und für Rentner keine Pflicht (dann 0, ausser PK-Ausweis-Beträge).
   const jahreslohn = monatsLohn * (emp.dreizehnterLohn ? 13 : 12);
   const pkAusweis = (emp.pkBeitragAN ?? 0) > 0 || (emp.pkBeitragAG ?? 0) > 0;
   let bvg = 0, bvgAG = 0;
@@ -1510,6 +1510,9 @@ export function calcLohn(
     bvgAG = r2((emp.pkBeitragAG || 0) * anteil);
   } else if (status === "rentner") {
     hinweise.push("Keine BVG-Beiträge (Rentner:in)");
+  } else if (status === "jung") {
+    // BVG-Pflicht erst ab 1. Januar nach dem 17. Geburtstag (Art. 7 Abs. 1 BVG), wie AHV/ALV (Rechenprüfung 26.11.2026)
+    hinweise.push("Unter 18: keine BVG-Pflicht (Art. 7 BVG)");
   } else if (jahreslohn > 0 && jahreslohn < BVG_EINTRITTSSCHWELLE) {
     hinweise.push(`Jahreslohn unter der BVG-Eintrittsschwelle (CHF ${BVG_EINTRITTSSCHWELLE.toLocaleString("de-CH")}): keine PK-Beiträge`);
   } else {
