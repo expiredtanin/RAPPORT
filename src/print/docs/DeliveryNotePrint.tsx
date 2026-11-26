@@ -79,7 +79,8 @@ export function LieferscheinPrint({ note, client, data, settings }: { note: Deli
           lineStyle={{ padding: "0 16px", background: "#f8f8f6", borderLeft: "3px solid #ddd" }} />
       )}
 
-      {/* Unterschriften */}
+      {/* Unterschriften und Fusszeile zusammenhalten (die Fusszeile stand sonst allein auf einer neuen Seite, Runde 43) */}
+      <div style={{ breakInside: "avoid" }}>
       <div style={{ marginTop: 60, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 60 }}>
         <div>
           <div style={{ borderTop: "1px solid #999", paddingTop: 8, fontSize: 9, color: "#888" }}>
@@ -99,6 +100,7 @@ export function LieferscheinPrint({ note, client, data, settings }: { note: Deli
       <div style={{ marginTop: 40, paddingTop: 16, borderTop: "1px solid #ddd", fontSize: 9, color: "#aaa", display: "flex", justifyContent: "space-between" }}>
         <div>{settings.name} · {formatSenderAddress(settings).split("\n")[0]}</div>
         <div>{note.number}</div>
+      </div>
       </div>
     </>
   );

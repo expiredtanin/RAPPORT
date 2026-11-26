@@ -95,7 +95,7 @@ export function QuotePrint({ quote, client, settings }: { quote: Quote; client: 
                   </tr>
                   {ph.items.filter(it => it.enabled !== false && it.hours > 0).map((it, idx) => (
                     <tr key={idx} style={{ borderBottom: "1px solid #f2f2f2" }}>
-                      <td style={{ padding: "1px 10px", color: "#555" }}>{it.label}</td>
+                      <td style={{ padding: "1px 10px", color: "#555", overflowWrap: "anywhere" }}>{it.label}</td>
                       <td className="align-right" style={{ textAlign: "right", padding: "1px 4px", color: "#888" }}>{it.pct}%</td>
                       <td className="align-right" style={{ textAlign: "right", padding: "1px 4px" }}>{formatHours(Math.round(it.hours * 60))}</td>
                       <td className="align-right" style={{ textAlign: "right", padding: "1px 0" }}>{formatCHF(it.hours * stundenansatz)}</td>
@@ -138,7 +138,7 @@ export function QuotePrint({ quote, client, settings }: { quote: Quote; client: 
             <tbody>
               {manCalc.phases.filter(p => p.totalHours > 0).map(ph => (
                 <tr key={ph.id} style={{ borderBottom: "1px solid #f0f0f0" }}>
-                  <td style={{ padding: "6px 0" }}>{ph.label}</td>
+                  <td style={{ padding: "6px 0", overflowWrap: "anywhere" }}>{ph.label}</td>
                   {roles.map(r => {
                     const h = ph.roleDetails.find(rd => rd.id === r.id)?.hours || 0;
                     return <td key={r.id} className="align-right" style={{ textAlign: "right", padding: "6px 4px", color: h ? "var(--doc-ink)" : "#ccc" }}>{h || "—"}</td>;
@@ -170,7 +170,7 @@ export function QuotePrint({ quote, client, settings }: { quote: Quote; client: 
             <tbody>
               {(quote.freeItems || []).map((it, idx) => (
                 <tr key={idx} style={{ borderBottom: "1px solid #f0f0f0" }}>
-                  <td style={{ padding: "6px 0" }}>{it.desc || "—"}</td>
+                  <td style={{ padding: "6px 0", overflowWrap: "anywhere" }}>{it.desc || "—"}</td>
                   <td className="align-right" style={{ textAlign: "right", padding: "6px 6px" }}>{it.qty}</td>
                   <td className="align-right" style={{ textAlign: "right", padding: "6px 6px" }}>{formatCHF(it.price)}</td>
                   <td className="align-right" style={{ textAlign: "right", padding: "6px 0", fontWeight: 500 }}>{formatCHF(lineAmount(it.qty, it.price))}</td>

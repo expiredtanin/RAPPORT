@@ -63,7 +63,7 @@ export function InvoicePrint({ inv, client, settings }: { inv: Invoice; client: 
             const hasAnyDiscount = (inv.items || []).some(it => (it.discount || 0) > 0);
             return (
               <tr key={i} style={{ borderBottom: "1px solid #eee" }}>
-                <td style={{ padding: "10px 0" }}>{item.desc}</td>
+                <td style={{ padding: "10px 0", overflowWrap: "anywhere" }}>{item.desc}</td>
                 <td className="align-right" style={{ textAlign: "right", padding: "10px 8px" }}>{item.qty}</td>
                 <td className="align-right" style={{ textAlign: "right", padding: "10px 8px" }}>{formatCHF(item.price)}</td>
                 {hasAnyDiscount && (
