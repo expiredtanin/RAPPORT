@@ -13,7 +13,8 @@ import type { ViewProps } from "../types";
 
 const TABS = [{ id: "pipeline", label: "Pipeline" }, { id: "auswertung", label: "Auswertung" }, { id: "kundenpflege", label: "Kundenpflege" }] as const;
 
-export default function Crm({ data, update, setView }: Pick<ViewProps, "data" | "update" | "setView">) {
+export default function Crm({ data, update, setView, userPermissions = null }: Pick<ViewProps, "data" | "update" | "setView"> & { userPermissions?: string[] | null }) {
+  const canInv = !userPermissions || userPermissions.includes("invoices");
   const [tab, setTab] = useState<(typeof TABS)[number]["id"]>("pipeline");
   const [newLead, setNewLead] = useState(0);
   return (
@@ -28,8 +29,8 @@ export default function Crm({ data, update, setView }: Pick<ViewProps, "data" | 
         </div>
       )}
       {tab === "pipeline" && <CrmPipeline data={data} update={update} setView={setView} newRequest={newLead} />}
-      {tab === "auswertung" && <CrmAuswertung data={data} setView={setView} />}
-      {tab === "kundenpflege" && <CrmKundenpflege data={data} update={update} />}
+      {tab === "auswertung" && <CrmAuswertung data={data} setView={setView} canInv={canInv} />}
+      {tab === "kundenpflege" && <CrmKundenpflege data={data} update={update} canInv={canInv} />}
     </div>
   );
 }

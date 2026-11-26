@@ -33,7 +33,7 @@ function downloadAddressCSV(persons: Person[]): void {
   URL.revokeObjectURL(a.href);
 }
 
-export default function CrmKundenpflege({ data, update }: { data: AppData; update: UpdateFn }) {
+export default function CrmKundenpflege({ data, update, canInv = true }: { data: AppData; update: UpdateFn; /** Umsatz nur mit Recht «Rechnungen» (Runde 40) */ canInv?: boolean }) {
   const [search, setSearch] = useState("");
   const [tag, setTag] = useState("");
   const [since, setSince] = useState("");
@@ -80,7 +80,7 @@ export default function CrmKundenpflege({ data, update }: { data: AppData; updat
           <table>
             <thead><tr>
               <th>Kontakt</th><th className="hide-compact">Kategorie</th><th>Letzter Kontakt</th>
-              <th style={{ textAlign: "right" }}>Umsatz (netto)</th><th style={{ width: 150 }} />
+              {canInv && <th style={{ textAlign: "right" }}>Umsatz (netto)</th>}<th style={{ width: 150 }} />
             </tr></thead>
             <tbody>
               {rows.map(({ p, last, revenue }) => {
@@ -98,7 +98,7 @@ export default function CrmKundenpflege({ data, update }: { data: AppData; updat
                     <td style={{ fontSize: 12, color: months === null || months >= 12 ? "var(--warning)" : "var(--text2)" }}>
                       {last ? <>{formatDate(last)} <span style={{ color: "var(--text4)" }}>· vor {months === 0 ? "< 1 Monat" : `${months} Mt.`}</span></> : "nie"}
                     </td>
-                    <td style={{ textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{revenue > 0 ? formatCHF(revenue) : "—"}</td>
+                    {canInv && <td style={{ textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{revenue > 0 ? formatCHF(revenue) : "—"}</td>}
                     <td style={{ textAlign: "right" }}><button className="btn btn-ghost btn-sm" onClick={() => logCard(p)}>Karte verschickt</button></td>
                   </tr>
                 );

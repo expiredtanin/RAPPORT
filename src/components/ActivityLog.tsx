@@ -13,7 +13,7 @@ import type { Activity, ActivityType, AppData, UpdateFn } from "../types";
 const today = () => localISODate();
 
 /** @param leadId Wenn gesetzt: zeigt nur Aktivitäten dieses Leads und verknüpft neue damit. */
-export default function ActivityLog({ data, update, personId, leadId }: { data: AppData; update: UpdateFn; personId: string; leadId?: string }) {
+export default function ActivityLog({ data, update, personId, leadId, hideLeadActivities = false }: { data: AppData; update: UpdateFn; personId: string; leadId?: string; /** ohne Recht «Akquise»: Notizen zu Leads ausblenden (Runde 40) */ hideLeadActivities?: boolean }) {
   const activities = data.activities || [];
   const { askConfirm, ConfirmModalEl } = useConfirm();
   const [type, setType] = useState<ActivityType>("anruf");
@@ -22,7 +22,7 @@ export default function ActivityLog({ data, update, personId, leadId }: { data: 
   const [followUpDate, setFollowUpDate] = useState("");
 
   const list = activities
-    .filter(a => a.personId === personId && (!leadId || a.leadId === leadId))
+    .filter(a => a.personId === personId && (!leadId || a.leadId === leadId) && !(hideLeadActivities && a.leadId))
     .sort((a, b) => b.date.localeCompare(a.date));
 
   const add = () => {

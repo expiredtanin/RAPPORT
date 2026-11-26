@@ -48,7 +48,7 @@ function BarList({ rows, extra, empty, onOpen }: { rows: GroupRow[]; extra?: (r:
   );
 }
 
-export default function CrmAuswertung({ data, setView }: { data: AppData; setView: (view: string) => void }) {
+export default function CrmAuswertung({ data, setView, canInv = true }: { data: AppData; setView: (view: string) => void; /** Umsätze nur mit Recht «Rechnungen» (Runde 40) */ canInv?: boolean }) {
   /** Öffnet den Kontakt in der Kontakte-Ansicht (Hinweis `window.__openContactId`, siehe Persons.tsx). */
   const openContact = (id: string) => { window.__openContactId = id; setView("personen"); };
   const thisYear = String(new Date().getFullYear());
@@ -82,11 +82,12 @@ export default function CrmAuswertung({ data, setView }: { data: AppData; setVie
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14, marginBottom: 8 }} className="responsive-grid-4 kpi-band">
-        <KpiCard label="Umsatz (netto)" value={formatCHF(revenue)} sub={`${billed.length} Rechnungen, ohne Entwürfe`} color="var(--positive)" />
+        {canInv && <KpiCard label="Umsatz (netto)" value={formatCHF(revenue)} sub={`${billed.length} Rechnungen, ohne Entwürfe`} color="var(--positive)" />}
         <KpiCard label="Trefferquote" value={pct(overallWinRate(data, year))} sub={`${avg.count} ${avg.count === 1 ? "Zusage" : "Zusagen"}`} color="var(--info)" />
         <KpiCard label="Ø bis Zusage" value={avg.avgDays === null ? "—" : `${Math.round(avg.avgDays)} Tage`} sub="von Anfrage bis Zusage" />
         <KpiCard label="Ø Meetings pro Zusage" value={num1(avg.avgMeetings)} sub="Meeting + Besichtigung" color="var(--warning)" />
       </div>
+      {canInv && <>
       <div style={{ fontSize: 11, color: "var(--text5)", marginBottom: 20 }}>
         {revenue > 0
           ? `${Math.round((attributed / revenue) * 100)} % des Umsatzes haben eine Herkunft oder einen Empfehler — Herkunft/«Empfohlen von» bei Personen und Leads pflegen, damit die Auswertung aussagekräftig wird.`
@@ -112,6 +113,7 @@ export default function CrmAuswertung({ data, setView }: { data: AppData; setVie
             </div>
           ))}
       </Section>
+      </>}
     </div>
   );
 }

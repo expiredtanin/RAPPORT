@@ -590,7 +590,7 @@ export default function App() {
           {hasViewAccess && view === "projects" && selectedProjectId && <ProjectDetail data={data} update={update} saveAll={save} projectId={selectedProjectId} onBack={() => setSelectedProjectId(null)} onSelect={setSelectedProjectId} run={runPalette} setPrintContent={setPrintContent} modal={modal} setModal={setModal} currentUser={currentUser} userPermissions={userPermissions} />}
           {hasViewAccess && view === "termine" && <Schedules data={data} setView={navigate} onSelectProject={setSelectedProjectId} userPermissions={userPermissions} myEmployeeId={currentUser?.employeeId || ""} />}
           {hasViewAccess && view === "time" && <Time data={data} update={update} currentUser={currentUser} userPermissions={userPermissions} setPrintContent={setPrintContent} />}
-          {hasViewAccess && view === "crm" && <Crm data={data} update={update} setView={navigate} />}
+          {hasViewAccess && view === "crm" && <Crm data={data} update={update} setView={navigate} userPermissions={userPermissions} />}
           {hasViewAccess && view === "quotes" && <Quotes data={data} update={update} saveAll={save} modal={modal} setModal={setModal} setPrintContent={setPrintContent} setView={navigate} onSelectProject={setSelectedProjectId} />}
           {hasViewAccess && view === "contracts" && <Contracts data={data} update={update} saveAll={save} modal={modal} setModal={setModal} setPrintContent={setPrintContent} setView={navigate} />}
           {hasViewAccess && view === "dokumente" && <Documents data={data} setView={navigate} />}

@@ -224,6 +224,8 @@ function ProjectDetail({ data, update, saveAll, projectId, onBack, onSelect, run
 
   // ── Arbeitsraum ────────────────────────────────────────────────
   const canSeeTime = isAdmin || userPermissions.includes("time");
+  // Protokolle nur mit Recht «Protokolle» (Reiter, Knopf; vorher legte «Neu» ohne Recht eine leere Leiche an — Runde 40)
+  const canSeeProtocols = isAdmin || userPermissions.includes("protokolle");
   const nextTerm = weekAgenda(data, localISODate(), 60, { projectId })[0];
   const invoicedTotal = projectInvoices.filter(i => i.status !== "entwurf").reduce((s, i) => s + invoiceNet(i), 0);
   const chf0 = (n: number) => Math.round(n).toLocaleString("de-CH").replace(/[’\u2019]/g, "'");
@@ -257,7 +259,7 @@ function ProjectDetail({ data, update, saveAll, projectId, onBack, onSelect, run
     { id: "stunden", label: "Stunden" },
     { id: "termine", label: "Termine" },
     ...(canSeeQuotes || canSeeInvoices ? [{ id: "honorar", label: "Honorar & Rechnungen" }] : []),
-    { id: "protokolle", label: "Protokolle", count: protocolCount },
+    ...(canSeeProtocols ? [{ id: "protokolle", label: "Protokolle", count: protocolCount }] : []),
     { id: "beteiligte", label: "Beteiligte", count: peopleCount },
   ];
 
@@ -272,7 +274,7 @@ function ProjectDetail({ data, update, saveAll, projectId, onBack, onSelect, run
             <h1>{project.name}</h1>
             <div className="ws-actions">
               {canSeeTime && <button className="btn btn-ghost" onClick={startTimer} title="Stoppuhr für dieses Projekt starten"><span className="msr" style={{ fontSize: 17 }}>play_arrow</span>Stoppuhr</button>}
-              <button className="btn btn-ghost" onClick={() => run({ kind: "action", action: "newProtocol", projectId })}><span className="msr" style={{ fontSize: 17 }}>description</span>Protokoll</button>
+              {canSeeProtocols && <button className="btn btn-ghost" onClick={() => run({ kind: "action", action: "newProtocol", projectId })}><span className="msr" style={{ fontSize: 17 }}>description</span>Protokoll</button>}
               {canSeeInvoices && <button className="btn btn-primary" onClick={() => run({ kind: "action", action: "newInvoice", projectId })}><span className="msr" style={{ fontSize: 17 }}>receipt_long</span>Rechnung</button>}
               <RowMenu label="Weitere Aktionen" items={[
                 { label: "Projekteinstellungen", icon: "tune", hidden: !isAdmin, onClick: openSettings },
@@ -318,7 +320,7 @@ function ProjectDetail({ data, update, saveAll, projectId, onBack, onSelect, run
             )}
           </div>
         )}
-        {tab === "protokolle" && (
+        {tab === "protokolle" && canSeeProtocols && (
           <div className="ws-stack"><ProtocolsCard data={data} saveAll={saveAll} projectId={projectId} /></div>
         )}
         {tab === "beteiligte" && (

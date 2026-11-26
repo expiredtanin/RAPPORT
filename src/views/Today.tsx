@@ -44,7 +44,10 @@ export default function Today({ data, currentUser, userPermissions, run, onOpenP
   // Ohne verknüpfte Person: zuletzt gewählte Person dieses Geräts (gleicher Schlüssel wie die Zeiterfassung)
   const [pickedEmpId, setPickedEmpIdState] = useState<string>(() => { if (timer?.employeeId) return timer.employeeId; try { return localStorage.getItem("rapport_time_employee") || ""; } catch { return ""; } });
   const setPickedEmpId = (id: string) => { setPickedEmpIdState(id); try { if (id) localStorage.setItem("rapport_time_employee", id); } catch { /* privater Modus */ } };
-  const me: Employee | null = linkedEmp || employees.find(e => e.id === pickedEmpId) || null;
+  // Person frei wählen nur mit Recht «mitarbeiter» (wie die Zeiterfassung) — sonst Stunden/Pendenzen beliebiger
+  // Kollegen sicht- und buchbar, wenn das Login nicht verknüpft ist (Runde 40)
+  const canPick = can("mitarbeiter");
+  const me: Employee | null = linkedEmp || (canPick ? employees.find(e => e.id === pickedEmpId) : null) || null;
   const [now, setNow] = useState(() => new Date());
   const [form, setForm] = useState({ projectId: "", phaseId: "", description: "" });
   const [switching, setSwitching] = useState(false);
@@ -132,7 +135,8 @@ export default function Today({ data, currentUser, userPermissions, run, onOpenP
 
   const startForm = (
     <div className="today-form">
-      {!linkedEmp && (
+      {!linkedEmp && !canPick && <div style={{ fontSize: 12, color: "var(--text4)" }}>Login nicht mit einer Person verknüpft — bitte beim Admin melden.</div>}
+      {!linkedEmp && canPick && (
         <select value={pickedEmpId} onChange={e => setPickedEmpId(e.target.value)} aria-label="Person">
           <option value="">Für wen? (Login nicht mit Person verknüpft)</option>
           {employees.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}

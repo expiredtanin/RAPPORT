@@ -136,7 +136,7 @@ function FirmaDetail({ firma, data, update, onBack, onEdit, onAddPerson, onEditP
           {/* Kontaktverlauf */}
           <div className="card" style={{ marginBottom: 20 }}>
             <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.08em", color: "var(--text4)", marginBottom: 12 }}>KONTAKTVERLAUF</div>
-            <ActivityLog data={data} update={update} personId={firma.id} />
+            <ActivityLog data={data} update={update} personId={firma.id} hideLeadActivities={!!userPermissions && !userPermissions.includes("crm")} />
           </div>
           {/* Projekte */}
           {allProjects.length > 0 && (
