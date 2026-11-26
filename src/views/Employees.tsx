@@ -269,7 +269,8 @@ function Employees({ data, update, saveAll, setPrintContent, userPermissions, cu
     const prevA = absences.find(x => x.id === a.id);
     const closed = closedMonthMsg(data.settings.closedMonths, [from, to], [prevA?.dateFrom || prevA?.date, prevA?.dateTo || prevA?.date]);
     if (closed) { showToast(closed); return; }
-    update("absences", isNew ? [...absences, a] : absences.map(x => x.id === a.id ? a : x));
+    // auf dem aktuellen Stand (prev): eine Liste vom Öffnen des Dialogs entfernte sonst inzwischen von anderen erfasste Einträge
+    update("absences", prev => isNew ? [...(prev || []), a] : (prev || []).map(x => x.id === a.id ? a : x));
     setModal(null);
   };
   // eigene genehmigte Einträge ohne Vollzugriff nimmt nur zurück, wer genehmigt (Server lehnt sonst ab → Banner)
@@ -299,7 +300,7 @@ function Employees({ data, update, saveAll, setPrintContent, userPermissions, cu
     if (ferienOverlap(ferienEntries, { id: ferienForm.id, employeeId: ferienForm.employeeId, dateFrom: from, dateTo: to })) { showToast("Für diesen Zeitraum gibt es schon Ferien oder einen Antrag."); return; }
     const f = { ...rest, ...(originalData ? { originalData } : {}), dateFrom: from, dateTo: to, status: ownWithoutFull ? "pending" : "approved", id: ferienForm.id || generateId() } as FerienEntry;
     if (ownWithoutFull) showToast("Eigene Ferien werden als Antrag gespeichert — genehmigt wird von einer anderen Person.");
-    update("ferienEntries", isNew ? [...ferienEntries, f] : ferienEntries.map(x => x.id === f.id ? f : x));
+    update("ferienEntries", prev => isNew ? [...(prev || []), f] : (prev || []).map(x => x.id === f.id ? f : x));
     setModal(null);
   };
   const delFerien = (id: string) => { const f = ferienEntries.find(x => x.id === id); const closed = closedMonthMsg(data.settings.closedMonths, [f?.dateFrom, f?.dateTo]); if (closed) { showToast(closed); return; } if (ownApprovedLocked(f?.employeeId, f?.status || "approved")) return; removeWithUndo("Ferien gelöscht", "ferienEntries", f => f.id === id); };
@@ -307,10 +308,11 @@ function Employees({ data, update, saveAll, setPrintContent, userPermissions, cu
 
   const closedMonths = data.settings.closedMonths || [];
   const toggleMonth = (monthStr: string) => {
-    const updated = closedMonths.includes(monthStr)
-      ? closedMonths.filter(m => m !== monthStr)
-      : [...closedMonths, monthStr];
-    update("settings", { ...data.settings, closedMonths: updated });
+    const close = !closedMonths.includes(monthStr);
+    update("settings", prev => {
+      const cur = prev.closedMonths || [];
+      return { ...prev, closedMonths: close ? (cur.includes(monthStr) ? cur : [...cur, monthStr]) : cur.filter(m => m !== monthStr) };
+    });
   };
 
   const TABS = [
