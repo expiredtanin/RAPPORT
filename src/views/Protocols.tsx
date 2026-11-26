@@ -789,7 +789,12 @@ function ProtokollDetail({ protokoll, data, onBack, onSave, onDelete, onOpen, se
                     <input value={t.title} onChange={e => setTraktandum(t.id, { title: e.target.value })} placeholder="Traktandentitel…"
                       style={{ flex: 1, height: 30, padding: "0 4px", fontSize: 15, fontWeight: 600, background: "none", border: "none", borderRadius: 0, color: "var(--text)" }} />
                     {(p.traktanden || []).length > 1 && (
-                      <button onClick={() => removeTraktandum(t.id)} title="Traktandum löschen"
+                      <button onClick={async () => {
+                        // mit Einträgen nachfragen: Entfernen nimmt alle Punkte mit, und ein Rückgängig gibt es im Entwurf nicht
+                        const n = (t.items || []).length;
+                        if (n > 0 && !await askConfirm(`Traktandum «${t.title || t.nr}» mit ${n} ${n === 1 ? "Eintrag" : "Einträgen"} löschen?`)) return;
+                        removeTraktandum(t.id);
+                      }} title="Traktandum löschen"
                         style={{ background: "none", border: "none", color: "var(--text4)", cursor: "pointer", padding: 0 }}><span className="msr" style={{ fontSize: 16 }}>close</span></button>
                     )}
                   </div>

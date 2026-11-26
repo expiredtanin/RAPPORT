@@ -53,7 +53,7 @@ export function ProjectDetailPrint({ content, settings }: { content: Content; se
               </div>
             </div>
           ))}
-          {unassignedMins > 0 && <div style={{ fontSize: 10, color: "#888", marginTop: 8 }}>Ohne Phasen-Zuordnung: {formatHours(unassignedMins)}</div>}
+          {unassignedMins > 0 && <div style={{ fontSize: 10, color: "#888", marginTop: 8 }}>Ohne aktive Phase: {formatHours(unassignedMins)}</div>}
         </div>
       )}
 

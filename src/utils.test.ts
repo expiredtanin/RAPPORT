@@ -95,6 +95,14 @@ describe("SIA-Honorar", () => {
     expect(r.totalAmount).toBe(10 * 140 + 5 * 120);
   });
 
+  it("manuelle Schätzung: Stunden verwaister Rollen-Kürzel zählen nicht (Offerte darf dann nicht als «mit Stunden» speicherbar sein)", () => {
+    const r = calcManualHours([
+      { id: "p1", label: "P1", enabled: true, hoursByRole: { ALT: 40 } },
+    ] as never, [{ id: "PL", label: "PL", rate: 140 }]);
+    expect(r.totalHours).toBe(0);
+    expect(r.totalAmount).toBe(0);
+  });
+
   it("deriveQuoteBudget zählt Referenz-Offerten nicht mit", () => {
     const quotes = [
       { id: "q1", mode: "free", freeItems: [{ qty: 2, price: 500 }] },

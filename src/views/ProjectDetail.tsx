@@ -17,7 +17,7 @@ import { formatHours, localISODate } from "../utils";
 import { ProjectList, PhaseBar, OverviewTab, PeopleList, type WsFigure } from "./project-detail/Workspace";
 import type { ProjectPosition, ViewProps } from "../types";
 import type { ProjectForm } from "./ProjectEditForm";
-import { type BudgetForm, type LinkedQuote, computePhaseStats } from "./project-detail/helpers";
+import { type BudgetForm, type LinkedQuote, computePhaseStats, unassignedPhaseMinutes } from "./project-detail/helpers";
 import { KpiRow } from "./project-detail/KpiRow";
 import { BudgetCard } from "./project-detail/BudgetCard";
 import { PhaseCard } from "./project-detail/PhaseCard";
@@ -200,7 +200,7 @@ function ProjectDetail({ data, update, saveAll, projectId, onBack, onSelect, run
     ? deriveQuoteBudget(hauptLinked, data.quotes || [], data.settings.roles || []).phasesBudget
     : (project.phasesBudget || []);
   const phaseStats = computePhaseStats(project, entries, positions, hoPhasesBudget, totalMinutes);
-  const unassignedMins = entries.filter(e => !e.phaseId).reduce((s, e) => s + (e.minutes || 0), 0);
+  const unassignedMins = unassignedPhaseMinutes(project, entries, positions);
   const customPhaseStats = (project.customPhases || []).map(cp => {
     const mins = entries.filter(e => e.phaseId === cp.id).reduce((s, e) => s + (e.minutes || 0), 0);
     return { id: cp.id, label: cp.label, mins };

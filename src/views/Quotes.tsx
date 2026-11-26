@@ -248,7 +248,8 @@ function Quotes({ data, update, saveAll, modal, setModal, setPrintContent, setVi
       const hasItem = (form.freeItems || []).some(it => it.desc?.trim() || it.price > 0);
       if (!hasItem) { showToast("Bitte mindestens eine Position mit Beschreibung oder Betrag erfassen."); return; }
     } else if (form.mode === "manual") {
-      const hasPhase = (form.manualPhases || []).some(ph => ph.enabled && Object.values(ph.hoursByRole || {}).some(h => h > 0));
+      // nur Stunden der Rollen dieser Offerte zählen (nach «Reset» bleiben Stunden verwaister Kürzel in den Phasen stehen)
+      const hasPhase = (manCalc?.totalHours || 0) > 0;
       if (!hasPhase) { showToast("Bitte mindestens eine Phase mit Stunden erfassen."); return; }
     } else if (form.mode === "sia") {
       if (!form.sia?.baukosten || form.sia.baukosten <= 0) {

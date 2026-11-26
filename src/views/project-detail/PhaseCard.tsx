@@ -165,7 +165,7 @@ export function PhaseCard({ project, data, entries, positions, phaseStats, custo
                 </div>
               );
             })}
-            {unassignedMins > 0 && <div style={{ fontSize: 11, color: "var(--warning)", marginTop: 4 }}><span className="msr" style={{ fontSize: 14, verticalAlign: "middle", marginRight: 3 }}>warning</span> {formatHours(unassignedMins)} ohne Phasen-Zuordnung</div>}
+            {unassignedMins > 0 && <div style={{ fontSize: 11, color: "var(--warning)", marginTop: 4 }}><span className="msr" style={{ fontSize: 14, verticalAlign: "middle", marginRight: 3 }}>warning</span> {formatHours(unassignedMins)} ohne aktive Phase</div>}
           </div>
         );
       })() : (
@@ -199,7 +199,7 @@ export function PhaseCard({ project, data, entries, positions, phaseStats, custo
                   </div>
                 );
               })}
-              {unassignedMins > 0 && <div style={{ fontSize: 11, color: "var(--warning)", marginTop: 4 }}><span className="msr" style={{ fontSize: 14, verticalAlign: "middle", marginRight: 3 }}>warning</span> {formatHours(unassignedMins)} ohne Phasen-Zuordnung</div>}
+              {unassignedMins > 0 && <div style={{ fontSize: 11, color: "var(--warning)", marginTop: 4 }}><span className="msr" style={{ fontSize: 14, verticalAlign: "middle", marginRight: 3 }}>warning</span> {formatHours(unassignedMins)} ohne aktive Phase</div>}
             </div>
           )}
 

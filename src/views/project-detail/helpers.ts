@@ -44,3 +44,21 @@ export function computePhaseStats(
 
 /** Ergebnis von `computePhaseStats` für eine Phase. */
 export type PhaseStat = ReturnType<typeof computePhaseStats>[number];
+
+/**
+ * Minuten ohne Phase ODER in einer Phase, die im Projekt nicht (mehr) aktiv ist (abgewählt, eigene Phase gelöscht, auch
+ * nicht bei einem Nachtrag): sonst fehlten sie in der Phasenübersicht, und «Stunden total» liefe ohne Hinweis von der
+ * Summe der Phasen weg.
+ */
+export function unassignedPhaseMinutes(
+  project: Pick<Project, "enabledPhases" | "customPhases">,
+  entries: Pick<TimeEntry, "phaseId" | "minutes">[],
+  positions: Pick<ProjectPosition, "enabledPhases">[],
+): number {
+  const known = new Set<string>([
+    ...(project.enabledPhases || []),
+    ...(project.customPhases || []).map(c => c.id),
+    ...positions.flatMap(pos => pos.enabledPhases || []),
+  ]);
+  return entries.filter(e => !e.phaseId || !known.has(e.phaseId)).reduce((s, e) => s + (e.minutes || 0), 0);
+}
