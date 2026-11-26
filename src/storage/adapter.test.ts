@@ -101,15 +101,22 @@ describe("LocalStorageAdapter: zwei Fenster", () => {
     await B.load();
     const seen: AppData[] = [];
     B.onExternalChange(d => seen.push(d as AppData));
-    handlers[0]({ key: STORAGE_KEY, newValue: JSON.stringify(withInvoices("a", "x")) } as StorageEvent);
+    // anderes Fenster schreibt: Inhalt steht im Speicher, dann kommt das Ereignis
+    const other = (d: AppData) => { const v = JSON.stringify(d); ls.setItem(STORAGE_KEY, v); handlers[0]({ key: STORAGE_KEY, newValue: v } as StorageEvent); };
+    other(withInvoices("a", "x"));
     expect(seen).toHaveLength(1);
     // eigene Änderung ausstehend: nicht melden (das Speichern verrechnet)
-    const p = B.save(withInvoices("a", "y"));
-    handlers[0]({ key: STORAGE_KEY, newValue: JSON.stringify(withInvoices("a", "x")) } as StorageEvent);
+    const p = B.save(withInvoices("a", "x", "y"));
+    other(withInvoices("a", "x", "z"));
     expect(seen).toHaveLength(1);
     await B.flush(); await p;
+    expect(seen).toHaveLength(2);   // verrechnet: x, y, z
+    expect(seen[1].invoices.map(i => i.id).sort()).toEqual(["a", "x", "y", "z"]);
+    // veraltetes Ereignis (z) kommt erst nach unserem Verrechnen an: nicht melden, sonst fehlte «y» wieder in der Anzeige
+    handlers[0]({ key: STORAGE_KEY, newValue: JSON.stringify(withInvoices("a", "x", "z")) } as StorageEvent);
+    expect(seen).toHaveLength(2);
     handlers[0]({ key: "anderer-key", newValue: "{}" } as StorageEvent);
-    expect(seen).toHaveLength(1);
+    expect(seen).toHaveLength(2);
   });
 });
 

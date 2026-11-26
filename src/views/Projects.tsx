@@ -115,7 +115,8 @@ function Projects({ data, saveAll, modal, setModal, onSelect, setPrintContent, u
     return m;
   }, [data.timeEntries]);
   const projectMinutes = (id: string) => minutesByProject.get(id) || 0;
-  const clientNameById = useMemo(() => new Map((data.persons || []).map(c => [c.id, c.name] as const)), [data.persons]);
+  // bei doppelten IDs gilt wie bei `find` der erste Kontakt (gleicher Name wie in der Tabelle)
+  const clientNameById = useMemo(() => { const m = new Map<string, string>(); for (const c of data.persons || []) if (!m.has(c.id)) m.set(c.id, c.name); return m; }, [data.persons]);
 
   const [sort, setSort] = useState({ col: "number", dir: 1 });
   const toggleSort = (col: string) => setSort(s => ({ col, dir: s.col === col ? -s.dir : 1 }));

@@ -104,9 +104,13 @@ export class LocalStorageAdapter implements StorageAdapter {
         if (e.key !== STORAGE_KEY || e.newValue === null) return;
         // Eigene Änderung ausstehend: das Speichern verrechnet beide Stände (flush) und meldet das Ergebnis
         if (this.pending) return;
+        // Aktuellen Inhalt lesen statt `e.newValue`: das Ereignis kann veraltet ankommen (wir haben inzwischen schon
+        // verrechnet und geschrieben) — dann zeigte die App wieder den älteren Stand ohne die eigene Änderung (Review)
+        const cur = localStorage.getItem(STORAGE_KEY);
+        if (cur === null || cur === this.knownRaw) return;
         try {
-          const parsed = JSON.parse(e.newValue);
-          this.knownRaw = e.newValue;
+          const parsed = JSON.parse(cur);
+          this.knownRaw = cur;
           this.listeners.forEach(l => l(parsed));
         } catch { /* unlesbarer Inhalt: ignorieren, der nächste Schreibvorgang des anderen Fensters kommt */ }
       };
