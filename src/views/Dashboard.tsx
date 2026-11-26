@@ -18,11 +18,11 @@
 import React, { useState, useRef, useEffect } from "react";
 import { SIA_PHASES, DASHBOARD_WIDGETS, LEAD_STAGES } from "../constants";
 import { dueFollowUps, isOpenLead, pipelineValue } from "../crm";
-import { formatCHF, formatDate, formatHours, migrateDashboardLayout, widgetsToRows, generateId, getFeiertageForYear, localISODate, invoiceNet, yearRevenue, dailySollHours, getWeekNumber, arbeitszeitAm } from "../utils";
-import { createWorktime } from "../worktime";
+import { formatCHF, formatDate, formatHours, migrateDashboardLayout, widgetsToRows, generateId, getFeiertageForYear, localISODate, invoiceNet, yearRevenue, getWeekNumber, arbeitszeitAm } from "../utils";
+import { createWorktime, baseDailySoll } from "../worktime";
 import { KpiCard } from "../components/UI";
 import { isCloudBackend } from "../storage/adapter";
-import type { AppData, Employee, DashboardRow, DashboardTemplate, TimeEntry, ViewProps } from "../types";
+import type { AppData, DashboardRow, DashboardTemplate, TimeEntry, ViewProps } from "../types";
 
 const HEIGHT_OPTS = [
   { v: 0,   l: "Auto" },
@@ -419,7 +419,8 @@ export default function Dashboard({ data, setView, currentUser, userPermissions,
       if(!myEmpId||!myEmp) return <div className="card" style={{height:"100%",boxSizing:"border-box",display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,color:"var(--text5)"}}>Kein Mitarbeiterprofil verknüpft</div>;
       // Gleiche Rechnung wie Zeiterfassung und Mitarbeiter (worktime.ts): anteiliger Anspruch, Übertrag, Halbtage
       const fy=createWorktime(data, today).vacationYear(myEmp, parseInt(thisYear,10));
-      const perDay=dailySollHours(arbeitszeitAm(myEmp,today))||1;
+      // baseDailySoll statt dailySollHours: 0 % (z. B. unbezahlter Urlaub) bleibt 0 und wird nicht zu 100 %
+      const perDay=baseDailySoll(myEmp,today)||1;
       const toDays=(h: number)=>Math.round(h/perDay*10)/10;
       const anspruchTage=toDays(fy.anspruch+fy.ubertrag);
       const bezogenTage=toDays(fy.bezogen+fy.geplant);
@@ -482,7 +483,7 @@ export default function Dashboard({ data, setView, currentUser, userPermissions,
           <div style={{paddingTop:12,borderTop:"1px solid var(--border2)"}}>
             <div style={{fontSize:10,color:"var(--text4)",marginBottom:4}}>DIESER MONAT</div>
             <div style={{fontSize:14,fontWeight:600,color:deltaMonth>=0?"var(--positive)":"var(--negative)"}}>
-              {deltaMonth>=0?"+":""}{formatHours(Math.abs(deltaMonth))}
+              {deltaMonth>=0?"+":"−"}{formatHours(Math.abs(deltaMonth))}
             </div>
             <div style={{fontSize:11,color:"var(--text4)"}}>{formatHours(istMonthMin)} von {formatHours(sollMonthMin)} Soll</div>
           </div>
@@ -591,21 +592,13 @@ export default function Dashboard({ data, setView, currentUser, userPermissions,
       // "aktiv" — bislang folgenlos, weil nichts e.aktiv je setzt (immer
       // undefined !== false = true), aber divergiert sobald ein Deaktivieren-
       // Toggle dazukommt.
-      const activeEmps=(data.employees||[]).filter(e=>e.active!==false);
-      const pensum=(e: Employee)=>arbeitszeitAm(e,today).pensum/100;
-      const sollH=(e: Employee)=>((arbeitszeitAm(e,today).wochenstunden)*pensum(e))/5*(() => {
-        // Reine UTC-Arithmetik — "end" wurde bisher lokal konstruiert, "dd"
-        // UTC-verankert, wodurch der letzte Tag jedes Monats in den meisten
-        // Monaten verloren ging (nicht nur bei DST-Umstellungen).
-        const [my,mm]=thisMonth.split("-").map(Number);
-        let wd=0;const d=new Date(Date.UTC(my,mm-1,1));const end=new Date(Date.UTC(my,mm,0));const todayD=new Date(`${today}T00:00:00Z`);
-        const cap=end<todayD?end:todayD;const dd=new Date(d);
-        while(dd<=cap){const dow=dd.getUTCDay();if(dow!==0&&dow!==6)wd++;dd.setUTCDate(dd.getUTCDate()+1);}
-        return wd;
-      })();
+      const monthFrom=`${thisMonth}-01`;
+      const activeEmps=(data.employees||[]).filter(e=>e.active!==false&&!(e.austrittsdatum&&e.austrittsdatum.slice(0,10)<monthFrom));
+      // Soll wie in der Kachel «Stundensaldo» (worktime.ts): Feiertage, Ferien, Absenzen, Ein-/Austritt, Pensumwechsel
+      const wt=createWorktime(data, today);
       const empData=activeEmps.map(e=>{
         const istMin=data.timeEntries.filter(t=>t.employeeId===e.id&&(t.date||"").startsWith(thisMonth)).reduce((s,t)=>s+(t.minutes||0),0);
-        const sollMin=sollH(e)*60;
+        const sollMin=Math.round(wt.period(e, monthFrom, today).sollBrutto*60);
         const pct=sollMin>0?Math.min(istMin/sollMin,1.5):0;
         return{...e,istMin,sollMin,pct};
       }).sort((a,b)=>b.istMin-a.istMin);

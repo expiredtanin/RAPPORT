@@ -31,39 +31,49 @@ function canWriteCheck(currentUser: CurrentUser | null | undefined, data: AppDat
 }
 
 // ─── Poll bar ─────────────────────────────────────────────────────────────────
-function PollBlock({ poll, postId, currentUserId, onVote }: {
-  poll?: Poll | null; postId: string; currentUserId?: string; onVote: (postId: string, optionId: string) => void;
+function PollBlock({ poll, postId, currentUserId, canSeeResults, onVote }: {
+  poll?: Poll | null; postId: string; currentUserId?: string;
+  /** Autor/in und Administratoren sehen die Ergebnisse auch ohne eigene Stimme */
+  canSeeResults?: boolean; onVote: (postId: string, optionId: string) => void;
 }) {
+  const [changing, setChanging] = useState(false);
   if (!poll) return null;
   const total = Object.keys(poll.votes || {}).length;
   const myVote = currentUserId ? poll.votes?.[currentUserId] : undefined;
   const hasVoted = !!myVote;
+  // Antwortknöpfe: ohne Stimme oder beim Ändern; Balken: mit Stimme oder für Autor/Admin (nicht beim Ändern)
+  const showButtons = !hasVoted || changing;
+  const showBars = (hasVoted || !!canSeeResults) && !changing;
+  const vote = (optId: string) => { onVote(postId, optId); setChanging(false); };
+  const linkBtn: React.CSSProperties = { background: "none", border: "none", color: "var(--accent)", fontSize: 11, cursor: "pointer", fontFamily: "inherit", padding: 0 };
   return (
     <div style={{ marginTop: 14, padding: "12px 14px", background: "var(--surface2)", borderRadius: 10, border: "1px solid var(--border2)" }}>
-      <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text)", marginBottom: 10 }}>{poll.question}</div>
+      <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text)", marginBottom: 10, overflowWrap: "anywhere" }}>{poll.question}</div>
       {poll.options.map(opt => {
         const count = Object.values(poll.votes || {}).filter(v => v === opt.id).length;
         const pct = total > 0 ? Math.round((count / total) * 100) : 0;
         const isMyVote = myVote === opt.id;
+        const idleBorder = isMyVote ? "var(--info)" : "var(--border)";
         return (
           <div key={opt.id} style={{ marginBottom: 8 }}>
-            {!hasVoted ? (
-              <button onClick={() => onVote(postId, opt.id)} style={{
-                width: "100%", padding: "8px 14px", textAlign: "left",
-                background: "var(--surface)", border: "1.5px solid var(--border)",
+            {showButtons && (
+              <button onClick={() => vote(opt.id)} style={{
+                width: "100%", padding: "8px 14px", textAlign: "left", overflowWrap: "anywhere",
+                background: "var(--surface)", border: `1.5px solid ${idleBorder}`,
                 borderRadius: 20, cursor: "pointer", fontSize: 13, fontFamily: "inherit",
                 color: "var(--text)", transition: "border-color 0.15s",
               }}
                 onMouseEnter={e => e.currentTarget.style.borderColor = "var(--accent)"}
-                onMouseLeave={e => e.currentTarget.style.borderColor = "var(--border)"}
-              >{opt.label}</button>
-            ) : (
-              <div>
-                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4, fontSize: 12 }}>
-                  <span style={{ color: isMyVote ? "var(--text)" : "var(--text3)", fontWeight: isMyVote ? 600 : 400 }}>
+                onMouseLeave={e => e.currentTarget.style.borderColor = idleBorder}
+              >{isMyVote ? "✓ " : ""}{opt.label}</button>
+            )}
+            {showBars && (
+              <div style={{ marginTop: showButtons ? 4 : 0 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 8, marginBottom: 4, fontSize: 12 }}>
+                  <span style={{ minWidth: 0, overflowWrap: "anywhere", color: isMyVote ? "var(--text)" : "var(--text3)", fontWeight: isMyVote ? 600 : 400 }}>
                     {isMyVote ? "✓ " : ""}{opt.label}
                   </span>
-                  <span style={{ color: "var(--text4)" }}>{count} ({pct}%)</span>
+                  <span style={{ color: "var(--text4)", flexShrink: 0 }}>{count} ({pct}%)</span>
                 </div>
                 <div style={{ height: 4, background: "var(--border2)", borderRadius: 2 }}>
                   <div style={{ width: `${pct}%`, height: "100%", background: isMyVote ? "var(--info)" : "var(--border3)", borderRadius: 2, transition: "width 0.4s" }} />
@@ -73,7 +83,13 @@ function PollBlock({ poll, postId, currentUserId, onVote }: {
           </div>
         );
       })}
-      {hasVoted && <div style={{ fontSize: 11, color: "var(--text4)", marginTop: 6 }}>{total} Stimme{total !== 1 ? "n" : ""} abgegeben</div>}
+      {(showBars || changing) && (
+        <div style={{ fontSize: 11, color: "var(--text4)", marginTop: 6, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+          {showBars && <span>{total} Stimme{total !== 1 ? "n" : ""} abgegeben</span>}
+          {hasVoted && !changing && <button onClick={() => setChanging(true)} style={linkBtn}>Stimme ändern</button>}
+          {changing && <button onClick={() => setChanging(false)} style={linkBtn}>Abbrechen</button>}
+        </div>
+      )}
     </div>
   );
 }
@@ -133,9 +149,9 @@ function PostCard({ post, currentUser, canWrite, onEdit, onDelete, onPin, onVote
           </div>
         </div>
 
-        {post.title && <div style={{ fontSize: 17, fontFamily: "var(--font-ui)", color: "var(--text)", marginBottom: 8, lineHeight: 1.3 }}>{post.title}</div>}
+        {post.title && <div style={{ fontSize: 17, fontFamily: "var(--font-ui)", color: "var(--text)", marginBottom: 8, lineHeight: 1.3, overflowWrap: "anywhere" }}>{post.title}</div>}
 
-        <div style={{ fontSize: 13, color: "var(--text2)", lineHeight: 1.7, whiteSpace: "pre-wrap", overflow: "hidden", maxHeight: expanded ? "none" : "6.8em" }}>
+        <div style={{ fontSize: 13, color: "var(--text2)", lineHeight: 1.7, whiteSpace: "pre-wrap", overflowWrap: "anywhere", overflow: "hidden", maxHeight: expanded ? "none" : "6.8em" }}>
           {post.body}
         </div>
         {isLong && (
@@ -144,7 +160,7 @@ function PostCard({ post, currentUser, canWrite, onEdit, onDelete, onPin, onVote
           </button>
         )}
 
-        <PollBlock poll={post.poll} postId={post.id} currentUserId={currentUser?.id} onVote={onVote} />
+        <PollBlock poll={post.poll} postId={post.id} currentUserId={currentUser?.id} canSeeResults={isOwn || isAdmin} onVote={onVote} />
 
         <div style={{ marginTop: 12, fontSize: 11, color: "var(--text4)", display: "flex", gap: 16 }}>
           <span>{post.authorName}</span>
@@ -187,7 +203,9 @@ function PostModal({ initial, onSave, onClose, data }: {
 
   const handleSave = (draft = false) => {
     if (!form.body.trim()) return;
-    const finalPoll = pollEnabled && poll.question.trim() && poll.options.filter(o => o.label.trim()).length >= 2
+    const pollValid = !!poll.question.trim() && poll.options.filter(o => o.label.trim()).length >= 2;
+    if (pollEnabled && !pollValid) { showToast("Umfrage braucht eine Frage und mindestens zwei Antworten."); return; }
+    const finalPoll = pollEnabled && pollValid
       ? (() => {
           // Stimmen für entfernte Optionen verwerfen (sonst zählten sie im Total, aber bei keiner Option)
           const options = poll.options.filter(o => o.label.trim());
@@ -421,7 +439,7 @@ export default function Pinboard({ data, update, currentUser }: Pick<ViewProps, 
       )}
 
       {sorted.length > 0 && (
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, alignItems: "start" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 16, alignItems: "start" }}>
           <div>{leftPosts.map(renderCard)}</div>
           <div>{rightPosts.map(renderCard)}</div>
         </div>
