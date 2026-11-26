@@ -241,7 +241,8 @@ export default function Today({ data, currentUser, userPermissions, run, onOpenP
           {tasks.map(t => (
             <div key={t.key} className="task-row">
               <button className={`chk${t.overdue ? " late" : ""}`} onClick={() => doneTask(t)} title="Erledigt" aria-label={`«${t.label}» erledigt`} />
-              <button className="task-text" onClick={() => window.dispatchEvent(new CustomEvent("openProtokoll", { detail: { id: t.protocolId } }))}>
+              {/* eigene Aufgaben sieht jede Person; das Protokoll öffnen nur mit Recht «Protokolle» (sonst «Kein Zugriff») */}
+              <button className="task-text" disabled={!can("protokolle")} style={can("protokolle") ? undefined : { cursor: "default" }} onClick={() => can("protokolle") && window.dispatchEvent(new CustomEvent("openProtokoll", { detail: { id: t.protocolId } }))}>
                 {t.label}
                 <span className="today-meta">{projectName(t.projectId)} · {t.protocolLabel}</span>
               </button>
