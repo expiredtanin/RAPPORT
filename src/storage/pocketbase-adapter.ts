@@ -904,7 +904,7 @@ export class PocketBaseAdapter implements StorageAdapter {
     const existing = (await c.getFullList(base ? { filter, fields, batch: LIST_BATCH } : { filter, batch: LIST_BATCH }))
       .map(r => this._files.fromRecord(table, r));
     const ops = await this._mergeJsonUpdates(table, filter, planSync(rows, existing, keyField, base), existing, keyField, base);
-    const conflicts = await this._applyOps(table, ops);
+    const conflicts = await this._applyOps(table, ops, !!conflict);
     // Abgelehnt, weil inzwischen geändert (409): frisch laden, verrechnen, erneut schreiben
     if (conflicts.length && conflict) await this._resolveConflicts(table, sid, conflicts, rows, keyField, base, conflict.mapper, conflict.ctx);
     // Gerade hochgeladene Dateien stehen im Abgleichsstand als Verweis (wie nach dem nächsten Laden)
@@ -978,8 +978,13 @@ export class PocketBaseAdapter implements StorageAdapter {
   /** Einstellungen (DB-Form) beim letzten Laden/Schreiben; Basis für den Drei-Wege-Abgleich. */
   _settingsBase: SyncRow | null = null;
 
-  /** Führt die Operationen aus; Rückgabe = Updates, die der Server mit 409 («inzwischen geändert») abgelehnt hat. */
-  async _applyOps(table: string, allOps: Op[]): Promise<Op[]> {
+  /**
+   * Führt die Operationen aus; Rückgabe = Updates, die der Server mit 409 («inzwischen geändert») abgelehnt hat.
+   * `lock`: Updates mit dem bekannten Stand schicken (optimistische Sperre). Nur, wenn der Aufrufer abgelehnte Updates
+   * verrechnet (_resolveConflicts) — sonst ginge eine 409-Ablehnung still verloren (Einstellungen, Rollen, Feiertage …
+   * gleichen ohnehin gegen den frisch geladenen Serverstand ab; Review 27.11.2026).
+   */
+  async _applyOps(table: string, allOps: Op[], lock = false): Promise<Op[]> {
     const c = this.client.collection(table);
     const conflicts: Op[] = [];
     // Dateifelder vorbereiten: Uploads (multipart) gehen einzeln, alles andere wie bisher (Batch)
@@ -998,23 +1003,23 @@ export class PocketBaseAdapter implements StorageAdapter {
     for (const chunk of PocketBaseAdapter._chunkOps(ops)) {
       // Eine einzelne Operation braucht keinen Batch (häufigster Fall: eine Zeile geändert)
       if (this._batchSupported === false || chunk.length === 1) {
-        conflicts.push(...await this._applyOpsSequential(c, chunk, table));
+        conflicts.push(...await this._applyOpsSequential(c, chunk, table, lock));
         continue;
       }
       try {
-        await this._applyOpsBatched(table, chunk);
+        await this._applyOpsBatched(table, chunk, lock);
       } catch (err) {
         if (pbError(err).status === 403 && /batch/i.test(pbError(err).data?.message || pbError(err).message || "")) {
           this._batchSupported = false;
         } else if (pbError(err).status === 429) {
           await new Promise(r => setTimeout(r, PocketBaseAdapter.BATCH_RETRY_MS));
-          try { await this._applyOpsBatched(table, chunk); continue; } catch { /* unten einzeln */ }
+          try { await this._applyOpsBatched(table, chunk, lock); continue; } catch { /* unten einzeln */ }
         }
         // auch bei 409 in einem Teil: der Batch ist ganz zurückgerollt, einzeln findet sich der abgelehnte Datensatz
-        conflicts.push(...await this._applyOpsSequential(c, chunk, table));
+        conflicts.push(...await this._applyOpsSequential(c, chunk, table, lock));
       }
     }
-    for (const { op, prepared } of uploads) if (await this._applyUpload(table, op, prepared)) conflicts.push(op);
+    for (const { op, prepared } of uploads) if (await this._applyUpload(table, op, prepared, lock)) conflicts.push(op);
     return conflicts;
   }
 
@@ -1035,12 +1040,12 @@ export class PocketBaseAdapter implements StorageAdapter {
    * Schreibt eine Operation mit Datei (multipart, nicht im Batch) und merkt sich danach den Verweis
    * zur hochgeladenen data:-URL. 404 bei Update wie im sequenziellen Pfad: übersprungen.
    */
-  async _applyUpload(table: string, op: Op, prepared: PreparedBody): Promise<boolean> {
+  async _applyUpload(table: string, op: Op, prepared: PreparedBody, lock = false): Promise<boolean> {
     const c = this.client.collection(table);
     for (let attempt = 0; ; attempt++) {
       try {
         if (op.type === "create") await this._reserveCreates(1);
-        const rec = op.type === "update" ? await c.update(op.id, prepared.body, this._ifUpdated(table, op.id)) : await c.create(prepared.body);
+        const rec = op.type === "update" ? await c.update(op.id, prepared.body, lock ? this._ifUpdated(table, op.id) : undefined) : await c.create(prepared.body);
         this._noteVersion(table, rec);
         if (prepared.upload) this._files.remember(table, rec, prepared.upload);
         return false;
@@ -1060,7 +1065,7 @@ export class PocketBaseAdapter implements StorageAdapter {
     }
   }
 
-  async _applyOpsBatched(table: string, chunk: Op[]): Promise<void> {
+  async _applyOpsBatched(table: string, chunk: Op[], lock = false): Promise<void> {
     const wait = this._lastBatchAt + PocketBaseAdapter.BATCH_GAP_MS - Date.now();
     if (wait > 0) await new Promise(r => setTimeout(r, wait));
     await this._reserveCreates(chunk.filter(op => op.type === "create").length);
@@ -1068,7 +1073,7 @@ export class PocketBaseAdapter implements StorageAdapter {
     const batch = this.client.createBatch();
     for (const op of chunk) {
       if (op.type === "create") batch.collection(table).create(op.body);
-      else if (op.type === "update") batch.collection(table).update(op.id, op.body, this._ifUpdated(table, op.id));
+      else if (op.type === "update") batch.collection(table).update(op.id, op.body, lock ? this._ifUpdated(table, op.id) : undefined);
       else batch.collection(table).delete(op.id);
     }
     const results = await batch.send();
@@ -1083,13 +1088,13 @@ export class PocketBaseAdapter implements StorageAdapter {
   // Eine abgelehnte Operation hält die übrigen nicht mehr auf (sonst ging z.B. ein erlaubter neuer Eintrag mit
   // einem abgelehnten im selben Chunk verloren); der erste echte Fehler wird nach dem Durchlauf geworfen.
   // `table` gesetzt: Updates mit bekanntem Stand (optimistische Sperre); 409 sammeln statt melden (Rückgabe).
-  async _applyOpsSequential(c: ReturnType<PocketBase["collection"]>, chunk: Op[], table?: string): Promise<Op[]> {
+  async _applyOpsSequential(c: ReturnType<PocketBase["collection"]>, chunk: Op[], table?: string, lock = false): Promise<Op[]> {
     let first: unknown = null;
     const conflicts: Op[] = [];
     for (const op of chunk) {
       try {
         if (op.type === "create") { await this._reserveCreates(1); const rec = await c.create(op.body); if (table) this._noteVersion(table, rec); }
-        else if (op.type === "update") { const rec = await c.update(op.id, op.body, table ? this._ifUpdated(table, op.id) : undefined); if (table) this._noteVersion(table, rec); }
+        else if (op.type === "update") { const rec = await c.update(op.id, op.body, table && lock ? this._ifUpdated(table, op.id) : undefined); if (table) this._noteVersion(table, rec); }
         else await c.delete(op.id);
       } catch (err) {
         if (isTransient(err)) throw err;
@@ -1213,7 +1218,7 @@ export class PocketBaseAdapter implements StorageAdapter {
     const conflicts = await this._applyOps("persons", planSync(rows, existing, "id", base, {
       deletable: r => r.studio === sid,
       createExtra: { studio: sid },
-    }));
+    }), !!ctx);
     if (conflicts.length && ctx) await this._resolveConflicts("persons", sid, conflicts, rows, "id", base, "person", ctx);
     if (this._studioId === sid) this._base.set("persons", baseFrom(rows, "id"));
   }

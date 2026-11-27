@@ -229,17 +229,22 @@ async fn check_inner(restore: bool) -> Result<CheckResult, String> {
             }
         }
     }
-    compose_pull().await?;
-    let containers = container_images().await?;
-    let mut local_ids = HashMap::new();
-    for c in &containers {
-        if !local_ids.contains_key(&c.image_ref) {
-            if let Some(id) = local_image_id(&c.image_ref).await {
-                local_ids.insert(c.image_ref.clone(), id);
+    // Fehler erst NACH dem Zuruecksetzen melden: sonst blieben die Referenzen nach einem Fehler zwischen Pull und
+    // Vergleich (z.B. `compose ps` scheitert) auf den neuen Images, und das naechste `up -d` stellte ohne Backup um.
+    let updates: Result<Vec<UpdateAvailable>, String> = async {
+        compose_pull().await?;
+        let containers = container_images().await?;
+        let mut local_ids = HashMap::new();
+        for c in &containers {
+            if !local_ids.contains_key(&c.image_ref) {
+                if let Some(id) = local_image_id(&c.image_ref).await {
+                    local_ids.insert(c.image_ref.clone(), id);
+                }
             }
         }
+        Ok(diff_updates(&containers, &local_ids))
     }
-    let updates = diff_updates(&containers, &local_ids);
+    .await;
     if restore {
         let mut after = HashMap::new();
         for r in before.keys() {
@@ -255,7 +260,7 @@ async fn check_inner(restore: bool) -> Result<CheckResult, String> {
     }
     Ok(CheckResult {
         checked_at_iso: Local::now().to_rfc3339(),
-        updates,
+        updates: updates?,
     })
 }
 

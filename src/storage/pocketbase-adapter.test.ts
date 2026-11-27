@@ -249,6 +249,18 @@ describe("PocketBaseAdapter: optimistische Sperre (409 → frisch laden, verrech
     expect(srv.calls[0].header).toBeUndefined();
   });
 
+  it("ohne Verrechnen (Einstellungen, Rollen, Feiertage …): kein Header, sonst ginge ein 409 still verloren", async () => {
+    // Review 27.11.2026: _applyOps ohne Konfliktbehandlung schickte den gemerkten Stand mit; nach einer Änderung durch
+    // jemand anderen lehnte der Server jedes weitere Speichern der Einstellungen mit 409 ab und der Adapter
+    // verwarf die Ablehnung kommentarlos (Einstellungen galten als gespeichert).
+    const { a, srv } = setup(base, base);
+    a._versions.set("studioSettings", new Map([["inv1", "v1"]]));
+    const conflicts = await a._applyOps("studioSettings", [{ type: "update", id: "inv1", body: { notes: "x" } }]);
+    expect(conflicts).toEqual([]);
+    expect(srv.calls[0].header).toBeUndefined();
+    expect(srv.rec.notes).toBe("x");
+  });
+
   it("gibt nach CONFLICT_RETRIES Versuchen auf und meldet, dass nicht gespeichert wurde", async () => {
     const { srv, sync } = setup(base, base);
     srv.coll.update.mockImplementation(async () => { throw Object.assign(new Error("409"), { status: 409 }); });
