@@ -273,9 +273,15 @@ export function lohnNachzahlungOffen(emp: Employee, lohnEntries: LohnEntry[], mo
   const bezahlt = new Map<string, number>();
   for (const l of eigene) for (const n of l.nachzahlungMonate || []) bezahlt.set(n.monat, roundCHF((bezahlt.get(n.monat) || 0) + n.betrag));
   const jahr = monat.slice(0, 4);
+  // Klare Regel: nur datierte Änderungen («Lohn ab …», «Pensum ab …») lösen eine Nachzahlung aus, und nur für Monate ab
+  // der frühesten solchen Änderung — wer den Grundlohn direkt ändert, bekam sonst für alle früheren Monate (auch
+  // Vorjahre) eine Nachzahlung vorgeschlagen (Review 27.11.2026)
+  const abs = [...(emp.lohnVerlauf || []), ...(emp.pensumVerlauf || [])].map(v => String(v?.ab || "")).filter(a => /^\d{4}-\d{2}/.test(a)).sort();
+  if (abs.length === 0) return null;
+  const ersterMonat = abs[0].slice(0, 7);
   const monate: NachzahlungMonat[] = [];
   let basis = 0;
-  for (const e of eigene.filter(l => l.monat < monat && !l.bruttoWasOverridden && !l.pensumWasOverridden).sort((a, b) => a.monat.localeCompare(b.monat))) {
+  for (const e of eigene.filter(l => l.monat < monat && l.monat >= ersterMonat && !l.bruttoWasOverridden && !l.pensumWasOverridden).sort((a, b) => a.monat.localeCompare(b.monat))) {
     const soll = roundCHF(lohnImMonat(emp, e.monat) * monatsAnteilNachEintritt(emp.eintrittsdatum, e.monat, emp.austrittsdatum));
     const diff = roundCHF(soll - (e.brutto || 0) - (bezahlt.get(e.monat) || 0));
     if (Math.abs(diff) < 0.005) continue;

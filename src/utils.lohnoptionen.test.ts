@@ -232,9 +232,15 @@ describe("Nachzahlung bei rückwirkender Lohnänderung", () => {
   });
 
   it("nur frühere Monate, nur dieselbe Person", () => {
-    const neu = emp({ monatslohn: 9000 });
+    const neu = emp({ lohnVerlauf: [{ ab: "2026-01-01", monatslohn: 9000 }] });
     expect(lohnNachzahlungOffen(neu, entries(alt, 3), "2026-02", "monatlich")!.monate.map(m => m.monat)).toEqual(["2026-01"]);
     expect(lohnNachzahlungOffen({ ...neu, id: "e2" }, entries(alt, 3), "2026-04", "monatlich")).toBeNull();
+  });
+
+  it("Grundlohn direkt geändert (ohne «Lohn ab …»): keine Nachzahlung; nur Monate ab der datierten Änderung", () => {
+    expect(lohnNachzahlungOffen(emp({ monatslohn: 9000 }), entries(alt, 3), "2026-04", "monatlich")).toBeNull();
+    const ab = emp({ lohnVerlauf: [{ ab: "2026-02-01", monatslohn: 9000 }] });
+    expect(lohnNachzahlungOffen(ab, entries(alt, 3), "2026-04", "monatlich")!.monate.map(m => m.monat)).toEqual(["2026-02", "2026-03"]);
   });
 
   it("calcLohn: Nachzahlung ist sozialversicherungspflichtig und Teil des Bruttolohns Total", () => {
