@@ -33,7 +33,7 @@ export function getUserInitials(currentUser: CurrentUser | null): string {
 export function getVisibleNavItems(userPermissions: string[] | null): NavItem[] {
   return userPermissions === null ? NAV_ITEMS : NAV_ITEMS.map(item => {
     if (item.children) {
-      const ch = item.children.filter(c => userPermissions.includes(c.id));
+      const ch = item.children.filter(c => userPermissions.includes(c.id) || (c.alsoWith && userPermissions.includes(c.alsoWith)));
       return ch.length > 0 ? { ...item, children: ch } : null;
     }
     return userPermissions.includes(item.id) || (item.alsoWith && userPermissions.includes(item.alsoWith)) ? item : null;

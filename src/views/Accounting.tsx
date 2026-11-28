@@ -95,12 +95,17 @@ function Accounting({ data, update, setView, setModal, setPrintContent }: Pick<V
   const nowY = Number(today.slice(0, 4));
   const prevPer = [...mwstPerioden(nowY - 1, methode), ...mwstPerioden(nowY, methode)].filter(p => p.end < thisMonth).pop();
   const prevPerSum = prevPer ? accountingSummary(data, prevPer.period) : null;
+  // Abrechnen muss, wer eine MWST-Nummer hat, auch ohne Umsatz (Nullabrechnung, Art. 71 MWSTG), sonst wer in der Periode
+  // MWST-relevante Zahlen hat — vorher fehlte die Aufgabe bei Perioden nur mit Büroausgaben (Vorsteuerguthaben) oder,
+  // bei vereinnahmten Entgelten, nur mit Zahlungseingängen früher gestellter Rechnungen
+  const prevPerFaellig = !!prevPerSum && (!!(data.settings.mwst || "").trim()
+    || prevPerSum.issuedCount + prevPerSum.expCount > 0 || prevPerSum.umsatzsteuer !== 0 || prevPerSum.vorsteuer !== 0);
   const todos: { key: string; icon: string; label: string; meta: string; late?: boolean; onClick: () => void }[] = [
     ...(overdueInvoices.length ? [{ key: "mahn", icon: "notification_important", label: `${overdueInvoices.length} ${overdueInvoices.length === 1 ? "Rechnung" : "Rechnungen"} überfällig`, meta: `${formatCHF(overdueInvoices.reduce((s, i) => s + (i.total || 0), 0))} · mahnen`, late: true, onClick: () => document.getElementById("mahnwesen")?.scrollIntoView({ behavior: "smooth" }) }] : []),
     ...(drafts.length ? [{ key: "draft", icon: "draft", label: `${drafts.length} ${drafts.length === 1 ? "Rechnungsentwurf" : "Rechnungsentwürfe"} versenden`, meta: formatCHF(drafts.reduce((s, i) => s + invoiceNet(i), 0)) + " netto", onClick: () => setView("invoices") }] : []),
     ...(spesenOffen.length ? [{ key: "spesen", icon: "receipt_long", label: `${spesenOffen.length} ${spesenOffen.length === 1 ? "Spese" : "Spesen"} genehmigen`, meta: formatCHF(spesenOffen.reduce((s, e) => s + (e.amount || 0), 0)), onClick: () => setView("expenses") }] : []),
     ...(lohnEmps.length && lohnDone < lohnEmps.length ? [{ key: "lohn", icon: "payments", label: `Löhne ${monthName} abrechnen`, meta: `${lohnDone} von ${lohnEmps.length} erstellt`, onClick: () => setView("loehne") }] : []),
-    ...(prevPer && prevPerSum && prevPer.due >= today && prevPerSum.issuedCount + prevPerSum.expCount > 0 ? [{ key: "mwst", icon: "account_balance", label: `MWST ${periodLabel(prevPer.period)} abrechnen`, meta: `${mwst(prevPerSum.mwstSchuld)} · bis ${formatDate(prevPer.due)}`, late: prevPer.due <= addDays(today, 10), onClick: () => setPeriod(prevPer.period) }] : []),
+    ...(prevPer && prevPerSum && prevPer.due >= today && prevPerFaellig ? [{ key: "mwst", icon: "account_balance", label: `MWST ${periodLabel(prevPer.period)} abrechnen`, meta: `${mwst(prevPerSum.mwstSchuld)} · bis ${formatDate(prevPer.due)}`, late: prevPer.due <= addDays(today, 10), onClick: () => setPeriod(prevPer.period) }] : []),
   ];
   const quarterYear = Number(filterYear || today.slice(0, 4));
   const quarters = mwstPerioden(quarterYear, methode).map(p => ({

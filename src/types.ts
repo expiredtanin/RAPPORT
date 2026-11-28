@@ -419,7 +419,7 @@ export interface Invoice {
   total: number;
   subAfterDisc?: number;
   globalDisc?: number;
-  /** z.B. "akonto" — MWST erst bei Schlussrechnung steuerrelevant */
+  /** "akonto", "teilrechnung", "schluss" (leer = freie Rechnung). Akonto-MWST wird mit der Akontorechnung abgerechnet (Art. 40 MWSTG), die Schlussrechnung belastet MWST nur auf dem Rest */
   invoiceKind?: string;
   discountType?: string;
   discountValue?: number;

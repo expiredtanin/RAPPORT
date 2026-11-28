@@ -6,7 +6,7 @@
 // kommt aus `buildPdfName` (utils.ts, Format in den Einstellungen).
 //
 // Dokumenttypen: invoice, invoice+qr, qrbill (Zahlteil), quote, vertrag, lieferschein,
-// protokoll, letter, lohn, buchhaltung, studioBudget, projectDetail, projectsOverview,
+// protokoll, letter, lohn, buchhaltung, debitoren, studioBudget, projectDetail, projectsOverview,
 // mitarbeiterOverview, timeReport, schedule (Terminprogramm). Die Vorlagen liegen je Fachbereich in print/docs/
 // (z.B. docs/InvoicePrint.tsx); gemeinsame Typen und `HEADING` in docs/shared.ts.
 //
@@ -43,6 +43,7 @@ import { LetterPrint } from "./docs/LetterPrint";
 import { ProjectDetailPrint, ProjectsOverviewPrint } from "./docs/ProjectPrints";
 import { LohnPrint } from "./docs/PayrollPrint";
 import { BuchhaltungPrint } from "./docs/AccountingPrint";
+import { DebitorenPrint } from "./docs/DebitorenPrint";
 import { MitarbeiterOverviewPrint, TimeReportPrint } from "./docs/EmployeePrints";
 import { StudioBudgetPrint } from "./docs/StudioBudgetPrint";
 import { buildQrBillData } from "./docs/qrBillData";
@@ -324,6 +325,7 @@ export function PrintView({ content, onClose, settings, assets }: { content: Con
           {content.type === "quote" && <QuotePrint quote={content.quote} client={content.client} settings={settings} />}
           {content.type === "vertrag" && <VertragPrint vertrag={content.vertrag} amounts={content.amounts} client={content.client} project={content.project} settings={settings} />}
           {content.type === "buchhaltung" && <BuchhaltungPrint data={content.data} filterYear={content.filterYear} settings={settings} />}
+          {content.type === "debitoren" && <DebitorenPrint data={content.data} asOf={content.asOf} onlyOverdue={!!content.onlyOverdue} settings={settings} />}
           {content.type === "lohn" && <LohnPrint entry={content.entry} emp={content.emp} data={content.data} monatLabel={content.monatLabel} settings={settings} />}
           {content.type === "lieferschein" && <LieferscheinPrint note={content.note} client={content.client} data={content.data} settings={settings} />}
           {content.type === "studioBudget" && <StudioBudgetPrint snapshot={content.snapshot} settings={settings} />}

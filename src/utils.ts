@@ -1703,6 +1703,8 @@ export interface PdfNameContent {
   emp?: { name?: string };
   monatLabel?: string;
   filterYear?: string | number;
+  /** Stichtag der Debitorenliste */
+  asOf?: string;
   client?: NamedParty;
 }
 
@@ -1721,7 +1723,7 @@ export function buildPdfName(
     "invoice": "Rechnung", "invoice+qr": "Rechnung", "qrbill": "QR-Rechnung",
     "quote": "Offerte", "vertrag": "Vertrag", "lieferschein": "Lieferschein", "protokoll": "Protokoll",
     "lohn": "Lohnabrechnung", "letter": "Brief", "projectDetail": "Projekt",
-    "projectsOverview": "Projekte", "buchhaltung": "Buchhaltung", "studioBudget": "Budget",
+    "projectsOverview": "Projekte", "buchhaltung": "Buchhaltung", "debitoren": "Debitoren", "studioBudget": "Budget",
     "schedule": "Terminprogramm",
   };
   const typ = (content?.type && typeLabels[content.type]) || content?.type || "Dokument";
@@ -1751,6 +1753,8 @@ export function buildPdfName(
     nummer = content.monatLabel || "";
   } else if (content?.filterYear) {
     nummer = String(content.filterYear);
+  } else if (content?.asOf) {
+    nummer = content.asOf;
   }
   const sanitize = (s?: string) => (s || "").replace(/[^a-zA-Z0-9äöüÄÖÜ_\-.]/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "");
   const fmt = format || "{studio}_{typ}_{nummer}";

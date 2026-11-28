@@ -153,6 +153,7 @@ export const NAV_ITEMS: NavItem[] = [
   { id: "contracts", label: "Verträge", icon: "handshake", group: "Büro" },
   { id: "buchhaltung", label: "Buchhaltung", icon: "account_balance", group: "Büro", children: [
     { id: "invoices", label: "Rechnungen" },
+    { id: "debitoren", label: "Debitoren", alsoWith: "invoices" },
     { id: "internal-expenses", label: "Ausgaben" },
     { id: "expenses", label: "Spesen" },
     { id: "loehne", label: "Löhne" },

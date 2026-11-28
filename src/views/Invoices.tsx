@@ -150,6 +150,9 @@ function Invoices({ data, update, saveAll, modal, setModal, setPrintContent }: P
     if ((form.discountType === "percent" && !(Number(form.discountValue || 0) >= 0 && Number(form.discountValue || 0) <= 100))
       || form.items.some(it => !(Number(it.discount || 0) >= 0 && Number(it.discount || 0) <= 100))) { showToast("Rabatte zwischen 0 und 100 %."); return; }
     const { sub, globalDisc, subAfterDisc, tax, total } = calcTotal(form.items, form.mwst, form.mwstRate ?? data.settings.mwstRate, form.discountType, form.discountValue, !!data.settings.rechnungRunden5);
+    // Betragsrabatt über dem Zwischentotal drehte das Vorzeichen: aus einer Rechnung wurde still eine Gutschrift (samt
+    // negativer MWST in der Abrechnung), aus einer Gutschrift eine Rechnung
+    if (form.discountType === "amount" && Math.abs(globalDisc) > Math.abs(sub)) { showToast("Der Rabatt ist grösser als das Zwischentotal."); return; }
     const invoiceId = editingId || generateId();
     const status = statusOverride || form.status || "entwurf";
     // Verrechnete Minuten je Zeiteintrag bleiben an der Rechnung (entrySelections), damit beim Bearbeiten

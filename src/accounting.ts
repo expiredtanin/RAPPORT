@@ -352,6 +352,8 @@ export function spesenWartend(expenses: Expense[], employeeId: string, monat: st
 export interface AccountingSummary {
   /** Umsatz netto der gestellten Rechnungen */
   revenueNet: number;
+  /** Σ Total der gestellten Rechnungen (inkl. MWST und allfälliger 5-Rappen-Rundung, wie die Rechnungszeilen) */
+  revenueGross: number;
   /** Netto der Entwürfe (nur informativ, nicht im Ergebnis) */
   draftNet: number;
   issuedCount: number;
@@ -408,19 +410,35 @@ type SummaryData = Pick<AppData, "invoices" | "expenses" | "internalExpenses" | 
   settings?: Partial<Pick<AppData["settings"], "mwstMethode" | "mwstSaldoSatz" | "mwstAbrechnungsart">>;
 };
 
+/** Zahlungsdatum einer bezahlten Rechnung für die MWST nach vereinnahmten Entgelten (ältere ohne Datum: Rechnungsdatum). */
+export const zahlungsDatum = (i: Pick<Invoice, "paidDate" | "date">): string => i.paidDate || i.date || "";
+
+/**
+ * Rechnungen, auf denen die Umsatzsteuer der Periode beruht: vereinbart = gestellte Rechnungen nach Rechnungsdatum
+ * (`issued`); vereinnahmt = bezahlte Rechnungen nach Zahlungsdatum, sortiert nach Zahlungsdatum. Ansicht, PDF und CSV
+ * listen bei «vereinnahmt» genau diese Rechnungen, damit die Umsatzsteuer auf sichtbaren Zeilen beruht.
+ */
+function mwstBasisRechnungen(data: SummaryData, period: string, issued: Invoice[]): Invoice[] {
+  if (data.settings?.mwstAbrechnungsart !== "vereinnahmt") return issued;
+  return (data.invoices || []).filter(i => i.status === "bezahlt" && inPeriod(zahlungsDatum(i), period))
+    .sort((a, b) => zahlungsDatum(a).localeCompare(zahlungsDatum(b)));
+}
+
 /** Heute als `YYYY-MM-DD` (lokal). */
 const todayISO = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
 
 /** Gefilterte Datensätze einer Periode (gleiche Filter für Ansicht, PDF und CSV). */
 export function accountingRows(data: SummaryData, period: string, today = todayISO()): {
-  invoices: Invoice[]; issued: Invoice[]; expenses: Expense[]; expensesPending: Expense[]; internalExpenses: InternalExpense[]; lohnEntries: LohnEntry[];
+  invoices: Invoice[]; issued: Invoice[]; taxInvoices: Invoice[]; expenses: Expense[]; expensesPending: Expense[]; internalExpenses: InternalExpense[]; lohnEntries: LohnEntry[];
 } {
   const byDate = <T extends { date?: string }>(a: T, b: T) => (a.date || "").localeCompare(b.date || "");
   const invoices = (data.invoices || []).filter(i => inPeriod(i.date, period)).sort(byDate);
   const expensesInPeriod = (data.expenses || []).filter(e => inPeriod(e.date, period)).sort(byDate);
+  const issued = invoices.filter(i => i.status !== "entwurf");
   return {
     invoices,
-    issued: invoices.filter(i => i.status !== "entwurf"),
+    issued,
+    taxInvoices: mwstBasisRechnungen(data, period, issued),
     expenses: expensesInPeriod.filter(spesenZaehlen),
     expensesPending: expensesInPeriod.filter(e => !spesenZaehlen(e) && e.status !== "abgelehnt"),
     internalExpenses: expandInternalExpenses(data.internalExpenses || [], today).filter(e => inPeriod(e.date, period)).sort(byDate),
@@ -435,17 +453,15 @@ export function accountingRows(data: SummaryData, period: string, today = todayI
 export function accountingSummary(data: SummaryData, period: string, today = todayISO()): AccountingSummary {
   const rows = accountingRows(data, period, today);
   const sum = <T>(list: T[], f: (x: T) => number) => list.reduce((s, x) => s + f(x), 0);
-  const { invoices, issued, expenses, expensesPending, internalExpenses, lohnEntries } = rows;
+  const { invoices, issued, taxInvoices, expenses, expensesPending, internalExpenses, lohnEntries } = rows;
 
   const revenueNet = roundCHF(sum(issued, invoiceNet));
+  const revenueGross = roundCHF(sum(issued, i => i.total || 0));
   const taxTotal = roundCHF(sum(issued, i => i.tax || 0));
   const akontoTax = roundCHF(sum(issued.filter(i => i.invoiceKind === "akonto"), i => i.tax || 0));
   // MWST-Basis: vereinbart = gestellte Rechnungen nach Rechnungsdatum; vereinnahmt = bezahlte nach Zahlungsdatum
   const mwstMethode = data.settings?.mwstMethode === "saldo" ? "saldo" : "effektiv";
   const mwstArt = data.settings?.mwstAbrechnungsart === "vereinnahmt" ? "vereinnahmt" : "vereinbart";
-  const taxInvoices = mwstArt === "vereinnahmt"
-    ? (data.invoices || []).filter(i => i.status === "bezahlt" && inPeriod(i.paidDate || i.date, period))
-    : issued;
   // Saldosteuersatz nur auf steuerbare Entgelte (Rechnungen ohne MWST, z.B. ins Ausland, zählen nicht)
   const mwstEntgeltBrutto = roundCHF(sum(taxInvoices.filter(i => i.mwst !== false), i => i.total || 0));
   const umsatzsteuer = mwstMethode === "saldo"
@@ -477,10 +493,10 @@ export function accountingSummary(data: SummaryData, period: string, today = tod
   const saldo = mwstMethode === "saldo";
   const ausgabenTotal = roundCHF((saldo ? expGross + intGross : expNet + intNet) + personalaufwand);
   const ertrag = saldo
-    ? roundCHF(sum(issued, i => i.total || 0) - roundCHF(sum(issued.filter(i => i.mwst !== false), i => i.total || 0) * (data.settings?.mwstSaldoSatz || 0) / 100))
+    ? roundCHF(revenueGross - roundCHF(sum(issued.filter(i => i.mwst !== false), i => i.total || 0) * (data.settings?.mwstSaldoSatz || 0) / 100))
     : revenueNet;
   return {
-    revenueNet,
+    revenueNet, revenueGross,
     draftNet: roundCHF(sum(invoices.filter(i => i.status === "entwurf"), invoiceNet)),
     issuedCount: issued.length,
     taxTotal, akontoTax, mwstMethode, mwstArt, mwstEntgeltBrutto, umsatzsteuer,
@@ -513,7 +529,7 @@ export function buildBuchhaltungCSV(data: AppData, period = ""): string {
   const f = (n: number) => roundCHF(n).toFixed(2);
   const mwstRate = data.settings?.mwstRate ?? 8.1;
   const rows: string[] = [];
-  const { issued, expenses, internalExpenses, lohnEntries } = accountingRows(data, period);
+  const { issued, taxInvoices, expenses, internalExpenses, lohnEntries } = accountingRows(data, period);
   const s = accountingSummary(data, period);
 
   rows.push(line(["EINNAHMEN", "", "", "", "", "", "", ""]));
@@ -525,8 +541,23 @@ export function buildBuchhaltungCSV(data: AppData, period = ""): string {
     const taxRate = inv.mwst ? (inv.mwstRate ?? mwstRate) : 0;
     rows.push(line([inv.date, inv.number, client?.name || "", desc, f(invoiceNet(inv)), taxRate, f(inv.tax || 0), f(inv.total || 0)]));
   });
-  rows.push(line(["", "", "", "TOTAL", f(s.revenueNet), "", f(s.taxTotal), f(issued.reduce((a, i) => a + (i.total || 0), 0))]));
+  rows.push(line(["", "", "", "TOTAL", f(s.revenueNet), "", f(s.taxTotal), f(s.revenueGross)]));
   rows.push("");
+
+  // Vereinnahmte Entgelte: die Umsatzsteuer beruht auf den in der Periode bezahlten Rechnungen (auch früher gestellten) —
+  // sie werden hier gelistet, sonst liess sich die Umsatzsteuer der Zusammenfassung aus keiner Zeile nachvollziehen
+  if (s.mwstArt === "vereinnahmt") {
+    rows.push(line(["ZAHLUNGSEINGÄNGE (MWST-BASIS, VEREINNAHMTE ENTGELTE)", "", "", "", "", "", "", "", ""]));
+    rows.push(line(["Bezahlt am", "Rechnungs-Nr.", "Kunde", "Rechnungsdatum", "Netto CHF", "MWST-Satz %", "MWST CHF", "Brutto CHF", "Steuerbar"]));
+    taxInvoices.forEach(inv => {
+      const client = (data.persons || []).find(c => c.id === inv.clientId);
+      const taxRate = inv.mwst ? (inv.mwstRate ?? mwstRate) : 0;
+      rows.push(line([zahlungsDatum(inv), inv.number, client?.name || "", inv.date, f(invoiceNet(inv)), taxRate, f(inv.tax || 0), f(inv.total || 0), inv.mwst !== false ? "ja" : "nein"]));
+    });
+    const taxSum = taxInvoices.reduce((a, i) => a + (i.tax || 0), 0);
+    rows.push(line(["", "", "", "TOTAL", f(taxInvoices.reduce((a, i) => a + invoiceNet(i), 0)), "", f(taxSum), f(taxInvoices.reduce((a, i) => a + (i.total || 0), 0)), ""]));
+    rows.push("");
+  }
 
   rows.push(line(["SPESEN (MITARBEITERBEZOGEN)", "", "", "", "", "", "", "", ""]));
   rows.push(line(["Datum", "Kategorie", "Projekt", "Beschreibung", "Netto CHF", "MWST-Satz %", "MWST CHF", "Brutto CHF", "Ausbezahlt über Lohn"]));
@@ -570,7 +601,9 @@ export function buildBuchhaltungCSV(data: AppData, period = ""): string {
   rows.push(line(["", "", "", `MWST (${methode}, ${s.mwstArt === "vereinnahmt" ? "vereinnahmte" : "vereinbarte"} Entgelte)`, "", "", "", ""]));
   if (s.mwstMethode === "saldo") rows.push(line(["", "", "", "Steuerbares Entgelt inkl. MWST", "", "", f(s.mwstEntgeltBrutto), ""]));
   rows.push(line(["", "", "", "Umsatzsteuer", "", "", f(s.umsatzsteuer), ""]));
-  if (s.akontoTax > 0 && s.mwstMethode !== "saldo") rows.push(line(["", "", "", "davon auf Akontorechnungen", "", "", f(s.akontoTax), ""]));
+  // «davon Akonto» bezieht sich auf die gestellten Rechnungen — bei vereinnahmten Entgelten passt es nicht zur
+  // Umsatzsteuer darüber (konnte grösser sein als sie), deshalb wie in der Ansicht nur bei «vereinbart»
+  if (s.akontoTax > 0 && s.mwstMethode !== "saldo" && s.mwstArt === "vereinbart") rows.push(line(["", "", "", "davon auf Akontorechnungen", "", "", f(s.akontoTax), ""]));
   if (s.mwstMethode !== "saldo") rows.push(line(["", "", "", "Vorsteuer (Spesen + Ausgaben)", "", "", f(s.vorsteuer), ""]));
   rows.push(line(["", "", "", s.mwstSchuld < 0 ? "MWST-Guthaben" : "MWST-Schuld", "", "", f(Math.abs(s.mwstSchuld)), ""]));
   return rows.join("\n");

@@ -3,14 +3,14 @@
 import React from "react";
 import { STATUS_COLORS } from "../../constants";
 import { formatCHF, formatDate, formatSenderAddress, invoiceNet } from "../../utils";
-import { accountingRows, accountingSummary, expenseNet, lohnAGBeitraege, periodLabel } from "../../accounting";
+import { accountingRows, accountingSummary, expenseNet, lohnAGBeitraege, periodLabel, zahlungsDatum } from "../../accounting";
 import { StudioLogo } from "../../components/UI";
 import type { AppData, Settings } from "../../types";
 import { HEADING } from "./shared";
 
 export function BuchhaltungPrint({ data, filterYear, settings }: { data: AppData; filterYear?: string; settings: Settings }) {
   // Zeilen und Summen aus accounting.ts — dieselben Zahlen wie Ansicht und CSV
-  const { issued: invoices, expenses, internalExpenses, lohnEntries: loehne } = accountingRows(data, filterYear || "");
+  const { issued: invoices, taxInvoices, expenses, internalExpenses, lohnEntries: loehne } = accountingRows(data, filterYear || "");
   const sum = accountingSummary(data, filterYear || "");
   const totalInvoicedNet = sum.revenueNet;
   const totalInvoicedTax = sum.taxTotal;
@@ -53,7 +53,8 @@ export function BuchhaltungPrint({ data, filterYear, settings }: { data: AppData
             { label: "Umsatz (Netto)", value: totalInvoicedNet },
             { label: `MWST (fakturiert)`, value: totalInvoicedTax, small: true },
             ...(sum.akontoTax > 0 ? [{ label: "davon auf Akontorechnungen", value: sum.akontoTax, small: true }] : []),
-            { label: "Umsatz (Brutto)", value: totalInvoicedNet + totalInvoicedTax, bold: true },
+            // Σ der Rechnungstotale (mit «Total auf 5 Rappen» weicht Netto + MWST um die Rundung ab)
+            { label: "Umsatz (Brutto)", value: sum.revenueGross, bold: true },
           ].map((r, i) => (
             <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "2px 0", borderTop: r.bold ? "1px solid #ccc" : "none", marginTop: r.bold ? 4 : 0 }}>
               <span style={{ fontSize: r.small ? 8 : 9, color: r.small ? "#888" : "#555" }}>{r.label}</span>
@@ -127,12 +128,55 @@ export function BuchhaltungPrint({ data, filterYear, settings }: { data: AppData
               <td colSpan={4} style={{ padding: "5px 0", fontSize: 9, color: "#888" }}>Total</td>
               <td style={{ ...tdR, fontWeight: 700, borderBottom: "none" }}>{formatCHF(totalInvoicedNet)}</td>
               <td style={{ ...tdR, fontWeight: 700, borderBottom: "none", color: "#888" }}>{formatCHF(totalInvoicedTax)}</td>
-              <td style={{ ...tdR, fontWeight: 700, borderBottom: "none" }}>{formatCHF(totalInvoicedNet + totalInvoicedTax)}</td>
+              <td style={{ ...tdR, fontWeight: 700, borderBottom: "none" }}>{formatCHF(sum.revenueGross)}</td>
               <td style={{ borderBottom: "none" }}></td>
             </tr>
           </tfoot>
         </table>
       </div>
+
+      {/* Vereinnahmte Entgelte: die Umsatzsteuer beruht auf den in der Periode bezahlten Rechnungen (auch früher gestellten) */}
+      {sum.mwstArt === "vereinnahmt" && (
+        <div style={{ marginBottom: 24 }}>
+          <div style={{ fontSize: 10, letterSpacing: "0.12em", color: "#888", marginBottom: 10, paddingBottom: 6, borderBottom: "1.5px solid var(--doc-accent)" }}>
+            ZAHLUNGSEINGÄNGE · MWST-BASIS ({taxInvoices.length})
+          </div>
+          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+            <thead>
+              <tr>
+                <th style={thStyle}>BEZAHLT</th>
+                <th style={thStyle}>NR.</th>
+                <th style={thStyle}>RECHNUNG VOM</th>
+                <th style={thStyle}>KUNDE</th>
+                <th style={thR}>NETTO</th>
+                <th style={thR}>MWST</th>
+                <th style={thR}>TOTAL</th>
+              </tr>
+            </thead>
+            <tbody>
+              {taxInvoices.map(inv => (
+                <tr key={inv.id}>
+                  <td style={{ ...tdStyle, whiteSpace: "nowrap" }}>{formatDate(zahlungsDatum(inv))}</td>
+                  <td style={{ ...tdStyle, whiteSpace: "nowrap" }}><strong>{inv.number}</strong></td>
+                  <td style={{ ...tdStyle, whiteSpace: "nowrap" }}>{formatDate(inv.date)}</td>
+                  <td style={tdStyle}>{(data.persons || []).find(c => c.id === inv.clientId)?.name || "—"}</td>
+                  <td style={tdR}>{formatCHF(invoiceNet(inv))}</td>
+                  <td style={{ ...tdR, color: "#888" }}>{inv.mwst ? formatCHF(inv.tax) : "—"}</td>
+                  <td style={{ ...tdR, fontWeight: 600 }}>{formatCHF(inv.total)}</td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot>
+              <tr style={{ borderTop: "1px solid var(--doc-ink)" }}>
+                <td colSpan={4} style={{ padding: "5px 0", fontSize: 9, color: "#888" }}>Total</td>
+                <td style={{ ...tdR, fontWeight: 700, borderBottom: "none" }}>{formatCHF(taxInvoices.reduce((s, i) => s + invoiceNet(i), 0))}</td>
+                <td style={{ ...tdR, fontWeight: 700, borderBottom: "none", color: "#888" }}>{formatCHF(taxInvoices.reduce((s, i) => s + (i.tax || 0), 0))}</td>
+                <td style={{ ...tdR, fontWeight: 700, borderBottom: "none" }}>{formatCHF(taxInvoices.reduce((s, i) => s + (i.total || 0), 0))}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      )}
 
       {/* Spesen */}
       <div style={{ marginBottom: 24 }}>
