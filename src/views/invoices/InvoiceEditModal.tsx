@@ -211,6 +211,29 @@ export function InvoiceEditModal({ modal, setModal, form, setForm, data, clients
         </div>
       </div>
 
+      {/* Regeln vom 28.11.2026: Art der Gutschrift (Schlussrechnung/Abrechnungsblock) und Akonto als Vorauszahlung (MWST-Zeitpunkt) */}
+      {total < 0 && (
+        <FormField label="Art der Gutschrift">
+          <select value={form.creditKind === "minderung" ? "minderung" : "korrektur"} onChange={e => setForm({ ...form, creditKind: e.target.value as "korrektur" | "minderung" })}>
+            <option value="korrektur">Korrektur einer gestellten Rechnung (z.B. zu hohes Akonto)</option>
+            <option value="minderung">Honorarminderung (das Honorar wird kleiner)</option>
+          </select>
+          <div style={{ fontSize: 11, color: "var(--text4)", marginTop: 4 }}>
+            {form.creditKind === "minderung"
+              ? "Die Schlussrechnung zieht den Betrag vom Honorar ab; er wird nicht wieder belastet."
+              : "Zählt zum bisher Verrechneten: die Schlussrechnung stellt das ganze Honorar, abzüglich der Rechnungen nach dieser Korrektur."}
+          </div>
+        </FormField>
+      )}
+      {form.invoiceKind === "akonto" && total >= 0 && (
+        <label style={{ display: "flex", alignItems: "flex-start", gap: 8, cursor: "pointer", textTransform: "none", letterSpacing: 0, fontSize: 13, color: "var(--text)", margin: "0 0 12px" }}>
+          <input type="checkbox" checked={!!form.vorauszahlung} onChange={e => setForm({ ...form, vorauszahlung: e.target.checked })} style={{ width: "auto", marginTop: 3 }} />
+          <span>Vorauszahlung ohne Leistungsfortschritt
+            <span style={{ display: "block", fontSize: 11, color: "var(--text4)" }}>MWST erst mit der Zahlung (Art. 40 Abs. 1 lit. c MWSTG). Ohne Haken: Akonto nach Leistungsstand, MWST mit dem Rechnungsdatum.</span>
+          </span>
+        </label>
+      )}
+
       <FormField label="Bemerkungen"><textarea rows={2} value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} style={{ resize: "vertical" }} /></FormField>
       </fieldset>
     </Modal>

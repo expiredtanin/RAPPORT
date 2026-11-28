@@ -421,6 +421,17 @@ export interface Invoice {
   globalDisc?: number;
   /** "akonto", "teilrechnung", "schluss" (leer = freie Rechnung). Akonto-MWST wird mit der Akontorechnung abgerechnet (Art. 40 MWSTG), die Schlussrechnung belastet MWST nur auf dem Rest */
   invoiceKind?: string;
+  /**
+   * Nur Gutschriften (Total < 0): «korrektur» (Standard, auch wenn leer) = korrigiert eine gestellte Rechnung (z.B. ein zu
+   * hohes Akonto) und zählt wie diese zum bisher Verrechneten; «minderung» = Honorarminderung, verkleinert das Honorar
+   * selbst (Schlussrechnung und Abrechnungsblock ziehen sie vom Honorar ab, statt sie wieder zu belasten).
+   */
+  creditKind?: "korrektur" | "minderung" | "";
+  /**
+   * Nur Akontorechnungen: reine Vorauszahlung ohne Leistungsfortschritt — die MWST entsteht auch bei «vereinbart» erst
+   * mit der Zahlung (Art. 40 Abs. 1 lit. c MWSTG). Standard (false): Akonto nach Leistungsstand, MWST mit dem Rechnungsdatum.
+   */
+  vorauszahlung?: boolean;
   discountType?: string;
   discountValue?: number;
   discountLabel?: string;
@@ -545,6 +556,14 @@ export interface Expense {
   receiptData?: string | null;
   receiptName?: string | null;
   lohnEntryId?: Id | null;
+  /** Beleg mit mehreren MWST-Sätzen (z.B. Hotel 3.8 % + Frühstück 8.1 %): Teilbeträge inkl. MWST; Σ = `amount` */
+  mwstAufteilung?: MwstTeil[] | null;
+}
+
+/** Teilbetrag eines Belegs mit eigenem MWST-Satz (inkl. MWST). */
+export interface MwstTeil {
+  betrag: number;
+  satz: number;
 }
 
 export interface InternalExpense {
@@ -564,6 +583,8 @@ export interface InternalExpense {
    * («YYYY-MM») galt `amount`; ab dem letzten `before` gilt das Feld `amount` der Ausgabe. Cloud: JSON-Spalte.
    */
   amountHistory?: { before: string; amount: number }[];
+  /** wie `Expense.mwstAufteilung` */
+  mwstAufteilung?: MwstTeil[] | null;
   /** Beleg wie `Expense.receiptData` (Cloud: «rapport-pb:internalExpenses/<id>/<Datei>»). */
   receiptData?: string | null;
   receiptName?: string | null;

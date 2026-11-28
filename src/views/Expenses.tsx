@@ -14,10 +14,11 @@
 // vorbefüllt. `ReceiptViewer` (components/) zeigt Belege an.
 
 import React, { useState, useRef } from "react";
+import { MwstAufteilung } from "../components/MwstAufteilung";
 import { EXPENSE_CATEGORIES } from "../constants";
 import { generateId, formatCHF, formatDate, receiptToDataUrl, checkLocalBudget, localISODate, roundCHF } from "../utils";
 import { isLocalBackend } from "../storage/adapter";
-import { expenseNet, expenseTax } from "../accounting";
+import { expenseNet, expenseTax, mwstAufteilungFehler } from "../accounting";
 import { ExpenseFigures } from "../components/ExpenseFigures";
 import { TableToolbar, Header, Modal, FormField, StatusSelect, DateInput, SortTh, RowMenu, EmptyState } from "../components/UI";
 import { removeWithUndo } from "../undo";
@@ -111,6 +112,8 @@ function Expenses({ data, update, standalone, currentUser }: Pick<ViewProps, "da
     if (!form.amount) { showToast("Bitte einen Betrag eingeben."); return; }
     if (!(Number(form.amount) > 0 && Number(form.amount) < 1e7)) { showToast("Der Betrag muss positiv sein (unter CHF 10 Mio.)."); return; }
     if (!(Number(form.mwstRate ?? 0) >= 0 && Number(form.mwstRate ?? 0) <= 30)) { showToast("MWST-Satz zwischen 0 und 30 %."); return; }
+    const aufteilungFehler = mwstAufteilungFehler({ amount: Number(form.amount) || 0, mwstRate: Number(form.mwstRate) || 0, inclMwst: !!form.inclMwst, mwstAufteilung: form.mwstAufteilung });
+    if (aufteilungFehler) { showToast(aufteilungFehler); return; }
     const isNew = modal === "new";
     // über eine Lohnabrechnung ausbezahlt: Betrag und Person stehen in der Abrechnung → nur nach deren Storno ändern
     const orig = isNew ? null : (data.expenses || []).find(e => e.id === modal);
@@ -481,13 +484,7 @@ function Expenses({ data, update, standalone, currentUser }: Pick<ViewProps, "da
               </label>
             </FormField>
           </div>
-          {form.amount > 0 && (
-            <div style={{ fontSize: 11, color: "var(--text4)", padding: "8px 12px", background: "var(--surface2)", borderRadius: 4 }}>
-              {form.inclMwst
-                ? `Netto: ${formatCHF(form.amount / (1 + (form.mwstRate || 0) / 100))} · MWST: ${formatCHF(form.amount - form.amount / (1 + (form.mwstRate || 0) / 100))}`
-                : `Ohne MWST-Abzug — ${formatCHF(form.amount)} wird 1:1 als Netto gebucht`}
-            </div>
-          )}
+          <MwstAufteilung form={{ amount: Number(form.amount) || 0, mwstRate: Number(form.mwstRate) || 0, inclMwst: !!form.inclMwst, mwstAufteilung: form.mwstAufteilung }} onChange={patch => setForm({ ...form, ...patch })} />
           <div style={{ borderTop: "1px solid var(--border2)", paddingTop: 14, marginTop: 14 }}>
             <label style={{ fontSize: 10, color: "var(--text4)", letterSpacing: "0.08em", display: "block", marginBottom: 8 }}>BELEG / QUITTUNG</label>
             {scanning && (

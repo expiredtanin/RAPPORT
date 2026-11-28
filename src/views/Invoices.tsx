@@ -166,6 +166,9 @@ function Invoices({ data, update, saveAll, modal, setModal, setPrintContent }: P
       // beim Korrigieren eines Tippfehlers in die aktuelle MWST-Periode)
       paidDate: status !== "bezahlt" ? undefined
         : form.paidDate || (invoices.find(i => i.id === editingId)?.status === "bezahlt" ? undefined : localISODate()) } as Invoice;
+    // Art der Gutschrift nur bei Gutschriften, Vorauszahlung nur bei Akonti (sonst bliebe ein unsichtbarer Wert stehen)
+    if (!(total < 0)) inv.creditKind = "";
+    if (inv.invoiceKind !== "akonto" || total < 0) inv.vorauszahlung = false;
     // Abrechnungsblock (Akonto/Teilrechnung) mit jedem Speichern festhalten — ein Nachdruck zeigt dieselben Zahlen
     inv.billingSummary = invoiceBillingSummary(inv, data);
 

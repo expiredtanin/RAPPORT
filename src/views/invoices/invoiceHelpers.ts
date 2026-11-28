@@ -271,6 +271,10 @@ const compareInvoiceOrder = (a: Pick<Invoice, "date" | "number">, b: Pick<Invoic
  * `null` für andere Rechnungsarten (Schlussrechnungen ziehen die Akonti schon als Positionen ab), ohne
  * Projekt/Offerte oder ohne Honorar.
  */
+/** Gutschrift als Honorarminderung (verkleinert das Honorar, statt eine Rechnung zu korrigieren)? */
+export const isHonorarminderung = (i: Pick<Invoice, "total" | "sub" | "creditKind">): boolean =>
+  i.creditKind === "minderung" && ((i.total || 0) < 0 || (i.sub || 0) < 0);
+
 export const invoiceBillingSummary = (
   inv: Pick<Invoice, "number" | "date" | "projectId" | "quoteId" | "invoiceKind" | "sub" | "globalDisc"> & { id?: string },
   data: { projects?: Project[]; quotes?: Quote[]; invoices?: Invoice[] },
@@ -296,6 +300,8 @@ export const invoiceBillingSummary = (
     .sort(compareInvoiceOrder);
   const priorNet = roundCHF(prior.reduce((s, i) => s + invoiceNet(i), 0));
   const thisNet = invoiceNet(inv);
+  // Honorarminderungen (Gutschrift «minderung») verkleinern das Honorar; sie stecken auch in `prior` (negativ)
+  fee = roundCHF(fee + prior.filter(isHonorarminderung).reduce((s, i) => s + invoiceNet(i), 0));
   return {
     fee, ...(q ? { quoteNumber: q.number } : {}),
     prior: priorNet, priorNumbers: prior.map(i => i.number).filter(Boolean),

@@ -291,6 +291,8 @@ export const fromDB = {
       notes: row.notes || "",
       status: row.status || "entwurf",
       invoiceKind: row.invoiceKind || "",
+      ...(row.creditKind ? { creditKind: row.creditKind } : {}),
+      ...(row.vorauszahlung ? { vorauszahlung: true } : {}),
       discountType: row.discountType || "none",
       discountValue: row.discountValue || 0,
       discountLabel: row.discountLabel || "",
@@ -344,6 +346,7 @@ export const fromDB = {
       receiptData: pbFileRef("expenses", row.id, row.receiptFile),
       receiptName: row.receiptName || "",
       lohnEntryId: row.lohnEntry || null,
+      ...(Array.isArray(row.mwstAufteilung) && row.mwstAufteilung.length ? { mwstAufteilung: row.mwstAufteilung } : {}),
     };
   },
 
@@ -360,6 +363,7 @@ export const fromDB = {
       recurringInterval: row.recurringInterval || "",
       recurringUntil: row.recurringUntil ? row.recurringUntil.slice(0, 10) : null,
       ...(Array.isArray(row.amountHistory) && row.amountHistory.length ? { amountHistory: row.amountHistory } : {}),
+      ...(Array.isArray(row.mwstAufteilung) && row.mwstAufteilung.length ? { mwstAufteilung: row.mwstAufteilung } : {}),
       // Wie expense.receiptData: Verweis auf das Dateifeld receiptFile.
       receiptData: pbFileRef("internalExpenses", row.id, row.receiptFile),
       receiptName: row.receiptName || "",
@@ -689,6 +693,7 @@ export const toDB = {
       date: i.date || null, dueDate: i.dueDate || null, sentDate: i.sentDate || null, paidDate: i.paidDate || null,
       items: i.items || [], mwst: i.mwst !== false, mwstRate: i.mwstRate, notes: i.notes,
       status: i.status || "entwurf", invoiceKind: i.invoiceKind || null,
+      creditKind: i.creditKind || "", vorauszahlung: !!i.vorauszahlung,
       discountType: i.discountType || "none", discountValue: i.discountValue || 0, discountLabel: i.discountLabel,
       entrySelections: i.entrySelections || {}, qrReference: i.qrReference,
       reminders: i.reminders || [],
@@ -715,6 +720,7 @@ export const toDB = {
       date: e.date, category: e.category, description: e.description, amount: e.amount,
       mwstRate: e.mwstRate, inclMwst: e.inclMwst !== false, status: e.status || "offen",
       receiptName: e.receiptName, receiptFile: e.receiptData || "", lohnEntry: e.lohnEntryId || null,
+      mwstAufteilung: e.mwstAufteilung?.length ? e.mwstAufteilung : null,
     };
   },
 
@@ -725,6 +731,7 @@ export const toDB = {
       mwstRate: e.mwstRate, inclMwst: e.inclMwst !== false,
       recurring: !!e.recurring, recurringInterval: e.recurringInterval || null, recurringUntil: e.recurringUntil || null,
       amountHistory: e.amountHistory?.length ? e.amountHistory : null,
+      mwstAufteilung: e.mwstAufteilung?.length ? e.mwstAufteilung : null,
       receiptFile: e.receiptData || "", receiptName: e.receiptName || "",
     };
   },

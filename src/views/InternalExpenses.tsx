@@ -3,13 +3,14 @@
 // die Hochrechnung aufs Jahr macht StudioBudget.tsx. Gleich aufgebaut wie die Spesen (Expenses.tsx).
 
 import React, { useState, useRef } from "react";
+import { MwstAufteilung } from "../components/MwstAufteilung";
 import { INTERNAL_EXPENSE_CATEGORIES } from "../constants";
 import { generateId, formatCHF, formatDate, receiptToDataUrl, checkLocalBudget, localISODate, roundCHF } from "../utils";
 import { isLocalBackend } from "../storage/adapter";
 import { ExpenseFigures } from "../components/ExpenseFigures";
 import { TableToolbar, Header, Modal, FormField, DateInput, SortTh, RowMenu, EmptyState } from "../components/UI";
 import { removeWithUndo } from "../undo";
-import { changeRecurringAmount, earliestAmountChangeMonth, expandInternalExpenses, expenseNet, expenseTax } from "../accounting";
+import { changeRecurringAmount, earliestAmountChangeMonth, expandInternalExpenses, expenseNet, expenseTax, mwstAufteilungFehler } from "../accounting";
 import { showToast } from "../toast";
 import { extractReceiptText, parseReceiptFields } from "../ocr";
 import type { InternalExpense, ViewProps } from "../types";
@@ -68,6 +69,8 @@ function InternalExpenses({ data, update }: Pick<ViewProps, "data" | "update" | 
     // negativ = Rückerstattung/Gutschrift (erlaubt), nur Unsinn abweisen (Review R34)
     if (!(Number(form.amount) !== 0 && Math.abs(Number(form.amount)) < 1e7)) { showToast("Bitte einen Betrag unter CHF 10 Mio. eingeben (negativ = Rückerstattung)."); return; }
     if (!(Number(form.mwstRate ?? 0) >= 0 && Number(form.mwstRate ?? 0) <= 30)) { showToast("MWST-Satz zwischen 0 und 30 %."); return; }
+    const aufteilungFehler = mwstAufteilungFehler({ amount: Number(form.amount) || 0, mwstRate: Number(form.mwstRate) || 0, inclMwst: !!form.inclMwst, mwstAufteilung: form.mwstAufteilung });
+    if (aufteilungFehler) { showToast(aufteilungFehler); return; }
     const isNew = modal === "new";
     // Bearbeiten: nur eigene Änderungen auf den aktuellen Stand (applyEdit)
     // Betrag auf Rappen (wie bei Spesen): sonst weicht die angezeigte Zeile von der gerundeten Summe ab
@@ -382,13 +385,7 @@ function InternalExpenses({ data, update }: Pick<ViewProps, "data" | "update" | 
               <div style={{ fontSize: 11, color: "var(--text4)", marginTop: 4 }}>Frühere Monate behalten den alten Betrag ({formatCHF(editBase.amount)}); Buchungen in abgeschlossenen MWST-Perioden ändern sich nicht (frühestens {earliestChange.slice(5)}.{earliestChange.slice(0, 4)}).</div>
             </FormField>
           )}
-          {form.amount > 0 && (
-            <div style={{ fontSize: 11, color: "var(--text4)", padding: "8px 12px", background: "var(--surface2)", borderRadius: 4, marginBottom: 12 }}>
-              {form.inclMwst
-                ? `Netto: ${formatCHF(form.amount / (1 + (form.mwstRate || 0) / 100))} · MWST: ${formatCHF(form.amount - form.amount / (1 + (form.mwstRate || 0) / 100))}`
-                : `Ohne MWST-Abzug — ${formatCHF(form.amount)} wird 1:1 als Netto gebucht`}
-            </div>
-          )}
+          <MwstAufteilung form={{ amount: Number(form.amount) || 0, mwstRate: Number(form.mwstRate) || 0, inclMwst: !!form.inclMwst, mwstAufteilung: form.mwstAufteilung }} onChange={patch => setForm({ ...form, ...patch })} />
           <div style={{ borderTop: "1px solid var(--border2)", paddingTop: 12, marginTop: 4 }}>
             <label style={{ fontSize: 10, color: "var(--text4)", letterSpacing: "0.08em", display: "block", marginBottom: 8 }}>BELEG / RECHNUNG</label>
             {scanning && (

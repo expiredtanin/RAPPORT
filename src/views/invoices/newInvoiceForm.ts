@@ -6,15 +6,24 @@
 import { SIA_PHASES } from "../../constants";
 import { generateId, invoiceNet, localISODate, projectFee, roundCHF } from "../../utils";
 import type { AppData, Invoice, InvoiceItem, TimeEntry } from "../../types";
-import { formatPct, invoicesForQuote, phaseInvoiceAmount, projectMwst, selectAllEntries } from "./invoiceHelpers";
+import { formatPct, invoicesForQuote, isHonorarminderung, phaseInvoiceAmount, projectMwst, selectAllEntries } from "./invoiceHelpers";
 import type { InvoiceForm, NewInvoiceState } from "./invoiceHelpers";
 
-/** Abzugszeile und Notiz für bisherige Akonto-/Teilrechnungen einer Schlussrechnung (leer, wenn nichts abzuziehen ist). */
+/**
+ * Abzugszeilen und Notiz für bisherige Akonto-/Teilrechnungen einer Schlussrechnung (leer, wenn nichts abzuziehen ist).
+ * Gutschriften zählen zum bisher Verrechneten (Korrektur einer Rechnung); eine Gutschrift als Honorarminderung
+ * (`creditKind: "minderung"`) verkleinert zusätzlich das Honorar selbst — eigene Zeile, sonst würde sie mit der
+ * Schlussrechnung wieder belastet (Entscheid 28.11.2026).
+ */
 const deduction = (prior: Invoice[], intro: string) => {
   const total = roundCHF(prior.reduce((s, i) => s + invoiceNet(i), 0));
-  if (!(Math.abs(total) > 0)) return { items: [] as InvoiceItem[], notes: "Zahlbar innert 30 Tagen netto." };
+  const minderungen = prior.filter(isHonorarminderung);
+  const minderung = roundCHF(minderungen.reduce((s, i) => s + invoiceNet(i), 0));
+  const minderungItem: InvoiceItem[] = minderung < 0
+    ? [{ id: generateId(), desc: `Abzgl. Honorarminderung (Gutschrift ${minderungen.map(i => i.number).filter(Boolean).join(", ")})`, qty: 1, price: minderung, discount: 0 }] : [];
+  if (!(Math.abs(total) > 0)) return { items: minderungItem, notes: "Zahlbar innert 30 Tagen netto." };
   return {
-    items: [{ id: generateId(), desc: `Abzgl. bisherige Akonto-/Teilrechnungen (${prior.map(i => i.number).filter(Boolean).join(", ")})`, qty: 1, price: -total, discount: 0 }],
+    items: [{ id: generateId(), desc: `Abzgl. bisherige Akonto-/Teilrechnungen (${prior.map(i => i.number).filter(Boolean).join(", ")})`, qty: 1, price: -total, discount: 0 }, ...minderungItem],
     notes: `${intro}\nBisherige Akonto-/Teilrechnungen (netto):\n${prior.map(i => `  – ${i.number}: CHF ${invoiceNet(i).toFixed(2)}`).join("\n")}\n\nZahlbar innert 30 Tagen netto.`,
   };
 };

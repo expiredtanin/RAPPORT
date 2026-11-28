@@ -24,7 +24,7 @@
 //   - Spesen im Lohn: nur genehmigte («genehmigt», «auf nächsten Lohn»), nie «offen».
 
 import { csvCell, hoechstlohnKumuliert, invoiceNet, lohnImMonat, monatsAnteilNachEintritt, roundCHF, type LohnVorperioden } from "./utils";
-import type { AppData, DreizehnterModus, Employee, Expense, InternalExpense, Invoice, LohnEntry, LohnResult, LohnVorsystem, NachzahlungMonat, OvertimeClosing } from "./types";
+import type { AppData, DreizehnterModus, Employee, Expense, MwstTeil, InternalExpense, Invoice, LohnEntry, LohnResult, LohnVorsystem, NachzahlungMonat, OvertimeClosing } from "./types";
 
 /**
  * Liegt ein Datum in der Periode? `""` = alle, `YYYY` = Jahr, `YYYY-MM` = Monat,
@@ -166,16 +166,40 @@ export function expandInternalExpenses(list: InternalExpense[], today: string): 
  * auf der Quittung steht; Summen sind die Summe dieser Beträge (vorher wurde erst die Summe gerundet,
  * Zeilen und Total wichen um Rappen ab). 0 ohne `inclMwst`.
  */
-export function expenseTax(e: Pick<Expense, "amount" | "inclMwst" | "mwstRate">): number {
+export function expenseTax(e: Pick<Expense, "amount" | "inclMwst" | "mwstRate"> & { mwstAufteilung?: Expense["mwstAufteilung"] }): number {
   const amount = e.amount || 0;
+  // Beleg mit mehreren Sätzen (Hotel 3.8 % + Frühstück 8.1 %): Vorsteuer je Teilbetrag, wie auf der Quittung. Geht die
+  // Aufteilung nicht auf den Betrag auf (Σ ≠ amount), gilt sie nicht — dann rechnet der Hauptsatz wie bisher.
+  const teile = Array.isArray(e.mwstAufteilung) ? e.mwstAufteilung : [];
+  if (e.inclMwst && teile.length > 0 && Math.abs(teile.reduce((t, x) => t + (Number(x.betrag) || 0), 0) - amount) < 0.005) {
+    return roundCHF(teile.reduce((t, x) => {
+      const b = Number(x.betrag) || 0, r = Number(x.satz);
+      return t + (r > 0 && r <= 100 ? roundCHF(b - b / (1 + r / 100)) : 0);
+    }, 0));
+  }
   // unsinniger Satz (≤ 0, über 100 %, keine Zahl) rechnet ohne Vorsteuer — −100 % ergab sonst ∞ in der ganzen Buchhaltung
   const rate = Number(e.mwstRate);
   if (!e.inclMwst || !(rate > 0 && rate <= 100)) return 0;
   return roundCHF(amount - amount / (1 + rate / 100));
 }
 
+const fmtCHF = (n: number) => `CHF ${roundCHF(n).toFixed(2)}`;
+
+export type MwstFelder = { amount: number; mwstRate: number; inclMwst: boolean; mwstAufteilung?: MwstTeil[] | null };
+
+/** Fehlermeldung für eine ungültige Aufteilung (Summe ≠ Betrag, Satz ausserhalb 0–30 %), sonst null. */
+export function mwstAufteilungFehler(f: MwstFelder): string | null {
+  const t = f.inclMwst ? f.mwstAufteilung || [] : [];
+  if (t.length === 0) return null;
+  if (t.some(x => !(Number(x.satz) >= 0 && Number(x.satz) <= 30))) return "MWST-Sätze der Aufteilung zwischen 0 und 30 %.";
+  if (t.some(x => !(Number(x.betrag) > 0))) return "Jeder Teilbetrag der Aufteilung muss grösser als 0 sein.";
+  const summe = roundCHF(t.reduce((s, x) => s + Number(x.betrag), 0));
+  if (Math.abs(summe - roundCHF(Number(f.amount) || 0)) >= 0.005) return `Die Teilbeträge ergeben ${fmtCHF(summe)}, der Beleg ${fmtCHF(Number(f.amount) || 0)}.`;
+  return null;
+}
+
 /** Netto einer Spese/Ausgabe = Betrag minus Vorsteuer (pro Beleg auf Rappen). */
-export function expenseNet(e: Pick<Expense, "amount" | "inclMwst" | "mwstRate">): number {
+export function expenseNet(e: Pick<Expense, "amount" | "inclMwst" | "mwstRate"> & { mwstAufteilung?: Expense["mwstAufteilung"] }): number {
   return roundCHF((e.amount || 0) - expenseTax(e));
 }
 
@@ -382,6 +406,11 @@ export interface AccountingSummary {
   /** Spesen der Periode, die noch nicht genehmigt sind: zählen nicht in Aufwand und Vorsteuer (abgelehnte nie) */
   expPendingCount: number;
   expPendingGross: number;
+  /** gezählte Spesen ohne erfassten Beleg (Hinweis) und ihre Vorsteuer */
+  expOhneBelegCount: number;
+  expOhneBelegTax: number;
+  /** Vorsteuer aus Spesen in der MWST-Abrechnung (vereinnahmt: nach Zahlungsdatum, sonst = expTax) */
+  expTaxVorsteuer: number;
   intNet: number;
   intTax: number;
   intGross: number;
@@ -414,14 +443,62 @@ type SummaryData = Pick<AppData, "invoices" | "expenses" | "internalExpenses" | 
 export const zahlungsDatum = (i: Pick<Invoice, "paidDate" | "date">): string => i.paidDate || i.date || "";
 
 /**
- * Rechnungen, auf denen die Umsatzsteuer der Periode beruht: vereinbart = gestellte Rechnungen nach Rechnungsdatum
- * (`issued`); vereinnahmt = bezahlte Rechnungen nach Zahlungsdatum, sortiert nach Zahlungsdatum. Ansicht, PDF und CSV
- * listen bei «vereinnahmt» genau diese Rechnungen, damit die Umsatzsteuer auf sichtbaren Zeilen beruht.
+ * Datum, an dem die Umsatzsteuer einer Rechnung entsteht («» = noch nicht bzw. nie). Klare Regeln (28.11.2026):
+ * - Entwurf: nie.
+ * - Gutschrift (Total < 0): Rechnungsdatum — bei «vereinnahmt» auch, denn eine Gutschrift wird verrechnet statt bezahlt
+ *   (vorher zählte sie erst, wenn jemand sie auf «bezahlt» setzte); ein erfasstes Zahlungsdatum (Rückzahlung) gilt.
+ * - «vereinnahmt»: erst mit der Zahlung (Status «bezahlt», Zahlungsdatum).
+ * - Akonto als reine Vorauszahlung (`vorauszahlung`): auch bei «vereinbart» erst mit der Zahlung (Art. 40 Abs. 1 lit. c).
+ * - sonst (vereinbart): Rechnungsdatum.
+ */
+export function steuerDatum(i: Pick<Invoice, "status" | "date" | "paidDate" | "total" | "invoiceKind" | "vorauszahlung">, art: "vereinbart" | "vereinnahmt"): string {
+  if (i.status === "entwurf") return "";
+  if ((i.total || 0) < 0) return (art === "vereinnahmt" && i.paidDate) || i.date || "";
+  const beiZahlung = art === "vereinnahmt" || (i.invoiceKind === "akonto" && !!i.vorauszahlung);
+  if (!beiZahlung) return i.date || "";
+  return i.status === "bezahlt" ? zahlungsDatum(i) : "";
+}
+
+/**
+ * Rechnungen, auf denen die Umsatzsteuer der Periode beruht (`steuerDatum` in der Periode), sortiert nach diesem Datum.
+ * Ohne vereinnahmte Entgelte und ohne Vorauszahlungs-Akonti ist das genau `issued`. Ansicht, PDF und CSV listen diese
+ * Rechnungen, damit die Umsatzsteuer auf sichtbaren Zeilen beruht.
  */
 function mwstBasisRechnungen(data: SummaryData, period: string, issued: Invoice[]): Invoice[] {
-  if (data.settings?.mwstAbrechnungsart !== "vereinnahmt") return issued;
-  return (data.invoices || []).filter(i => i.status === "bezahlt" && inPeriod(zahlungsDatum(i), period))
-    .sort((a, b) => zahlungsDatum(a).localeCompare(zahlungsDatum(b)));
+  const art = data.settings?.mwstAbrechnungsart === "vereinnahmt" ? "vereinnahmt" : "vereinbart";
+  const all = data.invoices || [];
+  if (art === "vereinbart" && !all.some(i => i.invoiceKind === "akonto" && i.vorauszahlung)) return issued;
+  return all.map(i => ({ i, d: steuerDatum(i, art) })).filter(x => x.d && inPeriod(x.d, period))
+    .sort((a, b) => a.d.localeCompare(b.d)).map(x => x.i);
+}
+
+/**
+ * Zahlungsdatum einer Spese für die Vorsteuer nach vereinnahmten Entgelten («» = noch nicht bezahlt): über eine
+ * Lohnabrechnung = letzter Tag des Lohnmonats; «ausbezahlt» ohne Lohn (bar, direkt) = Belegdatum; genehmigt, aber noch
+ * nicht ausbezahlt = noch keine Vorsteuer (Art. 40 Abs. 2 MWSTG: Vorsteuer bei «vereinnahmt» im Zeitpunkt der Zahlung).
+ */
+export function spesenZahlungsDatum(e: Pick<Expense, "date" | "status" | "lohnEntryId">, lohnEntries: Pick<LohnEntry, "id" | "monat">[]): string {
+  if (e.lohnEntryId) {
+    const l = lohnEntries.find(x => x.id === e.lohnEntryId);
+    if (!l || !/^\d{4}-\d{2}$/.test(l.monat)) return e.date || "";
+    const [y, m] = l.monat.split("-").map(Number);
+    return `${l.monat}-${String(new Date(y, m, 0).getDate()).padStart(2, "0")}`;
+  }
+  return e.status === "ausbezahlt" ? e.date || "" : "";
+}
+
+/** Muss die MWST-Basis eigens gelistet werden (weicht von den gestellten Rechnungen der Periode ab)? */
+export function mwstBasisAbweichend(s: Pick<AccountingSummary, "mwstArt">, issued: Invoice[], taxInvoices: Invoice[]): boolean {
+  if (s.mwstArt === "vereinnahmt") return true;
+  return issued.length !== taxInvoices.length || issued.some((i, k) => taxInvoices[k] !== i);
+}
+
+/** MWST-Satz einer Spese/Ausgabe als Text: «8.1» bzw. bei Aufteilung «3.8/8.1»; ohne MWST 0. */
+export function mwstSatzText(e: Pick<Expense, "inclMwst" | "mwstRate" | "mwstAufteilung" | "amount">): string | number {
+  if (!e.inclMwst) return 0;
+  const t = Array.isArray(e.mwstAufteilung) && e.mwstAufteilung.length && Math.abs(e.mwstAufteilung.reduce((a, x) => a + (Number(x.betrag) || 0), 0) - (e.amount || 0)) < 0.005
+    ? e.mwstAufteilung : null;
+  return t ? [...new Set(t.map(x => Number(x.satz)))].join("/") : (e.mwstRate || 0);
 }
 
 /** Heute als `YYYY-MM-DD` (lokal). */
@@ -486,8 +563,14 @@ export function accountingSummary(data: SummaryData, period: string, today = tod
   const lohnAG = roundCHF(sum(ag, a => a.total));
   const personalaufwand = roundCHF(lohnBrutto + lohnAG);
 
-  // Saldosteuersatz: kein Vorsteuerabzug (Art. 37 Abs. 1 MWSTG)
-  const vorsteuer = mwstMethode === "saldo" ? 0 : roundCHF(expTax + intTax);
+  // Saldosteuersatz: kein Vorsteuerabzug (Art. 37 Abs. 1 MWSTG). «vereinnahmt»: Spesen-Vorsteuer im Zeitpunkt der
+  // Zahlung (spesenZahlungsDatum), Büroausgaben gelten mit dem Belegdatum als bezahlt; Aufwand bleibt beim Belegdatum.
+  const expTaxVorsteuer = mwstArt === "vereinnahmt"
+    ? roundCHF(sum((data.expenses || []).filter(e => spesenZaehlen(e) && inPeriod(spesenZahlungsDatum(e, data.lohnEntries || []), period)), expenseTax))
+    : expTax;
+  const vorsteuer = mwstMethode === "saldo" ? 0 : roundCHF(expTaxVorsteuer + intTax);
+  // Spesen ohne Beleg: zählen (der Beleg kann auf Papier vorliegen), aber Hinweis — ohne Beleg ist die Vorsteuer nicht belegt
+  const ohneBeleg = expenses.filter(e => !e.receiptData);
   // Ergebnis: effektiv netto/netto; mit Saldosteuersatz ist die Vorsteuer Aufwand (Ausgaben brutto) und der Ertrag
   // = Entgelt inkl. MWST − Saldosteuer (vorher netto wie effektiv: Ergebnis um Vorsteuer und Satzdifferenz falsch)
   const saldo = mwstMethode === "saldo";
@@ -505,6 +588,7 @@ export function accountingSummary(data: SummaryData, period: string, today = tod
     overdueTotal: roundCHF(sum(invoices.filter(i => i.status === "überfällig"), i => i.total || 0)),
     expNet, expTax, expGross, expCount: expenses.length, expViaLohnCount: expenses.filter(e => e.lohnEntryId).length,
     expPendingCount: expensesPending.length, expPendingGross: roundCHF(sum(expensesPending, e => e.amount || 0)),
+    expOhneBelegCount: ohneBeleg.length, expOhneBelegTax: roundCHF(sum(ohneBeleg, expenseTax)), expTaxVorsteuer,
     intNet, intTax, intGross,
     lohnBrutto, lohnAG, lohnAGParts, personalaufwand, lohnCount: lohnEntries.length,
     vorsteuer,
@@ -546,13 +630,14 @@ export function buildBuchhaltungCSV(data: AppData, period = ""): string {
 
   // Vereinnahmte Entgelte: die Umsatzsteuer beruht auf den in der Periode bezahlten Rechnungen (auch früher gestellten) —
   // sie werden hier gelistet, sonst liess sich die Umsatzsteuer der Zusammenfassung aus keiner Zeile nachvollziehen
-  if (s.mwstArt === "vereinnahmt") {
-    rows.push(line(["ZAHLUNGSEINGÄNGE (MWST-BASIS, VEREINNAHMTE ENTGELTE)", "", "", "", "", "", "", "", ""]));
-    rows.push(line(["Bezahlt am", "Rechnungs-Nr.", "Kunde", "Rechnungsdatum", "Netto CHF", "MWST-Satz %", "MWST CHF", "Brutto CHF", "Steuerbar"]));
+  // Ebenso bei «vereinbart», sobald ein Akonto als Vorauszahlung erst mit der Zahlung versteuert wird
+  if (mwstBasisAbweichend(s, issued, taxInvoices)) {
+    rows.push(line([s.mwstArt === "vereinnahmt" ? "ZAHLUNGSEINGÄNGE (MWST-BASIS, VEREINNAHMTE ENTGELTE)" : "MWST-BASIS (VORAUSZAHLUNGEN MIT DER ZAHLUNG)", "", "", "", "", "", "", "", ""]));
+    rows.push(line(["Steuerdatum", "Rechnungs-Nr.", "Kunde", "Rechnungsdatum", "Netto CHF", "MWST-Satz %", "MWST CHF", "Brutto CHF", "Steuerbar"]));
     taxInvoices.forEach(inv => {
       const client = (data.persons || []).find(c => c.id === inv.clientId);
       const taxRate = inv.mwst ? (inv.mwstRate ?? mwstRate) : 0;
-      rows.push(line([zahlungsDatum(inv), inv.number, client?.name || "", inv.date, f(invoiceNet(inv)), taxRate, f(inv.tax || 0), f(inv.total || 0), inv.mwst !== false ? "ja" : "nein"]));
+      rows.push(line([steuerDatum(inv, s.mwstArt), inv.number, client?.name || "", inv.date, f(invoiceNet(inv)), taxRate, f(inv.tax || 0), f(inv.total || 0), inv.mwst !== false ? "ja" : "nein"]));
     });
     const taxSum = taxInvoices.reduce((a, i) => a + (i.tax || 0), 0);
     rows.push(line(["", "", "", "TOTAL", f(taxInvoices.reduce((a, i) => a + invoiceNet(i), 0)), "", f(taxSum), f(taxInvoices.reduce((a, i) => a + (i.total || 0), 0)), ""]));
@@ -560,20 +645,22 @@ export function buildBuchhaltungCSV(data: AppData, period = ""): string {
   }
 
   rows.push(line(["SPESEN (MITARBEITERBEZOGEN)", "", "", "", "", "", "", "", ""]));
-  rows.push(line(["Datum", "Kategorie", "Projekt", "Beschreibung", "Netto CHF", "MWST-Satz %", "MWST CHF", "Brutto CHF", "Ausbezahlt über Lohn"]));
+  rows.push(line(["Datum", "Kategorie", "Projekt", "Beschreibung", "Netto CHF", "MWST-Satz %", "MWST CHF", "Brutto CHF", "Ausbezahlt über Lohn", "Beleg"]));
   expenses.forEach(exp => {
     const proj = (data.projects || []).find(p => p.id === exp.projectId);
     const lohn = exp.lohnEntryId ? (data.lohnEntries || []).find(l => l.id === exp.lohnEntryId) : undefined;
-    rows.push(line([exp.date, exp.category, proj?.name || "", exp.description, f(expenseNet(exp)), exp.inclMwst ? (exp.mwstRate || 0) : 0, f(expenseTax(exp)), f(exp.amount || 0), lohn ? lohn.monat : exp.lohnEntryId ? "ja" : ""]));
+    rows.push(line([exp.date, exp.category, proj?.name || "", exp.description, f(expenseNet(exp)), mwstSatzText(exp), f(expenseTax(exp)), f(exp.amount || 0), lohn ? lohn.monat : exp.lohnEntryId ? "ja" : "", exp.receiptData ? "ja" : "fehlt"]));
   });
   rows.push(line(["", "", "", "TOTAL", f(s.expNet), "", f(s.expTax), f(s.expGross), ""]));
+  if (s.expOhneBelegCount > 0) rows.push(line(["", "", "", `Ohne Beleg (${s.expOhneBelegCount}), Vorsteuer darauf`, "", "", f(s.expOhneBelegTax), "", "", ""]));
+  if (s.mwstArt === "vereinnahmt" && s.mwstMethode !== "saldo" && s.expTaxVorsteuer !== s.expTax) rows.push(line(["", "", "", "Vorsteuer nach Zahlung (vereinnahmt), in der MWST-Abrechnung", "", "", f(s.expTaxVorsteuer), "", "", ""]));
   if (s.expPendingCount > 0) rows.push(line(["", "", "", `Noch nicht genehmigt (${s.expPendingCount}), nicht im Total`, "", "", "", f(s.expPendingGross), ""]));
   rows.push("");
 
   rows.push(line(["INTERNE AUSGABEN", "", "", "", "", "", "", ""]));
   rows.push(line(["Datum", "Kategorie", "Beschreibung", "Wiederkehrend", "Netto CHF", "MWST-Satz %", "MWST CHF", "Brutto CHF"]));
   internalExpenses.forEach(exp => {
-    rows.push(line([exp.date, exp.category, exp.description, exp.recurring ? (exp.recurringInterval || "monatlich") : "", f(expenseNet(exp)), exp.inclMwst ? (exp.mwstRate || 0) : 0, f(expenseTax(exp)), f(exp.amount || 0)]));
+    rows.push(line([exp.date, exp.category, exp.description, exp.recurring ? (exp.recurringInterval || "monatlich") : "", f(expenseNet(exp)), mwstSatzText(exp), f(expenseTax(exp)), f(exp.amount || 0)]));
   });
   rows.push(line(["", "", "", "TOTAL", f(s.intNet), "", f(s.intTax), f(s.intGross)]));
   rows.push("");

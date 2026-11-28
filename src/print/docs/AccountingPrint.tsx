@@ -3,7 +3,7 @@
 import React from "react";
 import { STATUS_COLORS } from "../../constants";
 import { formatCHF, formatDate, formatSenderAddress, invoiceNet } from "../../utils";
-import { accountingRows, accountingSummary, expenseNet, lohnAGBeitraege, periodLabel, zahlungsDatum } from "../../accounting";
+import { accountingRows, accountingSummary, expenseNet, lohnAGBeitraege, mwstBasisAbweichend, periodLabel, steuerDatum } from "../../accounting";
 import { StudioLogo } from "../../components/UI";
 import type { AppData, Settings } from "../../types";
 import { HEADING } from "./shared";
@@ -136,15 +136,15 @@ export function BuchhaltungPrint({ data, filterYear, settings }: { data: AppData
       </div>
 
       {/* Vereinnahmte Entgelte: die Umsatzsteuer beruht auf den in der Periode bezahlten Rechnungen (auch früher gestellten) */}
-      {sum.mwstArt === "vereinnahmt" && (
+      {mwstBasisAbweichend(sum, invoices, taxInvoices) && (
         <div style={{ marginBottom: 24 }}>
           <div style={{ fontSize: 10, letterSpacing: "0.12em", color: "#888", marginBottom: 10, paddingBottom: 6, borderBottom: "1.5px solid var(--doc-accent)" }}>
-            ZAHLUNGSEINGÄNGE · MWST-BASIS ({taxInvoices.length})
+            {sum.mwstArt === "vereinnahmt" ? "ZAHLUNGSEINGÄNGE" : "VORAUSZAHLUNGEN"} · MWST-BASIS ({taxInvoices.length})
           </div>
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <thead>
               <tr>
-                <th style={thStyle}>BEZAHLT</th>
+                <th style={thStyle}>STEUERDATUM</th>
                 <th style={thStyle}>NR.</th>
                 <th style={thStyle}>RECHNUNG VOM</th>
                 <th style={thStyle}>KUNDE</th>
@@ -156,7 +156,7 @@ export function BuchhaltungPrint({ data, filterYear, settings }: { data: AppData
             <tbody>
               {taxInvoices.map(inv => (
                 <tr key={inv.id}>
-                  <td style={{ ...tdStyle, whiteSpace: "nowrap" }}>{formatDate(zahlungsDatum(inv))}</td>
+                  <td style={{ ...tdStyle, whiteSpace: "nowrap" }}>{formatDate(steuerDatum(inv, sum.mwstArt))}</td>
                   <td style={{ ...tdStyle, whiteSpace: "nowrap" }}><strong>{inv.number}</strong></td>
                   <td style={{ ...tdStyle, whiteSpace: "nowrap" }}>{formatDate(inv.date)}</td>
                   <td style={tdStyle}>{(data.persons || []).find(c => c.id === inv.clientId)?.name || "—"}</td>

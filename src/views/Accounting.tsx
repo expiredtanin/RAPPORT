@@ -382,6 +382,24 @@ function Accounting({ data, update, setView, setModal, setPrintContent }: Pick<V
                 <td style={{ textAlign: "right", fontWeight: 700 }}>{formatCHF(totalExpBrutto)}</td>
                 <td colSpan={2}></td>
               </tr>
+              {sum.expOhneBelegCount > 0 && (
+                <tr data-testid="spesen-ohne-beleg">
+                  <td colSpan={4} style={{ color: "var(--warning)", fontSize: 12 }}>
+                    <span className="msr" style={{ fontSize: 14, verticalAlign: "-2px", marginRight: 4 }}>receipt</span>
+                    Ohne Beleg ({sum.expOhneBelegCount}) — Vorsteuer {formatCHF(sum.expOhneBelegTax)} ist nur mit Beleg abziehbar
+                  </td>
+                  <td colSpan={3}>
+                    <button className="btn btn-ghost btn-sm" style={{ fontSize: 11 }} onClick={() => setView && setView("expenses")}>Belege ergänzen →</button>
+                  </td>
+                </tr>
+              )}
+              {sum.mwstArt === "vereinnahmt" && sum.mwstMethode !== "saldo" && sum.expTaxVorsteuer !== sum.expTax && (
+                <tr>
+                  <td colSpan={7} style={{ color: "var(--text3)", fontSize: 12 }}>
+                    Vorsteuer aus Spesen in der MWST-Abrechnung nach Zahlung (vereinnahmt): {formatCHF(sum.expTaxVorsteuer)} — genehmigte, noch nicht ausbezahlte Spesen zählen erst mit der Auszahlung.
+                  </td>
+                </tr>
+              )}
               {sum.expPendingCount > 0 && (
                 <tr data-testid="spesen-offen">
                   <td colSpan={4} style={{ color: "var(--warning)", fontSize: 12 }}>
